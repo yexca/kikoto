@@ -106,18 +106,25 @@ export function LibraryPage() {
 
   useEffect(() => {
     const handlePopState = () => setSelectedCode(codeFromPath(window.location.pathname));
+    const handleAppNavigation = () => setSelectedCode(codeFromPath(window.location.pathname));
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("kikoto:navigation", handleAppNavigation);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("kikoto:navigation", handleAppNavigation);
+    };
   }, []);
 
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
     window.history.pushState({}, "", path);
+    window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(work.primaryCode);
   };
 
   const backToLibrary = () => {
     window.history.pushState({}, "", "/");
+    window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
   };
 

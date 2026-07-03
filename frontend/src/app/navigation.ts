@@ -14,20 +14,21 @@ import type { LucideIcon } from "lucide-react";
 type NavItem = {
   id: string;
   label: string;
+  path: string;
   icon: LucideIcon;
   permission?: string;
 };
 
 export const navItems = [
-  { id: "library", label: "Library", icon: Library, permission: undefined },
-  { id: "now-playing", label: "Now Playing", icon: Play, permission: undefined },
-  { id: "favorites", label: "Favorites", icon: Heart, permission: undefined },
-  { id: "circles", label: "Circles", icon: Users, permission: undefined },
-  { id: "tags", label: "Tags", icon: Tags, permission: undefined },
-  { id: "workflows", label: "Workflows", icon: Workflow, permission: "workflows:run" },
-  { id: "downloads", label: "Downloads", icon: Download, permission: "downloads:manage" },
-  { id: "users", label: "Users", icon: ShieldCheck, permission: "users:manage" },
-  { id: "settings", label: "Settings", icon: Settings, permission: undefined },
+  { id: "library", label: "Library", path: "/", icon: Library, permission: undefined },
+  { id: "now-playing", label: "Now Playing", path: "/now-playing", icon: Play, permission: undefined },
+  { id: "favorites", label: "Favorites", path: "/favorites", icon: Heart, permission: undefined },
+  { id: "circles", label: "Circles", path: "/circles", icon: Users, permission: undefined },
+  { id: "tags", label: "Tags", path: "/tags", icon: Tags, permission: undefined },
+  { id: "workflows", label: "Workflows", path: "/workflows", icon: Workflow, permission: "workflows:run" },
+  { id: "downloads", label: "Downloads", path: "/downloads", icon: Download, permission: "downloads:manage" },
+  { id: "users", label: "Users", path: "/users", icon: ShieldCheck, permission: "users:manage" },
+  { id: "settings", label: "Settings", path: "/settings", icon: Settings, permission: undefined },
 ] as const satisfies readonly NavItem[];
 
 export type PageID = (typeof navItems)[number]["id"];

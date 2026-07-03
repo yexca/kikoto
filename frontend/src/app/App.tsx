@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell, LogOut, Moon, Search, Shield } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
 const mobileTabs: PageID[] = ["library", "favorites", "now-playing", "settings"];
+const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 
 export function App() {
   return (
@@ -26,12 +27,31 @@ export function App() {
 
 function AuthenticatedApp() {
   const auth = useAuth();
-  const [page, setPage] = useState<PageID>("library");
+  const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
     [auth],
   );
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
+
+  useEffect(() => {
+    const handlePopState = () => setPage(pageFromPath(window.location.pathname));
+    const handleAppNavigation = () => setPage(pageFromPath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("kikoto:navigation", handleAppNavigation);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("kikoto:navigation", handleAppNavigation);
+    };
+  }, []);
+
+  const openPage = (id: PageID) => {
+    const item = navItems.find((navItem) => navItem.id === id);
+    if (!item) return;
+    window.history.pushState({}, "", item.path);
+    window.dispatchEvent(new Event("kikoto:navigation"));
+    setPage(id);
+  };
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
@@ -54,7 +74,7 @@ function AuthenticatedApp() {
                 key={item.id}
                 className={cn("mb-1 w-full justify-start", page === item.id && "bg-muted")}
                 variant="ghost"
-                onClick={() => setPage(item.id)}
+                onClick={() => openPage(item.id)}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
@@ -118,7 +138,7 @@ function AuthenticatedApp() {
                     "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
                     page === id && "bg-muted text-foreground",
                   )}
-                  onClick={() => setPage(id)}
+                  onClick={() => openPage(id)}
                 >
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -131,6 +151,14 @@ function AuthenticatedApp() {
       </div>
     </PlayerProvider>
   );
+}
+
+function pageFromPath(path: string): PageID {
+  if (path === "/" || WORK_CODE_PATH_PATTERN.test(path)) {
+    return "library";
+  }
+  const item = navItems.find((navItem) => navItem.path === path);
+  return item?.id ?? "library";
 }
 
 function PlaceholderPage({ title }: { title: string }) {
