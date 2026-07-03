@@ -6,6 +6,7 @@ import {
   Play,
   Settings,
   Tags,
+  ShieldCheck,
   Users,
   Workflow,
 } from "lucide-react";
@@ -26,7 +27,8 @@ export const navItems = [
   { id: "tags", label: "Tags", icon: Tags, permission: undefined },
   { id: "sources", label: "Sources", icon: Database, permission: "sources:write" },
   { id: "workflows", label: "Workflows", icon: Workflow, permission: "workflows:run" },
-  { id: "downloads", label: "Downloads", icon: Download, permission: undefined },
+  { id: "downloads", label: "Downloads", icon: Download, permission: "downloads:manage" },
+  { id: "users", label: "Users", icon: ShieldCheck, permission: "users:manage" },
   { id: "settings", label: "Settings", icon: Settings, permission: undefined },
 ] as const satisfies readonly NavItem[];
 

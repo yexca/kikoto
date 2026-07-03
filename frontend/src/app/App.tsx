@@ -10,6 +10,7 @@ import { NowPlayingPage } from "@/pages/NowPlayingPage";
 import { SourcesPage } from "@/pages/SourcesPage";
 import { WorkflowsPage } from "@/pages/WorkflowsPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { UsersPage } from "@/pages/UsersPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
@@ -98,7 +99,8 @@ function AuthenticatedApp() {
             {page === "now-playing" && <NowPlayingPage />}
             {page === "sources" && <SourcesPage canManage={auth.hasPermission("sources:write")} />}
             {page === "workflows" && <WorkflowsPage canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-            {!["library", "now-playing", "sources", "workflows"].includes(page) && (
+            {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
+            {!["library", "now-playing", "sources", "workflows", "users"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
           </div>

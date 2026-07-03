@@ -166,9 +166,9 @@ func permissionsForRole(role string) []string {
 	base := []string{"library:read", "playback:use", "favorites:write", "tags:write"}
 	switch role {
 	case "super_admin":
-		return append(base, "sources:write", "workflows:run", "metadata:sync", "users:manage", "system:admin")
+		return append(base, "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "users:manage", "system:admin")
 	case "admin":
-		return append(base, "sources:write", "workflows:run", "metadata:sync")
+		return append(base, "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "users:manage")
 	default:
 		return base
 	}

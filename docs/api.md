@@ -37,6 +37,19 @@ POST /api/auth/logout
 
 Deletes the current session cookie.
 
+## Users
+
+```http
+GET /api/users
+POST /api/users
+PATCH /api/users/{id}
+DELETE /api/users/{id}
+```
+
+Manages local user accounts, roles, enabled state, and passwords.
+
+Requires `users:manage`. Administrators can manage normal users and administrators. Only super administrators can grant or modify the `super_admin` role.
+
 ## Works
 
 ```http

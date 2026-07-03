@@ -89,6 +89,16 @@ export type CurrentUser = {
   devMode: boolean;
 };
 
+export type ManagedUser = {
+  id: number;
+  username: string;
+  displayName: string;
+  role: "super_admin" | "admin" | "user";
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AuthState =
   | { authenticated: false }
   | { authenticated: true; user: CurrentUser };
@@ -151,10 +161,41 @@ async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `PATCH ${path} failed with ${response.status}` }));
+    throw new Error(payload.error ?? `PATCH ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function deleteJSON<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `DELETE ${path} failed with ${response.status}` }));
+    throw new Error(payload.error ?? `DELETE ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export const api = {
   me: () => getJSON<AuthState>("/api/auth/me"),
   login: (username: string, password: string) => postJSONBody<AuthState>("/api/auth/login", { username, password }),
   logout: () => postJSON<{ ok: boolean }>("/api/auth/logout"),
+  listUsers: () => getJSON<ManagedUser[]>("/api/users"),
+  createUser: (payload: { username: string; displayName: string; role: ManagedUser["role"]; password: string; enabled: boolean }) =>
+    postJSONBody<ManagedUser>("/api/users", payload),
+  updateUser: (
+    id: number,
+    payload: { displayName?: string; role?: ManagedUser["role"]; password?: string; enabled?: boolean },
+  ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
+  deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
