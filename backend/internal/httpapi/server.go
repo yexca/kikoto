@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/localfs"
@@ -26,6 +27,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /api/works", s.listWorks)
+	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
@@ -67,6 +69,235 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, works)
+}
+
+type workDetail struct {
+	ID              int64             `json:"id"`
+	PrimaryCode     string            `json:"primaryCode"`
+	WorkType        string            `json:"workType"`
+	Title           string            `json:"title"`
+	TitleKana       string            `json:"titleKana"`
+	Description     string            `json:"description"`
+	ReleaseDate     *string           `json:"releaseDate"`
+	AgeRating       string            `json:"ageRating"`
+	DurationSeconds *int64            `json:"durationSeconds"`
+	CreatedAt       string            `json:"createdAt"`
+	UpdatedAt       string            `json:"updatedAt"`
+	MediaItems      []mediaItemDetail `json:"mediaItems"`
+}
+
+type mediaItemDetail struct {
+	ID              int64                `json:"id"`
+	ParentID        *int64               `json:"parentId"`
+	Kind            string               `json:"kind"`
+	Title           string               `json:"title"`
+	DiscNo          *int64               `json:"discNo"`
+	TrackNo         *int64               `json:"trackNo"`
+	DurationSeconds *int64               `json:"durationSeconds"`
+	SizeBytes       *int64               `json:"sizeBytes"`
+	Fingerprint     string               `json:"fingerprint"`
+	Locations       []fileLocationDetail `json:"locations"`
+}
+
+type fileLocationDetail struct {
+	ID              int64   `json:"id"`
+	FileSourceID    int64   `json:"fileSourceId"`
+	FileSourceCode  string  `json:"fileSourceCode"`
+	FileSourceName  string  `json:"fileSourceName"`
+	LocationType    string  `json:"locationType"`
+	Path            string  `json:"path"`
+	StreamURL       string  `json:"streamUrl"`
+	DownloadURL     string  `json:"downloadUrl"`
+	RemoteHash      string  `json:"remoteHash"`
+	SizeBytes       *int64  `json:"sizeBytes"`
+	DurationSeconds *int64  `json:"durationSeconds"`
+	Availability    string  `json:"availability"`
+	LastCheckedAt   *string `json:"lastCheckedAt"`
+}
+
+func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+
+	work, err := s.loadWorkDetail(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, work)
+}
+
+func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, error) {
+	var work workDetail
+	var releaseDate sql.NullString
+	var durationSeconds sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			id,
+			primary_code,
+			work_type,
+			title,
+			title_kana,
+			description,
+			release_date,
+			age_rating,
+			duration_seconds,
+			created_at,
+			updated_at
+		FROM work
+		WHERE id = ?
+	`, id).Scan(
+		&work.ID,
+		&work.PrimaryCode,
+		&work.WorkType,
+		&work.Title,
+		&work.TitleKana,
+		&work.Description,
+		&releaseDate,
+		&work.AgeRating,
+		&durationSeconds,
+		&work.CreatedAt,
+		&work.UpdatedAt,
+	); err != nil {
+		return workDetail{}, err
+	}
+	work.ReleaseDate = nullableString(releaseDate)
+	work.DurationSeconds = nullableInt64(durationSeconds)
+	work.MediaItems = []mediaItemDetail{}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			id,
+			parent_id,
+			kind,
+			title,
+			disc_no,
+			track_no,
+			duration_seconds,
+			size_bytes,
+			fingerprint
+		FROM media_item
+		WHERE work_id = ?
+		ORDER BY
+			COALESCE(disc_no, 0) ASC,
+			COALESCE(track_no, 0) ASC,
+			title ASC,
+			id ASC
+	`, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	defer rows.Close()
+
+	itemIndexes := map[int64]int{}
+	for rows.Next() {
+		var item mediaItemDetail
+		var parentID sql.NullInt64
+		var discNo sql.NullInt64
+		var trackNo sql.NullInt64
+		var itemDurationSeconds sql.NullInt64
+		var sizeBytes sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&parentID,
+			&item.Kind,
+			&item.Title,
+			&discNo,
+			&trackNo,
+			&itemDurationSeconds,
+			&sizeBytes,
+			&item.Fingerprint,
+		); err != nil {
+			return workDetail{}, err
+		}
+		item.ParentID = nullableInt64(parentID)
+		item.DiscNo = nullableInt64(discNo)
+		item.TrackNo = nullableInt64(trackNo)
+		item.DurationSeconds = nullableInt64(itemDurationSeconds)
+		item.SizeBytes = nullableInt64(sizeBytes)
+		item.Locations = []fileLocationDetail{}
+		itemIndexes[item.ID] = len(work.MediaItems)
+		work.MediaItems = append(work.MediaItems, item)
+	}
+	if err := rows.Err(); err != nil {
+		return workDetail{}, err
+	}
+
+	if len(work.MediaItems) == 0 {
+		return work, nil
+	}
+
+	locationRows, err := s.db.QueryContext(ctx, `
+		SELECT
+			location.id,
+			location.media_item_id,
+			location.file_source_id,
+			source.code,
+			source.display_name,
+			location.location_type,
+			location.path,
+			location.stream_url,
+			location.download_url,
+			location.remote_hash,
+			location.size_bytes,
+			location.duration_seconds,
+			location.availability,
+			location.last_checked_at
+		FROM media_file_location AS location
+		INNER JOIN file_source AS source ON source.id = location.file_source_id
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = ?
+		ORDER BY source.priority ASC, location.id ASC
+	`, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	defer locationRows.Close()
+
+	for locationRows.Next() {
+		var mediaItemID int64
+		var location fileLocationDetail
+		var sizeBytes sql.NullInt64
+		var locationDurationSeconds sql.NullInt64
+		var lastCheckedAt sql.NullString
+		if err := locationRows.Scan(
+			&location.ID,
+			&mediaItemID,
+			&location.FileSourceID,
+			&location.FileSourceCode,
+			&location.FileSourceName,
+			&location.LocationType,
+			&location.Path,
+			&location.StreamURL,
+			&location.DownloadURL,
+			&location.RemoteHash,
+			&sizeBytes,
+			&locationDurationSeconds,
+			&location.Availability,
+			&lastCheckedAt,
+		); err != nil {
+			return workDetail{}, err
+		}
+		location.SizeBytes = nullableInt64(sizeBytes)
+		location.DurationSeconds = nullableInt64(locationDurationSeconds)
+		location.LastCheckedAt = nullableString(lastCheckedAt)
+		if index, ok := itemIndexes[mediaItemID]; ok {
+			work.MediaItems[index].Locations = append(work.MediaItems[index].Locations, location)
+		}
+	}
+	if err := locationRows.Err(); err != nil {
+		return workDetail{}, err
+	}
+
+	return work, nil
 }
 
 func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
@@ -424,6 +655,29 @@ func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64
 	}
 
 	return id, nil
+}
+
+func parseInt64PathValue(r *http.Request, name string) (int64, error) {
+	value := r.PathValue(name)
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid path value %s", name)
+	}
+	return id, nil
+}
+
+func nullableString(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
+}
+
+func nullableInt64(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

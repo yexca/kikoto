@@ -5,6 +5,50 @@ export type Work = {
   createdAt: string;
 };
 
+export type WorkDetail = {
+  id: number;
+  primaryCode: string;
+  workType: string;
+  title: string;
+  titleKana: string;
+  description: string;
+  releaseDate: string | null;
+  ageRating: string;
+  durationSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+  mediaItems: MediaItem[];
+};
+
+export type MediaItem = {
+  id: number;
+  parentId: number | null;
+  kind: string;
+  title: string;
+  discNo: number | null;
+  trackNo: number | null;
+  durationSeconds: number | null;
+  sizeBytes: number | null;
+  fingerprint: string;
+  locations: MediaFileLocation[];
+};
+
+export type MediaFileLocation = {
+  id: number;
+  fileSourceId: number;
+  fileSourceCode: string;
+  fileSourceName: string;
+  locationType: string;
+  path: string;
+  streamUrl: string;
+  downloadUrl: string;
+  remoteHash: string;
+  sizeBytes: number | null;
+  durationSeconds: number | null;
+  availability: string;
+  lastCheckedAt: string | null;
+};
+
 export type FileSource = {
   id: number;
   code: string;
@@ -51,6 +95,7 @@ async function postJSON<T>(path: string): Promise<T> {
 
 export const api = {
   listWorks: () => getJSON<Work[]>("/api/works"),
+  getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
