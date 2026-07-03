@@ -15,6 +15,7 @@ const runs = [
 export function WorkflowsPage() {
   const [apiRuns, setAPIRuns] = useState<WorkflowRun[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [isSyncingDLsite, setIsSyncingDLsite] = useState(false);
 
   const refreshRuns = () => {
     api.listWorkflowRuns().then(setAPIRuns).catch(() => setAPIRuns([]));
@@ -34,6 +35,16 @@ export function WorkflowsPage() {
     }
   };
 
+  const runDLsiteSync = async () => {
+    setIsSyncingDLsite(true);
+    try {
+      await api.runDLsiteSync();
+      refreshRuns();
+    } finally {
+      setIsSyncingDLsite(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -41,10 +52,16 @@ export function WorkflowsPage() {
           <h2 className="text-lg font-semibold">Workflow templates</h2>
           <p className="text-sm text-muted-foreground">Long-running work stays visible as runs and jobs.</p>
         </div>
-        <Button size="sm" onClick={runLocalScan} disabled={isRunning}>
-          <Play className="h-4 w-4" />
-          {isRunning ? "Running" : "Run local scan"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={runLocalScan} disabled={isRunning}>
+            <Play className="h-4 w-4" />
+            {isRunning ? "Running" : "Run local scan"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={runDLsiteSync} disabled={isSyncingDLsite}>
+            <Play className="h-4 w-4" />
+            {isSyncingDLsite ? "Syncing" : "Sync DLsite"}
+          </Button>
+        </div>
       </div>
 
       {apiRuns.length > 0 && (

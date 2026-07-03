@@ -11,7 +11,9 @@ import (
 	"strconv"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
 type Server struct {
@@ -31,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
+	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	return withCORS(mux)
 }
 
@@ -369,6 +372,17 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	result, err := s.runLocalScan(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
+	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil))
+	result, err := syncer.SyncAll(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return

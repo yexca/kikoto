@@ -75,6 +75,16 @@ export type LocalScanResult = {
   updatedLocations: number;
 };
 
+export type DLsiteSyncResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  targetWorks: number;
+  syncedWorks: number;
+  failedWorks: number;
+  failures: string[];
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -99,4 +109,5 @@ export const api = {
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
+  runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };
