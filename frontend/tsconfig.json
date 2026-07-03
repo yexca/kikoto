@@ -10,8 +10,7 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
-    "baseUrl": ".",
+    "moduleResolution": "Bundler",
     "paths": {
       "@/*": ["./src/*"]
     },
