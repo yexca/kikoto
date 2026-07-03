@@ -9,11 +9,12 @@ import {
   Filter,
   Folder,
   HardDrive,
+  HardDriveDownload,
   Headphones,
   ExternalLink,
   DownloadCloud,
-  Bookmark,
   Cloud,
+  ListChecks,
   MoreHorizontal,
   Pause,
   Play,
@@ -22,7 +23,7 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,13 +51,15 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Paused" },
 ];
 
+type RemoteSourceViewState = { page: number; pageSize: number; query: string };
+const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
+
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>({ kind: "local" });
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
-  const [remotePage, setRemotePage] = useState(1);
-  const [remotePageSize, setRemotePageSize] = useState(24);
+  const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
@@ -89,24 +92,19 @@ export function LibraryPage() {
       setRemoteResult(null);
       return;
     }
+    const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
     setRemoteResult(null);
-    api.listRemoteSourceWorks(activeTab.source.id, remotePage, remotePageSize).then(setRemoteResult).catch(() => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize).then(setRemoteResult).catch(() => {
       setRemoteResult({
         sourceId: activeTab.source.id,
         works: [],
-        page: remotePage,
-        pageSize: remotePageSize,
+        page: sourceState.page,
+        pageSize: sourceState.pageSize,
         total: 0,
         status: "unavailable",
       });
     });
-  }, [activeTab, remotePage, remotePageSize]);
-
-  useEffect(() => {
-    if (activeTab.kind === "source") {
-      setRemotePage(1);
-    }
-  }, [activeTab]);
+  }, [activeTab, remoteSourceStates]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -153,6 +151,19 @@ export function LibraryPage() {
       items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item)),
     );
     setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item));
+  };
+
+  const activeRemoteSourceState =
+    activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
+
+  const updateRemoteSourceState = (sourceID: number, patch: Partial<RemoteSourceViewState>) => {
+    setRemoteSourceStates((states) => ({
+      ...states,
+      [sourceID]: {
+        ...(states[sourceID] ?? defaultRemoteSourceViewState),
+        ...patch,
+      },
+    }));
   };
 
   if (selectedCode !== null) {
@@ -205,12 +216,11 @@ export function LibraryPage() {
         <RemoteSourcePanel
           source={activeTab.source}
           result={remoteResult}
-          page={remotePage}
-          pageSize={remotePageSize}
-          onPageChange={setRemotePage}
+          viewState={activeRemoteSourceState}
+          onQueryChange={(query) => updateRemoteSourceState(activeTab.source.id, { query })}
+          onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
           onPageSizeChange={(value) => {
-            setRemotePageSize(value);
-            setRemotePage(1);
+            updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
           }}
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onSynced={async (workId) => {
@@ -304,8 +314,8 @@ function TabButton({
 function RemoteSourcePanel({
   source,
   result,
-  page,
-  pageSize,
+  viewState,
+  onQueryChange,
   onPageChange,
   onPageSizeChange,
   autoSyncRemote,
@@ -313,26 +323,26 @@ function RemoteSourcePanel({
 }: {
   source: LibrarySource;
   result: RemoteWorksResponse | null;
-  page: number;
-  pageSize: number;
+  viewState: RemoteSourceViewState;
+  onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   autoSyncRemote: boolean;
   onSynced: (workID: number) => Promise<void>;
 }) {
   const isLoading = result === null;
-  const [query, setQuery] = useState("");
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const { page, pageSize, query } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
       setMessage("This remote work has no stable work code.");
       return;
     }
-    if (!autoSyncRemote && reason !== "manual_pull") {
+    if (!autoSyncRemote && reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be pulled into Remote before Kikoto can mark or play it. You can enable automatic pull on interest in Settings.",
+        "This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.",
       );
       if (!confirmed) return;
     }
@@ -377,7 +387,7 @@ function RemoteSourcePanel({
         <input
           className="min-w-0 flex-1 bg-transparent outline-none"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Filter current remote page"
         />
       </div>
@@ -423,9 +433,8 @@ function RemoteSourcePanel({
               key={work.remoteId}
               work={work}
               isBusy={isSyncingCode === work.primaryCode}
-              onPull={() => void syncWork(work, "manual_pull")}
-              onMark={() => void syncWork(work, "mark_interest")}
-              onPlay={() => void syncWork(work, "play_interest")}
+              onFetch={() => void syncWork(work, "manual_fetch")}
+              onFetchAndMark={() => void syncWork(work, "mark_interest")}
             />
           ))}
         </section>
@@ -444,6 +453,26 @@ function WorkCard({
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
   const [isMarkOpen, setIsMarkOpen] = useState(false);
+  const markMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isMarkOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (markMenuRef.current?.contains(target)) return;
+      setIsMarkOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMarkOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMarkOpen]);
+
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
@@ -464,7 +493,7 @@ function WorkCard({
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
-          <div className="relative">
+          <div className="relative" ref={markMenuRef}>
             <IconButton
               title={`Mark: ${listeningStatusLabel(work.listeningStatus)}`}
               onClick={(event) => {
@@ -472,7 +501,7 @@ function WorkCard({
                 setIsMarkOpen((value) => !value);
               }}
             >
-              <Bookmark className={work.listeningStatus === "none" ? "h-4 w-4" : "h-4 w-4 fill-current text-primary"} />
+              <ListChecks className={work.listeningStatus === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
             </IconButton>
             {isMarkOpen && (
               <MarkMenu
@@ -498,15 +527,13 @@ function WorkCard({
 function RemoteWorkCard({
   work,
   isBusy,
-  onPull,
-  onMark,
-  onPlay,
+  onFetch,
+  onFetchAndMark,
 }: {
   work: RemoteWork;
   isBusy: boolean;
-  onPull: () => void;
-  onMark: () => void;
-  onPlay: () => void;
+  onFetch: () => void;
+  onFetchAndMark: () => void;
 }) {
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
@@ -526,15 +553,15 @@ function RemoteWorkCard({
           ]}
         />
         <div className="flex h-11 items-center justify-between border-t px-3">
-          <IconButton title="Pull remote info" disabled={isBusy || !work.primaryCode} onClick={onPull}>
+          <IconButton title="Fetch remote info" disabled={isBusy || !work.primaryCode} onClick={onFetch}>
             <DownloadCloud className="h-4 w-4" />
           </IconButton>
           <div className="flex items-center gap-1">
-            <IconButton title="Pull and mark" disabled={isBusy || !work.primaryCode} onClick={onMark}>
-              <Bookmark className="h-4 w-4" />
+            <IconButton title="Fetch and mark" disabled={isBusy || !work.primaryCode} onClick={onFetchAndMark}>
+              <ListChecks className="h-4 w-4" />
             </IconButton>
-            <IconButton title="Pull and play" disabled={isBusy || !work.primaryCode} onClick={onPlay}>
-              <Play className="h-4 w-4" />
+            <IconButton title="Save to library is not available yet" disabled onClick={() => {}}>
+              <HardDriveDownload className="h-4 w-4" />
             </IconButton>
           </div>
         </div>
@@ -647,9 +674,12 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-muted ${
             value === option.value ? "font-semibold text-primary" : "text-foreground"
           }`}
-          onClick={() => onChange(option.value)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onChange(option.value);
+          }}
         >
-          <Bookmark className={value === option.value && value !== "none" ? "h-3.5 w-3.5 fill-current" : "h-3.5 w-3.5"} />
+          <ListChecks className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"} />
           {option.label}
         </button>
       ))}
