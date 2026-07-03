@@ -3,11 +3,14 @@ services:
     build:
       context: ./backend
     environment:
-      KIKOTO_HTTP_ADDR: 0.0.0.0:7659
-      KIKOTO_DB_PATH: /config/kikoto.db
-      KIKOTO_DATA_ROOT: /data
-      KIKOTO_CACHE_ROOT: /config/cached
-      KIKOTO_LOCAL_SCAN_DEPTH: 2
+      KIKOTO_DEV_MODE: ${KIKOTO_DEV_MODE:-true}
+      KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
+      KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:-change-me}
+      KIKOTO_HTTP_ADDR: ${KIKOTO_HTTP_ADDR:-0.0.0.0:7659}
+      KIKOTO_DB_PATH: ${KIKOTO_DB_PATH:-/config/kikoto.db}
+      KIKOTO_DATA_ROOT: ${KIKOTO_DATA_ROOT:-/data}
+      KIKOTO_CACHE_ROOT: ${KIKOTO_CACHE_ROOT:-/config/cached}
+      KIKOTO_LOCAL_SCAN_DEPTH: ${KIKOTO_LOCAL_SCAN_DEPTH:-2}
     ports:
       - "7659:7659"
     volumes:

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -30,6 +31,9 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
+	mux.HandleFunc("GET /api/auth/me", s.getCurrentUser)
+	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
@@ -38,11 +42,89 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
-	return withCORS(mux)
+	return withCORS(s.authMiddleware(mux))
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) getCurrentUser(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": user})
+}
+
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	username, password, err := parseLoginRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var userID int64
+	var passwordHash string
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT account.id, credential.password_hash
+		FROM user_account AS account
+		INNER JOIN user_password_credential AS credential ON credential.user_id = account.id
+		WHERE account.username = ? AND account.enabled = 1
+	`, username).Scan(&userID, &passwordHash); err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
+		return
+	}
+	if !verifyPassword(password, passwordHash) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
+		return
+	}
+
+	sessionID, err := newSessionID()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
+	if _, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO user_session (id, user_id, expires_at)
+		VALUES (?, ?, ?)
+	`, sessionID, userID, expiresAt.Format("2006-01-02 15:04:05")); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionID,
+		Path:     "/",
+		Expires:  expiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	user, err := s.loadUserByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": user})
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM user_session WHERE id = ?", cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +138,9 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			work.id,
@@ -190,6 +275,9 @@ type fileLocationDetail struct {
 }
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
@@ -210,6 +298,9 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
+		return
+	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
@@ -434,6 +525,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, erro
 }
 
 func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, code, display_name, source_type, enabled
 		FROM file_source
@@ -467,6 +561,9 @@ func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, template_code, status, trigger_reason, created_at
 		FROM workflow_run
@@ -501,6 +598,9 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
 	result, err := s.runLocalScan(r.Context())
 	if err != nil {
 		writeError(w, err)
@@ -511,6 +611,9 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
 	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).WithCacheRoot(s.cfg.CacheRoot)
 	result, err := syncer.SyncAll(r.Context())
 	if err != nil {
@@ -991,7 +1094,12 @@ func mustJSON(value any) string {
 
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {

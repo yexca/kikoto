@@ -80,6 +80,19 @@ export type WorkflowRun = {
   createdAt: string;
 };
 
+export type CurrentUser = {
+  id: number;
+  username: string;
+  displayName: string;
+  role: "super_admin" | "admin" | "user";
+  permissions: string[];
+  devMode: boolean;
+};
+
+export type AuthState =
+  | { authenticated: false }
+  | { authenticated: true; user: CurrentUser };
+
 export type LocalScanResult = {
   runId: number;
   jobId: number;
@@ -109,7 +122,7 @@ export function assetURL(path: string) {
 }
 
 async function getJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
+  const response = await fetch(`${API_BASE}${path}`, { credentials: "include" });
   if (!response.ok) {
     throw new Error(`GET ${path} failed with ${response.status}`);
   }
@@ -117,14 +130,31 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 async function postJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "POST" });
+  const response = await fetch(`${API_BASE}${path}`, { method: "POST", credentials: "include" });
   if (!response.ok) {
     throw new Error(`POST ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
 
+async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `POST ${path} failed with ${response.status}` }));
+    throw new Error(payload.error ?? `POST ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export const api = {
+  me: () => getJSON<AuthState>("/api/auth/me"),
+  login: (username: string, password: string) => postJSONBody<AuthState>("/api/auth/login", { username, password }),
+  logout: () => postJSON<{ ok: boolean }>("/api/auth/logout"),
   listWorks: () => getJSON<Work[]>("/api/works"),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),

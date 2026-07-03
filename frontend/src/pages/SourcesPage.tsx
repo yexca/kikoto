@@ -11,7 +11,7 @@ const sources = [
   { icon: Database, name: "Home Kikoeru", type: "kikoeru", status: "disabled", priority: 30 },
 ];
 
-export function SourcesPage() {
+export function SourcesPage({ canManage }: { canManage: boolean }) {
   const [apiSources, setAPISources] = useState<FileSource[]>([]);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function SourcesPage() {
           <h2 className="text-lg font-semibold">File sources</h2>
           <p className="text-sm text-muted-foreground">Sources describe where playable or downloadable files live.</p>
         </div>
-        <Button size="sm">
+        <Button size="sm" disabled={!canManage}>
           <Plus className="h-4 w-4" />
           Add source
         </Button>
@@ -57,7 +57,7 @@ export function SourcesPage() {
                 <Badge variant={source.status === "not configured" ? "warning" : "outline"}>{source.status}</Badge>
               </div>
               <div className="text-sm text-muted-foreground">Priority {source.priority}</div>
-              <Button variant="outline" size="sm" className="w-full">
+              <Button variant="outline" size="sm" className="w-full" disabled={!canManage}>
                 Configure
               </Button>
             </CardContent>

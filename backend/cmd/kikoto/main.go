@@ -26,6 +26,13 @@ func main() {
 	}
 
 	server := httpapi.NewServer(db, cfg)
+	if err := server.BootstrapRoot(nil); err != nil {
+		slog.Error("bootstrap root user", "error", err)
+		os.Exit(1)
+	}
+	if cfg.DevMode {
+		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
+	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
 
 	if err := http.ListenAndServe(cfg.HTTPAddr, server.Routes()); err != nil {

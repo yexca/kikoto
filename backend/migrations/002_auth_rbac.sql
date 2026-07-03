@@ -1,0 +1,71 @@
+CREATE TABLE user_account (
+  id INTEGER PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin', 'user')),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_password_credential (
+  user_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_session (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE favorite_list (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, name)
+);
+
+CREATE TABLE favorite_list_item (
+  id INTEGER PRIMARY KEY,
+  list_id INTEGER NOT NULL REFERENCES favorite_list(id) ON DELETE CASCADE,
+  work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+  note TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(list_id, work_id)
+);
+
+CREATE TABLE user_tag (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, name)
+);
+
+CREATE TABLE user_work_tag (
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+  user_tag_id INTEGER NOT NULL REFERENCES user_tag(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, work_id, user_tag_id)
+);
+
+CREATE TABLE audit_log (
+  id INTEGER PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL DEFAULT '',
+  target_id TEXT NOT NULL DEFAULT '',
+  detail_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

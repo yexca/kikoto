@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Bell, Moon, Search } from "lucide-react";
+import { Bell, LogOut, Moon, Search, Shield } from "lucide-react";
 
+import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { navItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,14 +9,36 @@ import { LibraryPage } from "@/pages/LibraryPage";
 import { NowPlayingPage } from "@/pages/NowPlayingPage";
 import { SourcesPage } from "@/pages/SourcesPage";
 import { WorkflowsPage } from "@/pages/WorkflowsPage";
+import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
 const mobileTabs: PageID[] = ["library", "favorites", "now-playing", "settings"];
 
 export function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
+  );
+}
+
+function AuthenticatedApp() {
+  const auth = useAuth();
   const [page, setPage] = useState<PageID>("library");
-  const activeItem = useMemo(() => navItems.find((item) => item.id === page), [page]);
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
+    [auth],
+  );
+  const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
+
+  if (auth.isLoading) {
+    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
+  }
+
+  if (!auth.user) {
+    return <LoginPage />;
+  }
 
   return (
     <PlayerProvider>
@@ -25,7 +48,7 @@ export function App() {
             <div className="text-xl font-bold">Kikoto</div>
           </div>
           <nav className="p-3">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Button
                 key={item.id}
                 className={cn("mb-1 w-full justify-start", page === item.id && "bg-muted")}
@@ -47,6 +70,11 @@ export function App() {
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">{activeItem?.label ?? "Library"}</h1>
               </div>
               <div className="flex items-center gap-2">
+                <Badge variant="outline" className="hidden items-center gap-1 sm:inline-flex">
+                  <Shield className="h-3 w-3" />
+                  {auth.user.role}
+                  {auth.user.devMode ? " dev" : ""}
+                </Badge>
                 <Button variant="outline" size="icon" aria-label="Search">
                   <Search className="h-4 w-4" />
                 </Button>
@@ -56,6 +84,11 @@ export function App() {
                 <Button variant="outline" size="icon" aria-label="Theme">
                   <Moon className="h-4 w-4" />
                 </Button>
+                {!auth.user.devMode && (
+                  <Button variant="outline" size="icon" aria-label="Sign out" onClick={() => void auth.logout()}>
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </header>
@@ -63,8 +96,8 @@ export function App() {
           <div className="px-4 py-5 lg:px-6">
             {page === "library" && <LibraryPage />}
             {page === "now-playing" && <NowPlayingPage />}
-            {page === "sources" && <SourcesPage />}
-            {page === "workflows" && <WorkflowsPage />}
+            {page === "sources" && <SourcesPage canManage={auth.hasPermission("sources:write")} />}
+            {page === "workflows" && <WorkflowsPage canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {!["library", "now-playing", "sources", "workflows"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
@@ -74,7 +107,8 @@ export function App() {
         <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur lg:hidden">
           <nav className="grid grid-cols-4">
             {mobileTabs.map((id) => {
-              const item = navItems.find((navItem) => navItem.id === id)!;
+              const item = visibleNavItems.find((navItem) => navItem.id === id);
+              if (!item) return null;
               return (
                 <button
                   key={id}

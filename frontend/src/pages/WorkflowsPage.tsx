@@ -12,7 +12,7 @@ const runs = [
   { name: "Refresh remote file tree", status: "planned", detail: "Kikoeru-compatible sources stay configurable" },
 ];
 
-export function WorkflowsPage() {
+export function WorkflowsPage({ canRun, canSyncMetadata }: { canRun: boolean; canSyncMetadata: boolean }) {
   const [apiRuns, setAPIRuns] = useState<WorkflowRun[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isSyncingDLsite, setIsSyncingDLsite] = useState(false);
@@ -53,11 +53,11 @@ export function WorkflowsPage() {
           <p className="text-sm text-muted-foreground">Long-running work stays visible as runs and jobs.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={runLocalScan} disabled={isRunning}>
+          <Button size="sm" onClick={runLocalScan} disabled={isRunning || !canRun}>
             <Play className="h-4 w-4" />
             {isRunning ? "Running" : "Run local scan"}
           </Button>
-          <Button size="sm" variant="outline" onClick={runDLsiteSync} disabled={isSyncingDLsite}>
+          <Button size="sm" variant="outline" onClick={runDLsiteSync} disabled={isSyncingDLsite || !canSyncMetadata}>
             <Play className="h-4 w-4" />
             {isSyncingDLsite ? "Syncing" : "Sync DLsite"}
           </Button>
