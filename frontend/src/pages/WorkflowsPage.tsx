@@ -51,14 +51,18 @@ const nodeOptions = [
   "discover_local_files",
   "select_remote_source",
   "discover_remote_works",
+  "fetch_remote_tree",
   "select_works",
   "select_media_items",
   "filter_candidates",
   "match_works",
+  "plan_save",
   "sync_file_locations",
   "sync_metadata",
+  "verify_files",
   "materialize_cache",
   "materialize_save",
+  "cleanup_cache",
 ] as const;
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
@@ -94,6 +98,25 @@ const workflowTemplates: WorkflowTemplate[] = [
     ],
   },
 ];
+
+const manuallyRunnableSystemWorkflows: Record<string, "local_scan" | "metadata_sync"> = {
+  local_library_scan: "local_scan",
+  metadata_sync: "metadata_sync",
+};
+
+const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode: boolean) => {
+  if (!systemMode) {
+    return definitions;
+  }
+  return [...definitions].sort((left, right) => {
+    const leftManual = manuallyRunnableSystemWorkflows[left.code] ? 0 : 1;
+    const rightManual = manuallyRunnableSystemWorkflows[right.code] ? 0 : 1;
+    if (leftManual !== rightManual) {
+      return leftManual - rightManual;
+    }
+    return left.displayName.localeCompare(right.displayName);
+  });
+};
 
 export function WorkflowsPage({
   surface,
@@ -146,6 +169,8 @@ export function WorkflowsPage({
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
+  const selectedSystemRunKind =
+    workflowView === "system" && selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
 
   useEffect(() => {
     if (!selectedDefinitionId && visibleDefinitions[0]) {
@@ -199,16 +224,6 @@ export function WorkflowsPage({
             {surface === "activity" ? "Inspect runs by node state and failure point." : "Build workflows on the left; inspect and edit their node pipeline on the right."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={runLocalScan} disabled={isRunningScan || !canRun}>
-            <Play className="h-4 w-4" />
-            {isRunningScan ? "Running" : "Run local scan"}
-          </Button>
-          <Button size="sm" variant="outline" onClick={runMetadataSync} disabled={isSyncingMetadata || !canSyncMetadata}>
-            <Play className="h-4 w-4" />
-            {isSyncingMetadata ? "Syncing" : "Sync metadata"}
-          </Button>
-        </div>
       </div>
 
       {surface === "workflows" ? (
@@ -253,6 +268,7 @@ export function WorkflowsPage({
                   definitions={visibleDefinitions}
                   selectedId={selectedDefinition?.id ?? null}
                   canCreate={workflowView === "definitions"}
+                  systemMode={workflowView === "system"}
                   onSelect={(definition) => setSelectedDefinitionID(definition.id)}
                   onCreate={() => setModalMode("create-workflow")}
                 />
@@ -261,6 +277,16 @@ export function WorkflowsPage({
                 <WorkflowDetail
                   definition={selectedDefinition}
                   readonly={workflowView === "system" || !selectedDefinition?.editable}
+                  systemRunKind={selectedSystemRunKind}
+                  isRunningAction={selectedSystemRunKind === "local_scan" ? isRunningScan : isSyncingMetadata}
+                  canRunAction={selectedSystemRunKind === "local_scan" ? canRun : selectedSystemRunKind === "metadata_sync" ? canSyncMetadata : false}
+                  onRunSystemAction={
+                    selectedSystemRunKind === "local_scan"
+                      ? runLocalScan
+                      : selectedSystemRunKind === "metadata_sync"
+                        ? runMetadataSync
+                        : undefined
+                  }
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
                     setEditingNodeIndex(index);
@@ -362,20 +388,27 @@ function DefinitionSidebar({
   definitions,
   selectedId,
   canCreate,
+  systemMode = false,
   onSelect,
   onCreate,
 }: {
   definitions: WorkflowDefinition[];
   selectedId: number | null;
   canCreate: boolean;
+  systemMode?: boolean;
   onSelect: (definition: WorkflowDefinition) => void;
   onCreate: () => void;
 }) {
+  const sortedDefinitions = sortDefinitionsForSidebar(definitions, systemMode);
+
   return (
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between gap-2 px-1">
-          <div className="text-sm font-semibold">Workflow list</div>
+          <div>
+            <div className="text-sm font-semibold">{systemMode ? "System workflow catalog" : "Workflow list"}</div>
+            {systemMode && <div className="text-xs text-muted-foreground">Built-in workflows are read-only.</div>}
+          </div>
           {canCreate && (
             <Button size="sm" onClick={onCreate}>
               <Plus className="h-4 w-4" />
@@ -384,24 +417,38 @@ function DefinitionSidebar({
           )}
         </div>
         <div className="space-y-2">
-          {definitions.map((definition) => (
-            <button
-              key={definition.id}
-              className={`w-full rounded-md border p-3 text-left transition-colors ${
-                selectedId === definition.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
-              }`}
-              onClick={() => onSelect(definition)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{definition.displayName}</div>
-                  <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
+          {sortedDefinitions.map((definition) => {
+            const systemRunKind = manuallyRunnableSystemWorkflows[definition.code];
+            return (
+              <button
+                key={definition.id}
+                className={`w-full rounded-md border p-3 text-left transition-colors ${
+                  selectedId === definition.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
+                }`}
+                onClick={() => onSelect(definition)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{definition.displayName}</div>
+                    <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                    <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
+                    {definition.scope === "system" && (
+                      <Badge variant={systemRunKind ? "default" : "secondary"}>{systemRunKind ? "Manual" : "Read only"}</Badge>
+                    )}
+                  </div>
                 </div>
-                <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
-              </div>
-              <div className="mt-2 text-xs text-muted-foreground">{parseNodes(definition.definitionJson).length} nodes · {definition.triggerCount} triggers</div>
-            </button>
-          ))}
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>{parseNodes(definition.definitionJson).length} nodes</span>
+                  <span>{definition.triggerCount} triggers</span>
+                  {definition.scope === "system" && (
+                    <span>{systemRunKind ? "manual action available" : "triggered by app actions"}</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
           {definitions.length === 0 && <EmptyPanel text="No workflows here yet." />}
         </div>
       </CardContent>
@@ -491,6 +538,10 @@ function WorkflowDetail({
   definition,
   trigger,
   readonly,
+  systemRunKind,
+  isRunningAction,
+  canRunAction,
+  onRunSystemAction,
   onEditDefinition,
   onEditTrigger,
   onEditNode,
@@ -498,6 +549,10 @@ function WorkflowDetail({
   definition: WorkflowDefinition | null;
   trigger?: WorkflowTrigger | null;
   readonly: boolean;
+  systemRunKind?: "local_scan" | "metadata_sync";
+  isRunningAction?: boolean;
+  canRunAction?: boolean;
+  onRunSystemAction?: () => Promise<void>;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
   onEditNode: (index: number) => void;
@@ -536,9 +591,22 @@ function WorkflowDetail({
                 Edit workflow
               </Button>
             )}
+            {definition.scope === "system" && systemRunKind && onRunSystemAction && (
+              <Button size="sm" onClick={() => void onRunSystemAction()} disabled={isRunningAction || !canRunAction}>
+                <Play className="h-4 w-4" />
+                {isRunningAction ? "Running" : systemRunKind === "local_scan" ? "Run local scan" : "Sync metadata"}
+              </Button>
+            )}
           </div>
         </div>
 
+        {definition.scope === "system" && (
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            {systemRunKind
+              ? "This system workflow is read-only, but it exposes a manual action."
+              : "This system workflow is read-only and is triggered by application actions."}
+          </div>
+        )}
         {trigger && <TriggerSummary trigger={trigger} />}
         <NodePipeline nodes={nodes} readonly={readonly} onEditNode={onEditNode} />
       </CardContent>

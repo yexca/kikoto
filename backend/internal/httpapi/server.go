@@ -1172,6 +1172,10 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
+	if err := s.ensureSystemWorkflowDefinitions(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			definition.id,

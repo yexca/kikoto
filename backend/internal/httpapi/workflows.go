@@ -18,14 +18,18 @@ var allowedWorkflowNodeTypes = map[string]bool{
 	"discover_local_files":  true,
 	"select_remote_source":  true,
 	"discover_remote_works": true,
+	"fetch_remote_tree":     true,
 	"select_works":          true,
 	"select_media_items":    true,
 	"filter_candidates":     true,
 	"match_works":           true,
+	"plan_save":             true,
 	"sync_file_locations":   true,
 	"sync_metadata":         true,
+	"verify_files":          true,
 	"materialize_cache":     true,
 	"materialize_save":      true,
+	"cleanup_cache":         true,
 }
 
 var allowedScheduledTriggerTypes = map[string]bool{
@@ -50,6 +54,107 @@ type workflowTriggerPayload struct {
 	ScheduleJSON         string  `json:"scheduleJson"`
 	ConfigJSON           string  `json:"configJson"`
 	NextRunAt            *string `json:"nextRunAt"`
+}
+
+func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, spec := range systemWorkflowSpecs {
+		definitionJSON, err := json.Marshal(map[string]any{"nodes": spec.Nodes})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workflow_definition (code, display_name, description, definition_json, scope, editable)
+			VALUES (?, ?, ?, ?, 'system', 0)
+			ON CONFLICT(code) DO UPDATE SET
+				display_name = excluded.display_name,
+				description = excluded.description,
+				definition_json = excluded.definition_json,
+				updated_at = CURRENT_TIMESTAMP
+		`, spec.Code, spec.Name, spec.Description, string(definitionJSON)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+type systemWorkflowSpec struct {
+	Code        string
+	Name        string
+	Description string
+	Nodes       []map[string]string
+}
+
+var systemWorkflowSpecs = []systemWorkflowSpec{
+	{
+		Code:        "local_library_scan",
+		Name:        "Scan local library",
+		Description: "Discover local files, match works, and sync local file locations. This workflow can be run manually.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_local_source", "displayName": "Select local source"},
+			{"id": "discover", "type": "discover_local_files", "displayName": "Discover files"},
+			{"id": "match", "type": "match_works", "displayName": "Match works"},
+			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync locations"},
+		},
+	},
+	{
+		Code:        "metadata_sync",
+		Name:        "Sync work metadata",
+		Description: "Select works and sync normalized metadata snapshots. This workflow can be run manually by administrators.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_works", "displayName": "Select works"},
+			{"id": "sync", "type": "sync_metadata", "displayName": "Sync metadata"},
+		},
+	},
+	{
+		Code:        "remote_source_sync",
+		Name:        "Sync remote source",
+		Description: "Fetch remote work metadata and file locations when a source work is fetched or marked.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
+			{"id": "discover", "type": "discover_remote_works", "displayName": "Discover remote work"},
+			{"id": "filter", "type": "filter_candidates", "displayName": "Filter candidates"},
+			{"id": "match", "type": "match_works", "displayName": "Match work"},
+			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
+			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync remote locations"},
+		},
+	},
+	{
+		Code:        "media_cache",
+		Name:        "Cache media",
+		Description: "Cache remote media while playing when remote cache is enabled. Triggered by playback.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_media_items", "displayName": "Select media item"},
+			{"id": "filter", "type": "filter_candidates", "displayName": "Filter cache miss"},
+			{"id": "cache", "type": "materialize_cache", "displayName": "Materialize cache file"},
+		},
+	},
+	{
+		Code:        "remote_work_save",
+		Name:        "Save remote work",
+		Description: "Save selected remote files to the local library, reusing cache hits and downloading misses.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
+			{"id": "tree", "type": "fetch_remote_tree", "displayName": "Fetch remote tree"},
+			{"id": "plan", "type": "plan_save", "displayName": "Plan save"},
+			{"id": "materialize", "type": "materialize_save", "displayName": "Materialize files"},
+			{"id": "verify", "type": "verify_files", "displayName": "Verify files"},
+			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync local locations"},
+		},
+	},
+	{
+		Code:        "source_health_check",
+		Name:        "Check source health",
+		Description: "Check configured remote source endpoints and fallback readiness. Not implemented as a runnable workflow yet.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
+			{"id": "check", "type": "filter_candidates", "displayName": "Check endpoint"},
+		},
+	},
 }
 
 func (s *Server) createWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
