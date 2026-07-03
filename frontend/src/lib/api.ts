@@ -12,6 +12,7 @@ export type Work = {
   trackCount: number;
   availableLocations: number;
   availability: string[];
+  listeningStatus: ListeningStatus;
 };
 
 export type WorkDetail = {
@@ -32,8 +33,11 @@ export type WorkDetail = {
   rating: number | null;
   tags: string[];
   voiceActors: string[];
+  listeningStatus: ListeningStatus;
   mediaItems: MediaItem[];
 };
+
+export type ListeningStatus = "none" | "want_to_listen" | "listening" | "finished" | "relisten" | "paused";
 
 export type MediaItem = {
   id: number;
@@ -198,6 +202,8 @@ export const api = {
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
+  updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
+    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),

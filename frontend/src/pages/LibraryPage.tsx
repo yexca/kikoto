@@ -21,16 +21,25 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, assetURL, type MediaItem, type Work, type WorkDetail } from "@/lib/api";
+import { api, assetURL, type ListeningStatus, type MediaItem, type Work, type WorkDetail } from "@/lib/api";
 import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
+const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
+  { value: "none", label: "Unmarked" },
+  { value: "want_to_listen", label: "Want" },
+  { value: "listening", label: "Listening" },
+  { value: "finished", label: "Finished" },
+  { value: "relisten", label: "Relisten" },
+  { value: "paused", label: "Paused" },
+];
 
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
 
   useEffect(() => {
     api
@@ -77,9 +86,19 @@ export function LibraryPage() {
     setSelectedCode(null);
   };
 
+  const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
+    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+    setWorks((items) =>
+      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item)),
+    );
+    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item));
+  };
+
   if (selectedCode !== null) {
-    return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} />;
+    return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} onStatusChange={updateWorkStatus} />;
   }
+
+  const visibleWorks = statusFilter === "all" ? works : works.filter((work) => work.listeningStatus === statusFilter);
 
   return (
     <div className="space-y-5">
@@ -88,28 +107,49 @@ export function LibraryPage() {
           <Search className="h-4 w-4" />
           <span>Search title, code, circle, tag, or creator</span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as ListeningStatus | "all")}
+            aria-label="Listening status filter"
+          >
+            <option value="all">All marks</option>
+            {listeningStatusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <Button variant="outline" size="sm">
             <Filter className="h-4 w-4" />
             Filters
           </Button>
           <Button size="sm">
             <Headphones className="h-4 w-4" />
-            {isAPIAvailable ? `${works.length} works` : "Preview data"}
+            {isAPIAvailable ? `${visibleWorks.length} works` : "Preview data"}
           </Button>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {works.map((work) => (
-          <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} />
+        {visibleWorks.map((work) => (
+          <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
         ))}
       </section>
     </div>
   );
 }
 
-function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
+function WorkCard({
+  work,
+  onOpen,
+  onStatusChange,
+}: {
+  work: Work;
+  onOpen: () => void;
+  onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+}) {
   return (
     <button className="group text-left" onClick={onOpen}>
       <Card className="h-full overflow-hidden transition-colors hover:border-primary/50">
@@ -147,6 +187,7 @@ function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
               <p className="truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</p>
             </div>
             <div className="flex flex-wrap gap-1.5">
+              {work.listeningStatus !== "none" && <Badge variant="warning">{listeningStatusLabel(work.listeningStatus)}</Badge>}
               {work.availability.map((item) => (
                 <Badge key={item} variant={item === "missing" ? "warning" : "secondary"}>
                   {item}
@@ -169,6 +210,25 @@ function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
                   {work.trackCount} tracks, {work.availableLocations} local files
                 </span>
               </div>
+              <div className="flex items-center gap-1.5">
+                <Tags className="h-3.5 w-3.5" />
+                <select
+                  className="h-7 min-w-0 flex-1 rounded-md border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  value={work.listeningStatus}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    event.stopPropagation();
+                    void onStatusChange(work.id, event.target.value as ListeningStatus);
+                  }}
+                  aria-label={`Mark ${work.title}`}
+                >
+                  {listeningStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -177,7 +237,17 @@ function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
   );
 }
 
-function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail | null; onBack: () => void }) {
+function WorkDetailView({
+  code,
+  work,
+  onBack,
+  onStatusChange,
+}: {
+  code: string;
+  work: WorkDetail | null;
+  onBack: () => void;
+  onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+}) {
   const tree = useMemo(() => buildTree(work?.mediaItems ?? []), [work]);
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const player = usePlayer();
@@ -246,6 +316,18 @@ function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail
             <Button variant="outline" size="sm">
               Sync DLsite
             </Button>
+            <select
+              className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
+              value={work.listeningStatus}
+              onChange={(event) => void onStatusChange(work.id, event.target.value as ListeningStatus)}
+              aria-label="Listening mark"
+            >
+              {listeningStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -503,6 +585,10 @@ function formatBytes(value: number | null) {
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${value} B`;
+}
+
+function listeningStatusLabel(status: ListeningStatus) {
+  return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
 function codeFromPath(path: string) {

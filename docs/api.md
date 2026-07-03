@@ -68,6 +68,20 @@ Returns work detail, including metadata and media items with file locations.
 
 Requires `library:read`.
 
+```http
+PATCH /api/works/{id}/user-state
+```
+
+Updates the current user's work state. Supported `listeningStatus` values are `none`, `want_to_listen`, `listening`, `finished`, `relisten`, and `paused`.
+
+```json
+{
+  "listeningStatus": "want_to_listen"
+}
+```
+
+Requires `library:read`.
+
 ## Assets
 
 ```http

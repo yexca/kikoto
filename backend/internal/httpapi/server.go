@@ -40,6 +40,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
@@ -142,7 +143,8 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
 		return
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
@@ -171,11 +173,14 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 					AND metadata_provider.code = 'dlsite'
 				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
 				LIMIT 1
-			) AS snapshot_json
+			) AS snapshot_json,
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status
 		FROM work
+		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+			AND user_work_state.user_id = ?
 		ORDER BY work.created_at DESC
 		LIMIT 100
-	`)
+	`, user.ID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -196,6 +201,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		TrackCount         int64    `json:"trackCount"`
 		AvailableLocations int64    `json:"availableLocations"`
 		Availability       []string `json:"availability"`
+		ListeningStatus    string   `json:"listeningStatus"`
 	}
 
 	works := []work{}
@@ -210,6 +216,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			&item.TrackCount,
 			&item.AvailableLocations,
 			&snapshot,
+			&item.ListeningStatus,
 		); err != nil {
 			writeError(w, err)
 			return
@@ -246,6 +253,7 @@ type workDetail struct {
 	Rating          *float64          `json:"rating"`
 	Tags            []string          `json:"tags"`
 	VoiceActors     []string          `json:"voiceActors"`
+	ListeningStatus string            `json:"listeningStatus"`
 	MediaItems      []mediaItemDetail `json:"mediaItems"`
 }
 
@@ -279,7 +287,8 @@ type fileLocationDetail struct {
 }
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -288,7 +297,7 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	work, err := s.loadWorkDetail(r.Context(), id)
+	work, err := s.loadWorkDetail(r.Context(), user.ID, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
@@ -340,26 +349,29 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
-func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, error) {
+func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
-			id,
-			primary_code,
-			work_type,
-			title,
-			title_kana,
-			description,
-			release_date,
-			age_rating,
-			duration_seconds,
-			created_at,
-			updated_at
+			work.id,
+			work.primary_code,
+			work.work_type,
+			work.title,
+			work.title_kana,
+			work.description,
+			work.release_date,
+			work.age_rating,
+			work.duration_seconds,
+			work.created_at,
+			work.updated_at,
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status
 		FROM work
-		WHERE id = ?
-	`, id).Scan(
+		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+			AND user_work_state.user_id = ?
+		WHERE work.id = ?
+	`, userID, id).Scan(
 		&work.ID,
 		&work.PrimaryCode,
 		&work.WorkType,
@@ -371,6 +383,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, erro
 		&durationSeconds,
 		&work.CreatedAt,
 		&work.UpdatedAt,
+		&work.ListeningStatus,
 	); err != nil {
 		return workDetail{}, err
 	}

@@ -13,12 +13,14 @@
 - Work-code detail routes.
 - Local audio streaming with range support.
 - Global custom player dock.
+- Per-user quick listening marks for works.
 
 ## Next
 
 - Persist playback progress.
 - Restore queue state.
 - Add real search and filters.
+- Add favorite list and custom user tag UI.
 - Add file change detection for local folders.
 - Improve workflow status, errors, and retry actions.
 - Add source editing UI.
