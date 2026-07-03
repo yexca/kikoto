@@ -44,6 +44,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
+	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
+	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("GET /api/runtime-settings", s.getRuntimeSettings)
@@ -178,12 +180,14 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				SELECT COUNT(*)
 				FROM media_item
 				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
 			) AS track_count,
 			(
 				SELECT COUNT(*)
 				FROM media_file_location
 				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
 				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
 					AND media_file_location.availability = 'available'
 			) AS available_locations,
 			(
@@ -378,6 +382,79 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, path)
+}
+
+func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	path, _, err := s.localMediaPath(r, r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	path, relPath, err := s.localMediaPath(r, r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	if !isTextFile(relPath) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "media location is not a text file"})
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media file is not available"})
+		return
+	}
+	if info.Size() > 512*1024 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text file is too large to preview"})
+		return
+	}
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":    filepath.ToSlash(relPath),
+		"content": string(bytes),
+	})
+}
+
+func (s *Server) localMediaPath(r *http.Request, idValue string) (string, string, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(idValue), 10, 64)
+	if err != nil || id <= 0 {
+		return "", "", fmt.Errorf("invalid media location id")
+	}
+	var locationType string
+	var relPath string
+	var availability string
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT location_type, path, availability
+		FROM media_file_location
+		WHERE id = ?
+	`, id).Scan(&locationType, &relPath, &availability); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("media location not found")
+		}
+		return "", "", err
+	}
+	if locationType != "local" || availability != "available" {
+		return "", "", fmt.Errorf("media location is not available")
+	}
+	path, err := safeDataPath(s.cfg.DataRoot, relPath)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid media path")
+	}
+	return path, relPath, nil
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
@@ -937,8 +1014,15 @@ func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
 			return localScanResult{}, err
 		}
 
-		for index, file := range folder.AudioFiles {
-			mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, index+1)
+		audioTrackNo := 1
+		for _, file := range folder.Files {
+			kind := localFileKind(file.WorkRelPath)
+			trackNo := 0
+			if kind == "audio" {
+				trackNo = audioTrackNo
+				audioTrackNo++
+			}
+			mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
 			if err != nil {
 				return localScanResult{}, err
 			}
@@ -1088,8 +1172,12 @@ func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFold
 	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", folder.Code)
 }
 
-func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, folder localfs.WorkFolder, file localfs.AudioFile, trackNo int) (int64, error) {
+func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, folder localfs.WorkFolder, file localfs.LocalFile, kind string, trackNo int) (int64, error) {
 	fingerprint := fmt.Sprintf("local:%s:%s", folder.Code, file.WorkRelPath)
+	var trackNoValue any
+	if trackNo > 0 {
+		trackNoValue = trackNo
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_item (
 			work_id,
@@ -1100,28 +1188,29 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			size_bytes,
 			fingerprint
 		)
-		SELECT ?, 'audio', ?, ?, NULL, ?, ?
+		SELECT ?, ?, ?, ?, NULL, ?, ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
-	`, workID, file.Title, trackNo, file.SizeBytes, fingerprint, fingerprint); err != nil {
+	`, workID, kind, file.Title, trackNoValue, file.SizeBytes, fingerprint, fingerprint); err != nil {
 		return 0, err
 	}
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_item
-		SET title = ?,
+		SET kind = ?,
+			title = ?,
 			track_no = ?,
 			size_bytes = ?
 		WHERE fingerprint = ?
-	`, file.Title, trackNo, file.SizeBytes, fingerprint); err != nil {
+	`, kind, file.Title, trackNoValue, file.SizeBytes, fingerprint); err != nil {
 		return 0, err
 	}
 
 	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
 }
 
-func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.AudioFile) (int64, error) {
+func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
@@ -1167,6 +1256,24 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND location_type = 'local'
 			AND path = ?
 	`, mediaItemID, fileSourceID, file.RelPath)
+}
+
+func localFileKind(path string) string {
+	extension := strings.ToLower(filepath.Ext(path))
+	switch extension {
+	case ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac":
+		return "audio"
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif":
+		return "image"
+	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml":
+		return "text"
+	default:
+		return "file"
+	}
+}
+
+func isTextFile(path string) bool {
+	return localFileKind(path) == "text"
 }
 
 func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {

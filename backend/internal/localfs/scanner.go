@@ -11,19 +11,20 @@ import (
 var workCodePattern = regexp.MustCompile(`(?i)(RJ|BJ|VJ|CC)[\s_-]?([0-9]{5,8})`)
 
 type WorkFolder struct {
-	Code       string
-	Title      string
-	AbsPath    string
-	RelPath    string
-	Depth      int
-	AudioFiles []AudioFile
+	Code    string
+	Title   string
+	AbsPath string
+	RelPath string
+	Depth   int
+	Files   []LocalFile
 }
 
-type AudioFile struct {
+type LocalFile struct {
 	AbsPath     string
 	RelPath     string
 	WorkRelPath string
 	Title       string
+	Extension   string
 	SizeBytes   int64
 }
 
@@ -42,11 +43,6 @@ type Options struct {
 func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 	if options.ScanDepth <= 0 {
 		options.ScanDepth = 2
-	}
-
-	extensions := normalizeExtensions(options.AudioExtensions)
-	if len(extensions) == 0 {
-		extensions = normalizeExtensions([]string{".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac"})
 	}
 
 	absRoot, err := filepath.Abs(root)
@@ -99,11 +95,11 @@ func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 	summary.CandidateFolders = len(candidates)
 	workFolders := chooseDeepest(candidates)
 	for i := range workFolders {
-		files, err := collectAudioFiles(absRoot, workFolders[i].AbsPath, extensions)
+		files, err := collectFiles(absRoot, workFolders[i].AbsPath)
 		if err != nil {
 			return nil, Summary{}, err
 		}
-		workFolders[i].AudioFiles = files
+		workFolders[i].Files = files
 		summary.ScannedFiles += len(files)
 	}
 
@@ -148,16 +144,13 @@ func chooseDeepest(candidates []WorkFolder) []WorkFolder {
 	return chosen
 }
 
-func collectAudioFiles(root string, workPath string, extensions map[string]struct{}) ([]AudioFile, error) {
-	files := []AudioFile{}
+func collectFiles(root string, workPath string) ([]LocalFile, error) {
+	files := []LocalFile{}
 	err := filepath.WalkDir(workPath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
-			return nil
-		}
-		if _, ok := extensions[strings.ToLower(filepath.Ext(entry.Name()))]; !ok {
 			return nil
 		}
 
@@ -174,15 +167,20 @@ func collectAudioFiles(root string, workPath string, extensions map[string]struc
 			return err
 		}
 
-		title := strings.TrimSuffix(filepath.ToSlash(workRel), filepath.Ext(workRel))
-		files = append(files, AudioFile{
+		extension := strings.ToLower(filepath.Ext(workRel))
+		title := strings.TrimSuffix(filepath.ToSlash(workRel), extension)
+		files = append(files, LocalFile{
 			AbsPath:     path,
 			RelPath:     filepath.ToSlash(rootRel),
 			WorkRelPath: filepath.ToSlash(workRel),
 			Title:       title,
+			Extension:   extension,
 			SizeBytes:   info.Size(),
 		})
 		return nil
+	})
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].WorkRelPath < files[j].WorkRelPath
 	})
 	return files, err
 }

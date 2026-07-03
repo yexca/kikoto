@@ -32,6 +32,8 @@ export type PlayerTrack = {
   coverUrl: string;
   circle: string;
   progress: MediaProgress | null;
+  lyricsLocationId: number | null;
+  lyricsTitle: string;
 };
 
 type PlayerContextValue = {
@@ -270,7 +272,18 @@ export function PlayerDock() {
   const [expanded, setExpanded] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
+  const [lyricsText, setLyricsText] = useState<string | null>(null);
+  const [lyricsError, setLyricsError] = useState("");
   const track = player.currentTrack;
+
+  useEffect(() => {
+    setLyricsText(null);
+    setLyricsError("");
+    if (!track?.lyricsLocationId) return;
+    api.getMediaText(track.lyricsLocationId)
+      .then((result) => setLyricsText(result.content))
+      .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
+  }, [track?.lyricsLocationId]);
 
   useEffect(() => {
     if (!isVolumeOpen) return;
@@ -339,7 +352,20 @@ export function PlayerDock() {
               </div>
               <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background p-2">
                 {panel === "lyrics" ? (
-                  <div className="p-3 text-sm text-muted-foreground">No lyrics for this track.</div>
+                  track.lyricsLocationId ? (
+                    lyricsError ? (
+                      <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
+                    ) : lyricsText === null ? (
+                      <div className="p-3 text-sm text-muted-foreground">Loading lyrics...</div>
+                    ) : (
+                      <div className="space-y-3 p-3">
+                        <div className="truncate text-xs font-semibold text-muted-foreground">{track.lyricsTitle}</div>
+                        <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{lyricsText}</pre>
+                      </div>
+                    )
+                  ) : (
+                    <div className="p-3 text-sm text-muted-foreground">No lyrics matched for this track.</div>
+                  )
                 ) : (
                   <div className="space-y-1">
                     {player.queue.map((item, index) => (
@@ -421,7 +447,8 @@ export function PlayerDock() {
             variant={panel === "lyrics" ? "secondary" : "outline"}
             size="sm"
             onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
-            disabled
+            disabled={!track.lyricsLocationId}
+            title={track.lyricsLocationId ? "Lyrics" : "No matched lyrics"}
           >
             <Captions className="h-4 w-4" />
           </Button>

@@ -9,6 +9,8 @@ import (
 func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "RJ23456", "track01.mp3"))
+	writeFile(t, filepath.Join(root, "RJ23456", "cover.jpg"))
+	writeFile(t, filepath.Join(root, "RJ23456", "readme.txt"))
 	writeFile(t, filepath.Join(root, "Chinese", "RJ12345 name", "track01.flac"))
 	writeFile(t, filepath.Join(root, "RJ01", "RJ0123456 name", "track01.wav"))
 	writeFile(t, filepath.Join(root, "RJ24", "RJ245636 name", "track01.ogg"))
@@ -41,8 +43,13 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	if summary.DetectedWorks != 4 {
 		t.Fatalf("DetectedWorks = %d, want 4", summary.DetectedWorks)
 	}
-	if summary.ScannedFiles != 4 {
-		t.Fatalf("ScannedFiles = %d, want 4", summary.ScannedFiles)
+	if summary.ScannedFiles != 6 {
+		t.Fatalf("ScannedFiles = %d, want 6", summary.ScannedFiles)
+	}
+	for _, work := range works {
+		if work.Code == "RJ23456" && len(work.Files) != 3 {
+			t.Fatalf("RJ23456 files = %d, want 3", len(work.Files))
+		}
 	}
 }
 

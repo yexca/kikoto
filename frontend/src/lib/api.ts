@@ -306,6 +306,11 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
+export type MediaTextPreview = {
+  path: string;
+  content: string;
+};
+
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
 
 export function assetURL(path: string) {
@@ -391,6 +396,7 @@ export const api = {
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
+  getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
   updateMediaProgress: (

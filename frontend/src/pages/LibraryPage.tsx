@@ -5,12 +5,16 @@ import {
   CircleUserRound,
   Clock3,
   Database,
+  Eye,
   FileAudio,
+  FileText,
   Filter,
   Folder,
+  FolderTree,
   HardDrive,
   HardDriveDownload,
   Headphones,
+  ImageIcon,
   ExternalLink,
   DownloadCloud,
   Cloud,
@@ -21,6 +25,7 @@ import {
   Search,
   Star,
   Tags,
+  X,
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -755,6 +760,7 @@ function RemoteWorkDetailView({
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
+  const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
 
@@ -873,11 +879,35 @@ function RemoteWorkDetailView({
           </div>
           <div className="flex gap-2 overflow-x-auto">
             <button className="h-8 shrink-0 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">{detail.sourceName}</button>
+            <button
+              className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-medium ${
+                directoryMode === "browse" ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+              }`}
+              title="Browse directory"
+              onClick={() => setDirectoryMode("browse")}
+            >
+              <Folder className="h-3.5 w-3.5" />
+              Browse
+            </button>
+            <button
+              className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-medium ${
+                directoryMode === "tree" ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+              }`}
+              title="Tree view"
+              onClick={() => setDirectoryMode("tree")}
+            >
+              <FolderTree className="h-3.5 w-3.5" />
+              Tree
+            </button>
           </div>
         </div>
         <Card>
           <CardContent className="p-4">
-            <DirectoryTree root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+            {directoryMode === "browse" ? (
+              <DirectoryBrowser root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+            ) : (
+              <DirectoryTree root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+            )}
           </CardContent>
         </Card>
       </section>
@@ -898,8 +928,13 @@ function WorkDetailView({
 }) {
   const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? []), [work]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
+  const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
+  const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
-  const tree = useMemo(() => buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null), [work, selectedSource]);
+  const tree = useMemo(
+    () => buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? ""),
+    [work, selectedSource],
+  );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const player = usePlayer();
 
@@ -1007,26 +1042,65 @@ function WorkDetailView({
             <h3 className="text-lg font-semibold">Directory</h3>
             <p className="text-sm text-muted-foreground">File locations are grouped by local, cache, and remote source.</p>
           </div>
-          <div className="flex gap-2 overflow-x-auto">
-            {sourceTabs.map((source) => (
+          <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 overflow-x-auto">
+              {sourceTabs.map((source) => (
+                <button
+                  key={source.key}
+                  className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
+                    source.key === activeSourceKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setActiveSourceKey(source.key)}
+                >
+                  {source.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex rounded-md border bg-card p-0.5">
               <button
-                key={source.key}
-                className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
-                  source.key === activeSourceKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+                className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
+                  directoryMode === "browse" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                 }`}
-                onClick={() => setActiveSourceKey(source.key)}
+                title="Browse directory"
+                onClick={() => setDirectoryMode("browse")}
               >
-                {source.label}
+                <Folder className="h-3.5 w-3.5" />
+                Browse
               </button>
-            ))}
+              <button
+                className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
+                  directoryMode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                }`}
+                title="Tree view"
+                onClick={() => setDirectoryMode("tree")}
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+                Tree
+              </button>
+            </div>
           </div>
         </div>
         <Card>
           <CardContent className="p-4">
-            <DirectoryTree root={tree} currentLocationId={player.currentTrack?.locationId ?? null} onPlayFolder={playTracks} />
+            {directoryMode === "browse" ? (
+              <DirectoryBrowser
+                root={tree}
+                currentLocationId={player.currentTrack?.locationId ?? null}
+                onPlayFolder={playTracks}
+                onPreview={setPreview}
+              />
+            ) : (
+              <DirectoryTree
+                root={tree}
+                currentLocationId={player.currentTrack?.locationId ?? null}
+                onPlayFolder={playTracks}
+                onPreview={setPreview}
+              />
+            )}
           </CardContent>
         </Card>
       </section>
+      {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }
@@ -1066,14 +1140,20 @@ type TreeTrack = {
   mediaItemId: number;
   locationId: number;
   title: string;
+  baseName: string;
   kind: string;
   folderPath: string;
   streamUrl: string;
   downloadUrl: string;
+  assetUrl: string;
   sizeBytes: number | null;
   availability: string;
   progress: MediaItem["progress"];
 };
+
+type FilePreviewState =
+  | { kind: "image"; title: string; url: string }
+  | { kind: "text"; title: string; locationId: number };
 
 type SourceTabInfo = {
   key: string;
@@ -1104,13 +1184,13 @@ function buildSourceTabs(items: MediaItem[]): SourceTabInfo[] {
   return tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null }];
 }
 
-function buildTree(items: MediaItem[], fileSourceId: number | null): TreeNode {
+function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
   const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
   for (const item of items) {
     const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
     const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? sourceLocations[0];
     if (!location) continue;
-    const parts = location.path.split("/").filter(Boolean);
+    const parts = displayPathParts(location.path, location.locationType, workCode);
     const fileName = parts.pop() ?? item.title;
     let cursor = root;
     for (const part of parts) {
@@ -1124,16 +1204,27 @@ function buildTree(items: MediaItem[], fileSourceId: number | null): TreeNode {
       mediaItemId: item.id,
       locationId: location.id,
       title: fileName,
+      baseName: baseNameWithoutExtension(fileName),
       kind: item.kind,
       folderPath: cursor.path,
       streamUrl: location.streamUrl,
       downloadUrl: location.downloadUrl,
+      assetUrl: location.locationType === "local" ? `/api/media/${location.id}/asset` : location.downloadUrl,
       sizeBytes: location.sizeBytes,
       availability: location.availability,
       progress: item.progress,
     });
   }
   return normalizeDisplayTree(root);
+}
+
+function displayPathParts(path: string, locationType: string, workCode: string) {
+  const parts = path.split("/").filter(Boolean);
+  if (locationType !== "local" || !workCode) return parts;
+  const code = workCode.toUpperCase();
+  const workRootIndex = parts.findIndex((part) => part.toUpperCase().includes(code));
+  if (workRootIndex < 0 || workRootIndex >= parts.length - 1) return parts;
+  return parts.slice(workRootIndex + 1);
 }
 
 function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
@@ -1153,10 +1244,12 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         mediaItemId: nextID,
         locationId: nextID,
         title,
+        baseName: baseNameWithoutExtension(title),
         kind: node.type || "file",
         folderPath: cursor.path,
         streamUrl: node.streamUrl,
         downloadUrl: node.downloadUrl,
+        assetUrl: node.downloadUrl || node.streamUrl,
         sizeBytes: node.sizeBytes,
         availability: node.streamUrl || node.downloadUrl ? "remote" : "metadata",
         progress: null,
@@ -1208,27 +1301,30 @@ function DirectoryTree({
   root,
   currentLocationId,
   onPlayFolder,
+  onPreview,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
-  const folders = Array.from(root.children.values());
+  const folders = sortedFolders(root);
   if (folders.length === 0 && root.files.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
   }
   return (
     <div className="space-y-2">
-      {root.files.map((file) => (
+      {sortedFiles(root).map((file) => (
         <TreeFile
           key={file.locationId}
           file={file}
-          files={root.files}
+          files={playableFiles(root.files)}
           depth={0}
           isActive={file.locationId === currentLocationId}
           onPlayFolder={onPlayFolder}
+          onPreview={onPreview}
         />
       ))}
       {folders.map((node) => (
@@ -1238,8 +1334,88 @@ function DirectoryTree({
           depth={0}
           currentLocationId={currentLocationId}
           onPlayFolder={onPlayFolder}
+          onPreview={onPreview}
         />
       ))}
+    </div>
+  );
+}
+
+function DirectoryBrowser({
+  root,
+  currentLocationId,
+  onPlayFolder,
+  onPreview,
+  emptyLabel = "No local files detected.",
+}: {
+  root: TreeNode;
+  currentLocationId: number | null;
+  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPreview?: (preview: FilePreviewState) => void;
+  emptyLabel?: string;
+}) {
+  const [path, setPath] = useState<string[]>([]);
+  const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
+  const folders = sortedFolders(current);
+  const files = sortedFiles(current);
+  useEffect(() => {
+    if (!nodeAtPath(root, path)) {
+      setPath([]);
+    }
+  }, [root, path]);
+
+  if (folders.length === 0 && files.length === 0) {
+    return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background px-2 text-sm">
+        <button className="rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => setPath([])}>
+          root
+        </button>
+        {path.map((part, index) => (
+          <span key={`${part}:${index}`} className="inline-flex items-center gap-1">
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            <button className="rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => setPath(path.slice(0, index + 1))}>
+              {part}
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="space-y-1">
+        {path.length > 0 && (
+          <button
+            className="flex min-h-9 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            onClick={() => setPath(path.slice(0, -1))}
+          >
+            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            <span>Parent folder</span>
+          </button>
+        )}
+        {folders.map((folder) => (
+          <button
+            key={folder.path || folder.name}
+            className="flex min-h-9 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            onClick={() => setPath([...path, folder.name])}
+          >
+            <Folder className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{folderSummary(folder)}</span>
+          </button>
+        ))}
+        {files.map((file) => (
+          <TreeFile
+            key={file.locationId}
+            file={file}
+            files={playableFiles(current.files)}
+            depth={0}
+            isActive={file.locationId === currentLocationId}
+            onPlayFolder={onPlayFolder}
+            onPreview={onPreview}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1249,16 +1425,18 @@ function TreeFolder({
   depth,
   currentLocationId,
   onPlayFolder,
+  onPreview,
 }: {
   node: TreeNode;
   depth: number;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPreview?: (preview: FilePreviewState) => void;
 }) {
   const [isOpen, setIsOpen] = useState(depth === 0 || folderNameHasPriority(node.name));
-  const childFolders = Array.from(node.children.values());
-  const playableFiles = node.files.filter((file) => file.availability === "available" && file.streamUrl);
-  const filesLabel = playableFiles.length > 0 ? `${playableFiles.length} audio` : node.files.length > 0 ? `${node.files.length} files` : "";
+  const childFolders = sortedFolders(node);
+  const playable = playableFiles(node.files);
+  const filesLabel = playable.length > 0 ? `${playable.length} audio` : node.files.length > 0 ? `${node.files.length} files` : "";
   return (
     <div className="space-y-1">
       <button
@@ -1284,16 +1462,18 @@ function TreeFolder({
               depth={depth + 1}
               currentLocationId={currentLocationId}
               onPlayFolder={onPlayFolder}
+              onPreview={onPreview}
             />
           ))}
-          {node.files.map((file) => (
+          {sortedFiles(node).map((file) => (
             <TreeFile
               key={file.locationId}
               file={file}
-              files={playableFiles}
+              files={playable}
               depth={depth + 1}
               isActive={file.locationId === currentLocationId}
               onPlayFolder={onPlayFolder}
+              onPreview={onPreview}
             />
           ))}
         </>
@@ -1308,31 +1488,43 @@ function TreeFile({
   depth,
   isActive,
   onPlayFolder,
+  onPreview,
 }: {
   file: TreeTrack;
   files: TreeTrack[];
   depth: number;
   isActive: boolean;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPreview?: (preview: FilePreviewState) => void;
 }) {
   const canPlay = Boolean(onPlayFolder && file.availability === "available" && file.streamUrl);
+  const preview = previewForFile(file);
   return (
-    <button
-      className={`flex min-h-9 w-full items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
+    <div
+      className={`flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
         isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
       }`}
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
-      disabled={!canPlay}
-      onClick={() => onPlayFolder?.(files, file.locationId)}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        {isActive ? <Pause className="h-4 w-4 text-primary" /> : <FileAudio className="h-4 w-4 text-muted-foreground" />}
+      <button
+        className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+        disabled={!canPlay}
+        onClick={() => onPlayFolder?.(files, file.locationId)}
+      >
+        {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
         <span className="truncate">{file.title}</span>
+      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {preview && onPreview && (
+          <IconButton title={preview.kind === "image" ? "Preview image" : "Preview text"} onClick={() => onPreview(preview)}>
+            <Eye className="h-4 w-4" />
+          </IconButton>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {formatBytes(file.sizeBytes)} · {file.availability}
+        </span>
       </div>
-      <div className="shrink-0 text-xs text-muted-foreground">
-        {formatBytes(file.sizeBytes)} · {file.availability}
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -1341,10 +1533,122 @@ function folderNameHasPriority(name: string) {
   return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
 }
 
+function sortedFolders(node: TreeNode) {
+  return Array.from(node.children.values()).sort((a, b) => naturalCompare(a.name, b.name));
+}
+
+function sortedFiles(node: TreeNode) {
+  return [...node.files].sort((a, b) => naturalCompare(a.title, b.title));
+}
+
+function playableFiles(files: TreeTrack[]) {
+  return files.filter((file) => file.kind === "audio" && file.availability === "available" && file.streamUrl);
+}
+
+function nodeAtPath(root: TreeNode, path: string[]) {
+  let cursor: TreeNode | undefined = root;
+  for (const part of path) {
+    cursor = cursor?.children.get(part);
+    if (!cursor) return null;
+  }
+  return cursor;
+}
+
+function folderSummary(node: TreeNode) {
+  const folderCount = node.children.size;
+  const fileCount = node.files.length;
+  if (folderCount > 0 && fileCount > 0) return `${folderCount} folders, ${fileCount} files`;
+  if (folderCount > 0) return `${folderCount} folders`;
+  return `${fileCount} files`;
+}
+
+function naturalCompare(a: string, b: string) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function fileIcon(file: TreeTrack) {
+  if (file.kind === "audio") return <FileAudio className="h-4 w-4 text-muted-foreground" />;
+  if (file.kind === "image") return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
+  if (file.kind === "text") return <FileText className="h-4 w-4 text-muted-foreground" />;
+  return <FileText className="h-4 w-4 text-muted-foreground" />;
+}
+
+function previewForFile(file: TreeTrack): FilePreviewState | null {
+  if (file.kind === "image" && file.assetUrl) {
+    return { kind: "image", title: file.title, url: file.assetUrl };
+  }
+  if (file.kind === "text" && file.locationId > 0) {
+    return { kind: "text", title: file.title, locationId: file.locationId };
+  }
+  return null;
+}
+
+function FilePreviewModal({ preview, onClose }: { preview: FilePreviewState; onClose: () => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setText(null);
+    setError("");
+    if (preview.kind !== "text") return;
+    api.getMediaText(preview.locationId).then((result) => setText(result.content)).catch((err) => {
+      setError(err instanceof Error ? err.message : "Text preview failed.");
+    });
+  }, [preview]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
+      <div
+        className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-card shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex min-h-11 items-center justify-between gap-3 border-b px-4">
+          <div className="min-w-0 truncate text-sm font-semibold">{preview.title}</div>
+          <div className="flex items-center gap-2">
+            {preview.kind === "image" && (
+              <Button variant="outline" size="sm" disabled>
+                <ImageIcon className="h-4 w-4" />
+                Set cover
+              </Button>
+            )}
+            <IconButton title="Close preview" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </IconButton>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-background p-4">
+          {preview.kind === "image" ? (
+            <img src={assetURL(preview.url)} alt="" className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain" />
+          ) : error ? (
+            <div className="text-sm text-muted-foreground">{error}</div>
+          ) : text === null ? (
+            <div className="text-sm text-muted-foreground">Loading text...</div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function flattenTracks(root: TreeNode) {
   const tracks: TreeTrack[] = [];
   const visit = (node: TreeNode) => {
-    tracks.push(...node.files.filter((file) => file.availability === "available" && file.streamUrl));
+    tracks.push(...playableFiles(node.files));
     for (const child of node.children.values()) {
       visit(child);
     }
@@ -1362,6 +1666,7 @@ function countTreeFiles(root: TreeNode) {
 }
 
 function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
+  const lyrics = findLyricsForTrack(track, work.mediaItems);
   return {
     ...track,
     workId: work.id,
@@ -1370,7 +1675,59 @@ function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     coverUrl: work.coverUrl,
     circle: work.circle,
     progress: track.progress,
+    lyricsLocationId: lyrics?.locationId ?? null,
+    lyricsTitle: lyrics?.title ?? "",
   };
+}
+
+function findLyricsForTrack(track: TreeTrack, items: MediaItem[]) {
+  const candidates = items.flatMap((item) =>
+    item.kind === "text"
+      ? item.locations
+          .filter((location) => location.locationType === "local" && location.availability === "available" && isLyricsPath(location.path))
+          .map((location) => {
+            const name = fileNameFromPath(location.path);
+            return {
+              locationId: location.id,
+              title: name,
+              keys: lyricMatchKeys(baseNameWithoutExtension(name)),
+            };
+          })
+      : [],
+  );
+  if (candidates.length === 0) return null;
+  const trackKeys = lyricMatchKeys(track.baseName || track.title);
+  return candidates.find((candidate) => candidate.keys.some((key) => trackKeys.includes(key))) ?? null;
+}
+
+function isLyricsPath(path: string) {
+  const lower = path.toLowerCase();
+  return [".lrc", ".txt", ".cue"].some((extension) => lower.endsWith(extension));
+}
+
+function lyricMatchKeys(value: string) {
+  const normalized = normalizeLyricName(value);
+  const withoutLeadingNumber = normalized.replace(/^\d+/, "");
+  const withoutTrackPrefix = normalized.replace(/^track\d+/, "");
+  return Array.from(new Set([normalized, withoutLeadingNumber, withoutTrackPrefix].filter((item) => item.length >= 2)));
+}
+
+function normalizeLyricName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
+    .replace(/^(track|tr|disc|cd)[\s_.-]*/i, "")
+    .replace(/[\s_.\-()[\]【】「」『』]+/g, "");
+}
+
+function fileNameFromPath(path: string) {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function baseNameWithoutExtension(name: string) {
+  const index = name.lastIndexOf(".");
+  return index > 0 ? name.slice(0, index) : name;
 }
 
 function formatBytes(value: number | null) {
