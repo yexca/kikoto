@@ -155,6 +155,12 @@ export type RemoteTrack = {
   downloadUrl: string;
   durationSeconds: number | null;
   sizeBytes: number | null;
+  cacheLocationId: number | null;
+  cachePath: string;
+  cacheAvailable: boolean;
+  localLocationId: number | null;
+  localPath: string;
+  localAvailable: boolean;
   children: RemoteTrack[];
 };
 
@@ -359,6 +365,25 @@ export type MediaCacheResult = {
   alreadyDone: boolean;
 };
 
+export type MediaCacheDeleteResult = {
+  runId: number;
+  locationId: number;
+  cachePath: string;
+  status: string;
+  deleted: boolean;
+};
+
+export type MediaLocalDeleteResult = {
+  runId: number;
+  locationId: number;
+  workId: number;
+  path: string;
+  status: string;
+  deleted: boolean;
+  clearedProgress: number;
+  clearedWorkStates: number;
+};
+
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
 
 export function assetURL(path: string) {
@@ -450,6 +475,10 @@ export const api = {
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
+  cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
+    postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
+  deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCacheDeleteResult>(`/api/media/${locationId}/cache`),
+  deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
   updateMediaProgress: (

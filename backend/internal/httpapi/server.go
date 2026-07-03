@@ -46,6 +46,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
+	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
+	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
@@ -62,6 +64,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
 	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
 	mux.HandleFunc("PATCH /api/workflow-definitions/{id}", s.updateWorkflowDefinition)
@@ -418,6 +421,40 @@ func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+func (s *Server) deleteMediaCacheLocation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+	result, err := s.runMediaCacheCleanup(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+	result, err := s.runLocalMediaDelete(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
@@ -571,6 +608,7 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "media_cache", "Cache media", "Select media items, filter cache misses, sync source state, and materialize cache files.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_media_items"},
+			{"id": "sync", "type": "sync_file_locations"},
 			{"id": "filter", "type": "filter_candidates"},
 			{"id": "cache", "type": "materialize_cache"},
 		},
@@ -590,13 +628,19 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 		return mediaCacheResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter cache miss", Position: 2, Status: "succeeded",
+		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync remote location", Position: 2, Status: "succeeded",
+		Input: map[string]any{"work_code": workCode, "source_id": sourceID}, Output: map[string]any{"remote_location_id": remoteLocationID},
+	}); err != nil {
+		return mediaCacheResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter cache miss", Position: 3, Status: "succeeded",
 		Input: map[string]any{"cache_path": cacheRelPath}, Output: map[string]any{"cache_missing": true},
 	}); err != nil {
 		return mediaCacheResult{}, err
 	}
 	cacheNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Materialize cache file", Position: 3, Status: "running",
+		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Materialize cache file", Position: 4, Status: "running",
 		Input: map[string]any{"download_url": firstNonEmpty(downloadURL, streamURL), "cache_path": cacheRelPath}, Output: nil,
 	})
 	if err != nil {
@@ -755,6 +799,266 @@ func (s *Server) finishMediaCacheRun(ctx context.Context, runID int64, nodeID in
 		return err
 	}
 	return nil
+}
+
+type mediaCacheDeleteResult struct {
+	RunID      int64  `json:"runId"`
+	LocationID int64  `json:"locationId"`
+	CachePath  string `json:"cachePath"`
+	Status     string `json:"status"`
+	Deleted    bool   `json:"deleted"`
+}
+
+type mediaLocalDeleteResult struct {
+	RunID             int64  `json:"runId"`
+	LocationID        int64  `json:"locationId"`
+	WorkID            int64  `json:"workId"`
+	Path              string `json:"path"`
+	Status            string `json:"status"`
+	Deleted           bool   `json:"deleted"`
+	ClearedProgress   int64  `json:"clearedProgress"`
+	ClearedWorkStates int64  `json:"clearedWorkStates"`
+}
+
+func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64) (mediaCacheDeleteResult, error) {
+	var mediaItemID int64
+	var sourceID int64
+	var locationType string
+	var cachePath string
+	var availability string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT media_item_id, file_source_id, location_type, path, availability
+		FROM media_file_location
+		WHERE id = ?
+	`, cacheLocationID).Scan(&mediaItemID, &sourceID, &locationType, &cachePath, &availability); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return mediaCacheDeleteResult{}, fmt.Errorf("cache location not found")
+		}
+		return mediaCacheDeleteResult{}, err
+	}
+	if locationType != "cache" {
+		return mediaCacheDeleteResult{}, fmt.Errorf("media location is not a cache file")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "media_cache_cleanup", "Clean media cache", "Delete cached media files and mark cache locations unavailable.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_media_items"},
+			{"id": "cleanup", "type": "cleanup_cache"},
+		},
+	})
+	if err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	input := map[string]any{"cache_location_id": cacheLocationID, "media_item_id": mediaItemID, "source_id": sourceID, "cache_path": cachePath}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache_cleanup", "Clean media cache", "running", "manual", "delete_cache", input, map[string]any{"cache_path": cachePath})
+	if err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select cached media", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"availability": availability},
+	}); err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Delete cache file", Position: 2, Status: "running",
+		Input: input, Output: nil,
+	})
+	if err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+
+	deleted := false
+	targetPath := filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(cachePath))
+	if err := os.Remove(targetPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			_ = s.finishMediaCacheCleanup(ctx, runID, cleanupNodeID, "failed", cacheLocationID, cachePath, false, err.Error())
+			return mediaCacheDeleteResult{}, err
+		}
+	} else {
+		deleted = true
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'unavailable',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+			AND location_type = 'cache'
+	`, cacheLocationID); err != nil {
+		_ = s.finishMediaCacheCleanup(ctx, runID, cleanupNodeID, "failed", cacheLocationID, cachePath, deleted, err.Error())
+		return mediaCacheDeleteResult{}, err
+	}
+	if err := s.finishMediaCacheCleanup(ctx, runID, cleanupNodeID, "succeeded", cacheLocationID, cachePath, deleted, ""); err != nil {
+		return mediaCacheDeleteResult{}, err
+	}
+	return mediaCacheDeleteResult{RunID: runID, LocationID: cacheLocationID, CachePath: cachePath, Status: "succeeded", Deleted: deleted}, nil
+}
+
+func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64) (mediaLocalDeleteResult, error) {
+	var mediaItemID int64
+	var workID int64
+	var sourceID int64
+	var locationType string
+	var relPath string
+	var availability string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT location.media_item_id, item.work_id, location.file_source_id, location.location_type, location.path, location.availability
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE location.id = ?
+	`, localLocationID).Scan(&mediaItemID, &workID, &sourceID, &locationType, &relPath, &availability); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return mediaLocalDeleteResult{}, fmt.Errorf("local media location not found")
+		}
+		return mediaLocalDeleteResult{}, err
+	}
+	if locationType != "local" {
+		return mediaLocalDeleteResult{}, fmt.Errorf("media location is not a local file")
+	}
+	targetPath, err := safeDataPath(s.cfg.DataRoot, relPath)
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_media_delete", "Delete local media", "Delete local media files and clear playback state for the work.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_media_items"},
+			{"id": "delete", "type": "materialize_save"},
+			{"id": "cleanup", "type": "cleanup_cache"},
+		},
+	})
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	input := map[string]any{"local_location_id": localLocationID, "media_item_id": mediaItemID, "work_id": workID, "source_id": sourceID, "path": relPath}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_media_delete", "Delete local media", "running", "manual", "delete_local", input, map[string]any{"path": relPath})
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select local media", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"availability": availability},
+	}); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	deleteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "delete", NodeType: "materialize_save", DisplayName: "Delete local file", Position: 2, Status: "running",
+		Input: input, Output: nil,
+	})
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Clear playback state", Position: 3, Status: "queued",
+		Input: map[string]any{"work_id": workID}, Output: nil,
+	})
+	if err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+
+	deleted := false
+	if err := os.Remove(targetPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			_ = s.finishLocalMediaDelete(ctx, runID, deleteNodeID, cleanupNodeID, "failed", localLocationID, relPath, deleted, 0, 0, err.Error())
+			return mediaLocalDeleteResult{}, err
+		}
+	} else {
+		deleted = true
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'unavailable',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+			AND location_type = 'local'
+	`, localLocationID); err != nil {
+		_ = s.finishLocalMediaDelete(ctx, runID, deleteNodeID, cleanupNodeID, "failed", localLocationID, relPath, deleted, 0, 0, err.Error())
+		return mediaLocalDeleteResult{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"deleted": deleted, "path": relPath}), deleteNodeID); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", cleanupNodeID); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	progressResult, err := s.db.ExecContext(ctx, `
+		DELETE FROM user_media_progress
+		WHERE media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+	`, workID)
+	if err != nil {
+		_ = s.finishLocalMediaDelete(ctx, runID, deleteNodeID, cleanupNodeID, "failed", localLocationID, relPath, deleted, 0, 0, err.Error())
+		return mediaLocalDeleteResult{}, err
+	}
+	stateResult, err := s.db.ExecContext(ctx, "DELETE FROM user_work_state WHERE work_id = ?", workID)
+	if err != nil {
+		_ = s.finishLocalMediaDelete(ctx, runID, deleteNodeID, cleanupNodeID, "failed", localLocationID, relPath, deleted, 0, 0, err.Error())
+		return mediaLocalDeleteResult{}, err
+	}
+	clearedProgress, _ := progressResult.RowsAffected()
+	clearedStates, _ := stateResult.RowsAffected()
+	if err := s.finishLocalMediaDelete(ctx, runID, deleteNodeID, cleanupNodeID, "succeeded", localLocationID, relPath, deleted, clearedProgress, clearedStates, ""); err != nil {
+		return mediaLocalDeleteResult{}, err
+	}
+	return mediaLocalDeleteResult{
+		RunID:             runID,
+		LocationID:        localLocationID,
+		WorkID:            workID,
+		Path:              relPath,
+		Status:            "succeeded",
+		Deleted:           deleted,
+		ClearedProgress:   clearedProgress,
+		ClearedWorkStates: clearedStates,
+	}, nil
+}
+
+func (s *Server) finishLocalMediaDelete(ctx context.Context, runID int64, deleteNodeID int64, cleanupNodeID int64, status string, locationID int64, relPath string, deleted bool, clearedProgress int64, clearedStates int64, errorMessage string) error {
+	output := mustJSON(map[string]any{"location_id": locationID, "path": relPath, "deleted": deleted, "cleared_progress": clearedProgress, "cleared_work_states": clearedStates, "error": errorMessage})
+	if status != "succeeded" {
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id IN (?, ?)", status, output, errorMessage, deleteNodeID, cleanupNodeID); err != nil {
+			return err
+		}
+	} else if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", output, cleanupNodeID); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)
+	return err
+}
+
+func (s *Server) finishMediaCacheCleanup(ctx context.Context, runID int64, nodeID int64, status string, cacheLocationID int64, cachePath string, deleted bool, errorMessage string) error {
+	output := mustJSON(map[string]any{"cache_location_id": cacheLocationID, "cache_path": cachePath, "deleted": deleted, "error": errorMessage})
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = ?,
+			output_json = ?,
+			error_message = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, output, errorMessage, nodeID); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = ?,
+			summary_json = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, output, runID)
+	return err
 }
 
 func (s *Server) settingBoolContext(ctx context.Context, key string, fallback bool) bool {

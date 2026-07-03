@@ -118,6 +118,12 @@ type remoteTrackDetail struct {
 	DownloadURL     string              `json:"downloadUrl"`
 	DurationSeconds *int64              `json:"durationSeconds"`
 	SizeBytes       *int64              `json:"sizeBytes"`
+	CacheLocationID *int64              `json:"cacheLocationId"`
+	CachePath       string              `json:"cachePath"`
+	CacheAvailable  bool                `json:"cacheAvailable"`
+	LocalLocationID *int64              `json:"localLocationId"`
+	LocalPath       string              `json:"localPath"`
+	LocalAvailable  bool                `json:"localAvailable"`
 	Children        []remoteTrackDetail `json:"children"`
 }
 
@@ -644,6 +650,72 @@ func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
+		return
+	}
+	sourceID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	var payload struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	remotePath := cleanRemoteRelativePath(payload.Path)
+	if remotePath == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remote path is required"})
+		return
+	}
+	syncResult, err := s.runRemoteWorkSync(r.Context(), sourceID, code, "auto_cache_on_preview_play")
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	locationID, err := s.findRemoteMediaLocationByPath(r.Context(), syncResult.WorkID, sourceID, remotePath)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	cacheResult, err := s.runRemoteMediaCache(r.Context(), locationID)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, cacheResult)
+}
+
+func (s *Server) findRemoteMediaLocationByPath(ctx context.Context, workID int64, sourceID int64, remotePath string) (int64, error) {
+	remotePath = cleanRemoteRelativePath(remotePath)
+	var id int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT location.id
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = ?
+			AND location.file_source_id = ?
+			AND location.location_type = 'remote_stream'
+			AND location.availability = 'available'
+			AND location.path = ?
+		LIMIT 1
+	`, workID, sourceID, remotePath).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("remote media location not found")
+		}
+		return 0, err
+	}
+	return id, nil
 }
 
 type remoteSourceForUse struct {
@@ -1423,6 +1495,10 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 	if value, ok := normalizeDate(work.Release).(string); ok {
 		releaseDate = value
 	}
+	locationState, err := s.remoteTrackLocationState(ctx, source.ID, code)
+	if err != nil {
+		return remoteWorkDetail{}, err
+	}
 	return remoteWorkDetail{
 		SourceID:        source.ID,
 		SourceCode:      source.Code,
@@ -1440,13 +1516,72 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		VoiceActors:     voiceActors,
 		ImportStatus:    status,
 		WorkID:          nullableInt64(workID),
-		Tracks:          remoteTrackDetails(tracks),
+		Tracks:          remoteTrackDetails(source.Code, code, tracks, "", locationState),
 	}, nil
 }
 
-func remoteTrackDetails(tracks []kikoeru.Track) []remoteTrackDetail {
+type remoteTrackLocationState struct {
+	ID        int64
+	Path      string
+	Available bool
+}
+
+type remoteTrackLocationStates struct {
+	Cache map[string]remoteTrackLocationState
+	Local map[string]remoteTrackLocationState
+}
+
+func (s *Server) remoteTrackLocationState(ctx context.Context, remoteSourceID int64, workCode string) (remoteTrackLocationStates, error) {
+	states := remoteTrackLocationStates{
+		Cache: map[string]remoteTrackLocationState{},
+		Local: map[string]remoteTrackLocationState{},
+	}
+	if workCode == "" {
+		return states, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT location.id, location.location_type, location.path, location.availability
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		INNER JOIN work ON work.id = item.work_id
+		WHERE work.primary_code = ?
+			AND location.location_type IN ('cache', 'local')
+			AND (
+				location.file_source_id = ?
+				OR location.location_type = 'local'
+			)
+	`, workCode, remoteSourceID)
+	if err != nil {
+		return states, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var locationType string
+		var path string
+		var availability string
+		if err := rows.Scan(&id, &locationType, &path, &availability); err != nil {
+			return states, err
+		}
+		state := remoteTrackLocationState{ID: id, Path: filepath.ToSlash(path), Available: availability == "available"}
+		switch locationType {
+		case "cache":
+			states.Cache[state.Path] = state
+		case "local":
+			states.Local[state.Path] = state
+		}
+	}
+	return states, rows.Err()
+}
+
+func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Track, basePath string, locationState remoteTrackLocationStates) []remoteTrackDetail {
 	result := make([]remoteTrackDetail, 0, len(tracks))
-	for _, track := range tracks {
+	for index, track := range tracks {
+		title := strings.TrimSpace(track.Title)
+		if title == "" {
+			title = fmt.Sprintf("Track %d", index+1)
+		}
+		path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
 		var duration *int64
 		if track.Duration > 0 {
 			value := int64(track.Duration)
@@ -1457,18 +1592,46 @@ func remoteTrackDetails(tracks []kikoeru.Track) []remoteTrackDetail {
 			value := track.Size
 			size = &value
 		}
-		result = append(result, remoteTrackDetail{
+		detail := remoteTrackDetail{
 			Type:            remoteTrackKind(track.Type),
-			Title:           strings.TrimSpace(track.Title),
+			Title:           title,
 			Hash:            track.Hash,
 			StreamURL:       firstNonEmpty(track.MediaStreamURL, track.StreamLowQualityURL),
 			DownloadURL:     track.MediaDownloadURL,
 			DurationSeconds: duration,
 			SizeBytes:       size,
-			Children:        remoteTrackDetails(track.Children),
-		})
+			Children:        []remoteTrackDetail{},
+		}
+		if len(track.Children) > 0 || detail.Type == "folder" {
+			detail.Children = remoteTrackDetails(sourceCode, workCode, track.Children, path, locationState)
+		} else {
+			cachePath := cacheMediaRelPath(sourceCode, workCode, path)
+			if state, ok := locationState.Cache[cachePath]; ok {
+				detail.CacheLocationID = &state.ID
+				detail.CachePath = state.Path
+				detail.CacheAvailable = state.Available
+			}
+			if state, ok := locationState.localForRemotePath(path); ok {
+				detail.LocalLocationID = &state.ID
+				detail.LocalPath = state.Path
+				detail.LocalAvailable = state.Available
+			}
+		}
+		result = append(result, detail)
 	}
 	return result
+}
+
+func (states remoteTrackLocationStates) localForRemotePath(remotePath string) (remoteTrackLocationState, bool) {
+	if state, ok := states.Local[remotePath]; ok {
+		return state, true
+	}
+	for localPath, state := range states.Local {
+		if strings.HasSuffix(localPath, "/"+remotePath) {
+			return state, true
+		}
+	}
+	return remoteTrackLocationState{}, false
 }
 
 func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {

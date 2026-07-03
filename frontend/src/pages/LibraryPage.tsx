@@ -5,6 +5,7 @@ import {
   CircleUserRound,
   Clock3,
   Database,
+  Trash2,
   Eye,
   FileAudio,
   FileText,
@@ -65,7 +66,7 @@ const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize:
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [activeTab, setActiveTab] = useState<LibraryTab>({ kind: "local" });
+  const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
@@ -89,7 +90,10 @@ export function LibraryPage() {
   }, []);
 
   useEffect(() => {
-    api.listLibrarySources().then(setSources).catch(() => setSources([]));
+    api.listLibrarySources().then((items) => {
+      setSources(items);
+      setActiveTab((tab) => resolveTabFromPath(window.location.pathname, items, tab));
+    }).catch(() => setSources([]));
   }, []);
 
   useEffect(() => {
@@ -131,15 +135,20 @@ export function LibraryPage() {
   }, [selectedCode, works]);
 
   useEffect(() => {
-    const handlePopState = () => setSelectedCode(codeFromPath(window.location.pathname));
-    const handleAppNavigation = () => setSelectedCode(codeFromPath(window.location.pathname));
+    const syncFromPath = () => {
+      setSelectedCode(codeFromPath(window.location.pathname));
+      setSelectedRemoteTarget(null);
+      setActiveTab((tab) => resolveTabFromPath(window.location.pathname, sources, tab));
+    };
+    const handlePopState = () => syncFromPath();
+    const handleAppNavigation = () => syncFromPath();
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("kikoto:navigation", handleAppNavigation);
     return () => {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-  }, []);
+  }, [sources]);
 
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
@@ -150,14 +159,26 @@ export function LibraryPage() {
 
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     if (!work.primaryCode) return;
+    window.history.pushState({}, "", `/${work.primaryCode}`);
+    window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedRemoteTarget({ source, code: work.primaryCode });
   };
 
   const backToLibrary = () => {
-    window.history.pushState({}, "", "/");
+    window.history.pushState({}, "", pathForLibraryTab(activeTab));
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
+  };
+
+  const changeTab = (tab: LibraryTab) => {
+    setActiveTab(tab);
+    setSelectedRemoteTarget(null);
+    const path = pathForLibraryTab(tab);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+      window.dispatchEvent(new Event("kikoto:navigation"));
+    }
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
@@ -182,6 +203,21 @@ export function LibraryPage() {
   };
 
   if (selectedCode !== null) {
+    if (selectedRemoteTarget !== null && selectedRemoteTarget.code.toUpperCase() === selectedCode.toUpperCase()) {
+      return (
+        <RemoteWorkDetailView
+          source={selectedRemoteTarget.source}
+          code={selectedRemoteTarget.code}
+          autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
+          onBack={backToLibrary}
+          onOpenLocal={(workID) => {
+            const work = works.find((item) => item.id === workID);
+            if (work) openWork(work);
+          }}
+          onWorksChanged={async () => setWorks(await api.listWorks())}
+        />
+      );
+    }
     return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} onStatusChange={updateWorkStatus} />;
   }
 
@@ -241,7 +277,7 @@ export function LibraryPage() {
         </div>
       </section>
 
-      <LibraryTabs activeTab={activeTab} sources={sources} onChange={setActiveTab} />
+      <LibraryTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
 
       {activeTab.kind === "source" ? (
         <RemoteSourcePanel
@@ -767,7 +803,10 @@ function RemoteWorkDetailView({
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
+  const [isDeletingCache, setIsDeletingCache] = useState(false);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
+  const player = usePlayer();
 
   useEffect(() => {
     setDetail(null);
@@ -837,6 +876,32 @@ function RemoteWorkDetailView({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const deleteCache = async () => {
+    if (!cacheDeleteTarget) return;
+    setIsDeletingCache(true);
+    setMessage("");
+    try {
+      const result = await api.deleteMediaCacheLocation(cacheDeleteTarget.locationId);
+      setMessage(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
+      setCacheDeleteTarget(null);
+      const refreshed = await api.getRemoteSourceWork(source.id, code);
+      setDetail(refreshed);
+      await onWorksChanged();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Cache delete failed.");
+    } finally {
+      setIsDeletingCache(false);
+    }
+  };
+
+  const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
+    if (!detail || tracks.length === 0) return;
+    player.playQueue(
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, detail)),
+      locationId,
+    );
   };
 
   if (!detail) {
@@ -964,13 +1029,33 @@ function RemoteWorkDetailView({
               disabled={isSaving}
             />
             {directoryMode === "browse" ? (
-              <DirectoryBrowser root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+              <DirectoryBrowser
+                root={tree}
+                currentLocationId={player.currentTrack?.locationId ?? null}
+                emptyLabel="No remote files detected."
+                onPlayFolder={playRemoteTracks}
+                onDeleteCache={setCacheDeleteTarget}
+              />
             ) : (
-              <DirectoryTree root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+              <DirectoryTree
+                root={tree}
+                currentLocationId={player.currentTrack?.locationId ?? null}
+                emptyLabel="No remote files detected."
+                onPlayFolder={playRemoteTracks}
+                onDeleteCache={setCacheDeleteTarget}
+              />
             )}
           </CardContent>
         </Card>
       </section>
+      {cacheDeleteTarget && (
+        <ConfirmMediaDeleteModal
+          target={cacheDeleteTarget}
+          deleting={isDeletingCache}
+          onCancel={() => setCacheDeleteTarget(null)}
+          onConfirm={() => void deleteCache()}
+        />
+      )}
     </div>
   );
 }
@@ -990,6 +1075,8 @@ function WorkDetailView({
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const tree = useMemo(
     () => buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? ""),
@@ -1015,6 +1102,18 @@ function WorkDetailView({
   const playAll = () => {
     if (work && allTracks.length > 0) {
       playTracks(allTracks, allTracks[0].locationId);
+    }
+  };
+
+  const deleteLocal = async () => {
+    if (!deleteTarget || deleteTarget.kind !== "local") return;
+    setIsDeleting(true);
+    try {
+      await api.deleteMediaLocalLocation(deleteTarget.locationId);
+      setDeleteTarget(null);
+      onBack();
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1148,6 +1247,7 @@ function WorkDetailView({
                 currentLocationId={player.currentTrack?.locationId ?? null}
                 onPlayFolder={playTracks}
                 onPreview={setPreview}
+                onDeleteLocal={setDeleteTarget}
               />
             ) : (
               <DirectoryTree
@@ -1155,12 +1255,21 @@ function WorkDetailView({
                 currentLocationId={player.currentTrack?.locationId ?? null}
                 onPlayFolder={playTracks}
                 onPreview={setPreview}
+                onDeleteLocal={setDeleteTarget}
               />
             )}
           </CardContent>
         </Card>
       </section>
       {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
+      {deleteTarget && (
+        <ConfirmMediaDeleteModal
+          target={deleteTarget}
+          deleting={isDeleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void deleteLocal()}
+        />
+      )}
     </div>
   );
 }
@@ -1210,12 +1319,20 @@ type TreeTrack = {
   assetUrl: string;
   sizeBytes: number | null;
   availability: string;
+  cacheLocationId: number | null;
+  cachePath: string;
+  cacheAvailable: boolean;
+  localLocationId: number | null;
+  localPath: string;
+  localAvailable: boolean;
   progress: MediaItem["progress"];
 };
 
 type FilePreviewState =
   | { kind: "image"; title: string; url: string }
   | { kind: "text"; title: string; locationId: number };
+
+type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string };
 
 type SourceTabInfo = {
   key: string;
@@ -1276,6 +1393,12 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       assetUrl: location.locationType === "local" ? `/api/media/${location.id}/asset` : location.downloadUrl,
       sizeBytes: location.sizeBytes,
       availability: location.availability,
+      cacheLocationId: location.locationType === "cache" && location.availability === "available" ? location.id : null,
+      cachePath: location.locationType === "cache" ? location.path : "",
+      cacheAvailable: location.locationType === "cache" && location.availability === "available",
+      localLocationId: location.locationType === "local" && location.availability === "available" ? location.id : null,
+      localPath: location.locationType === "local" ? location.path : "",
+      localAvailable: location.locationType === "local" && location.availability === "available",
       progress: item.progress,
     });
   }
@@ -1296,12 +1419,13 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
   const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
   const walk = (nodes: RemoteTrack[], cursor: TreeNode) => {
     nodes.forEach((node, index) => {
-      const title = node.title.trim() || `Track ${index + 1}`;
-      if (node.children.length > 0 || node.type === "folder") {
+      const title = (node.title ?? "").trim() || `Track ${index + 1}`;
+      const children = node.children ?? [];
+      if (children.length > 0 || node.type === "folder") {
         const childPath = cursor.path ? `${cursor.path}/${title}` : title;
         const child = cursor.children.get(title) ?? { name: title, path: childPath, children: new Map(), files: [] };
         cursor.children.set(title, child);
-        walk(node.children, child);
+        walk(children, child);
         return;
       }
       cursor.files.push({
@@ -1318,6 +1442,12 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         assetUrl: node.downloadUrl || node.streamUrl,
         sizeBytes: node.sizeBytes,
         availability: node.streamUrl || node.downloadUrl ? "remote" : "metadata",
+        cacheLocationId: node.cacheLocationId,
+        cachePath: node.cachePath,
+        cacheAvailable: node.cacheAvailable,
+        localLocationId: node.localLocationId,
+        localPath: node.localPath,
+        localAvailable: node.localAvailable,
         progress: null,
       });
       nextID -= 1;
@@ -1368,12 +1498,16 @@ function DirectoryTree({
   currentLocationId,
   onPlayFolder,
   onPreview,
+  onDeleteCache,
+  onDeleteLocal,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
   emptyLabel?: string;
 }) {
   const folders = sortedFolders(root);
@@ -1391,6 +1525,8 @@ function DirectoryTree({
           isActive={file.locationId === currentLocationId}
           onPlayFolder={onPlayFolder}
           onPreview={onPreview}
+          onDeleteCache={onDeleteCache}
+          onDeleteLocal={onDeleteLocal}
         />
       ))}
       {folders.map((node) => (
@@ -1401,6 +1537,8 @@ function DirectoryTree({
           currentLocationId={currentLocationId}
           onPlayFolder={onPlayFolder}
           onPreview={onPreview}
+          onDeleteCache={onDeleteCache}
+          onDeleteLocal={onDeleteLocal}
         />
       ))}
     </div>
@@ -1536,17 +1674,72 @@ function RemoteSaveSelectionNode({
   );
 }
 
+function ConfirmMediaDeleteModal({
+  target,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  target: MediaDeleteTarget;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isLocal = target.kind === "local";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onCancel}>
+      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b p-4">
+          <div>
+            <h3 className="text-base font-semibold">{isLocal ? "Delete local file" : "Delete cached file"}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isLocal ? "This removes the local file and clears playback state for the work." : "The remote source and saved local files will not be deleted."}
+            </p>
+          </div>
+          <IconButton title="Close" onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="space-y-3 p-4 text-sm">
+          <div>
+            <div className="font-medium">{target.title}</div>
+            <div className="mt-1 break-all rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">{target.path}</div>
+          </div>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
+            {isLocal
+              ? "This removes the local file from disk, marks its location unavailable, and clears progress and marks for the work."
+              : "This removes the cached file from disk and marks the cache location unavailable."}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4">
+          <Button variant="outline" onClick={onCancel} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting}>
+            <Trash2 className="h-4 w-4" />
+            {deleting ? "Deleting" : isLocal ? "Delete local" : "Delete cache"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DirectoryBrowser({
   root,
   currentLocationId,
   onPlayFolder,
   onPreview,
+  onDeleteCache,
+  onDeleteLocal,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
   emptyLabel?: string;
 }) {
   const [path, setPath] = useState<string[]>([]);
@@ -1608,6 +1801,8 @@ function DirectoryBrowser({
             isActive={file.locationId === currentLocationId}
             onPlayFolder={onPlayFolder}
             onPreview={onPreview}
+            onDeleteCache={onDeleteCache}
+            onDeleteLocal={onDeleteLocal}
           />
         ))}
       </div>
@@ -1621,12 +1816,16 @@ function TreeFolder({
   currentLocationId,
   onPlayFolder,
   onPreview,
+  onDeleteCache,
+  onDeleteLocal,
 }: {
   node: TreeNode;
   depth: number;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   const [isOpen, setIsOpen] = useState(depth === 0 || folderNameHasPriority(node.name));
   const childFolders = sortedFolders(node);
@@ -1658,6 +1857,8 @@ function TreeFolder({
               currentLocationId={currentLocationId}
               onPlayFolder={onPlayFolder}
               onPreview={onPreview}
+              onDeleteCache={onDeleteCache}
+              onDeleteLocal={onDeleteLocal}
             />
           ))}
           {sortedFiles(node).map((file) => (
@@ -1669,6 +1870,8 @@ function TreeFolder({
               isActive={file.locationId === currentLocationId}
               onPlayFolder={onPlayFolder}
               onPreview={onPreview}
+              onDeleteCache={onDeleteCache}
+              onDeleteLocal={onDeleteLocal}
             />
           ))}
         </>
@@ -1684,6 +1887,8 @@ function TreeFile({
   isActive,
   onPlayFolder,
   onPreview,
+  onDeleteCache,
+  onDeleteLocal,
 }: {
   file: TreeTrack;
   files: TreeTrack[];
@@ -1691,9 +1896,12 @@ function TreeFile({
   isActive: boolean;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   const canPlay = Boolean(onPlayFolder && file.availability === "available" && file.streamUrl);
   const preview = previewForFile(file);
+  const [confirmingDelete, setConfirmingDelete] = useState<"cache" | "local" | null>(null);
   return (
     <div
       className={`flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
@@ -1710,10 +1918,78 @@ function TreeFile({
         <span className="truncate">{file.title}</span>
       </button>
       <div className="flex shrink-0 items-center gap-2">
+        {file.localAvailable && <Badge variant="outline">Local</Badge>}
+        {file.cacheAvailable && <Badge variant="outline">Cached</Badge>}
         {preview && onPreview && (
           <IconButton title={preview.kind === "image" ? "Preview image" : "Preview text"} onClick={() => onPreview(preview)}>
             <Eye className="h-4 w-4" />
           </IconButton>
+        )}
+        {file.cacheAvailable && file.cacheLocationId !== null && onDeleteCache && (
+          <div
+            className="relative"
+            onMouseLeave={() => setConfirmingDelete(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setConfirmingDelete(null);
+            }}
+          >
+            <IconButton title="Delete cache" onClick={() => setConfirmingDelete((value) => (value === "cache" ? null : "cache"))}>
+              <Trash2 className="h-4 w-4" />
+            </IconButton>
+            {confirmingDelete === "cache" && (
+              <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border bg-popover p-2 text-xs shadow-lg">
+                <div className="mb-2 text-muted-foreground">Delete cached file?</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 w-full"
+                  onClick={() =>
+                    onDeleteCache({
+                      kind: "cache",
+                      locationId: file.cacheLocationId!,
+                      title: file.title,
+                      path: file.cachePath,
+                    })
+                  }
+                >
+                  Continue
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+        {file.localAvailable && file.localLocationId !== null && onDeleteLocal && (
+          <div
+            className="relative"
+            onMouseLeave={() => setConfirmingDelete(null)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setConfirmingDelete(null);
+            }}
+          >
+            <IconButton title="Delete local file" onClick={() => setConfirmingDelete((value) => (value === "local" ? null : "local"))}>
+              <Trash2 className="h-4 w-4" />
+            </IconButton>
+            {confirmingDelete === "local" && (
+              <div className="absolute right-0 z-20 mt-2 w-48 rounded-md border bg-popover p-2 text-xs shadow-lg">
+                <div className="mb-2 text-muted-foreground">Delete local file?</div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 w-full"
+                  onClick={() =>
+                    onDeleteLocal({
+                      kind: "local",
+                      locationId: file.localLocationId!,
+                      title: file.title,
+                      path: file.localPath,
+                    })
+                  }
+                >
+                  Continue
+                </Button>
+              </div>
+            )}
+          </div>
         )}
         <span className="text-xs text-muted-foreground">
           {formatBytes(file.sizeBytes)} · {file.availability}
@@ -1751,7 +2027,7 @@ function sortedFiles(node: TreeNode) {
 }
 
 function playableFiles(files: TreeTrack[]) {
-  return files.filter((file) => file.kind === "audio" && file.availability === "available" && file.streamUrl);
+  return files.filter((file) => file.kind === "audio" && ["available", "remote"].includes(file.availability) && file.streamUrl);
 }
 
 function nodeAtPath(root: TreeNode, path: string[]) {
@@ -1889,6 +2165,23 @@ function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
   };
 }
 
+function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
+  return {
+    ...track,
+    workId: detail.workId ?? 0,
+    workCode: detail.primaryCode || detail.remoteId,
+    workTitle: detail.title,
+    coverUrl: detail.coverUrl,
+    circle: detail.circle,
+    progress: null,
+    lyricsLocationId: null,
+    lyricsTitle: "",
+    remoteSourceId: detail.sourceId,
+    remoteWorkCode: detail.primaryCode || detail.remoteId,
+    remotePath: track.sourcePath,
+  };
+}
+
 function findLyricsForTrack(track: TreeTrack, items: MediaItem[]) {
   const candidates = items.flatMap((item) =>
     item.kind === "text"
@@ -1962,4 +2255,52 @@ function hasLocalAvailability(work: Work) {
 function codeFromPath(path: string) {
   const match = path.match(WORK_CODE_PATTERN);
   return match ? match[1].toUpperCase() : null;
+}
+
+function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {
+  if (path === "/remote" || path === "/library/remote") {
+    return { kind: "remote" };
+  }
+  if (path === "/" || path === "/library") {
+    return { kind: "local" };
+  }
+  const encodedKey = path.startsWith("/library/source/")
+    ? path.slice("/library/source/".length).replace(/\/$/, "")
+    : path.replace(/^\//, "").replace(/\/$/, "");
+  if (encodedKey === "") {
+    return fallback;
+  }
+  if (WORK_CODE_PATTERN.test(`/${encodedKey}`)) {
+    return fallback;
+  }
+  const key = safeDecodePathSegment(encodedKey).toLowerCase();
+  const source = sources.find((item) => sourceRouteKey(item).toLowerCase() === key || item.displayName.toLowerCase() === key);
+  return source ? { kind: "source", source } : fallback;
+}
+
+function resolveTabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab): LibraryTab {
+  return tabFromPath(path, sources, fallback);
+}
+
+function pathForLibraryTab(tab: LibraryTab) {
+  switch (tab.kind) {
+    case "remote":
+      return "/remote";
+    case "source":
+      return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
+    default:
+      return "/";
+  }
+}
+
+function sourceRouteKey(source: LibrarySource) {
+  return source.code || source.displayName;
+}
+
+function safeDecodePathSegment(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

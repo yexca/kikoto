@@ -35,6 +35,9 @@ export type PlayerTrack = {
   progress: MediaProgress | null;
   lyricsLocationId: number | null;
   lyricsTitle: string;
+  remoteSourceId?: number;
+  remoteWorkCode?: string;
+  remotePath?: string;
 };
 
 type PlayerContextValue = {
@@ -98,7 +101,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     api.getRuntimeSettings()
       .then((settings) => {
         if (settings.cacheEnabled) {
-          void api.cacheMediaLocation(currentTrack.locationId).catch(() => {});
+          if (currentTrack.locationId > 0) {
+            void api.cacheMediaLocation(currentTrack.locationId).catch(() => {});
+          } else if (currentTrack.remoteSourceId && currentTrack.remoteWorkCode && currentTrack.remotePath) {
+            void api.cacheRemoteSourceWorkMedia(currentTrack.remoteSourceId, currentTrack.remoteWorkCode, currentTrack.remotePath).catch(() => {});
+          }
         }
       })
       .catch(() => {});
@@ -185,6 +192,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
+    if (currentTrack.mediaItemId <= 0) return;
     const position = completed ? audio.duration || audio.currentTime : audio.currentTime;
     if (!Number.isFinite(position) || position < 0) return;
     const durationValue = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;

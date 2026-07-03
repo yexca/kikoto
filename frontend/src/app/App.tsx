@@ -162,7 +162,13 @@ function pageFromPath(path: string): PageID {
     return "activity";
   }
   const item = navItems.find((navItem) => navItem.path === path);
-  return item?.id ?? "library";
+  if (item) {
+    return item.id;
+  }
+  if (path === "/remote" || path === "/library" || path.startsWith("/library/")) {
+    return "library";
+  }
+  return "library";
 }
 
 function PlaceholderPage({ title }: { title: string }) {

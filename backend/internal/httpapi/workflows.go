@@ -129,8 +129,18 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		Description: "Cache remote media while playing when remote cache is enabled. Triggered by playback.",
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_media_items", "displayName": "Select media item"},
+			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync remote location"},
 			{"id": "filter", "type": "filter_candidates", "displayName": "Filter cache miss"},
 			{"id": "cache", "type": "materialize_cache", "displayName": "Materialize cache file"},
+		},
+	},
+	{
+		Code:        "media_cache_cleanup",
+		Name:        "Clean media cache",
+		Description: "Delete cached media files and mark cache locations unavailable.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_media_items", "displayName": "Select cached media"},
+			{"id": "cleanup", "type": "cleanup_cache", "displayName": "Delete cache file"},
 		},
 	},
 	{
