@@ -147,6 +147,37 @@ export type RemoteWork = {
   workId: number | null;
 };
 
+export type RemoteTrack = {
+  type: string;
+  title: string;
+  hash: string;
+  streamUrl: string;
+  downloadUrl: string;
+  durationSeconds: number | null;
+  sizeBytes: number | null;
+  children: RemoteTrack[];
+};
+
+export type RemoteWorkDetail = {
+  sourceId: number;
+  sourceCode: string;
+  sourceName: string;
+  remoteId: string;
+  primaryCode: string;
+  title: string;
+  coverUrl: string;
+  sourceUrl: string;
+  circle: string;
+  rating: number | null;
+  releaseDate: string;
+  durationSeconds: number | null;
+  tags: string[];
+  voiceActors: string[];
+  importStatus: string;
+  workId: number | null;
+  tracks: RemoteTrack[];
+};
+
 export type RemoteWorkSyncResult = {
   runId: number;
   jobId: number;
@@ -351,8 +382,12 @@ export const api = {
   listWorks: () => getJSON<Work[]>("/api/works"),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
-  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24) =>
-    getJSON<RemoteWorksResponse>(`/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}`),
+  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "") =>
+    getJSON<RemoteWorksResponse>(
+      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+    ),
+  getRemoteSourceWork: (id: number, code: string) =>
+    getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),

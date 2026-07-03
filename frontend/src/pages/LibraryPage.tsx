@@ -34,8 +34,10 @@ import {
   type LibrarySource,
   type ListeningStatus,
   type MediaItem,
+  type RemoteTrack,
   type RemoteWorksResponse,
   type RemoteWork,
+  type RemoteWorkDetail,
   type Work,
   type WorkDetail,
 } from "@/lib/api";
@@ -63,6 +65,7 @@ export function LibraryPage() {
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
+  const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
 
@@ -94,7 +97,7 @@ export function LibraryPage() {
     }
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
     setRemoteResult(null);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize).then(setRemoteResult).catch(() => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, sourceState.query).then(setRemoteResult).catch(() => {
       setRemoteResult({
         sourceId: activeTab.source.id,
         works: [],
@@ -139,10 +142,16 @@ export function LibraryPage() {
     setSelectedCode(work.primaryCode);
   };
 
+  const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
+    if (!work.primaryCode) return;
+    setSelectedRemoteTarget({ source, code: work.primaryCode });
+  };
+
   const backToLibrary = () => {
     window.history.pushState({}, "", "/");
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
+    setSelectedRemoteTarget(null);
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
@@ -168,6 +177,22 @@ export function LibraryPage() {
 
   if (selectedCode !== null) {
     return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} onStatusChange={updateWorkStatus} />;
+  }
+
+  if (selectedRemoteTarget !== null) {
+    return (
+      <RemoteWorkDetailView
+        source={selectedRemoteTarget.source}
+        code={selectedRemoteTarget.code}
+        autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
+        onBack={() => setSelectedRemoteTarget(null)}
+        onOpenLocal={(workID) => {
+          const work = works.find((item) => item.id === workID);
+          if (work) openWork(work);
+        }}
+        onWorksChanged={async () => setWorks(await api.listWorks())}
+      />
+    );
   }
 
   const scopedWorks =
@@ -223,6 +248,7 @@ export function LibraryPage() {
             updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
           }}
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
+          onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
           onSynced={async (workId) => {
             const nextWorks = await api.listWorks();
             setWorks(nextWorks);
@@ -319,6 +345,7 @@ function RemoteSourcePanel({
   onPageChange,
   onPageSizeChange,
   autoSyncRemote,
+  onOpenPreview,
   onSynced,
 }: {
   source: LibrarySource;
@@ -328,6 +355,7 @@ function RemoteSourcePanel({
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   autoSyncRemote: boolean;
+  onOpenPreview: (work: RemoteWork) => void;
   onSynced: (workID: number) => Promise<void>;
 }) {
   const isLoading = result === null;
@@ -387,8 +415,11 @@ function RemoteSourcePanel({
         <input
           className="min-w-0 flex-1 bg-transparent outline-none"
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Filter current remote page"
+          onChange={(event) => {
+            onQueryChange(event.target.value);
+            onPageChange(1);
+          }}
+          placeholder="Search remote source"
         />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
@@ -433,6 +464,7 @@ function RemoteSourcePanel({
               key={work.remoteId}
               work={work}
               isBusy={isSyncingCode === work.primaryCode}
+              onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
               onFetchAndMark={() => void syncWork(work, "mark_interest")}
             />
@@ -527,37 +559,55 @@ function WorkCard({
 function RemoteWorkCard({
   work,
   isBusy,
+  onOpen,
   onFetch,
   onFetchAndMark,
 }: {
   work: RemoteWork;
   isBusy: boolean;
+  onOpen: () => void;
   onFetch: () => void;
   onFetchAndMark: () => void;
 }) {
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
-        <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
-        <WorkCardBody
-          title={work.title}
-          circle={work.circle || "Unknown circle"}
-          badges={[
-            { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
-            ...(work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []),
-            ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
-          ]}
-          meta={[
-            { icon: <Cloud className="h-3.5 w-3.5" />, value: "Browse source result" },
-            { icon: <FileAudio className="h-3.5 w-3.5" />, value: work.primaryCode || work.remoteId },
-          ]}
-        />
+        <div className="block w-full cursor-pointer text-left" onClick={onOpen}>
+          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
+          <WorkCardBody
+            title={work.title}
+            circle={work.circle || "Unknown circle"}
+            badges={[
+              { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
+              ...(work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []),
+              ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
+            ]}
+            meta={[
+              { icon: <Cloud className="h-3.5 w-3.5" />, value: "Browse source result" },
+              { icon: <FileAudio className="h-3.5 w-3.5" />, value: work.primaryCode || work.remoteId },
+            ]}
+          />
+        </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
-          <IconButton title="Fetch remote info" disabled={isBusy || !work.primaryCode} onClick={onFetch}>
+          <IconButton
+            title="Fetch remote info"
+            disabled={isBusy || !work.primaryCode}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFetch();
+            }}
+          >
             <DownloadCloud className="h-4 w-4" />
           </IconButton>
           <div className="flex items-center gap-1">
-            <IconButton title="Fetch and mark" disabled={isBusy || !work.primaryCode} onClick={onFetchAndMark}>
+            <IconButton
+              title="Fetch and mark"
+              disabled={isBusy || !work.primaryCode}
+              onClick={(event) => {
+                event.stopPropagation();
+                onFetchAndMark();
+              }}
+            >
               <ListChecks className="h-4 w-4" />
             </IconButton>
             <IconButton title="Save to library is not available yet" disabled onClick={() => {}}>
@@ -683,6 +733,154 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           {option.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+function RemoteWorkDetailView({
+  source,
+  code,
+  autoSyncRemote,
+  onBack,
+  onOpenLocal,
+  onWorksChanged,
+}: {
+  source: LibrarySource;
+  code: string;
+  autoSyncRemote: boolean;
+  onBack: () => void;
+  onOpenLocal: (workID: number) => void;
+  onWorksChanged: () => Promise<void>;
+}) {
+  const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
+  const [message, setMessage] = useState("");
+  const [isFetching, setIsFetching] = useState(false);
+  const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
+  const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
+
+  useEffect(() => {
+    setDetail(null);
+    setMessage("");
+    api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Remote preview failed.");
+    });
+  }, [source.id, code]);
+
+  const fetchWork = async (reason: string) => {
+    if (!detail?.primaryCode) return;
+    if (!autoSyncRemote && reason !== "manual_fetch") {
+      const confirmed = window.confirm(
+        "This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.",
+      );
+      if (!confirmed) return;
+    }
+    setIsFetching(true);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
+      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+      await onWorksChanged();
+      onOpenLocal(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  if (!detail) {
+    return (
+      <div className="space-y-4">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <ChevronLeft className="h-4 w-4" />
+          Back to source
+        </Button>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">{message || `Loading ${code}...`}</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <Button variant="outline" size="sm" onClick={onBack}>
+        <ChevronLeft className="h-4 w-4" />
+        Back to source
+      </Button>
+
+      <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="self-start overflow-hidden rounded-lg border bg-muted">
+          <div className="aspect-[4/3]">
+            {detail.coverUrl ? (
+              <img src={assetURL(detail.coverUrl)} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <div className="grid h-full place-items-center text-4xl font-bold">{(detail.primaryCode || detail.remoteId).slice(0, 2)}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <div className="text-sm font-semibold text-primary">{detail.primaryCode || detail.remoteId}</div>
+            <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{detail.title}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{detail.circle || "Unknown circle"}</p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
+              <DownloadCloud className="h-4 w-4" />
+              Fetch
+            </Button>
+            <Button size="sm" variant="outline" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("mark_interest")}>
+              <ListChecks className="h-4 w-4" />
+              Fetch and mark
+            </Button>
+            {detail.workId !== null && (
+              <Button size="sm" onClick={() => onOpenLocal(detail.workId!)}>
+                <MoreHorizontal className="h-4 w-4" />
+                Open local detail
+              </Button>
+            )}
+            {detail.sourceUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Source
+                </a>
+              </Button>
+            )}
+          </div>
+
+          {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label="Rating" value={detail.rating === null ? "No rating" : detail.rating.toFixed(2)} />
+            <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={detail.releaseDate || "Unknown"} />
+            <MetaTile icon={<FileAudio className="h-4 w-4" />} label={source.displayName} value={`${trackCount} playable files`} />
+          </div>
+
+          <InfoRow icon={<CircleUserRound className="h-4 w-4" />} label="Voice" value={detail.voiceActors.join(", ") || "No voice actor metadata"} />
+          <InfoRow icon={<Tags className="h-4 w-4" />} label="Tags" value={detail.tags.join(", ") || "No tag metadata"} />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">Directory</h3>
+            <p className="text-sm text-muted-foreground">Previewing remote files from {detail.sourceName}; fetch before local marks or saves.</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            <button className="h-8 shrink-0 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">{detail.sourceName}</button>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="p-4">
+            <DirectoryTree root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
@@ -868,8 +1066,10 @@ type TreeTrack = {
   mediaItemId: number;
   locationId: number;
   title: string;
+  kind: string;
   folderPath: string;
   streamUrl: string;
+  downloadUrl: string;
   sizeBytes: number | null;
   availability: string;
   progress: MediaItem["progress"];
@@ -924,28 +1124,100 @@ function buildTree(items: MediaItem[], fileSourceId: number | null): TreeNode {
       mediaItemId: item.id,
       locationId: location.id,
       title: fileName,
+      kind: item.kind,
       folderPath: cursor.path,
       streamUrl: location.streamUrl,
+      downloadUrl: location.downloadUrl,
       sizeBytes: location.sizeBytes,
       availability: location.availability,
       progress: item.progress,
     });
   }
-  return root;
+  return normalizeDisplayTree(root);
+}
+
+function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
+  let nextID = -1;
+  const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
+  const walk = (nodes: RemoteTrack[], cursor: TreeNode) => {
+    nodes.forEach((node, index) => {
+      const title = node.title.trim() || `Track ${index + 1}`;
+      if (node.children.length > 0 || node.type === "folder") {
+        const childPath = cursor.path ? `${cursor.path}/${title}` : title;
+        const child = cursor.children.get(title) ?? { name: title, path: childPath, children: new Map(), files: [] };
+        cursor.children.set(title, child);
+        walk(node.children, child);
+        return;
+      }
+      cursor.files.push({
+        mediaItemId: nextID,
+        locationId: nextID,
+        title,
+        kind: node.type || "file",
+        folderPath: cursor.path,
+        streamUrl: node.streamUrl,
+        downloadUrl: node.downloadUrl,
+        sizeBytes: node.sizeBytes,
+        availability: node.streamUrl || node.downloadUrl ? "remote" : "metadata",
+        progress: null,
+      });
+      nextID -= 1;
+    });
+  };
+  walk(tracks, root);
+  return normalizeDisplayTree(root);
+}
+
+function normalizeDisplayTree(root: TreeNode): TreeNode {
+  let displayRoot = cloneTree(root, "");
+  while (displayRoot.files.length === 0 && displayRoot.children.size === 1) {
+    const onlyChild = Array.from(displayRoot.children.values())[0];
+    if (onlyChild.files.length > 0 || onlyChild.children.size !== 1) break;
+    displayRoot = cloneTree(onlyChild, "");
+  }
+  return collapseSingleChildFolders(displayRoot, true);
+}
+
+function cloneTree(node: TreeNode, path: string): TreeNode {
+  const clone: TreeNode = { name: node.name, path, children: new Map(), files: [...node.files] };
+  for (const child of node.children.values()) {
+    const childPath = path ? `${path}/${child.name}` : child.name;
+    clone.children.set(child.name, cloneTree(child, childPath));
+  }
+  return clone;
+}
+
+function collapseSingleChildFolders(node: TreeNode, isRoot = false): TreeNode {
+  const collapsed: TreeNode = { ...node, children: new Map(), files: [...node.files] };
+  for (const child of node.children.values()) {
+    let next = collapseSingleChildFolders(child);
+    while (!isRoot && next.files.length === 0 && next.children.size === 1) {
+      const grandChild = Array.from(next.children.values())[0];
+      next = collapseSingleChildFolders({
+        ...grandChild,
+        name: `${next.name}/${grandChild.name}`,
+        path: next.path,
+      });
+    }
+    collapsed.children.set(next.name, next);
+  }
+  return collapsed;
 }
 
 function DirectoryTree({
   root,
   currentLocationId,
   onPlayFolder,
+  emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
-  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  emptyLabel?: string;
 }) {
   const folders = Array.from(root.children.values());
   if (folders.length === 0 && root.files.length === 0) {
-    return <div className="text-sm text-muted-foreground">No local files detected.</div>;
+    return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
   }
   return (
     <div className="space-y-2">
@@ -981,11 +1253,12 @@ function TreeFolder({
   node: TreeNode;
   depth: number;
   currentLocationId: number | null;
-  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(depth < 2);
+  const [isOpen, setIsOpen] = useState(depth === 0 || folderNameHasPriority(node.name));
   const childFolders = Array.from(node.children.values());
   const playableFiles = node.files.filter((file) => file.availability === "available" && file.streamUrl);
+  const filesLabel = playableFiles.length > 0 ? `${playableFiles.length} audio` : node.files.length > 0 ? `${node.files.length} files` : "";
   return (
     <div className="space-y-1">
       <button
@@ -1000,9 +1273,7 @@ function TreeFolder({
         )}
         <Folder className="h-4 w-4 shrink-0 text-primary" />
         <span className="truncate">{node.name}</span>
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {playableFiles.length} audio
-        </span>
+        {filesLabel && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{filesLabel}</span>}
       </button>
       {isOpen && (
         <>
@@ -1042,9 +1313,9 @@ function TreeFile({
   files: TreeTrack[];
   depth: number;
   isActive: boolean;
-  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
 }) {
-  const canPlay = file.availability === "available" && file.streamUrl;
+  const canPlay = Boolean(onPlayFolder && file.availability === "available" && file.streamUrl);
   return (
     <button
       className={`flex min-h-9 w-full items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
@@ -1052,7 +1323,7 @@ function TreeFile({
       }`}
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
       disabled={!canPlay}
-      onClick={() => onPlayFolder(files, file.locationId)}
+      onClick={() => onPlayFolder?.(files, file.locationId)}
     >
       <div className="flex min-w-0 items-center gap-2">
         {isActive ? <Pause className="h-4 w-4 text-primary" /> : <FileAudio className="h-4 w-4 text-muted-foreground" />}
@@ -1065,6 +1336,11 @@ function TreeFile({
   );
 }
 
+function folderNameHasPriority(name: string) {
+  const lower = name.toLowerCase();
+  return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
+}
+
 function flattenTracks(root: TreeNode) {
   const tracks: TreeTrack[] = [];
   const visit = (node: TreeNode) => {
@@ -1075,6 +1351,14 @@ function flattenTracks(root: TreeNode) {
   };
   visit(root);
   return tracks;
+}
+
+function countTreeFiles(root: TreeNode) {
+  let count = root.files.length;
+  for (const child of root.children.values()) {
+    count += countTreeFiles(child);
+  }
+  return count;
 }
 
 function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {

@@ -90,6 +90,37 @@ type remoteWorkSummary struct {
 	WorkID         *int64   `json:"workId"`
 }
 
+type remoteWorkDetail struct {
+	SourceID        int64               `json:"sourceId"`
+	SourceCode      string              `json:"sourceCode"`
+	SourceName      string              `json:"sourceName"`
+	RemoteID        string              `json:"remoteId"`
+	PrimaryCode     string              `json:"primaryCode"`
+	Title           string              `json:"title"`
+	CoverURL        string              `json:"coverUrl"`
+	SourceURL       string              `json:"sourceUrl"`
+	Circle          string              `json:"circle"`
+	Rating          *float64            `json:"rating"`
+	ReleaseDate     string              `json:"releaseDate"`
+	DurationSeconds *int64              `json:"durationSeconds"`
+	Tags            []string            `json:"tags"`
+	VoiceActors     []string            `json:"voiceActors"`
+	ImportStatus    string              `json:"importStatus"`
+	WorkID          *int64              `json:"workId"`
+	Tracks          []remoteTrackDetail `json:"tracks"`
+}
+
+type remoteTrackDetail struct {
+	Type            string              `json:"type"`
+	Title           string              `json:"title"`
+	Hash            string              `json:"hash"`
+	StreamURL       string              `json:"streamUrl"`
+	DownloadURL     string              `json:"downloadUrl"`
+	DurationSeconds *int64              `json:"durationSeconds"`
+	SizeBytes       *int64              `json:"sizeBytes"`
+	Children        []remoteTrackDetail `json:"children"`
+}
+
 type remoteWorkSyncResult struct {
 	RunID             int64  `json:"runId"`
 	JobID             int64  `json:"jobId"`
@@ -457,6 +488,59 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	source, err := s.loadRemoteSourceForUse(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if source.SourceType != "kikoeru_compatible" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not kikoeru_compatible"})
+		return
+	}
+	if !source.Enabled {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is disabled"})
+		return
+	}
+	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	remoteWork, _, err := client.WorkInfo(r.Context(), code)
+	if err != nil {
+		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	tracks, _, err := client.Tracks(r.Context(), remoteWork.ID)
+	if err != nil {
+		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	_ = s.updateSourceHealth(r.Context(), id, "healthy")
+	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, tracks)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
 func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
@@ -696,6 +780,91 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		SyncedLocations:  locations,
 		TriggerReason:    triggerReason,
 	}, nil
+}
+
+func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkDetail, error) {
+	code := normalizedRemoteWorkCode(work)
+	var workID sql.NullInt64
+	if code != "" {
+		if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return remoteWorkDetail{}, err
+		}
+	}
+	tags := make([]string, 0, len(work.Tags))
+	for _, tag := range work.Tags {
+		if strings.TrimSpace(tag.Name) != "" {
+			tags = append(tags, tag.Name)
+		}
+	}
+	voiceActors := make([]string, 0, len(work.VAs))
+	for _, va := range work.VAs {
+		if strings.TrimSpace(va.Name) != "" {
+			voiceActors = append(voiceActors, va.Name)
+		}
+	}
+	circle := ""
+	if work.Circle != nil {
+		circle = work.Circle.Name
+	}
+	status := "remote_only"
+	if workID.Valid {
+		status = "synced"
+	}
+	var duration *int64
+	if work.Duration != nil && *work.Duration > 0 {
+		value := int64(*work.Duration)
+		duration = &value
+	}
+	releaseDate := ""
+	if value, ok := normalizeDate(work.Release).(string); ok {
+		releaseDate = value
+	}
+	return remoteWorkDetail{
+		SourceID:        source.ID,
+		SourceCode:      source.Code,
+		SourceName:      source.DisplayName,
+		RemoteID:        strconv.FormatInt(work.ID, 10),
+		PrimaryCode:     code,
+		Title:           firstNonEmpty(work.Title, work.Name, code),
+		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
+		SourceURL:       work.SourceURL,
+		Circle:          circle,
+		Rating:          work.RateAverage2DP,
+		ReleaseDate:     releaseDate,
+		DurationSeconds: duration,
+		Tags:            tags,
+		VoiceActors:     voiceActors,
+		ImportStatus:    status,
+		WorkID:          nullableInt64(workID),
+		Tracks:          remoteTrackDetails(tracks),
+	}, nil
+}
+
+func remoteTrackDetails(tracks []kikoeru.Track) []remoteTrackDetail {
+	result := make([]remoteTrackDetail, 0, len(tracks))
+	for _, track := range tracks {
+		var duration *int64
+		if track.Duration > 0 {
+			value := int64(track.Duration)
+			duration = &value
+		}
+		var size *int64
+		if track.Size > 0 {
+			value := track.Size
+			size = &value
+		}
+		result = append(result, remoteTrackDetail{
+			Type:            remoteTrackKind(track.Type),
+			Title:           strings.TrimSpace(track.Title),
+			Hash:            track.Hash,
+			StreamURL:       firstNonEmpty(track.MediaStreamURL, track.StreamLowQualityURL),
+			DownloadURL:     track.MediaDownloadURL,
+			DurationSeconds: duration,
+			SizeBytes:       size,
+			Children:        remoteTrackDetails(track.Children),
+		})
+	}
+	return result
 }
 
 func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {
