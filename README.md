@@ -2,7 +2,7 @@
 
 Kikoto is a personal audio media library for local and remote audio works.
 
-The project is now moving from design harness to implementation skeleton.
+The project is in early implementation and is intended for local-first personal library use.
 
 ## Repository Layout
 
@@ -11,8 +11,7 @@ frontend/   React PWA frontend
 backend/    Go HTTP API, domain modules, SQLite migrations
 config/     User-mounted configuration and SQLite database location
 data/       User-mounted media library root
-docs/       Product, architecture, and execution planning docs
-harness/    Original design harness snapshot
+docs/       Public project documentation
 scripts/    Utility scripts
 ```
 
