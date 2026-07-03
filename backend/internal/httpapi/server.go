@@ -33,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
+	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
@@ -206,6 +207,42 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, work)
+}
+
+func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+
+	var locationType string
+	var relPath string
+	var availability string
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT location_type, path, availability
+		FROM media_file_location
+		WHERE id = ?
+	`, id).Scan(&locationType, &relPath, &availability); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+
+	if locationType != "local" || availability != "available" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location is not available"})
+		return
+	}
+
+	path, err := safeDataPath(s.cfg.DataRoot, relPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
+		return
+	}
+	http.ServeFile(w, r, path)
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, error) {
@@ -382,6 +419,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, erro
 		location.SizeBytes = nullableInt64(sizeBytes)
 		location.DurationSeconds = nullableInt64(locationDurationSeconds)
 		location.LastCheckedAt = nullableString(lastCheckedAt)
+		if location.LocationType == "local" && location.Availability == "available" && location.StreamURL == "" {
+			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
+		}
 		if index, ok := itemIndexes[mediaItemID]; ok {
 			work.MediaItems[index].Locations = append(work.MediaItems[index].Locations, location)
 		}
@@ -906,6 +946,29 @@ func dlsiteURL(primaryCode string) string {
 		site = "pro"
 	}
 	return fmt.Sprintf("https://www.dlsite.com/%s/work/=/product_id/%s.html", site, code)
+}
+
+func safeDataPath(root string, relPath string) (string, error) {
+	if strings.TrimSpace(relPath) == "" || filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("invalid relative path")
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(filepath.Join(absRoot, filepath.FromSlash(relPath)))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		return "", fmt.Errorf("path escapes data root")
+	}
+	return absPath, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

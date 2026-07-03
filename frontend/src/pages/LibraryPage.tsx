@@ -1,5 +1,7 @@
 import {
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   CircleUserRound,
   Clock3,
   FileAudio,
@@ -7,8 +9,11 @@ import {
   Folder,
   Headphones,
   ExternalLink,
+  ListMusic,
+  Pause,
   Play,
   Search,
+  SkipForward,
   Star,
   Tags,
   UserRound,
@@ -176,6 +181,30 @@ function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
 
 function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail | null; onBack: () => void }) {
   const tree = useMemo(() => buildTree(work?.mediaItems ?? []), [work]);
+  const allTracks = useMemo(() => flattenTracks(tree), [tree]);
+  const [playlist, setPlaylist] = useState<PlaylistTrack[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentTrack = playlist[currentIndex] ?? null;
+
+  const playTracks = (tracks: PlaylistTrack[], locationId: number) => {
+    if (tracks.length === 0) return;
+    const index = Math.max(
+      0,
+      tracks.findIndex((track) => track.locationId === locationId),
+    );
+    setPlaylist(tracks);
+    setCurrentIndex(index);
+  };
+
+  const playAll = () => {
+    if (allTracks.length > 0) {
+      playTracks(allTracks, allTracks[0].locationId);
+    }
+  };
+
+  const playNext = () => {
+    setCurrentIndex((index) => (playlist.length === 0 ? 0 : Math.min(index + 1, playlist.length - 1)));
+  };
 
   if (!work) {
     return (
@@ -217,7 +246,7 @@ function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm">
+            <Button size="sm" onClick={playAll} disabled={allTracks.length === 0}>
               <Play className="h-4 w-4" />
               Play
             </Button>
@@ -250,10 +279,20 @@ function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail
         </div>
         <Card>
           <CardContent className="p-4">
-            <DirectoryTree nodes={tree} />
+            <DirectoryTree root={tree} currentLocationId={currentTrack?.locationId ?? null} onPlayFolder={playTracks} />
           </CardContent>
         </Card>
       </section>
+
+      {currentTrack && (
+        <WorkPlayer
+          track={currentTrack}
+          playlist={playlist}
+          currentIndex={currentIndex}
+          onSelect={(index) => setCurrentIndex(index)}
+          onEnded={playNext}
+        />
+      )}
     </div>
   );
 }
@@ -284,74 +323,244 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 
 type TreeNode = {
   name: string;
+  path: string;
   children: Map<string, TreeNode>;
-  files: Array<{ id: number; title: string; sizeBytes: number | null; availability: string }>;
+  files: PlaylistTrack[];
 };
 
-function buildTree(items: MediaItem[]): TreeNode[] {
-  const root: TreeNode = { name: "", children: new Map(), files: [] };
+type PlaylistTrack = {
+  mediaItemId: number;
+  locationId: number;
+  title: string;
+  folderPath: string;
+  streamUrl: string;
+  sizeBytes: number | null;
+  availability: string;
+};
+
+function buildTree(items: MediaItem[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
   for (const item of items) {
-    const location = item.locations[0];
+    const location = item.locations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? item.locations[0];
     if (!location) continue;
     const parts = location.path.split("/").filter(Boolean);
     const fileName = parts.pop() ?? item.title;
     let cursor = root;
     for (const part of parts) {
       if (!cursor.children.has(part)) {
-        cursor.children.set(part, { name: part, children: new Map(), files: [] });
+        const childPath = cursor.path ? `${cursor.path}/${part}` : part;
+        cursor.children.set(part, { name: part, path: childPath, children: new Map(), files: [] });
       }
       cursor = cursor.children.get(part)!;
     }
     cursor.files.push({
-      id: item.id,
+      mediaItemId: item.id,
+      locationId: location.id,
       title: fileName,
+      folderPath: cursor.path,
+      streamUrl: location.streamUrl,
       sizeBytes: location.sizeBytes,
       availability: location.availability,
     });
   }
-  return Array.from(root.children.values());
+  return root;
 }
 
-function DirectoryTree({ nodes }: { nodes: TreeNode[] }) {
-  if (nodes.length === 0) {
+function DirectoryTree({
+  root,
+  currentLocationId,
+  onPlayFolder,
+}: {
+  root: TreeNode;
+  currentLocationId: number | null;
+  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+}) {
+  const folders = Array.from(root.children.values());
+  if (folders.length === 0 && root.files.length === 0) {
     return <div className="text-sm text-muted-foreground">No local files detected.</div>;
   }
   return (
     <div className="space-y-2">
-      {nodes.map((node) => (
-        <TreeFolder key={node.name} node={node} depth={0} />
+      {root.files.map((file) => (
+        <TreeFile
+          key={file.locationId}
+          file={file}
+          files={root.files}
+          depth={0}
+          isActive={file.locationId === currentLocationId}
+          onPlayFolder={onPlayFolder}
+        />
+      ))}
+      {folders.map((node) => (
+        <TreeFolder
+          key={node.path}
+          node={node}
+          depth={0}
+          currentLocationId={currentLocationId}
+          onPlayFolder={onPlayFolder}
+        />
       ))}
     </div>
   );
 }
 
-function TreeFolder({ node, depth }: { node: TreeNode; depth: number }) {
+function TreeFolder({
+  node,
+  depth,
+  currentLocationId,
+  onPlayFolder,
+}: {
+  node: TreeNode;
+  depth: number;
+  currentLocationId: number | null;
+  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(depth < 2);
+  const childFolders = Array.from(node.children.values());
+  const playableFiles = node.files.filter((file) => file.availability === "available" && file.streamUrl);
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-2 text-sm font-medium" style={{ paddingLeft: depth * 14 }}>
-        <Folder className="h-4 w-4 text-primary" />
+      <button
+        className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
+        style={{ paddingLeft: depth * 14 + 8 }}
+        onClick={() => setIsOpen((value) => !value)}
+      >
+        {isOpen ? (
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        )}
+        <Folder className="h-4 w-4 shrink-0 text-primary" />
         <span className="truncate">{node.name}</span>
-      </div>
-      {Array.from(node.children.values()).map((child) => (
-        <TreeFolder key={child.name} node={child} depth={depth + 1} />
-      ))}
-      {node.files.map((file) => (
-        <div
-          key={file.id}
-          className="flex min-h-9 items-center justify-between gap-3 rounded-md border bg-background px-3 text-sm"
-          style={{ marginLeft: (depth + 1) * 14 }}
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <FileAudio className="h-4 w-4 text-muted-foreground" />
-            <span className="truncate">{file.title}</span>
-          </div>
-          <div className="shrink-0 text-xs text-muted-foreground">
-            {formatBytes(file.sizeBytes)} · {file.availability}
-          </div>
-        </div>
-      ))}
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+          {playableFiles.length} audio
+        </span>
+      </button>
+      {isOpen && (
+        <>
+          {childFolders.map((child) => (
+            <TreeFolder
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              currentLocationId={currentLocationId}
+              onPlayFolder={onPlayFolder}
+            />
+          ))}
+          {node.files.map((file) => (
+            <TreeFile
+              key={file.locationId}
+              file={file}
+              files={playableFiles}
+              depth={depth + 1}
+              isActive={file.locationId === currentLocationId}
+              onPlayFolder={onPlayFolder}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
+}
+
+function TreeFile({
+  file,
+  files,
+  depth,
+  isActive,
+  onPlayFolder,
+}: {
+  file: PlaylistTrack;
+  files: PlaylistTrack[];
+  depth: number;
+  isActive: boolean;
+  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+}) {
+  const canPlay = file.availability === "available" && file.streamUrl;
+  return (
+    <button
+      className={`flex min-h-9 w-full items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
+        isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
+      }`}
+      style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
+      disabled={!canPlay}
+      onClick={() => onPlayFolder(files, file.locationId)}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        {isActive ? <Pause className="h-4 w-4 text-primary" /> : <FileAudio className="h-4 w-4 text-muted-foreground" />}
+        <span className="truncate">{file.title}</span>
+      </div>
+      <div className="shrink-0 text-xs text-muted-foreground">
+        {formatBytes(file.sizeBytes)} · {file.availability}
+      </div>
+    </button>
+  );
+}
+
+function WorkPlayer({
+  track,
+  playlist,
+  currentIndex,
+  onSelect,
+  onEnded,
+}: {
+  track: PlaylistTrack;
+  playlist: PlaylistTrack[];
+  currentIndex: number;
+  onSelect: (index: number) => void;
+  onEnded: () => void;
+}) {
+  return (
+    <section className="sticky bottom-24 z-10 rounded-lg border bg-card p-4 shadow-sm lg:bottom-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+        <div className="min-w-0 space-y-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <ListMusic className="h-4 w-4 text-primary" />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{track.title}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {track.folderPath || "work root"} · {currentIndex + 1}/{playlist.length}
+              </div>
+            </div>
+          </div>
+          <audio
+            key={track.locationId}
+            className="w-full"
+            src={assetURL(track.streamUrl)}
+            controls
+            autoPlay
+            onEnded={onEnded}
+          />
+        </div>
+        <div className="max-h-36 space-y-1 overflow-auto rounded-md border bg-background p-2">
+          {playlist.map((item, index) => (
+            <button
+              key={item.locationId}
+              className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
+                index === currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
+              }`}
+              onClick={() => onSelect(index)}
+            >
+              {index === currentIndex ? <Pause className="h-3.5 w-3.5" /> : <SkipForward className="h-3.5 w-3.5" />}
+              <span className="truncate">{item.title}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function flattenTracks(root: TreeNode) {
+  const tracks: PlaylistTrack[] = [];
+  const visit = (node: TreeNode) => {
+    tracks.push(...node.files.filter((file) => file.availability === "available" && file.streamUrl));
+    for (const child of node.children.values()) {
+      visit(child);
+    }
+  };
+  visit(root);
+  return tracks;
 }
 
 function assetURL(path: string) {
