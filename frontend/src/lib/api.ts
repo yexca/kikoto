@@ -49,7 +49,15 @@ export type MediaItem = {
   durationSeconds: number | null;
   sizeBytes: number | null;
   fingerprint: string;
+  progress: MediaProgress | null;
   locations: MediaFileLocation[];
+};
+
+export type MediaProgress = {
+  positionSeconds: number;
+  durationSeconds: number | null;
+  completed: boolean;
+  lastPlayedAt: string | null;
 };
 
 export type MediaFileLocation = {
@@ -204,6 +212,13 @@ export const api = {
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
+  updateMediaProgress: (
+    id: number,
+    payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },
+  ) => patchJSONBody<{ mediaItemId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean; lastPlayedAt: string | null }>(
+    `/api/media-items/${id}/progress`,
+    payload,
+  ),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),

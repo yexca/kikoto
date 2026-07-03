@@ -255,6 +255,9 @@ function WorkDetailView({
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
     player.playQueue(tracks.map((track) => toPlayerTrack(track, work)), locationId);
+    if (work.listeningStatus === "none" || work.listeningStatus === "want_to_listen") {
+      void onStatusChange(work.id, "listening");
+    }
   };
 
   const playAll = () => {
@@ -395,6 +398,7 @@ type TreeTrack = {
   streamUrl: string;
   sizeBytes: number | null;
   availability: string;
+  progress: MediaItem["progress"];
 };
 
 function buildTree(items: MediaItem[]): TreeNode {
@@ -420,6 +424,7 @@ function buildTree(items: MediaItem[]): TreeNode {
       streamUrl: location.streamUrl,
       sizeBytes: location.sizeBytes,
       availability: location.availability,
+      progress: item.progress,
     });
   }
   return root;
@@ -576,6 +581,7 @@ function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     workTitle: work.title,
     coverUrl: work.coverUrl,
     circle: work.circle,
+    progress: track.progress,
   };
 }
 

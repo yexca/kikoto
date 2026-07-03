@@ -100,6 +100,22 @@ Streams an available local media file location. The endpoint supports HTTP range
 
 Requires `playback:use`.
 
+```http
+PATCH /api/media-items/{id}/progress
+```
+
+Persists playback progress for the current user and logical media item.
+
+```json
+{
+  "positionSeconds": 123.5,
+  "durationSeconds": 456.0,
+  "completed": false
+}
+```
+
+Requires `playback:use`. Saving progress automatically moves a work from `none` or `want_to_listen` to `listening`.
+
 ## File Sources
 
 ```http

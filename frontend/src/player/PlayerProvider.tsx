@@ -14,7 +14,7 @@ import {
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { assetURL } from "@/lib/api";
+import { api, assetURL, type MediaProgress } from "@/lib/api";
 
 export type PlayMode = "order" | "loop" | "single";
 
@@ -31,6 +31,7 @@ export type PlayerTrack = {
   workTitle: string;
   coverUrl: string;
   circle: string;
+  progress: MediaProgress | null;
 };
 
 type PlayerContextValue = {
@@ -64,6 +65,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volumeValue, setVolumeValue] = useState(0.9);
   const [mode, setMode] = useState<PlayMode>("order");
+  const restoredMediaItemRef = useRef<number | null>(null);
+  const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const currentTrack = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -78,10 +81,32 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.src = assetURL(currentTrack.streamUrl);
     setCurrentTime(0);
     setDuration(0);
+    restoredMediaItemRef.current = null;
     if (isPlaying) {
       void audio.play().catch(() => setIsPlaying(false));
     }
   }, [currentTrack?.locationId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack || restoredMediaItemRef.current === currentTrack.mediaItemId) return;
+    const position = currentTrack.progress?.completed ? 0 : (currentTrack.progress?.positionSeconds ?? 0);
+    if (position > 0 && Number.isFinite(position)) {
+      const restore = () => {
+        audio.currentTime = Math.min(position, audio.duration || position);
+        setCurrentTime(audio.currentTime);
+        restoredMediaItemRef.current = currentTrack.mediaItemId;
+      };
+      if (audio.readyState >= 1) {
+        restore();
+      } else {
+        audio.addEventListener("loadedmetadata", restore, { once: true });
+        return () => audio.removeEventListener("loadedmetadata", restore);
+      }
+    } else {
+      restoredMediaItemRef.current = currentTrack.mediaItemId;
+    }
+  }, [currentTrack?.mediaItemId, currentTrack?.locationId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -140,8 +165,33 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seekTo(audio.currentTime + seconds);
   };
 
+  const saveProgress = (completed: boolean, force = false) => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+    const position = completed ? audio.duration || audio.currentTime : audio.currentTime;
+    if (!Number.isFinite(position) || position < 0) return;
+    const durationValue = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
+    const now = Date.now();
+    const lastSaved = lastSavedRef.current;
+    if (
+      !force &&
+      lastSaved?.mediaItemId === currentTrack.mediaItemId &&
+      now - lastSaved.at < 10_000 &&
+      Math.abs(position - lastSaved.position) < 8
+    ) {
+      return;
+    }
+    lastSavedRef.current = { mediaItemId: currentTrack.mediaItemId, position, at: now };
+    void api.updateMediaProgress(currentTrack.mediaItemId, {
+      positionSeconds: position,
+      durationSeconds: durationValue,
+      completed,
+    });
+  };
+
   const handleEnded = () => {
     const audio = audioRef.current;
+    saveProgress(true, true);
     if (mode === "single" && audio) {
       audio.currentTime = 0;
       void audio.play();
@@ -189,10 +239,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       <audio
         ref={audioRef}
         preload="metadata"
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+          saveProgress(false);
+        }}
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          saveProgress(false, true);
+          setIsPlaying(false);
+        }}
         onEnded={handleEnded}
       />
     </PlayerContext.Provider>

@@ -43,6 +43,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
+	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
@@ -267,6 +268,7 @@ type mediaItemDetail struct {
 	DurationSeconds *int64               `json:"durationSeconds"`
 	SizeBytes       *int64               `json:"sizeBytes"`
 	Fingerprint     string               `json:"fingerprint"`
+	Progress        *mediaProgressDetail `json:"progress"`
 	Locations       []fileLocationDetail `json:"locations"`
 }
 
@@ -413,23 +415,29 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			id,
-			parent_id,
-			kind,
-			title,
-			disc_no,
-			track_no,
-			duration_seconds,
-			size_bytes,
-			fingerprint
+			media_item.id,
+			media_item.parent_id,
+			media_item.kind,
+			media_item.title,
+			media_item.disc_no,
+			media_item.track_no,
+			media_item.duration_seconds,
+			media_item.size_bytes,
+			media_item.fingerprint,
+			user_media_progress.position_seconds,
+			user_media_progress.duration_seconds,
+			user_media_progress.completed,
+			user_media_progress.last_played_at
 		FROM media_item
-		WHERE work_id = ?
+		LEFT JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
+			AND user_media_progress.user_id = ?
+		WHERE media_item.work_id = ?
 		ORDER BY
-			COALESCE(disc_no, 0) ASC,
-			COALESCE(track_no, 0) ASC,
-			title ASC,
-			id ASC
-	`, id)
+			COALESCE(media_item.disc_no, 0) ASC,
+			COALESCE(media_item.track_no, 0) ASC,
+			media_item.title ASC,
+			media_item.id ASC
+	`, userID, id)
 	if err != nil {
 		return workDetail{}, err
 	}
@@ -443,6 +451,10 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		var trackNo sql.NullInt64
 		var itemDurationSeconds sql.NullInt64
 		var sizeBytes sql.NullInt64
+		var progressPositionSeconds sql.NullFloat64
+		var progressDurationSeconds sql.NullFloat64
+		var progressCompleted sql.NullBool
+		var progressLastPlayedAt sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&parentID,
@@ -453,6 +465,10 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			&itemDurationSeconds,
 			&sizeBytes,
 			&item.Fingerprint,
+			&progressPositionSeconds,
+			&progressDurationSeconds,
+			&progressCompleted,
+			&progressLastPlayedAt,
 		); err != nil {
 			return workDetail{}, err
 		}
@@ -461,6 +477,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		item.TrackNo = nullableInt64(trackNo)
 		item.DurationSeconds = nullableInt64(itemDurationSeconds)
 		item.SizeBytes = nullableInt64(sizeBytes)
+		item.Progress = nullableMediaProgress(progressPositionSeconds, progressDurationSeconds, progressCompleted, progressLastPlayedAt)
 		item.Locations = []fileLocationDetail{}
 		itemIndexes[item.ID] = len(work.MediaItems)
 		work.MediaItems = append(work.MediaItems, item)
