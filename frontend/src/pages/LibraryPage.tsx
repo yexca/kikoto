@@ -9,11 +9,9 @@ import {
   Folder,
   Headphones,
   ExternalLink,
-  ListMusic,
   Pause,
   Play,
   Search,
-  SkipForward,
   Star,
   Tags,
   UserRound,
@@ -23,9 +21,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, type MediaItem, type Work, type WorkDetail } from "@/lib/api";
+import { api, assetURL, type MediaItem, type Work, type WorkDetail } from "@/lib/api";
+import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
 
 export function LibraryPage() {
@@ -182,28 +180,17 @@ function WorkCard({ work, onOpen }: { work: Work; onOpen: () => void }) {
 function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail | null; onBack: () => void }) {
   const tree = useMemo(() => buildTree(work?.mediaItems ?? []), [work]);
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
-  const [playlist, setPlaylist] = useState<PlaylistTrack[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const currentTrack = playlist[currentIndex] ?? null;
+  const player = usePlayer();
 
-  const playTracks = (tracks: PlaylistTrack[], locationId: number) => {
-    if (tracks.length === 0) return;
-    const index = Math.max(
-      0,
-      tracks.findIndex((track) => track.locationId === locationId),
-    );
-    setPlaylist(tracks);
-    setCurrentIndex(index);
+  const playTracks = (tracks: TreeTrack[], locationId: number) => {
+    if (!work || tracks.length === 0) return;
+    player.playQueue(tracks.map((track) => toPlayerTrack(track, work)), locationId);
   };
 
   const playAll = () => {
-    if (allTracks.length > 0) {
+    if (work && allTracks.length > 0) {
       playTracks(allTracks, allTracks[0].locationId);
     }
-  };
-
-  const playNext = () => {
-    setCurrentIndex((index) => (playlist.length === 0 ? 0 : Math.min(index + 1, playlist.length - 1)));
   };
 
   if (!work) {
@@ -279,20 +266,10 @@ function WorkDetailView({ code, work, onBack }: { code: string; work: WorkDetail
         </div>
         <Card>
           <CardContent className="p-4">
-            <DirectoryTree root={tree} currentLocationId={currentTrack?.locationId ?? null} onPlayFolder={playTracks} />
+            <DirectoryTree root={tree} currentLocationId={player.currentTrack?.locationId ?? null} onPlayFolder={playTracks} />
           </CardContent>
         </Card>
       </section>
-
-      {currentTrack && (
-        <WorkPlayer
-          track={currentTrack}
-          playlist={playlist}
-          currentIndex={currentIndex}
-          onSelect={(index) => setCurrentIndex(index)}
-          onEnded={playNext}
-        />
-      )}
     </div>
   );
 }
@@ -325,10 +302,10 @@ type TreeNode = {
   name: string;
   path: string;
   children: Map<string, TreeNode>;
-  files: PlaylistTrack[];
+  files: TreeTrack[];
 };
 
-type PlaylistTrack = {
+type TreeTrack = {
   mediaItemId: number;
   locationId: number;
   title: string;
@@ -373,7 +350,7 @@ function DirectoryTree({
 }: {
   root: TreeNode;
   currentLocationId: number | null;
-  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
 }) {
   const folders = Array.from(root.children.values());
   if (folders.length === 0 && root.files.length === 0) {
@@ -413,7 +390,7 @@ function TreeFolder({
   node: TreeNode;
   depth: number;
   currentLocationId: number | null;
-  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
 }) {
   const [isOpen, setIsOpen] = useState(depth < 2);
   const childFolders = Array.from(node.children.values());
@@ -470,11 +447,11 @@ function TreeFile({
   isActive,
   onPlayFolder,
 }: {
-  file: PlaylistTrack;
-  files: PlaylistTrack[];
+  file: TreeTrack;
+  files: TreeTrack[];
   depth: number;
   isActive: boolean;
-  onPlayFolder: (tracks: PlaylistTrack[], locationId: number) => void;
+  onPlayFolder: (tracks: TreeTrack[], locationId: number) => void;
 }) {
   const canPlay = file.availability === "available" && file.streamUrl;
   return (
@@ -497,62 +474,8 @@ function TreeFile({
   );
 }
 
-function WorkPlayer({
-  track,
-  playlist,
-  currentIndex,
-  onSelect,
-  onEnded,
-}: {
-  track: PlaylistTrack;
-  playlist: PlaylistTrack[];
-  currentIndex: number;
-  onSelect: (index: number) => void;
-  onEnded: () => void;
-}) {
-  return (
-    <section className="sticky bottom-24 z-10 rounded-lg border bg-card p-4 shadow-sm lg:bottom-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-        <div className="min-w-0 space-y-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <ListMusic className="h-4 w-4 text-primary" />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{track.title}</div>
-              <div className="truncate text-xs text-muted-foreground">
-                {track.folderPath || "work root"} · {currentIndex + 1}/{playlist.length}
-              </div>
-            </div>
-          </div>
-          <audio
-            key={track.locationId}
-            className="w-full"
-            src={assetURL(track.streamUrl)}
-            controls
-            autoPlay
-            onEnded={onEnded}
-          />
-        </div>
-        <div className="max-h-36 space-y-1 overflow-auto rounded-md border bg-background p-2">
-          {playlist.map((item, index) => (
-            <button
-              key={item.locationId}
-              className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
-                index === currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
-              }`}
-              onClick={() => onSelect(index)}
-            >
-              {index === currentIndex ? <Pause className="h-3.5 w-3.5" /> : <SkipForward className="h-3.5 w-3.5" />}
-              <span className="truncate">{item.title}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function flattenTracks(root: TreeNode) {
-  const tracks: PlaylistTrack[] = [];
+  const tracks: TreeTrack[] = [];
   const visit = (node: TreeNode) => {
     tracks.push(...node.files.filter((file) => file.availability === "available" && file.streamUrl));
     for (const child of node.children.values()) {
@@ -563,10 +486,15 @@ function flattenTracks(root: TreeNode) {
   return tracks;
 }
 
-function assetURL(path: string) {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  return `${API_BASE}${path}`;
+function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
+  return {
+    ...track,
+    workId: work.id,
+    workCode: work.primaryCode,
+    workTitle: work.title,
+    coverUrl: work.coverUrl,
+    circle: work.circle,
+  };
 }
 
 function formatBytes(value: number | null) {

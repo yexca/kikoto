@@ -100,7 +100,13 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
+
+export function assetURL(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  return `${API_BASE}${path}`;
+}
 
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`);

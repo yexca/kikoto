@@ -1,0 +1,402 @@
+import {
+  ChevronDown,
+  ListMusic,
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  RotateCcw,
+  RotateCw,
+  SkipBack,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { assetURL } from "@/lib/api";
+
+export type PlayMode = "order" | "loop" | "single";
+
+export type PlayerTrack = {
+  mediaItemId: number;
+  locationId: number;
+  title: string;
+  folderPath: string;
+  streamUrl: string;
+  sizeBytes: number | null;
+  availability: string;
+  workId: number;
+  workCode: string;
+  workTitle: string;
+  coverUrl: string;
+  circle: string;
+};
+
+type PlayerContextValue = {
+  queue: PlayerTrack[];
+  currentIndex: number;
+  currentTrack: PlayerTrack | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  mode: PlayMode;
+  playQueue: (tracks: PlayerTrack[], locationId: number) => void;
+  selectTrack: (index: number) => void;
+  togglePlay: () => void;
+  next: () => void;
+  previous: () => void;
+  seekBy: (seconds: number) => void;
+  seekTo: (seconds: number) => void;
+  setVolume: (volume: number) => void;
+  cycleMode: () => void;
+};
+
+const PlayerContext = createContext<PlayerContextValue | null>(null);
+
+export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [queue, setQueue] = useState<PlayerTrack[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volumeValue, setVolumeValue] = useState(0.9);
+  const [mode, setMode] = useState<PlayMode>("order");
+  const currentTrack = queue[currentIndex] ?? null;
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = volumeValue;
+  }, [volumeValue]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+    audio.src = assetURL(currentTrack.streamUrl);
+    setCurrentTime(0);
+    setDuration(0);
+    if (isPlaying) {
+      void audio.play().catch(() => setIsPlaying(false));
+    }
+  }, [currentTrack?.locationId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+    if (isPlaying) {
+      void audio.play().catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, currentTrack]);
+
+  const playQueue = (tracks: PlayerTrack[], locationId: number) => {
+    if (tracks.length === 0) return;
+    const nextIndex = Math.max(
+      0,
+      tracks.findIndex((track) => track.locationId === locationId),
+    );
+    setQueue(tracks);
+    setCurrentIndex(nextIndex);
+    setIsPlaying(true);
+  };
+
+  const selectTrack = (index: number) => {
+    if (index < 0 || index >= queue.length) return;
+    setCurrentIndex(index);
+    setIsPlaying(true);
+  };
+
+  const next = () => {
+    setCurrentIndex((index) => {
+      if (queue.length === 0) return 0;
+      if (index < queue.length - 1) return index + 1;
+      return mode === "loop" ? 0 : index;
+    });
+    if (queue.length > 0) setIsPlaying(true);
+  };
+
+  const previous = () => {
+    setCurrentIndex((index) => {
+      if (queue.length === 0) return 0;
+      if (index > 0) return index - 1;
+      return mode === "loop" ? queue.length - 1 : index;
+    });
+    if (queue.length > 0) setIsPlaying(true);
+  };
+
+  const seekTo = (seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(seconds)) return;
+    audio.currentTime = Math.max(0, Math.min(seconds, audio.duration || seconds));
+  };
+
+  const seekBy = (seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    seekTo(audio.currentTime + seconds);
+  };
+
+  const handleEnded = () => {
+    const audio = audioRef.current;
+    if (mode === "single" && audio) {
+      audio.currentTime = 0;
+      void audio.play();
+      return;
+    }
+    if (currentIndex < queue.length - 1) {
+      setCurrentIndex((index) => index + 1);
+      setIsPlaying(true);
+      return;
+    }
+    if (mode === "loop" && queue.length > 0) {
+      setCurrentIndex(0);
+      setIsPlaying(true);
+      return;
+    }
+    setIsPlaying(false);
+  };
+
+  const value = useMemo<PlayerContextValue>(
+    () => ({
+      queue,
+      currentIndex,
+      currentTrack,
+      isPlaying,
+      currentTime,
+      duration,
+      volume: volumeValue,
+      mode,
+      playQueue,
+      selectTrack,
+      togglePlay: () => setIsPlaying((value) => (currentTrack ? !value : false)),
+      next,
+      previous,
+      seekBy,
+      seekTo,
+      setVolume: setVolumeValue,
+      cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
+    }),
+    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, mode],
+  );
+
+  return (
+    <PlayerContext.Provider value={value}>
+      {children}
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={handleEnded}
+      />
+    </PlayerContext.Provider>
+  );
+}
+
+export function usePlayer() {
+  const value = useContext(PlayerContext);
+  if (!value) {
+    throw new Error("usePlayer must be used inside PlayerProvider");
+  }
+  return value;
+}
+
+export function PlayerDock() {
+  const player = usePlayer();
+  const [expanded, setExpanded] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const [panel, setPanel] = useState<"queue" | "lyrics">("queue");
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isVolumeOpen, setIsVolumeOpen] = useState(false);
+  const track = player.currentTrack;
+
+  if (!track) return null;
+
+  const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
+  const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
+
+  if (!expanded) {
+    return (
+      <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
+        <div className="relative overflow-hidden rounded-lg border bg-card shadow-lg">
+          <div className="absolute inset-y-0 left-0 bg-primary/15" style={{ width: `${progress}%` }} />
+          <div className="relative z-10 flex min-h-[68px] items-center gap-3 px-3">
+            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(true)}>
+              <CoverImage track={track} className="h-12 w-16" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{track.title}</div>
+                <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
+              </div>
+            </button>
+            <Button size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+              {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className="fixed inset-x-3 bottom-[76px] z-40 max-h-[calc(100vh-96px)] overflow-hidden rounded-lg border bg-card shadow-xl lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
+      <div className="flex items-center justify-between border-b px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">Now playing</div>
+          <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => setExpanded(false)} aria-label="Collapse player">
+          <ChevronDown className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-auto p-4">
+        <CoverImage track={track} className="mx-auto aspect-[4/3] w-full max-w-[260px]" />
+        <div className="space-y-1 text-center">
+          <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
+          <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
+          <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
+        </div>
+
+        <div className="space-y-1">
+          <input
+            className="h-2 w-full accent-primary"
+            type="range"
+            min={0}
+            max={player.duration || 0}
+            step={0.1}
+            value={Math.min(player.currentTime, player.duration || player.currentTime)}
+            onChange={(event) => player.seekTo(Number(event.currentTarget.value))}
+            aria-label="Seek"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{formatTime(player.currentTime)}</span>
+            <span>{formatTime(player.duration)}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
+            <SkipBack className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
+            <SeekIcon direction="back" seconds={5} />
+          </Button>
+          <Button className="h-12 w-12" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+            {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
+            <SeekIcon direction="forward" seconds={10} />
+          </Button>
+          <Button variant="outline" size="icon" onClick={player.next} aria-label="Next">
+            <SkipForward className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2">
+          <Button variant="outline" size="sm" onClick={player.cycleMode} title={modeLabel}>
+            {player.mode === "single" ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant={panel === "queue" && isPanelOpen ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => {
+              setPanel("queue");
+              setIsPanelOpen((value) => (panel === "queue" ? !value : true));
+            }}
+          >
+            <ListMusic className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={panel === "lyrics" && isPanelOpen ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => {
+              setPanel("lyrics");
+              setIsPanelOpen((value) => (panel === "lyrics" ? !value : true));
+            }}
+            disabled
+          >
+            Lyrics
+          </Button>
+          <Button variant={isVolumeOpen ? "secondary" : "outline"} size="sm" onClick={() => setIsVolumeOpen((value) => !value)}>
+            <Volume2 className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {isVolumeOpen && (
+          <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2">
+            <Volume2 className="h-4 w-4 text-muted-foreground" />
+            <input
+              className="min-w-0 flex-1 accent-primary"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={player.volume}
+              onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
+              aria-label="Volume"
+            />
+            <span className="w-9 text-right text-xs text-muted-foreground">{Math.round(player.volume * 100)}</span>
+          </div>
+        )}
+
+        {isPanelOpen && (
+          <div className="max-h-44 space-y-1 overflow-auto rounded-md border bg-background p-2">
+            {panel === "lyrics" ? (
+              <div className="p-3 text-sm text-muted-foreground">No lyrics for this track.</div>
+            ) : (
+              player.queue.map((item, index) => (
+                <button
+                  key={item.locationId}
+                  className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
+                    index === player.currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
+                  }`}
+                  onClick={() => player.selectTrack(index)}
+                >
+                  {index === player.currentIndex ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                  <span className="truncate">{item.title}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; seconds: number }) {
+  const Icon = direction === "back" ? RotateCcw : RotateCw;
+  return (
+    <span className="relative inline-flex h-5 w-5 items-center justify-center">
+      <Icon className="h-5 w-5" />
+      <span className="absolute text-[8px] font-bold leading-none">{seconds}</span>
+    </span>
+  );
+}
+
+function CoverImage({ track, className }: { track: PlayerTrack; className: string }) {
+  return track.coverUrl ? (
+    <img src={assetURL(track.coverUrl)} alt="" className={`${className} shrink-0 rounded-md bg-muted object-contain`} />
+  ) : (
+    <div className={`${className} grid shrink-0 place-items-center rounded-md bg-secondary text-sm font-bold text-secondary-foreground`}>
+      {track.workCode.slice(0, 2)}
+    </div>
+  );
+}
+
+function formatTime(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0:00";
+  const total = Math.floor(value);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
