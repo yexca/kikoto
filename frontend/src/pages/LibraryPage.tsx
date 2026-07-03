@@ -1468,6 +1468,7 @@ type TreeTrack = {
   cacheLocationId: number | null;
   cachePath: string;
   cacheAvailable: boolean;
+  cacheStreamUrl: string;
   localLocationId: number | null;
   localPath: string;
   localAvailable: boolean;
@@ -1560,6 +1561,7 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       cacheLocationId: location.locationType === "cache" && location.availability === "available" ? location.id : null,
       cachePath: location.locationType === "cache" ? location.path : "",
       cacheAvailable: location.locationType === "cache" && location.availability === "available",
+      cacheStreamUrl: location.locationType === "cache" && location.availability === "available" ? `/api/media/${location.id}/stream` : "",
       localLocationId: location.locationType === "local" && location.availability === "available" ? location.id : null,
       localPath: location.locationType === "local" ? location.path : "",
       localAvailable: location.locationType === "local" && location.availability === "available",
@@ -1592,23 +1594,25 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         walk(children, child);
         return;
       }
+      const hasCache = node.cacheAvailable && node.cacheLocationId !== null;
       cursor.files.push({
         mediaItemId: nextID,
-        locationId: nextID,
+        locationId: hasCache ? node.cacheLocationId! : nextID,
         title,
         baseName: baseNameWithoutExtension(title),
         sourcePath: cursor.path ? `${cursor.path}/${title}` : title,
         kind: node.type || "file",
         folderPath: cursor.path,
-        locationType: "remote_stream",
-        streamUrl: node.streamUrl,
+        locationType: hasCache ? "cache" : "remote_stream",
+        streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : node.streamUrl,
         downloadUrl: node.downloadUrl,
-        assetUrl: node.downloadUrl || node.streamUrl,
+        assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
         sizeBytes: node.sizeBytes,
-        availability: node.streamUrl || node.downloadUrl ? "remote" : "metadata",
+        availability: hasCache ? "available" : node.streamUrl || node.downloadUrl ? "remote" : "metadata",
         cacheLocationId: node.cacheLocationId,
         cachePath: node.cachePath,
         cacheAvailable: node.cacheAvailable,
+        cacheStreamUrl: node.cacheAvailable && node.cacheLocationId !== null ? `/api/media/${node.cacheLocationId}/stream` : "",
         localLocationId: node.localLocationId,
         localPath: node.localPath,
         localAvailable: node.localAvailable,
@@ -2063,7 +2067,7 @@ function TreeFile({
   onDeleteCache?: (target: MediaDeleteTarget) => void;
   onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
-  const canPlay = Boolean(onPlayFolder && file.availability === "available" && file.streamUrl);
+  const canPlay = Boolean(onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
   const preview = previewForFile(file);
   const [confirmingDelete, setConfirmingDelete] = useState<"cache" | "local" | null>(null);
   return (
