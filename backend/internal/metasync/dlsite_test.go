@@ -18,6 +18,10 @@ func (f fakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite
 	return f.products[workno], nil
 }
 
+func (f fakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ string) (string, error) {
+	return "", nil
+}
+
 func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	db := openTestDB(t)
 	raw := json.RawMessage(`{"workno":"RJ01569979","product_name":"DLsite title"}`)

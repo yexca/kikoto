@@ -16,11 +16,13 @@ var dlsiteWorkNoPattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`)
 
 type DLsiteClient interface {
 	FetchProduct(ctx context.Context, workno string) (dlsite.Product, error)
+	DownloadCover(ctx context.Context, product dlsite.Product, cacheRoot string) (string, error)
 }
 
 type DLsiteSyncer struct {
-	db     *sql.DB
-	client DLsiteClient
+	db        *sql.DB
+	client    DLsiteClient
+	cacheRoot string
 }
 
 type DLsiteSyncResult struct {
@@ -40,6 +42,11 @@ type workTarget struct {
 
 func NewDLsiteSyncer(db *sql.DB, client DLsiteClient) *DLsiteSyncer {
 	return &DLsiteSyncer{db: db, client: client}
+}
+
+func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
+	s.cacheRoot = cacheRoot
+	return s
 }
 
 func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
@@ -63,6 +70,11 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 		if err := s.applyProduct(ctx, target.ID, product); err != nil {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
 			continue
+		}
+		if s.cacheRoot != "" {
+			if _, err := s.client.DownloadCover(ctx, product, s.cacheRoot); err != nil {
+				result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", target.PrimaryCode, err.Error()))
+			}
 		}
 		result.SyncedWorks++
 	}

@@ -3,6 +3,15 @@ export type Work = {
   primaryCode: string;
   title: string;
   createdAt: string;
+  coverUrl: string;
+  dlsiteUrl: string;
+  circle: string;
+  rating: number | null;
+  tags: string[];
+  voiceActors: string[];
+  trackCount: number;
+  availableLocations: number;
+  availability: string[];
 };
 
 export type WorkDetail = {
@@ -17,6 +26,12 @@ export type WorkDetail = {
   durationSeconds: number | null;
   createdAt: string;
   updatedAt: string;
+  coverUrl: string;
+  dlsiteUrl: string;
+  circle: string;
+  rating: number | null;
+  tags: string[];
+  voiceActors: string[];
   mediaItems: MediaItem[];
 };
 

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -30,6 +32,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
@@ -41,11 +44,46 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
+	file := filepath.Base(r.PathValue("file"))
+	if file == "." || file == string(filepath.Separator) || strings.Contains(file, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
+		return
+	}
+	path := filepath.Join(s.cfg.CacheRoot, "cover", file)
+	http.ServeFile(w, r, path)
+}
+
 func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, primary_code, title, created_at
+		SELECT
+			work.id,
+			work.primary_code,
+			work.title,
+			work.created_at,
+			(
+				SELECT COUNT(*)
+				FROM media_item
+				WHERE media_item.work_id = work.id
+			) AS track_count,
+			(
+				SELECT COUNT(*)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_file_location.availability = 'available'
+			) AS available_locations,
+			(
+				SELECT snapshot_json
+				FROM metadata_snapshot
+				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+				WHERE metadata_snapshot.work_id = work.id
+					AND metadata_provider.code = 'dlsite'
+				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+				LIMIT 1
+			) AS snapshot_json
 		FROM work
-		ORDER BY created_at DESC
+		ORDER BY work.created_at DESC
 		LIMIT 100
 	`)
 	if err != nil {
@@ -55,19 +93,45 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type work struct {
-		ID          int64  `json:"id"`
-		PrimaryCode string `json:"primaryCode"`
-		Title       string `json:"title"`
-		CreatedAt   string `json:"createdAt"`
+		ID                 int64    `json:"id"`
+		PrimaryCode        string   `json:"primaryCode"`
+		Title              string   `json:"title"`
+		CreatedAt          string   `json:"createdAt"`
+		CoverURL           string   `json:"coverUrl"`
+		DLsiteURL          string   `json:"dlsiteUrl"`
+		Circle             string   `json:"circle"`
+		Rating             *float64 `json:"rating"`
+		Tags               []string `json:"tags"`
+		VoiceActors        []string `json:"voiceActors"`
+		TrackCount         int64    `json:"trackCount"`
+		AvailableLocations int64    `json:"availableLocations"`
+		Availability       []string `json:"availability"`
 	}
 
 	works := []work{}
 	for rows.Next() {
 		var item work
-		if err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.CreatedAt); err != nil {
+		var snapshot sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.PrimaryCode,
+			&item.Title,
+			&item.CreatedAt,
+			&item.TrackCount,
+			&item.AvailableLocations,
+			&snapshot,
+		); err != nil {
 			writeError(w, err)
 			return
 		}
+		metadata := parseDLsiteSnapshot(snapshot.String)
+		item.CoverURL = s.coverURL(item.PrimaryCode)
+		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
+		item.Circle = metadata.Circle
+		item.Rating = metadata.Rating
+		item.Tags = metadata.Tags
+		item.VoiceActors = metadata.VoiceActors
+		item.Availability = availabilityBadges(item.AvailableLocations)
 		works = append(works, item)
 	}
 
@@ -86,6 +150,12 @@ type workDetail struct {
 	DurationSeconds *int64            `json:"durationSeconds"`
 	CreatedAt       string            `json:"createdAt"`
 	UpdatedAt       string            `json:"updatedAt"`
+	CoverURL        string            `json:"coverUrl"`
+	DLsiteURL       string            `json:"dlsiteUrl"`
+	Circle          string            `json:"circle"`
+	Rating          *float64          `json:"rating"`
+	Tags            []string          `json:"tags"`
+	VoiceActors     []string          `json:"voiceActors"`
 	MediaItems      []mediaItemDetail `json:"mediaItems"`
 }
 
@@ -174,7 +244,27 @@ func (s *Server) loadWorkDetail(ctx context.Context, id int64) (workDetail, erro
 	}
 	work.ReleaseDate = nullableString(releaseDate)
 	work.DurationSeconds = nullableInt64(durationSeconds)
+	work.CoverURL = s.coverURL(work.PrimaryCode)
+	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
 	work.MediaItems = []mediaItemDetail{}
+
+	var snapshot sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT metadata_snapshot.snapshot_json
+		FROM metadata_snapshot
+		INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+		WHERE metadata_snapshot.work_id = ?
+			AND metadata_provider.code = 'dlsite'
+		ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+		LIMIT 1
+	`, id).Scan(&snapshot); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return workDetail{}, err
+	}
+	metadata := parseDLsiteSnapshot(snapshot.String)
+	work.Circle = metadata.Circle
+	work.Rating = metadata.Rating
+	work.Tags = metadata.Tags
+	work.VoiceActors = metadata.VoiceActors
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
@@ -381,7 +471,7 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil))
+	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).WithCacheRoot(s.cfg.CacheRoot)
 	result, err := syncer.SyncAll(r.Context())
 	if err != nil {
 		writeError(w, err)
@@ -692,6 +782,130 @@ func nullableInt64(value sql.NullInt64) *int64 {
 		return nil
 	}
 	return &value.Int64
+}
+
+type dlsiteSnapshotMetadata struct {
+	Circle      string
+	Rating      *float64
+	Tags        []string
+	VoiceActors []string
+}
+
+func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
+	metadata := dlsiteSnapshotMetadata{
+		Tags:        []string{},
+		VoiceActors: []string{},
+	}
+	if strings.TrimSpace(raw) == "" {
+		return metadata
+	}
+
+	rawBytes := []byte(raw)
+	var combined struct {
+		Product json.RawMessage `json:"product"`
+		Dynamic json.RawMessage `json:"dynamic"`
+	}
+	if err := json.Unmarshal(rawBytes, &combined); err == nil && len(combined.Product) > 0 {
+		rawBytes = combined.Product
+	}
+
+	var payload struct {
+		MakerName      string   `json:"maker_name"`
+		RateAverage2DP *float64 `json:"rate_average_2dp"`
+		RateAverage    *float64 `json:"rate_average"`
+		Genres         []struct {
+			Name     string `json:"name"`
+			NameBase string `json:"name_base"`
+		} `json:"genres"`
+		Creators map[string][]struct {
+			Name string `json:"name"`
+		} `json:"creaters"`
+	}
+	if err := json.Unmarshal(rawBytes, &payload); err != nil {
+		return metadata
+	}
+	if len(combined.Dynamic) > 0 {
+		var dynamic struct {
+			RateAverage2DP *float64 `json:"rate_average_2dp"`
+			RateAverage    *float64 `json:"rate_average"`
+		}
+		if err := json.Unmarshal(combined.Dynamic, &dynamic); err == nil {
+			if dynamic.RateAverage2DP != nil {
+				payload.RateAverage2DP = dynamic.RateAverage2DP
+			} else if dynamic.RateAverage != nil {
+				payload.RateAverage = dynamic.RateAverage
+			}
+		}
+	}
+
+	metadata.Circle = strings.TrimSpace(payload.MakerName)
+	if payload.RateAverage2DP != nil {
+		metadata.Rating = payload.RateAverage2DP
+	} else if payload.RateAverage != nil {
+		metadata.Rating = payload.RateAverage
+	}
+
+	seenTags := map[string]bool{}
+	for _, genre := range payload.Genres {
+		name := strings.TrimSpace(genre.Name)
+		if name == "" {
+			name = strings.TrimSpace(genre.NameBase)
+		}
+		if name == "" || seenTags[name] {
+			continue
+		}
+		seenTags[name] = true
+		metadata.Tags = append(metadata.Tags, name)
+		if len(metadata.Tags) >= 8 {
+			break
+		}
+	}
+
+	seenActors := map[string]bool{}
+	for _, creator := range payload.Creators["voice_by"] {
+		name := strings.TrimSpace(creator.Name)
+		if name == "" || seenActors[name] {
+			continue
+		}
+		seenActors[name] = true
+		metadata.VoiceActors = append(metadata.VoiceActors, name)
+	}
+
+	return metadata
+}
+
+func availabilityBadges(availableLocations int64) []string {
+	if availableLocations > 0 {
+		return []string{"local"}
+	}
+	return []string{"missing"}
+}
+
+func (s *Server) coverURL(primaryCode string) string {
+	code := strings.ToUpper(strings.TrimSpace(primaryCode))
+	if code == "" {
+		return ""
+	}
+	for _, extension := range []string{".jpg", ".jpeg", ".png", ".webp"} {
+		file := code + extension
+		path := filepath.Join(s.cfg.CacheRoot, "cover", file)
+		if _, err := os.Stat(path); err == nil {
+			return "/api/assets/covers/" + file
+		}
+	}
+	return ""
+}
+
+func dlsiteURL(primaryCode string) string {
+	code := strings.ToUpper(strings.TrimSpace(primaryCode))
+	if code == "" {
+		return ""
+	}
+	site := "maniax"
+	if strings.HasPrefix(code, "VJ") {
+		site = "pro"
+	}
+	return fmt.Sprintf("https://www.dlsite.com/%s/work/=/product_id/%s.html", site, code)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

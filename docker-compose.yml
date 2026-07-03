@@ -6,6 +6,7 @@ services:
       KIKOTO_HTTP_ADDR: 0.0.0.0:7659
       KIKOTO_DB_PATH: /config/kikoto.db
       KIKOTO_DATA_ROOT: /data
+      KIKOTO_CACHE_ROOT: /config/cached
       KIKOTO_LOCAL_SCAN_DEPTH: 2
     ports:
       - "7659:7659"

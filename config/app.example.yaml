@@ -8,6 +8,7 @@ database:
 library:
   data_root: /data
   local_scan_depth: 2
+  cache_root: /config/cached
 
 security:
   # Store real secrets outside source control. This file is only a template.

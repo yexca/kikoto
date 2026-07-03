@@ -9,6 +9,7 @@ type Config struct {
 	HTTPAddr       string
 	DatabasePath   string
 	DataRoot       string
+	CacheRoot      string
 	LocalScanDepth int
 }
 
@@ -17,6 +18,7 @@ func Load() Config {
 		HTTPAddr:       env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:   env("KIKOTO_DB_PATH", "../config/kikoto.db"),
 		DataRoot:       env("KIKOTO_DATA_ROOT", "../data"),
+		CacheRoot:      env("KIKOTO_CACHE_ROOT", "../config/cached"),
 		LocalScanDepth: envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
 	}
 }

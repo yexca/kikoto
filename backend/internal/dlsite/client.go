@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,20 +20,46 @@ type Client struct {
 }
 
 type Product struct {
-	WorkNo            string          `json:"workno"`
-	ProductID         string          `json:"product_id"`
-	SiteID            string          `json:"site_id"`
-	SiteIDTouch       string          `json:"site_id_touch"`
-	ProductName       string          `json:"product_name"`
-	WorkName          string          `json:"work_name"`
-	WorkNameKana      string          `json:"work_name_kana"`
-	Intro             string          `json:"intro"`
-	IntroShort        string          `json:"intro_s"`
-	RegistDate        string          `json:"regist_date"`
-	AgeCategoryString string          `json:"age_category_string"`
-	WorkType          string          `json:"work_type"`
-	WorkTypeString    string          `json:"work_type_string"`
-	Raw               json.RawMessage `json:"-"`
+	WorkNo            string               `json:"workno"`
+	ProductID         string               `json:"product_id"`
+	SiteID            string               `json:"site_id"`
+	SiteIDTouch       string               `json:"site_id_touch"`
+	MakerID           string               `json:"maker_id"`
+	MakerName         string               `json:"maker_name"`
+	ProductName       string               `json:"product_name"`
+	WorkName          string               `json:"work_name"`
+	WorkNameKana      string               `json:"work_name_kana"`
+	Intro             string               `json:"intro"`
+	IntroShort        string               `json:"intro_s"`
+	RegistDate        string               `json:"regist_date"`
+	AgeCategoryString string               `json:"age_category_string"`
+	WorkType          string               `json:"work_type"`
+	WorkTypeString    string               `json:"work_type_string"`
+	ImageMain         Image                `json:"image_main"`
+	ImageThumb        Image                `json:"image_thum"`
+	ImageThumbMini    Image                `json:"image_thum_mini"`
+	Genres            []Genre              `json:"genres"`
+	Creators          map[string][]Creator `json:"creaters"`
+	Raw               json.RawMessage      `json:"-"`
+	ProductRaw        json.RawMessage      `json:"-"`
+	DynamicRaw        json.RawMessage      `json:"-"`
+	RateAverage2DP    *float64             `json:"-"`
+}
+
+type Image struct {
+	URL         string `json:"url"`
+	ResizeURL   string `json:"resize_url"`
+	RelativeURL string `json:"relative_url"`
+}
+
+type Genre struct {
+	Name     string `json:"name"`
+	NameBase string `json:"name_base"`
+}
+
+type Creator struct {
+	Name           string `json:"name"`
+	Classification string `json:"classification"`
 }
 
 func NewClient(httpClient *http.Client) *Client {
@@ -64,6 +92,75 @@ func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, erro
 		lastErr = fmt.Errorf("no candidate sites for %s", workno)
 	}
 	return Product{}, lastErr
+}
+
+func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot string) (string, error) {
+	coverURL := product.CoverURL()
+	if coverURL == "" {
+		return "", nil
+	}
+
+	if err := os.MkdirAll(filepath.Join(cacheRoot, "cover"), 0o755); err != nil {
+		return "", err
+	}
+
+	parsedURL, err := url.Parse(coverURL)
+	if err != nil {
+		return "", err
+	}
+	extension := filepath.Ext(parsedURL.Path)
+	if extension == "" || len(extension) > 6 {
+		extension = ".jpg"
+	}
+	relativePath := filepath.ToSlash(filepath.Join("cover", strings.ToUpper(product.WorkNo)+extension))
+	targetPath := filepath.Join(cacheRoot, filepath.FromSlash(relativePath))
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, coverURL, nil)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("User-Agent", c.userAgent)
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("cover download returned %s", response.Status)
+	}
+
+	file, err := os.Create(targetPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, response.Body); err != nil {
+		return "", err
+	}
+	return relativePath, nil
+}
+
+func (p Product) CoverURL() string {
+	for _, value := range []string{
+		p.ImageMain.URL,
+		p.ImageMain.ResizeURL,
+		p.ImageThumb.URL,
+		p.ImageThumb.ResizeURL,
+		p.ImageThumbMini.URL,
+		p.ImageThumbMini.ResizeURL,
+	} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			if strings.HasPrefix(value, "//") {
+				return "https:" + value
+			}
+			return value
+		}
+	}
+	return ""
 }
 
 func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno string) (Product, error) {
@@ -102,6 +199,7 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if err := json.Unmarshal(raws[0], &product); err != nil {
 		return Product{}, err
 	}
+	product.ProductRaw = raws[0]
 	product.Raw = raws[0]
 	if product.WorkNo == "" {
 		product.WorkNo = product.ProductID
@@ -112,7 +210,80 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if !strings.EqualFold(product.WorkNo, workno) {
 		return Product{}, fmt.Errorf("dlsite %s returned %s for %s", site, product.WorkNo, workno)
 	}
+	if dynamicRaw, rating, err := c.fetchDynamic(ctx, product); err == nil {
+		product.DynamicRaw = dynamicRaw
+		product.RateAverage2DP = rating
+		product.Raw = combinedRaw(product.ProductRaw, product.DynamicRaw)
+	}
 	return product, nil
+}
+
+func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMessage, *float64, error) {
+	site := product.SiteID
+	if site == "" {
+		if strings.HasPrefix(product.WorkNo, "VJ") {
+			site = "pro"
+		} else {
+			site = "maniax-touch"
+		}
+	}
+	if site == "maniax" {
+		site = "maniax-touch"
+	}
+
+	endpoint := fmt.Sprintf("%s/%s/product/info/ajax?product_id=%s", strings.TrimRight(c.baseURL, "/"), site, url.QueryEscape(product.WorkNo))
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", c.userAgent)
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, nil, fmt.Errorf("dlsite dynamic returned %s", response.Status)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, nil, err
+	}
+	raw, ok := payload[product.WorkNo]
+	if !ok {
+		return nil, nil, fmt.Errorf("dynamic metadata missing %s", product.WorkNo)
+	}
+
+	var dynamic struct {
+		RateAverage2DP *float64 `json:"rate_average_2dp"`
+		RateAverage    *float64 `json:"rate_average"`
+	}
+	if err := json.Unmarshal(raw, &dynamic); err != nil {
+		return nil, nil, err
+	}
+	rating := dynamic.RateAverage2DP
+	if rating == nil {
+		rating = dynamic.RateAverage
+	}
+	return raw, rating, nil
+}
+
+func combinedRaw(productRaw json.RawMessage, dynamicRaw json.RawMessage) json.RawMessage {
+	value, err := json.Marshal(map[string]json.RawMessage{
+		"product": productRaw,
+		"dynamic": dynamicRaw,
+	})
+	if err != nil {
+		return productRaw
+	}
+	return value
 }
 
 func candidateSites(workno string) []string {
