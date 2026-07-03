@@ -45,6 +45,7 @@ import {
   type RemoteWorksResponse,
   type RemoteWork,
   type RemoteWorkDetail,
+  type SourceAvailabilitySource,
   type Work,
   type WorkDetail,
 } from "@/lib/api";
@@ -1097,9 +1098,13 @@ function WorkDetailView({
   const [isDeleting, setIsDeleting] = useState(false);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
+  const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const tree = useMemo(
-    () => selectedRemoteSource ? buildRemoteTree(selectedRemoteSource.detail.tracks) : buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? ""),
-    [work, selectedSource, selectedRemoteSource],
+    () => {
+      if (selectedRemoteSource && !selectedRemoteDetail) return emptyTree();
+      return selectedRemoteDetail ? buildRemoteTree(selectedRemoteDetail.tracks) : buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? "");
+    },
+    [work, selectedSource, selectedRemoteDetail],
   );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const player = usePlayer();
@@ -1117,14 +1122,18 @@ function WorkDetailView({
     setRemoteSources([]);
     if (!work?.primaryCode || sources.length === 0) return;
     let cancelled = false;
-    const enabledRemoteSources = sources.filter((source) => source.enabled && source.sourceType === "kikoeru_compatible");
-    if (enabledRemoteSources.length === 0) return;
     setIsCheckingSources(true);
-    Promise.allSettled(enabledRemoteSources.map(async (source) => ({ source, detail: await api.getRemoteSourceWork(source.id, work.primaryCode) })))
-      .then((results) => {
+    api.getSourceAvailability(work.primaryCode)
+      .then((result) => {
         if (cancelled) return;
-        const availableSources = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+        const availableSources = result.sources.flatMap((summary) => {
+          const source = sources.find((candidate) => candidate.id === summary.sourceId);
+          return source && summary.status === "available" ? [{ source, summary }] : [];
+        });
         setRemoteSources(availableSources);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteSources([]);
       })
       .finally(() => {
         if (!cancelled) setIsCheckingSources(false);
@@ -1133,6 +1142,25 @@ function WorkDetailView({
       cancelled = true;
     };
   }, [work?.primaryCode, sources]);
+
+  useEffect(() => {
+    if (!selectedRemoteSource || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
+    let cancelled = false;
+    const sourceID = selectedRemoteSource.source.id;
+    setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
+    api.getRemoteSourceWork(sourceID, selectedRemoteSource.summary.primaryCode || work?.primaryCode || code)
+      .then((detail) => {
+        if (cancelled) return;
+        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRemoteSource, work?.primaryCode, code]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -1149,9 +1177,9 @@ function WorkDetailView({
   };
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
-    if (!selectedRemoteSource || tracks.length === 0) return;
+    if (!selectedRemoteDetail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteSource.detail)),
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
       locationId,
     );
   };
@@ -1299,7 +1327,7 @@ function WorkDetailView({
         </div>
         <Card>
           <CardContent className="p-4">
-            {selectedRemoteSource && (
+            {selectedRemoteSource?.detail && (
               <RemoteSourceDetailActions
                 source={selectedRemoteSource.source}
                 detail={selectedRemoteSource.detail}
@@ -1308,22 +1336,27 @@ function WorkDetailView({
                 onWorksChanged={onWorksChanged}
               />
             )}
+            {selectedRemoteSource && !selectedRemoteSource.detail && (
+              <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">
+                {selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet."}
+              </div>
+            )}
             {directoryMode === "browse" ? (
               <DirectoryBrowser
                 root={tree}
                 currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={selectedRemoteSource ? playRemoteTracks : playTracks}
+                onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
                 onPreview={setPreview}
-                onDeleteCache={selectedRemoteSource ? setDeleteTarget : undefined}
+                onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
                 onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
               />
             ) : (
               <DirectoryTree
                 root={tree}
                 currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={selectedRemoteSource ? playRemoteTracks : playTracks}
+                onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
                 onPreview={setPreview}
-                onDeleteCache={selectedRemoteSource ? setDeleteTarget : undefined}
+                onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
                 onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
               />
             )}
@@ -1490,8 +1523,15 @@ type SourceTabInfo = {
 
 type RemoteSourceAvailability = {
   source: LibrarySource;
-  detail: RemoteWorkDetail;
+  summary: SourceAvailabilitySource;
+  detail?: RemoteWorkDetail;
+  loading?: boolean;
+  error?: string;
 };
+
+function emptyTree(): TreeNode {
+  return { name: "", path: "", children: new Map(), files: [] };
+}
 
 function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailability[] = []): SourceTabInfo[] {
   const sources = new Map<number, SourceTabInfo>();

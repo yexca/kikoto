@@ -26,6 +26,10 @@ type appSettingsResponse struct {
 	CacheEnabled       bool                `json:"cacheEnabled"`
 	CacheLimitGB       int                 `json:"cacheLimitGb"`
 	RemoteSaveTemplate string              `json:"remoteSaveTemplate"`
+	RemoteDelayBase    float64             `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom  float64             `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff      float64             `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff   float64             `json:"remoteMaxBackoffSeconds"`
 	DataRoot           string              `json:"dataRoot"`
 	CacheRoot          string              `json:"cacheRoot"`
 	FileSources        []fileSourceSummary `json:"fileSources"`
@@ -108,6 +112,30 @@ type remoteWorkDetail struct {
 	ImportStatus    string              `json:"importStatus"`
 	WorkID          *int64              `json:"workId"`
 	Tracks          []remoteTrackDetail `json:"tracks"`
+}
+
+type sourceAvailabilityResponse struct {
+	WorkCode  string                      `json:"workCode"`
+	CheckedAt string                      `json:"checkedAt"`
+	RunID     int64                       `json:"runId"`
+	Sources   []sourceAvailabilitySummary `json:"sources"`
+}
+
+type sourceAvailabilitySummary struct {
+	SourceID    int64  `json:"sourceId"`
+	SourceCode  string `json:"sourceCode"`
+	DisplayName string `json:"displayName"`
+	Status      string `json:"status"`
+	RemoteID    string `json:"remoteId"`
+	PrimaryCode string `json:"primaryCode"`
+	Title       string `json:"title"`
+	CoverURL    string `json:"coverUrl"`
+	WorkID      *int64 `json:"workId"`
+	HasRemote   bool   `json:"hasRemote"`
+	HasCache    bool   `json:"hasCache"`
+	HasLocal    bool   `json:"hasLocal"`
+	Error       string `json:"error"`
+	ElapsedMS   int64  `json:"elapsedMs"`
 }
 
 type remoteTrackDetail struct {
@@ -211,11 +239,15 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth     *int    `json:"localScanDepth"`
-		AutoSyncRemote     *bool   `json:"autoSyncRemote"`
-		CacheEnabled       *bool   `json:"cacheEnabled"`
-		CacheLimitGB       *int    `json:"cacheLimitGb"`
-		RemoteSaveTemplate *string `json:"remoteSaveTemplate"`
+		LocalScanDepth     *int     `json:"localScanDepth"`
+		AutoSyncRemote     *bool    `json:"autoSyncRemote"`
+		CacheEnabled       *bool    `json:"cacheEnabled"`
+		CacheLimitGB       *int     `json:"cacheLimitGb"`
+		RemoteSaveTemplate *string  `json:"remoteSaveTemplate"`
+		RemoteDelayBase    *float64 `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom  *float64 `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff      *float64 `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff   *float64 `json:"remoteMaxBackoffSeconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -280,6 +312,46 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			value = "/data/<source_name>/<work_code>"
 		}
 		if err := upsertSetting(r, tx, "remote_save_root_template", value); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RemoteDelayBase != nil {
+		if *payload.RemoteDelayBase < 0 || *payload.RemoteDelayBase > 60 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteDelayBaseSeconds must be between 0 and 60"})
+			return
+		}
+		if err := upsertSetting(r, tx, "remote_request_delay_base_seconds", *payload.RemoteDelayBase); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RemoteDelayRandom != nil {
+		if *payload.RemoteDelayRandom < 0 || *payload.RemoteDelayRandom > 60 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteDelayRandomSeconds must be between 0 and 60"})
+			return
+		}
+		if err := upsertSetting(r, tx, "remote_request_delay_random_seconds", *payload.RemoteDelayRandom); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RemoteBackoff != nil {
+		if *payload.RemoteBackoff < 0 || *payload.RemoteBackoff > 3600 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteBackoffSeconds must be between 0 and 3600"})
+			return
+		}
+		if err := upsertSetting(r, tx, "remote_rate_limit_backoff_seconds", *payload.RemoteBackoff); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RemoteMaxBackoff != nil {
+		if *payload.RemoteMaxBackoff < 0 || *payload.RemoteMaxBackoff > 3600 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remoteMaxBackoffSeconds must be between 0 and 3600"})
+			return
+		}
+		if err := upsertSetting(r, tx, "remote_max_backoff_seconds", *payload.RemoteMaxBackoff); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -590,6 +662,80 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	sources, err := s.loadRemoteSourcesForAvailability(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	results := make([]sourceAvailabilitySummary, 0, len(sources))
+	for _, source := range sources {
+		result := sourceAvailabilitySummary{
+			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled",
+		}
+		started := time.Now()
+		if source.SourceType != "kikoeru_compatible" {
+			result.Status = "unavailable"
+			result.Error = "source is not kikoeru-compatible"
+			results = append(results, result)
+			continue
+		}
+		if !source.Enabled {
+			results = append(results, result)
+			continue
+		}
+		remoteWork, err := s.checkRemoteWorkAvailability(r.Context(), source, code)
+		result.ElapsedMS = time.Since(started).Milliseconds()
+		if err != nil {
+			result.Status = "error"
+			result.Error = err.Error()
+			if isNotFoundLikeError(err) {
+				result.Status = "not_found"
+			}
+			_ = s.updateSourceHealth(r.Context(), source.ID, "unavailable")
+			results = append(results, result)
+			continue
+		}
+		_ = s.updateSourceHealth(r.Context(), source.ID, "healthy")
+		workCode := normalizedRemoteWorkCode(remoteWork)
+		if workCode == "" {
+			workCode = code
+		}
+		result.Status = "available"
+		result.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
+		result.PrimaryCode = workCode
+		result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
+		result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
+		flags, err := s.sourceAvailabilityFlags(r.Context(), source.ID, workCode)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		result.WorkID = flags.WorkID
+		result.HasRemote = flags.HasRemote
+		result.HasCache = flags.HasCache
+		result.HasLocal = flags.HasLocal
+		results = append(results, result)
+	}
+	runID, err := s.recordSourceAvailabilityWorkflow(r.Context(), code, checkedAt, results)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sourceAvailabilityResponse{
+		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
+	})
+}
+
 func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
@@ -756,6 +902,180 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
 	}
 	return source, nil
+}
+
+func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remoteSourceForUse, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, '')
+		FROM file_source AS source
+		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
+		WHERE source.source_type = 'kikoeru_compatible'
+		ORDER BY source.priority ASC, source.id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sources := []remoteSourceForUse{}
+	for rows.Next() {
+		var source remoteSourceForUse
+		var configJSON string
+		if err := rows.Scan(
+			&source.ID,
+			&source.Code,
+			&source.DisplayName,
+			&source.SourceType,
+			&source.Enabled,
+			&configJSON,
+			&source.Endpoint.APIURL,
+			&source.Endpoint.BaseURL,
+			&source.Endpoint.FallbackURL,
+		); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+			source.Endpoint.APIURL = source.Endpoint.BaseURL
+		}
+		if strings.TrimSpace(configJSON) != "" {
+			_ = json.Unmarshal([]byte(configJSON), &source.Config)
+		}
+		sources = append(sources, source)
+	}
+	return sources, rows.Err()
+}
+
+func (s *Server) checkRemoteWorkAvailability(ctx context.Context, source remoteSourceForUse, code string) (kikoeru.Work, error) {
+	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
+	}
+	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	remoteWork, _, err := client.WorkInfo(ctx, code)
+	return remoteWork, err
+}
+
+type sourceAvailabilityState struct {
+	WorkID    *int64
+	HasRemote bool
+	HasCache  bool
+	HasLocal  bool
+}
+
+func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, workCode string) (sourceAvailabilityState, error) {
+	var flags sourceAvailabilityState
+	var workID sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", workCode).Scan(&workID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return flags, nil
+		}
+		return flags, err
+	}
+	flags.WorkID = nullableInt64(workID)
+	flags.HasRemote = s.workHasLocationType(ctx, workID.Int64, sourceID, "remote_stream")
+	flags.HasCache = s.workHasLocationType(ctx, workID.Int64, sourceID, "cache")
+	flags.HasLocal = s.workHasLocationType(ctx, workID.Int64, 0, "local")
+	return flags, nil
+}
+
+func (s *Server) workHasLocationType(ctx context.Context, workID int64, sourceID int64, locationType string) bool {
+	query := `
+		SELECT 1
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = ?
+			AND location.location_type = ?
+			AND location.availability = 'available'
+	`
+	args := []any{workID, locationType}
+	if sourceID > 0 {
+		query += " AND location.file_source_id = ?"
+		args = append(args, sourceID)
+	}
+	query += " LIMIT 1"
+	var found int
+	return s.db.QueryRowContext(ctx, query, args...).Scan(&found) == nil
+}
+
+func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code string, checkedAt string, results []sourceAvailabilitySummary) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "source_availability_check", "Check source availability", "Check configured remote sources for a work.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_source"},
+			{"id": "discover", "type": "discover_remote_works"},
+			{"id": "filter", "type": "filter_candidates"},
+			{"id": "match", "type": "match_works"},
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	available := 0
+	errorsCount := 0
+	notFound := 0
+	for _, result := range results {
+		switch result.Status {
+		case "available":
+			available++
+		case "not_found":
+			notFound++
+		case "error", "unavailable":
+			errorsCount++
+		}
+	}
+	input := map[string]any{"work_code": code}
+	summary := map[string]any{
+		"checked_at": checkedAt, "sources": len(results), "available": available, "not_found": notFound, "errors": errorsCount,
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "source_availability_check", "Check source availability", "succeeded", "detail_view", "work_detail_source_tabs", input, summary)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote sources", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"sources": len(results)},
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote works", Position: 2, Status: "succeeded",
+		Input: input, Output: map[string]any{"results": results},
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter available sources", Position: 3, Status: "succeeded",
+		Input: map[string]any{"work_code": code}, Output: map[string]any{"available": available, "not_found": notFound, "errors": errorsCount},
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "match", NodeType: "match_works", DisplayName: "Match local and cached availability", Position: 4, Status: "succeeded",
+		Input: map[string]any{"work_code": code}, Output: sourceAvailabilityMatchSummary(results),
+	}); err != nil {
+		return 0, err
+	}
+	return runID, tx.Commit()
+}
+
+func sourceAvailabilityMatchSummary(results []sourceAvailabilitySummary) map[string]any {
+	hasLocal := 0
+	hasCache := 0
+	hasRemote := 0
+	for _, result := range results {
+		if result.HasLocal {
+			hasLocal++
+		}
+		if result.HasCache {
+			hasCache++
+		}
+		if result.HasRemote {
+			hasRemote++
+		}
+	}
+	return map[string]any{"has_local": hasLocal, "has_cache": hasCache, "has_remote": hasRemote}
 }
 
 func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) ([]remoteWorkSummary, error) {
@@ -1097,7 +1417,7 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 			}
 			copied++
 		} else {
-			if _, err := downloadToFile(ctx, item.SourcePath, targetAbsPath); err != nil {
+			if _, err := s.downloadToFile(ctx, item.SourcePath, targetAbsPath); err != nil {
 				_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
 				return remoteWorkSaveResult{}, err
 			}
@@ -1876,6 +2196,14 @@ func normalizedRemoteWorkCode(work kikoeru.Work) string {
 	return ""
 }
 
+func isNotFoundLikeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "404") || strings.Contains(message, "not found") || strings.Contains(message, "no rows")
+}
+
 func countTrackNodes(nodes []kikoeru.Track) int {
 	count := 0
 	for _, node := range nodes {
@@ -1948,6 +2276,10 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CacheEnabled:       s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:       s.settingInt(r, "remote_cache_limit_gb", 20),
 		RemoteSaveTemplate: s.settingString(r, "remote_save_root_template", "/data/<source_name>/<work_code>"),
+		RemoteDelayBase:    s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:  s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:      s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:   s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		DataRoot:           s.cfg.DataRoot,
 		CacheRoot:          s.cfg.CacheRoot,
 		FileSources:        sources,
@@ -2139,6 +2471,30 @@ func (s *Server) settingBool(r *http.Request, key string, fallback bool) bool {
 		return fallback
 	}
 	var value bool
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return fallback
+	}
+	return value
+}
+
+func (s *Server) settingFloat(r *http.Request, key string, fallback float64) float64 {
+	var raw string
+	if err := s.db.QueryRowContext(r.Context(), "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var value float64
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return fallback
+	}
+	return value
+}
+
+func (s *Server) settingFloatContext(ctx context.Context, key string, fallback float64) float64 {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var value float64
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
 		return fallback
 	}

@@ -120,6 +120,10 @@ export type AppSettings = {
   cacheEnabled: boolean;
   cacheLimitGb: number;
   remoteSaveTemplate: string;
+  remoteDelayBaseSeconds: number;
+  remoteDelayRandomSeconds: number;
+  remoteBackoffSeconds: number;
+  remoteMaxBackoffSeconds: number;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -182,6 +186,30 @@ export type RemoteWorkDetail = {
   importStatus: string;
   workId: number | null;
   tracks: RemoteTrack[];
+};
+
+export type SourceAvailabilitySource = {
+  sourceId: number;
+  sourceCode: string;
+  displayName: string;
+  status: "available" | "not_found" | "unavailable" | "disabled" | "error";
+  remoteId: string;
+  primaryCode: string;
+  title: string;
+  coverUrl: string;
+  workId: number | null;
+  hasRemote: boolean;
+  hasCache: boolean;
+  hasLocal: boolean;
+  error: string;
+  elapsedMs: number;
+};
+
+export type SourceAvailabilityResponse = {
+  workCode: string;
+  checkedAt: string;
+  runId: number;
+  sources: SourceAvailabilitySource[];
 };
 
 export type RemoteWorkSyncResult = {
@@ -466,6 +494,8 @@ export const api = {
     ),
   getRemoteSourceWork: (id: number, code: string) =>
     getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`),
+  getSourceAvailability: (code: string) =>
+    getJSON<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`),
   planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
@@ -496,6 +526,10 @@ export const api = {
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
     remoteSaveTemplate?: string;
+    remoteDelayBaseSeconds?: number;
+    remoteDelayRandomSeconds?: number;
+    remoteBackoffSeconds?: number;
+    remoteMaxBackoffSeconds?: number;
   }) =>
     patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {

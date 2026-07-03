@@ -157,6 +157,17 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
+		Code:        "source_availability_check",
+		Name:        "Check source availability",
+		Description: "Check which configured remote sources can provide a work and record source-level results.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_remote_source", "displayName": "Select remote sources"},
+			{"id": "discover", "type": "discover_remote_works", "displayName": "Discover remote works"},
+			{"id": "filter", "type": "filter_candidates", "displayName": "Filter available sources"},
+			{"id": "match", "type": "match_works", "displayName": "Match local and cached availability"},
+		},
+	},
+	{
 		Code:        "source_health_check",
 		Name:        "Check source health",
 		Description: "Check configured remote source endpoints and fallback readiness. Not implemented as a runnable workflow yet.",

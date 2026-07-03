@@ -31,6 +31,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
+  const [remoteDelayBase, setRemoteDelayBase] = useState(0.5);
+  const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
+  const [remoteBackoff, setRemoteBackoff] = useState(30);
+  const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -55,6 +59,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setAutoSyncRemote(next.autoSyncRemote);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
+        setRemoteDelayBase(next.remoteDelayBaseSeconds);
+        setRemoteDelayRandom(next.remoteDelayRandomSeconds);
+        setRemoteBackoff(next.remoteBackoffSeconds);
+        setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch(() => setMessage("Settings API is unavailable."));
@@ -74,6 +82,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       cacheEnabled,
       cacheLimitGb,
       remoteSaveTemplate: saveTemplate,
+      remoteDelayBaseSeconds: remoteDelayBase,
+      remoteDelayRandomSeconds: remoteDelayRandom,
+      remoteBackoffSeconds: remoteBackoff,
+      remoteMaxBackoffSeconds: remoteMaxBackoff,
     });
     setSettings(next);
     setAutoSyncRemote(next.autoSyncRemote);
@@ -166,6 +178,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           autoSyncRemote={autoSyncRemote}
           cacheEnabled={cacheEnabled}
           cacheLimitGb={cacheLimitGb}
+          remoteDelayBase={remoteDelayBase}
+          remoteDelayRandom={remoteDelayRandom}
+          remoteBackoff={remoteBackoff}
+          remoteMaxBackoff={remoteMaxBackoff}
           saveSuffix={saveSuffix}
           saveTemplate={saveTemplate}
           saveSuffixError={saveSuffixError}
@@ -175,6 +191,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
             if (value) setAutoSyncRemote(true);
           }}
           onCacheLimitChange={setCacheLimitGb}
+          onRemoteDelayBaseChange={setRemoteDelayBase}
+          onRemoteDelayRandomChange={setRemoteDelayRandom}
+          onRemoteBackoffChange={setRemoteBackoff}
+          onRemoteMaxBackoffChange={setRemoteMaxBackoff}
           onSaveSuffixChange={setSaveSuffix}
           onSave={saveRuntimeSettings}
           onCreateSource={openCreateSource}
@@ -269,12 +289,20 @@ function RemoteSourceSettings({
   autoSyncRemote,
   cacheEnabled,
   cacheLimitGb,
+  remoteDelayBase,
+  remoteDelayRandom,
+  remoteBackoff,
+  remoteMaxBackoff,
   saveSuffix,
   saveTemplate,
   saveSuffixError,
   onAutoSyncChange,
   onCacheEnabledChange,
   onCacheLimitChange,
+  onRemoteDelayBaseChange,
+  onRemoteDelayRandomChange,
+  onRemoteBackoffChange,
+  onRemoteMaxBackoffChange,
   onSaveSuffixChange,
   onSave,
   onCreateSource,
@@ -286,12 +314,20 @@ function RemoteSourceSettings({
   autoSyncRemote: boolean;
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  remoteDelayBase: number;
+  remoteDelayRandom: number;
+  remoteBackoff: number;
+  remoteMaxBackoff: number;
   saveSuffix: string;
   saveTemplate: string;
   saveSuffixError: string;
   onAutoSyncChange: (value: boolean) => void;
   onCacheEnabledChange: (value: boolean) => void;
   onCacheLimitChange: (value: number) => void;
+  onRemoteDelayBaseChange: (value: number) => void;
+  onRemoteDelayRandomChange: (value: number) => void;
+  onRemoteBackoffChange: (value: number) => void;
+  onRemoteMaxBackoffChange: (value: number) => void;
   onSaveSuffixChange: (value: string) => void;
   onSave: () => Promise<void>;
   onCreateSource: () => void;
@@ -325,6 +361,53 @@ function RemoteSourceSettings({
                 min={0}
                 value={cacheLimitGb}
                 onChange={(event) => onCacheLimitChange(Number(event.target.value))}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Delay base sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={0.1}
+                value={remoteDelayBase}
+                onChange={(event) => onRemoteDelayBaseChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Delay random sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={0.1}
+                value={remoteDelayRandom}
+                onChange={(event) => onRemoteDelayRandomChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">429 backoff sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={1}
+                value={remoteBackoff}
+                onChange={(event) => onRemoteBackoffChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Max backoff sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={1}
+                value={remoteMaxBackoff}
+                onChange={(event) => onRemoteMaxBackoffChange(Number(event.target.value))}
               />
             </label>
           </div>

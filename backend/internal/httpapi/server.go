@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -42,6 +43,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
@@ -661,7 +663,7 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
 		return mediaCacheResult{}, err
 	}
-	written, err := downloadToFile(ctx, firstNonEmpty(downloadURL, streamURL), targetPath)
+	written, err := s.downloadToFile(ctx, firstNonEmpty(downloadURL, streamURL), targetPath)
 	if err != nil {
 		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
 		return mediaCacheResult{}, err
@@ -1073,29 +1075,57 @@ func (s *Server) settingBoolContext(ctx context.Context, key string, fallback bo
 	return value
 }
 
-func downloadToFile(ctx context.Context, sourceURL string, targetPath string) (int64, error) {
+func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPath string) (int64, error) {
 	if strings.TrimSpace(sourceURL) == "" {
 		return 0, fmt.Errorf("remote media has no download URL")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-	if err != nil {
-		return 0, err
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
+			return 0, err
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+		if err != nil {
+			return 0, err
+		}
+		request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			lastErr = err
+			if attempt < 2 {
+				if sleepErr := sleepContext(ctx, s.remoteBackoffDuration(ctx, nil, attempt)); sleepErr != nil {
+					return 0, sleepErr
+				}
+				continue
+			}
+			return 0, err
+		}
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			defer response.Body.Close()
+			return writeDownloadResponse(response.Body, targetPath)
+		}
+		statusErr := fmt.Errorf("remote media download returned HTTP %d", response.StatusCode)
+		lastErr = statusErr
+		retryable := isRetryableRemoteStatus(response.StatusCode)
+		backoff := s.remoteBackoffDuration(ctx, response, attempt)
+		_ = response.Body.Close()
+		if !retryable || attempt >= 2 {
+			return 0, statusErr
+		}
+		if err := sleepContext(ctx, backoff); err != nil {
+			return 0, err
+		}
 	}
-	request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return 0, fmt.Errorf("remote media download returned HTTP %d", response.StatusCode)
-	}
+	return 0, lastErr
+}
+
+func writeDownloadResponse(body io.Reader, targetPath string) (int64, error) {
 	tempPath := targetPath + ".tmp"
 	file, err := os.Create(tempPath)
 	if err != nil {
 		return 0, err
 	}
-	written, copyErr := io.Copy(file, response.Body)
+	written, copyErr := io.Copy(file, body)
 	closeErr := file.Close()
 	if copyErr != nil {
 		_ = os.Remove(tempPath)
@@ -1110,6 +1140,79 @@ func downloadToFile(ctx context.Context, sourceURL string, targetPath string) (i
 		return 0, err
 	}
 	return written, nil
+}
+
+func (s *Server) waitRemoteDownloadDelay(ctx context.Context) error {
+	base := s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)
+	randomRange := s.settingFloatContext(ctx, "remote_request_delay_random_seconds", 1.5)
+	if base < 0 {
+		base = 0
+	}
+	if randomRange < 0 {
+		randomRange = 0
+	}
+	delay := time.Duration(base * float64(time.Second))
+	if randomRange > 0 {
+		delay += time.Duration(rand.Float64() * randomRange * float64(time.Second))
+	}
+	return sleepContext(ctx, delay)
+}
+
+func (s *Server) remoteBackoffDuration(ctx context.Context, response *http.Response, attempt int) time.Duration {
+	fallback := s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)
+	maximum := s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)
+	if fallback < 0 {
+		fallback = 0
+	}
+	if maximum <= 0 {
+		maximum = 300
+	}
+	delay := time.Duration(fallback*float64(time.Second)) * time.Duration(attempt+1)
+	if response != nil {
+		if retryAfter := retryAfterDuration(response.Header.Get("Retry-After")); retryAfter > 0 {
+			delay = retryAfter
+		}
+	}
+	maxDelay := time.Duration(maximum * float64(time.Second))
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+	return delay
+}
+
+func retryAfterDuration(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		return time.Duration(seconds * float64(time.Second))
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		delay := time.Until(at)
+		if delay > 0 {
+			return delay
+		}
+	}
+	return 0
+}
+
+func isRetryableRemoteStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func cacheMediaRelPath(sourceCode string, workCode string, remotePath string) string {
