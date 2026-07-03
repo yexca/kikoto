@@ -760,7 +760,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := s.runRemoteWorkSave(r.Context(), sourceID, code, payload.Paths)
+	result, err := s.runRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return

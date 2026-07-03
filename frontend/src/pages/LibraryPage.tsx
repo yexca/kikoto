@@ -814,9 +814,12 @@ function RemoteWorkDetailView({
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
+  const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
+  const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
   const player = usePlayer();
 
   useEffect(() => {
@@ -936,129 +939,61 @@ function RemoteWorkDetailView({
         Back to source
       </Button>
 
-      <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="self-start overflow-hidden rounded-lg border bg-muted">
-          <div className="aspect-[4/3]">
-            {detail.coverUrl ? (
-              <img src={assetURL(detail.coverUrl)} alt="" className="h-full w-full object-contain" />
-            ) : (
-              <div className="grid h-full place-items-center text-4xl font-bold">{(detail.primaryCode || detail.remoteId).slice(0, 2)}</div>
-            )}
-          </div>
-        </div>
+      <DetailHero
+        coverUrl={detail.coverUrl}
+        fallbackCode={detail.primaryCode || detail.remoteId}
+        code={detail.primaryCode || detail.remoteId}
+        title={detail.title}
+        circle={detail.circle}
+        ratingLabel="Rating"
+        rating={detail.rating}
+        releaseDate={detail.releaseDate || "Unknown"}
+        fileLabel={source.displayName}
+        fileValue={`${trackCount} files`}
+        voiceActors={detail.voiceActors}
+        tags={detail.tags}
+      />
 
-        <div className="space-y-4">
-          <div>
-            <div className="text-sm font-semibold text-primary">{detail.primaryCode || detail.remoteId}</div>
-            <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{detail.title}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{detail.circle || "Unknown circle"}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
-              <DownloadCloud className="h-4 w-4" />
-              Fetch
-            </Button>
-            <Button size="sm" variant="outline" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("mark_interest")}>
-              <ListChecks className="h-4 w-4" />
-              Fetch and mark
-            </Button>
-            {detail.workId !== null && (
-              <Button size="sm" onClick={() => onOpenLocal(detail.workId!)}>
-                <MoreHorizontal className="h-4 w-4" />
-                Open local detail
-              </Button>
-            )}
-            <Button size="sm" variant="outline" disabled={isSaving || selectedPaths.length === 0} onClick={() => void planSave()}>
-              <ListChecks className="h-4 w-4" />
-              Plan save
-            </Button>
-            <Button size="sm" disabled={isSaving || selectedPaths.length === 0} onClick={() => void saveSelected()}>
-              <HardDriveDownload className="h-4 w-4" />
-              Save selected
-            </Button>
-            {detail.sourceUrl && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Source
-                </a>
-              </Button>
-            )}
-          </div>
-
-          {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label="Rating" value={detail.rating === null ? "No rating" : detail.rating.toFixed(2)} />
-            <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={detail.releaseDate || "Unknown"} />
-            <MetaTile icon={<FileAudio className="h-4 w-4" />} label={source.displayName} value={`${trackCount} playable files`} />
-          </div>
-
-          <InfoRow icon={<CircleUserRound className="h-4 w-4" />} label="Voice" value={detail.voiceActors.join(", ") || "No voice actor metadata"} />
-          <InfoRow icon={<Tags className="h-4 w-4" />} label="Tags" value={detail.tags.join(", ") || "No tag metadata"} />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold">Directory</h3>
-            <p className="text-sm text-muted-foreground">Previewing remote files from {detail.sourceName}; fetch before local marks or saves.</p>
-          </div>
-          <div className="flex gap-2 overflow-x-auto">
-            <button className="h-8 shrink-0 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">{detail.sourceName}</button>
-            <button
-              className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-medium ${
-                directoryMode === "browse" ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
-              }`}
-              title="Browse directory"
-              onClick={() => setDirectoryMode("browse")}
-            >
-              <Folder className="h-3.5 w-3.5" />
-              Browse
-            </button>
-            <button
-              className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-medium ${
-                directoryMode === "tree" ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
-              }`}
-              title="Tree view"
-              onClick={() => setDirectoryMode("tree")}
-            >
-              <FolderTree className="h-3.5 w-3.5" />
-              Tree
-            </button>
-          </div>
-        </div>
-        <Card>
-          <CardContent className="p-4">
-            <RemoteSaveSelectionPanel
-              root={tree}
-              selectedPaths={selectedSavePaths}
-              plan={savePlan}
-              onChange={setSelectedSavePaths}
-              disabled={isSaving}
-            />
-            {directoryMode === "browse" ? (
-              <DirectoryBrowser
-                root={tree}
-                currentLocationId={player.currentTrack?.locationId ?? null}
-                emptyLabel="No remote files detected."
-                onPlayFolder={playRemoteTracks}
-                onDeleteCache={setCacheDeleteTarget}
-              />
-            ) : (
-              <DirectoryTree
-                root={tree}
-                currentLocationId={player.currentTrack?.locationId ?? null}
-                emptyLabel="No remote files detected."
-                onPlayFolder={playRemoteTracks}
-                onDeleteCache={setCacheDeleteTarget}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <SourceDirectoryPanel
+        title={detail.sourceName}
+        description={`Previewing remote files from ${detail.sourceName}; fetch before local marks or saves.`}
+        tabs={remoteTabs}
+        activeKey={remoteSourceTabKey(source.id)}
+        onActiveKeyChange={() => undefined}
+        directoryMode={directoryMode}
+        onDirectoryModeChange={setDirectoryMode}
+        root={tree}
+        currentLocationId={player.currentTrack?.locationId ?? null}
+        emptyLabel="No remote files detected."
+        toolbar={
+          <SourceDirectoryToolbar
+            label={detail.sourceName}
+            description={`${trackCount} remote files detected.`}
+            message={message}
+            busy={isFetching || isSaving}
+            onPlay={remotePlayableTracks.length > 0 ? () => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId) : undefined}
+            onFetch={detail.primaryCode ? () => void fetchWork("manual_fetch") : undefined}
+            onFetchAndMark={detail.primaryCode ? () => void fetchWork("mark_interest") : undefined}
+            onOpenLocal={detail.workId !== null ? () => onOpenLocal(detail.workId!) : undefined}
+            onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
+            selectedCount={selectedPaths.length}
+          />
+        }
+        selectionModal={isSaveSelectionOpen ? (
+          <RemoteSaveSelectionPanel
+            root={tree}
+            selectedPaths={selectedSavePaths}
+            plan={savePlan}
+            onChange={setSelectedSavePaths}
+            disabled={isSaving}
+            onClose={() => setIsSaveSelectionOpen(false)}
+            onPlanSave={() => void planSave()}
+            onSave={() => void saveSelected()}
+          />
+        ) : null}
+        onPlayFolder={playRemoteTracks}
+        onDeleteCache={setCacheDeleteTarget}
+      />
       {cacheDeleteTarget && (
         <ConfirmMediaDeleteModal
           target={cacheDeleteTarget}
@@ -1096,9 +1031,16 @@ function WorkDetailView({
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
+  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
+  const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
+  const selectedRemoteWorkCode = selectedRemoteSource?.summary.primaryCode || work?.primaryCode || code;
   const tree = useMemo(
     () => {
       if (selectedRemoteSource && !selectedRemoteDetail) return emptyTree();
@@ -1107,7 +1049,10 @@ function WorkDetailView({
     [work, selectedSource, selectedRemoteDetail],
   );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
+  const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
+  const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
   const player = usePlayer();
+  const directoryTitle = selectedRemoteSource?.source.displayName ?? selectedSource?.label ?? "Directory";
   const directoryDescription = selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : "File locations are grouped by local, cache, and remote source.";
@@ -1145,22 +1090,21 @@ function WorkDetailView({
 
   useEffect(() => {
     if (!selectedRemoteSource || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
-    let cancelled = false;
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
-    api.getRemoteSourceWork(sourceID, selectedRemoteSource.summary.primaryCode || work?.primaryCode || code)
+    api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode)
       .then((detail) => {
-        if (cancelled) return;
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
       })
       .catch((error) => {
-        if (cancelled) return;
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRemoteSource, work?.primaryCode, code]);
+  }, [selectedRemoteSourceID, selectedRemoteWorkCode]);
+
+  useEffect(() => {
+    setSelectedSavePaths(new Set(remoteFilePaths));
+    setSavePlan(null);
+  }, [remoteFilePaths]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -1187,12 +1131,63 @@ function WorkDetailView({
   const deleteLocal = async () => {
     if (!deleteTarget || deleteTarget.kind !== "local") return;
     setIsDeleting(true);
+    setMessage("");
     try {
-      await api.deleteMediaLocalLocation(deleteTarget.locationId);
+      const result = await api.deleteMediaLocalLocation(deleteTarget.locationId);
+      setMessage(`Deleted local file through workflow run #${result.runId}.`);
       setDeleteTarget(null);
-      onBack();
+      await onWorksChanged();
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const deleteCache = async () => {
+    if (!deleteTarget || deleteTarget.kind !== "cache") return;
+    setIsDeleting(true);
+    setMessage("");
+    try {
+      const result = await api.deleteMediaCacheLocation(deleteTarget.locationId);
+      setMessage(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
+      setDeleteTarget(null);
+      await onWorksChanged();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const planRemoteSave = async () => {
+    if (!selectedRemoteSource?.detail || selectedPaths.length === 0) return;
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const plan = await api.planRemoteSourceWorkSave(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
+      setSavePlan(plan);
+      setMessage(`Plan ready: ${plan.summary.total} files, ${plan.summary.copyCache} from cache, ${plan.summary.download} downloads.`);
+      setIsSaveSelectionOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save plan failed.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveRemoteSelected = async () => {
+    if (!selectedRemoteSource?.detail || selectedPaths.length === 0) return;
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
+      setMessage(
+        `Saved ${result.savedFiles} files through workflow run #${result.runId}. ${result.copiedFromCache} copied from cache, ${result.downloadedFiles} downloaded, ${result.skippedFiles} skipped.`,
+      );
+      setIsSaveSelectionOpen(false);
+      await onWorksChanged();
+      openRemoteLocal(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save failed.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1223,29 +1218,21 @@ function WorkDetailView({
         Back to library
       </Button>
 
-      <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="self-start overflow-hidden rounded-lg border bg-muted">
-          <div className="aspect-[4/3]">
-            {work.coverUrl ? (
-              <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" />
-            ) : (
-              <div className="grid h-full place-items-center text-4xl font-bold">{work.primaryCode.slice(0, 2)}</div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <div className="text-sm font-semibold text-primary">{work.primaryCode}</div>
-            <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{work.title}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{work.circle || "Unknown circle"}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={playAll} disabled={allTracks.length === 0}>
-              <Play className="h-4 w-4" />
-              Play
-            </Button>
+      <DetailHero
+        coverUrl={work.coverUrl}
+        fallbackCode={work.primaryCode}
+        code={work.primaryCode}
+        title={work.title}
+        circle={work.circle}
+        ratingLabel="DL rating"
+        rating={work.rating}
+        releaseDate={work.releaseDate ?? "Unknown"}
+        fileLabel="Known files"
+        fileValue={`${work.mediaItems.length} items`}
+        voiceActors={work.voiceActors}
+        tags={work.tags}
+        actions={
+          <>
             <Button variant="outline" size="sm" asChild>
               <a href={work.dlsiteUrl} target="_blank" rel="noreferrer">
                 <ExternalLink className="h-4 w-4" />
@@ -1267,185 +1254,364 @@ function WorkDetailView({
                 </option>
               ))}
             </select>
-          </div>
+          </>
+        }
+        availability={
+          <SourceAvailabilitySummary
+            tabs={sourceTabs}
+            remoteSources={remoteSources}
+            checking={isCheckingSources}
+          />
+        }
+      />
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label="DL rating" value={work.rating === null ? "No rating" : work.rating.toFixed(2)} />
-            <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={work.releaseDate ?? "Unknown"} />
-            <MetaTile icon={<FileAudio className="h-4 w-4" />} label="Local files" value={`${work.mediaItems.length} tracks`} />
-          </div>
-
-          <InfoRow icon={<CircleUserRound className="h-4 w-4" />} label="Voice" value={work.voiceActors.join(", ") || "No voice actor metadata"} />
-          <InfoRow icon={<Tags className="h-4 w-4" />} label="Tags" value={work.tags.join(", ") || "No tag metadata"} />
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold">Directory</h3>
-            <p className="text-sm text-muted-foreground">{directoryDescription}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex gap-2 overflow-x-auto">
-              {sourceTabs.map((source) => (
-                <button
-                  key={source.key}
-                  className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
-                    source.key === activeSourceKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
-                  }`}
-                  onClick={() => setActiveSourceKey(source.key)}
-                >
-                  {source.label}
-                </button>
-              ))}
-              {isCheckingSources && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">Checking sources...</span>}
-            </div>
-            <div className="flex rounded-md border bg-card p-0.5">
-              <button
-                className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
-                  directoryMode === "browse" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                }`}
-                title="Browse directory"
-                onClick={() => setDirectoryMode("browse")}
-              >
-                <Folder className="h-3.5 w-3.5" />
-                Browse
-              </button>
-              <button
-                className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
-                  directoryMode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                }`}
-                title="Tree view"
-                onClick={() => setDirectoryMode("tree")}
-              >
-                <FolderTree className="h-3.5 w-3.5" />
-                Tree
-              </button>
-            </div>
-          </div>
-        </div>
-        <Card>
-          <CardContent className="p-4">
-            {selectedRemoteSource?.detail && (
-              <RemoteSourceDetailActions
-                source={selectedRemoteSource.source}
-                detail={selectedRemoteSource.detail}
-                autoSyncRemote={autoSyncRemoteGlobal || selectedRemoteSource.source.autoSyncOnInterest || selectedRemoteSource.source.cacheEnabled}
-                onOpenLocal={openRemoteLocal}
-                onWorksChanged={onWorksChanged}
-              />
-            )}
-            {selectedRemoteSource && !selectedRemoteSource.detail && (
-              <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">
-                {selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet."}
-              </div>
-            )}
-            {directoryMode === "browse" ? (
-              <DirectoryBrowser
-                root={tree}
-                currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
-                onPreview={setPreview}
-                onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
-                onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
-              />
-            ) : (
-              <DirectoryTree
-                root={tree}
-                currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
-                onPreview={setPreview}
-                onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
-                onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <SourceDirectoryPanel
+        title={directoryTitle}
+        description={directoryDescription}
+        tabs={sourceTabs}
+        activeKey={activeSourceKey}
+        onActiveKeyChange={setActiveSourceKey}
+        checkingLabel={isCheckingSources ? "Checking sources..." : ""}
+        directoryMode={directoryMode}
+        onDirectoryModeChange={setDirectoryMode}
+        root={tree}
+        currentLocationId={player.currentTrack?.locationId ?? null}
+        emptyLabel={selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+        toolbar={
+          selectedRemoteSource?.detail ? (
+            <SourceDirectoryToolbar
+              label={selectedRemoteSource.source.displayName}
+              description={`${countTreeFiles(tree)} remote files detected.`}
+              message={message}
+              busy={isSaving}
+              onPlay={allTracks.length > 0 ? playAll : undefined}
+              onFetch={selectedRemoteSource.detail.primaryCode ? () => void api.syncRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail!.primaryCode, "manual_fetch").then(async (result) => {
+                setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+                await onWorksChanged();
+                openRemoteLocal(result.workId);
+              }).catch((error) => setMessage(error instanceof Error ? error.message : "Remote sync failed.")) : undefined}
+              onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
+              selectedCount={selectedPaths.length}
+            />
+          ) : (
+            <SourceDirectoryToolbar
+              label={directoryTitle}
+              description={`${allTracks.length} playable files in this source.`}
+              message={message}
+              busy={false}
+              onPlay={allTracks.length > 0 ? playAll : undefined}
+            />
+          )
+        }
+        selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
+          <RemoteSaveSelectionPanel
+            root={tree}
+            selectedPaths={selectedSavePaths}
+            plan={savePlan}
+            onChange={setSelectedSavePaths}
+            disabled={isSaving}
+            onClose={() => setIsSaveSelectionOpen(false)}
+            onPlanSave={() => void planRemoteSave()}
+            onSave={() => void saveRemoteSelected()}
+          />
+        ) : null}
+        loadingMessage={selectedRemoteSource && !selectedRemoteSource.detail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
+        onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
+        onPreview={setPreview}
+        onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
+        onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
+      />
       {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
       {deleteTarget && (
         <ConfirmMediaDeleteModal
           target={deleteTarget}
           deleting={isDeleting}
           onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => void deleteLocal()}
+          onConfirm={() => void (deleteTarget.kind === "cache" ? deleteCache() : deleteLocal())}
         />
       )}
     </div>
   );
 }
 
-function RemoteSourceDetailActions({
-  source,
-  detail,
-  autoSyncRemote,
-  onOpenLocal,
-  onWorksChanged,
+function DetailHero({
+  coverUrl,
+  fallbackCode,
+  code,
+  title,
+  circle,
+  ratingLabel,
+  rating,
+  releaseDate,
+  fileLabel,
+  fileValue,
+  voiceActors,
+  tags,
+  actions,
+  availability,
 }: {
-  source: LibrarySource;
-  detail: RemoteWorkDetail;
-  autoSyncRemote: boolean;
-  onOpenLocal: (workID: number) => void;
-  onWorksChanged: () => Promise<void>;
+  coverUrl: string;
+  fallbackCode: string;
+  code: string;
+  title: string;
+  circle: string;
+  ratingLabel: string;
+  rating: number | null;
+  releaseDate: string;
+  fileLabel: string;
+  fileValue: string;
+  voiceActors: string[];
+  tags: string[];
+  actions?: ReactNode;
+  availability?: ReactNode;
 }) {
-  const tree = useMemo(() => buildRemoteTree(detail.tracks), [detail]);
-  const selectedPaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  return (
+    <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="self-start overflow-hidden rounded-lg border bg-muted">
+        <div className="aspect-[4/3]">
+          {coverUrl ? (
+            <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+          ) : (
+            <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
+          )}
+        </div>
+      </div>
 
-  const fetchWork = async (reason: string) => {
-    if (!detail.primaryCode) return;
-    if (!autoSyncRemote && reason !== "manual_fetch") {
-      const confirmed = window.confirm("This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.");
-      if (!confirmed) return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
-      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onWorksChanged();
-      onOpenLocal(result.workId);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
+      <div className="space-y-4">
+        <div>
+          <div className="text-sm font-semibold text-primary">{code}</div>
+          <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{circle || "Unknown circle"}</p>
+        </div>
 
-  const saveAll = async () => {
-    if (!detail.primaryCode || selectedPaths.length === 0) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await api.saveRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
-      setMessage(`Saved ${result.savedFiles} files through workflow run #${result.runId}.`);
-      await onWorksChanged();
-      onOpenLocal(result.workId);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+        {availability}
 
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label={ratingLabel} value={rating === null ? "No rating" : rating.toFixed(2)} />
+          <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={releaseDate} />
+          <MetaTile icon={<FileAudio className="h-4 w-4" />} label={fileLabel} value={fileValue} />
+        </div>
+
+        <InfoRow icon={<CircleUserRound className="h-4 w-4" />} label="Voice" value={voiceActors.join(", ") || "No voice actor metadata"} />
+        <InfoRow icon={<Tags className="h-4 w-4" />} label="Tags" value={tags.join(", ") || "No tag metadata"} />
+      </div>
+    </section>
+  );
+}
+
+function SourceAvailabilitySummary({
+  tabs,
+  remoteSources,
+  checking,
+}: {
+  tabs: SourceTabInfo[];
+  remoteSources: RemoteSourceAvailability[];
+  checking: boolean;
+}) {
+  if (tabs.length === 0 && !checking) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {tabs.map((tab) => {
+        const remote = remoteSources.find((item) => remoteSourceTabKey(item.source.id) === tab.key);
+        return (
+          <Badge key={tab.key} variant={remote?.summary.hasCache ? "secondary" : "outline"}>
+            {tab.label}{remote?.summary.hasCache ? " cached" : ""}
+          </Badge>
+        );
+      })}
+      {checking && <Badge variant="secondary">Checking sources</Badge>}
+    </div>
+  );
+}
+
+function SourceDirectoryPanel({
+  title,
+  description,
+  tabs,
+  activeKey,
+  onActiveKeyChange,
+  checkingLabel,
+  directoryMode,
+  onDirectoryModeChange,
+  root,
+  currentLocationId,
+  emptyLabel,
+  toolbar,
+  selectionPanel,
+  selectionModal,
+  loadingMessage,
+  onPlayFolder,
+  onPreview,
+  onDeleteCache,
+  onDeleteLocal,
+}: {
+  title: string;
+  description: string;
+  tabs: SourceTabInfo[];
+  activeKey: string;
+  onActiveKeyChange: (key: string) => void;
+  checkingLabel?: string;
+  directoryMode: "browse" | "tree";
+  onDirectoryModeChange: (mode: "browse" | "tree") => void;
+  root: TreeNode;
+  currentLocationId: number | null;
+  emptyLabel: string;
+  toolbar?: ReactNode;
+  selectionPanel?: ReactNode;
+  selectionModal?: ReactNode;
+  loadingMessage?: string;
+  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 overflow-x-auto">
+            {tabs.map((source) => (
+              <button
+                key={source.key}
+                className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
+                  source.key === activeKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+                }`}
+                onClick={() => onActiveKeyChange(source.key)}
+              >
+                {source.label}
+              </button>
+            ))}
+            {checkingLabel && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">{checkingLabel}</span>}
+          </div>
+          <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
+        </div>
+      </div>
+      <Card>
+        <CardContent className="p-4">
+          {toolbar}
+          {loadingMessage && <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">{loadingMessage}</div>}
+          {selectionPanel}
+          {directoryMode === "browse" ? (
+            <DirectoryBrowser
+              root={root}
+              currentLocationId={currentLocationId}
+              emptyLabel={emptyLabel}
+              onPlayFolder={onPlayFolder}
+              onPreview={onPreview}
+              onDeleteCache={onDeleteCache}
+              onDeleteLocal={onDeleteLocal}
+            />
+          ) : (
+            <DirectoryTree
+              root={root}
+              currentLocationId={currentLocationId}
+              emptyLabel={emptyLabel}
+              onPlayFolder={onPlayFolder}
+              onPreview={onPreview}
+              onDeleteCache={onDeleteCache}
+              onDeleteLocal={onDeleteLocal}
+            />
+          )}
+        </CardContent>
+      </Card>
+      {selectionModal}
+    </section>
+  );
+}
+
+function DirectoryModeSwitch({ mode, onChange }: { mode: "browse" | "tree"; onChange: (mode: "browse" | "tree") => void }) {
+  return (
+    <div className="flex rounded-md border bg-card p-0.5">
+      <button
+        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
+          mode === "browse" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+        }`}
+        title="Browse directory"
+        onClick={() => onChange("browse")}
+      >
+        <Folder className="h-3.5 w-3.5" />
+        Browse
+      </button>
+      <button
+        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
+          mode === "tree" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+        }`}
+        title="Tree view"
+        onClick={() => onChange("tree")}
+      >
+        <FolderTree className="h-3.5 w-3.5" />
+        Tree
+      </button>
+    </div>
+  );
+}
+
+function SourceDirectoryToolbar({
+  label,
+  description,
+  message,
+  busy,
+  onPlay,
+  onFetch,
+  onFetchAndMark,
+  onOpenLocal,
+  onSelectSaveFiles,
+  selectedCount,
+}: {
+  label: string;
+  description: string;
+  message?: string;
+  busy: boolean;
+  onPlay?: () => void;
+  onFetch?: () => void;
+  onFetchAndMark?: () => void;
+  onOpenLocal?: () => void;
+  onSelectSaveFiles?: () => void;
+  selectedCount?: number;
+}) {
   return (
     <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold">{source.displayName}</div>
-          <div className="text-xs text-muted-foreground">{countTreeFiles(tree)} remote files detected.</div>
+          <div className="text-sm font-semibold">{label}</div>
+          <div className="text-xs text-muted-foreground">{description}</div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={busy || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
-            <DownloadCloud className="h-4 w-4" />
-            Fetch
-          </Button>
-          <Button size="sm" disabled={busy || selectedPaths.length === 0} onClick={() => void saveAll()}>
-            <HardDriveDownload className="h-4 w-4" />
-            Save all
-          </Button>
+          {onPlay && (
+            <Button size="sm" onClick={onPlay}>
+              <Play className="h-4 w-4" />
+              Play
+            </Button>
+          )}
+          {onFetch && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={onFetch}>
+              <DownloadCloud className="h-4 w-4" />
+              Cache
+            </Button>
+          )}
+          {onFetchAndMark && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={onFetchAndMark}>
+              <ListChecks className="h-4 w-4" />
+              Cache and mark
+            </Button>
+          )}
+          {onOpenLocal && (
+            <Button size="sm" onClick={onOpenLocal}>
+              <MoreHorizontal className="h-4 w-4" />
+              Open local detail
+            </Button>
+          )}
+          {onSelectSaveFiles && (
+            <Button size="sm" disabled={busy} onClick={onSelectSaveFiles}>
+              <HardDriveDownload className="h-4 w-4" />
+              Save{selectedCount !== undefined ? ` (${selectedCount})` : ""}
+            </Button>
+          )}
         </div>
       </div>
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
@@ -1543,7 +1709,9 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
             ? "Local"
             : location.locationType === "cache"
               ? "Cache"
-              : location.fileSourceName;
+              : location.locationType === "remote_stream"
+                ? "Remote"
+                : location.fileSourceName;
         sources.set(location.fileSourceId, {
           key: `${location.fileSourceId}:${location.locationType}`,
           label,
@@ -1758,12 +1926,18 @@ function RemoteSaveSelectionPanel({
   selectedPaths,
   plan,
   disabled,
+  onClose,
+  onPlanSave,
+  onSave,
   onChange,
 }: {
   root: TreeNode;
   selectedPaths: Set<string>;
   plan: RemoteWorkSavePlan | null;
   disabled: boolean;
+  onClose: () => void;
+  onPlanSave: () => void;
+  onSave: () => void;
   onChange: (paths: Set<string>) => void;
 }) {
   const allPaths = remoteSelectablePaths(root);
@@ -1772,10 +1946,18 @@ function RemoteSaveSelectionPanel({
   const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.sourcePath)));
   const clear = () => onChange(new Set());
   return (
-    <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold">Save selection</div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
+      <div className="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
+          <div>
+            <h3 className="text-base font-semibold">Save selection</h3>
+            <p className="text-xs text-muted-foreground">Choose which remote files should be saved to the local library.</p>
+          </div>
+          <IconButton title="Close" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Badge variant="secondary">{selectedPaths.size} / {allPaths.length} files</Badge>
           {plan && (
             <>
@@ -1784,21 +1966,36 @@ function RemoteSaveSelectionPanel({
               <Badge variant="outline">{plan.summary.skipExisting} skip</Badge>
             </>
           )}
-          <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
-          <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
-          <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
+            <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
+            <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
+          </div>
         </div>
-      </div>
-      <div className="max-h-72 overflow-auto rounded-md border bg-card p-2">
-        <RemoteSaveSelectionNode
-          node={root}
-          depth={0}
-          selectedPaths={selectedPaths}
-          planByPath={planByPath}
-          disabled={disabled}
-          onChange={onChange}
-          isRoot
-        />
+        <div className="min-h-0 flex-1 overflow-auto bg-card p-2">
+          <RemoteSaveSelectionNode
+            node={root}
+            depth={0}
+            selectedPaths={selectedPaths}
+            planByPath={planByPath}
+            disabled={disabled}
+            onChange={onChange}
+            isRoot
+          />
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t p-3">
+          <Button variant="outline" onClick={onClose} disabled={disabled}>
+            Cancel
+          </Button>
+          <Button variant="outline" onClick={onPlanSave} disabled={disabled || selectedPaths.size === 0}>
+            <ListChecks className="h-4 w-4" />
+            Plan
+          </Button>
+          <Button onClick={onSave} disabled={disabled || selectedPaths.size === 0}>
+            <HardDriveDownload className="h-4 w-4" />
+            Fetch to local
+          </Button>
+        </div>
       </div>
     </div>
   );
