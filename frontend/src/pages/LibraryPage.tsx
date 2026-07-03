@@ -159,9 +159,9 @@ export function LibraryPage() {
 
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     if (!work.primaryCode) return;
-    window.history.pushState({}, "", `/${work.primaryCode}`);
-    window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedRemoteTarget({ source, code: work.primaryCode });
+    window.history.pushState({}, "", `/${work.primaryCode}`);
+    setSelectedCode(work.primaryCode);
   };
 
   const backToLibrary = () => {
@@ -218,16 +218,26 @@ export function LibraryPage() {
         />
       );
     }
-    return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} onStatusChange={updateWorkStatus} />;
+    return (
+      <WorkDetailView
+        code={selectedCode}
+        work={selectedWork}
+        sources={sources}
+        autoSyncRemoteGlobal={settings?.autoSyncRemote ?? false}
+        onBack={backToLibrary}
+        onStatusChange={updateWorkStatus}
+        onWorksChanged={async () => setWorks(await api.listWorks())}
+      />
+    );
   }
 
   if (selectedRemoteTarget !== null) {
     return (
-      <RemoteWorkDetailView
-        source={selectedRemoteTarget.source}
-        code={selectedRemoteTarget.code}
-        autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
-        onBack={() => setSelectedRemoteTarget(null)}
+        <RemoteWorkDetailView
+          source={selectedRemoteTarget.source}
+          code={selectedRemoteTarget.code}
+          autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
+          onBack={backToLibrary}
         onOpenLocal={(workID) => {
           const work = works.find((item) => item.id === workID);
           if (work) openWork(work);
@@ -1063,33 +1073,66 @@ function RemoteWorkDetailView({
 function WorkDetailView({
   code,
   work,
+  sources,
+  autoSyncRemoteGlobal,
   onBack,
   onStatusChange,
+  onWorksChanged,
 }: {
   code: string;
   work: WorkDetail | null;
+  sources: LibrarySource[];
+  autoSyncRemoteGlobal: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onWorksChanged: () => Promise<void>;
 }) {
-  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? []), [work]);
+  const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
+  const [isCheckingSources, setIsCheckingSources] = useState(false);
+  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources), [work, remoteSources]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
+  const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
   const tree = useMemo(
-    () => buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? ""),
-    [work, selectedSource],
+    () => selectedRemoteSource ? buildRemoteTree(selectedRemoteSource.detail.tracks) : buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? ""),
+    [work, selectedSource, selectedRemoteSource],
   );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const player = usePlayer();
+  const directoryDescription = selectedRemoteSource
+    ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
+    : "File locations are grouped by local, cache, and remote source.";
 
   useEffect(() => {
     if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
       setActiveSourceKey(sourceTabs[0].key);
     }
   }, [activeSourceKey, sourceTabs]);
+
+  useEffect(() => {
+    setRemoteSources([]);
+    if (!work?.primaryCode || sources.length === 0) return;
+    let cancelled = false;
+    const enabledRemoteSources = sources.filter((source) => source.enabled && source.sourceType === "kikoeru_compatible");
+    if (enabledRemoteSources.length === 0) return;
+    setIsCheckingSources(true);
+    Promise.allSettled(enabledRemoteSources.map(async (source) => ({ source, detail: await api.getRemoteSourceWork(source.id, work.primaryCode) })))
+      .then((results) => {
+        if (cancelled) return;
+        const availableSources = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+        setRemoteSources(availableSources);
+      })
+      .finally(() => {
+        if (!cancelled) setIsCheckingSources(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [work?.primaryCode, sources]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -1105,6 +1148,14 @@ function WorkDetailView({
     }
   };
 
+  const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
+    if (!selectedRemoteSource || tracks.length === 0) return;
+    player.playQueue(
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteSource.detail)),
+      locationId,
+    );
+  };
+
   const deleteLocal = async () => {
     if (!deleteTarget || deleteTarget.kind !== "local") return;
     setIsDeleting(true);
@@ -1114,6 +1165,12 @@ function WorkDetailView({
       onBack();
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const openRemoteLocal = (workID: number) => {
+    if (!work || work.id === workID) {
+      setActiveSourceKey("local");
     }
   };
 
@@ -1199,7 +1256,7 @@ function WorkDetailView({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">Directory</h3>
-            <p className="text-sm text-muted-foreground">File locations are grouped by local, cache, and remote source.</p>
+            <p className="text-sm text-muted-foreground">{directoryDescription}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="flex gap-2 overflow-x-auto">
@@ -1214,6 +1271,7 @@ function WorkDetailView({
                   {source.label}
                 </button>
               ))}
+              {isCheckingSources && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">Checking sources...</span>}
             </div>
             <div className="flex rounded-md border bg-card p-0.5">
               <button
@@ -1241,21 +1299,32 @@ function WorkDetailView({
         </div>
         <Card>
           <CardContent className="p-4">
+            {selectedRemoteSource && (
+              <RemoteSourceDetailActions
+                source={selectedRemoteSource.source}
+                detail={selectedRemoteSource.detail}
+                autoSyncRemote={autoSyncRemoteGlobal || selectedRemoteSource.source.autoSyncOnInterest || selectedRemoteSource.source.cacheEnabled}
+                onOpenLocal={openRemoteLocal}
+                onWorksChanged={onWorksChanged}
+              />
+            )}
             {directoryMode === "browse" ? (
               <DirectoryBrowser
                 root={tree}
                 currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={playTracks}
+                onPlayFolder={selectedRemoteSource ? playRemoteTracks : playTracks}
                 onPreview={setPreview}
-                onDeleteLocal={setDeleteTarget}
+                onDeleteCache={selectedRemoteSource ? setDeleteTarget : undefined}
+                onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
               />
             ) : (
               <DirectoryTree
                 root={tree}
                 currentLocationId={player.currentTrack?.locationId ?? null}
-                onPlayFolder={playTracks}
+                onPlayFolder={selectedRemoteSource ? playRemoteTracks : playTracks}
                 onPreview={setPreview}
-                onDeleteLocal={setDeleteTarget}
+                onDeleteCache={selectedRemoteSource ? setDeleteTarget : undefined}
+                onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
               />
             )}
           </CardContent>
@@ -1270,6 +1339,83 @@ function WorkDetailView({
           onConfirm={() => void deleteLocal()}
         />
       )}
+    </div>
+  );
+}
+
+function RemoteSourceDetailActions({
+  source,
+  detail,
+  autoSyncRemote,
+  onOpenLocal,
+  onWorksChanged,
+}: {
+  source: LibrarySource;
+  detail: RemoteWorkDetail;
+  autoSyncRemote: boolean;
+  onOpenLocal: (workID: number) => void;
+  onWorksChanged: () => Promise<void>;
+}) {
+  const tree = useMemo(() => buildRemoteTree(detail.tracks), [detail]);
+  const selectedPaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const fetchWork = async (reason: string) => {
+    if (!detail.primaryCode) return;
+    if (!autoSyncRemote && reason !== "manual_fetch") {
+      const confirmed = window.confirm("This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.");
+      if (!confirmed) return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
+      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+      await onWorksChanged();
+      onOpenLocal(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAll = async () => {
+    if (!detail.primaryCode || selectedPaths.length === 0) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
+      setMessage(`Saved ${result.savedFiles} files through workflow run #${result.runId}.`);
+      await onWorksChanged();
+      onOpenLocal(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold">{source.displayName}</div>
+          <div className="text-xs text-muted-foreground">{countTreeFiles(tree)} remote files detected.</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={busy || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
+            <DownloadCloud className="h-4 w-4" />
+            Fetch
+          </Button>
+          <Button size="sm" disabled={busy || selectedPaths.length === 0} onClick={() => void saveAll()}>
+            <HardDriveDownload className="h-4 w-4" />
+            Save all
+          </Button>
+        </div>
+      </div>
+      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
     </div>
   );
 }
@@ -1338,9 +1484,15 @@ type SourceTabInfo = {
   key: string;
   label: string;
   fileSourceId: number | null;
+  kind?: "local";
 };
 
-function buildSourceTabs(items: MediaItem[]): SourceTabInfo[] {
+type RemoteSourceAvailability = {
+  source: LibrarySource;
+  detail: RemoteWorkDetail;
+};
+
+function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailability[] = []): SourceTabInfo[] {
   const sources = new Map<number, SourceTabInfo>();
   for (const item of items) {
     for (const location of item.locations) {
@@ -1360,7 +1512,19 @@ function buildSourceTabs(items: MediaItem[]): SourceTabInfo[] {
     }
   }
   const tabs = Array.from(sources.values());
-  return tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null }];
+  const baseTabs = tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null, kind: "local" as const }];
+  for (const remote of remoteSources) {
+    baseTabs.push({
+      key: remoteSourceTabKey(remote.source.id),
+      label: remote.source.displayName,
+      fileSourceId: null,
+    });
+  }
+  return baseTabs;
+}
+
+function remoteSourceTabKey(sourceID: number) {
+  return `remote-source:${sourceID}`;
 }
 
 function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
