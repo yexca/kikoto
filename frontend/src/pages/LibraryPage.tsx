@@ -4,9 +4,11 @@ import {
   ChevronRight,
   CircleUserRound,
   Clock3,
+  Database,
   FileAudio,
   Filter,
   Folder,
+  HardDrive,
   Headphones,
   ExternalLink,
   Pause,
@@ -16,12 +18,21 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, assetURL, type ListeningStatus, type MediaItem, type Work, type WorkDetail } from "@/lib/api";
+import {
+  api,
+  assetURL,
+  type LibrarySource,
+  type ListeningStatus,
+  type MediaItem,
+  type RemoteWorksResponse,
+  type Work,
+  type WorkDetail,
+} from "@/lib/api";
 import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
@@ -36,6 +47,9 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [activeTab, setActiveTab] = useState<LibraryTab>({ kind: "local" });
+  const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
@@ -53,6 +67,27 @@ export function LibraryPage() {
         setIsAPIAvailable(false);
       });
   }, []);
+
+  useEffect(() => {
+    api.listLibrarySources().then(setSources).catch(() => setSources([]));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab.kind !== "source") {
+      setRemoteResult(null);
+      return;
+    }
+    api.listRemoteSourceWorks(activeTab.source.id).then(setRemoteResult).catch(() => {
+      setRemoteResult({
+        sourceId: activeTab.source.id,
+        works: [],
+        page: 1,
+        pageSize: 24,
+        total: 0,
+        status: "unavailable",
+      });
+    });
+  }, [activeTab]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -98,7 +133,13 @@ export function LibraryPage() {
     return <WorkDetailView code={selectedCode} work={selectedWork} onBack={backToLibrary} onStatusChange={updateWorkStatus} />;
   }
 
-  const visibleWorks = statusFilter === "all" ? works : works.filter((work) => work.listeningStatus === statusFilter);
+  const scopedWorks =
+    activeTab.kind === "local"
+      ? works.filter(hasLocalAvailability)
+      : activeTab.kind === "remote"
+        ? works.filter(hasRemoteAvailability)
+        : works;
+  const visibleWorks = statusFilter === "all" ? scopedWorks : scopedWorks.filter((work) => work.listeningStatus === statusFilter);
 
   return (
     <div className="space-y-5">
@@ -132,12 +173,131 @@ export function LibraryPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {visibleWorks.map((work) => (
-          <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
-        ))}
-      </section>
+      <LibraryTabs activeTab={activeTab} sources={sources} onChange={setActiveTab} />
+
+      {activeTab.kind === "source" ? (
+        <RemoteSourcePanel source={activeTab.source} result={remoteResult} />
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visibleWorks.map((work) => (
+            <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
+          ))}
+          {visibleWorks.length === 0 && (
+            <Card className="sm:col-span-2 xl:col-span-3">
+              <CardContent className="p-5 text-sm text-muted-foreground">
+                {activeTab.kind === "remote"
+                  ? "No imported remote or cached works yet."
+                  : "No local works match this view."}
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      )}
     </div>
+  );
+}
+
+type LibraryTab = { kind: "local" } | { kind: "remote" } | { kind: "source"; source: LibrarySource };
+
+function LibraryTabs({
+  activeTab,
+  sources,
+  onChange,
+}: {
+  activeTab: LibraryTab;
+  sources: LibrarySource[];
+  onChange: (tab: LibraryTab) => void;
+}) {
+  return (
+    <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
+      <TabButton active={activeTab.kind === "local"} onClick={() => onChange({ kind: "local" })} icon={<HardDrive className="h-4 w-4" />}>
+        Local
+      </TabButton>
+      <TabButton active={activeTab.kind === "remote"} onClick={() => onChange({ kind: "remote" })} icon={<Database className="h-4 w-4" />}>
+        Remote
+      </TabButton>
+      {sources.map((source) => (
+        <TabButton
+          key={source.id}
+          active={activeTab.kind === "source" && activeTab.source.id === source.id}
+          onClick={() => onChange({ kind: "source", source })}
+          icon={<Database className="h-4 w-4" />}
+          disabled={!source.enabled}
+        >
+          {source.displayName}
+        </TabButton>
+      ))}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  disabled,
+  icon,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
+        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      } disabled:pointer-events-none disabled:opacity-50`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="max-w-40 truncate">{children}</span>
+    </button>
+  );
+}
+
+function RemoteSourcePanel({ source, result }: { source: LibrarySource; result: RemoteWorksResponse | null }) {
+  const isLoading = result === null;
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{source.displayName}</h2>
+          <p className="text-sm text-muted-foreground">Paged remote query surface for a kikoeru-compatible source.</p>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
+          <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
+        </div>
+      </div>
+      <Card>
+        <CardContent className="p-5">
+          {isLoading ? (
+            <div className="text-sm text-muted-foreground">Loading remote page...</div>
+          ) : result.works.length === 0 ? (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div>No remote works are shown yet.</div>
+              <div>This tab is wired to the Kikoto API shape; the kikoeru-compatible adapter can fill it later.</div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {result.works.map((work) => (
+                <Card key={work.remoteId}>
+                  <CardContent className="space-y-2 p-4">
+                    <div className="text-xs font-semibold text-primary">{work.primaryCode}</div>
+                    <h3 className="line-clamp-2 text-sm font-semibold">{work.title}</h3>
+                    <p className="truncate text-xs text-muted-foreground">{work.circle}</p>
+                    <Badge variant="outline">{work.importStatus}</Badge>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
@@ -248,9 +408,18 @@ function WorkDetailView({
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
-  const tree = useMemo(() => buildTree(work?.mediaItems ?? []), [work]);
+  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? []), [work]);
+  const [activeSourceKey, setActiveSourceKey] = useState("local");
+  const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
+  const tree = useMemo(() => buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null), [work, selectedSource]);
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const player = usePlayer();
+
+  useEffect(() => {
+    if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
+      setActiveSourceKey(sourceTabs[0].key);
+    }
+  }, [activeSourceKey, sourceTabs]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -345,9 +514,24 @@ function WorkDetailView({
       </section>
 
       <section className="space-y-3">
-        <div>
-          <h3 className="text-lg font-semibold">Local directory</h3>
-          <p className="text-sm text-muted-foreground">Files detected for this work under the configured local source.</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">Directory</h3>
+            <p className="text-sm text-muted-foreground">File locations are grouped by local, cache, and remote source.</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {sourceTabs.map((source) => (
+              <button
+                key={source.key}
+                className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
+                  source.key === activeSourceKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+                }`}
+                onClick={() => setActiveSourceKey(source.key)}
+              >
+                {source.label}
+              </button>
+            ))}
+          </div>
         </div>
         <Card>
           <CardContent className="p-4">
@@ -359,7 +543,7 @@ function WorkDetailView({
   );
 }
 
-function MetaTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function MetaTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -371,7 +555,7 @@ function MetaTile({ icon, label, value }: { icon: React.ReactNode; label: string
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="flex gap-2 text-sm">
       <div className="mt-0.5 text-muted-foreground">{icon}</div>
@@ -401,10 +585,40 @@ type TreeTrack = {
   progress: MediaItem["progress"];
 };
 
-function buildTree(items: MediaItem[]): TreeNode {
+type SourceTabInfo = {
+  key: string;
+  label: string;
+  fileSourceId: number | null;
+};
+
+function buildSourceTabs(items: MediaItem[]): SourceTabInfo[] {
+  const sources = new Map<number, SourceTabInfo>();
+  for (const item of items) {
+    for (const location of item.locations) {
+      if (!sources.has(location.fileSourceId)) {
+        const label =
+          location.locationType === "local"
+            ? "Local"
+            : location.locationType === "cache"
+              ? "Cache"
+              : location.fileSourceName;
+        sources.set(location.fileSourceId, {
+          key: `${location.fileSourceId}:${location.locationType}`,
+          label,
+          fileSourceId: location.fileSourceId,
+        });
+      }
+    }
+  }
+  const tabs = Array.from(sources.values());
+  return tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null }];
+}
+
+function buildTree(items: MediaItem[], fileSourceId: number | null): TreeNode {
   const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
   for (const item of items) {
-    const location = item.locations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? item.locations[0];
+    const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
+    const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? sourceLocations[0];
     if (!location) continue;
     const parts = location.path.split("/").filter(Boolean);
     const fileName = parts.pop() ?? item.title;
@@ -595,6 +809,14 @@ function formatBytes(value: number | null) {
 
 function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
+}
+
+function hasRemoteAvailability(work: Work) {
+  return work.availability.some((item) => item === "remote" || item === "cache" || item === "cached");
+}
+
+function hasLocalAvailability(work: Work) {
+  return work.availability.includes("local");
 }
 
 function codeFromPath(path: string) {

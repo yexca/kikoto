@@ -1,5 +1,4 @@
 import {
-  Database,
   Download,
   Heart,
   Library,
@@ -25,7 +24,6 @@ export const navItems = [
   { id: "favorites", label: "Favorites", icon: Heart, permission: undefined },
   { id: "circles", label: "Circles", icon: Users, permission: undefined },
   { id: "tags", label: "Tags", icon: Tags, permission: undefined },
-  { id: "sources", label: "Sources", icon: Database, permission: "sources:write" },
   { id: "workflows", label: "Workflows", icon: Workflow, permission: "workflows:run" },
   { id: "downloads", label: "Downloads", icon: Download, permission: "downloads:manage" },
   { id: "users", label: "Users", icon: ShieldCheck, permission: "users:manage" },

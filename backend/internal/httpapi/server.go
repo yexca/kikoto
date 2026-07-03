@@ -44,7 +44,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
+	mux.HandleFunc("GET /api/settings", s.getSettings)
+	mux.HandleFunc("PATCH /api/settings", s.updateSettings)
+	mux.HandleFunc("GET /api/library-sources", s.listLibrarySources)
 	mux.HandleFunc("GET /api/file-sources", s.listFileSources)
+	mux.HandleFunc("POST /api/file-sources", s.createFileSource)
+	mux.HandleFunc("PATCH /api/file-sources/{id}", s.updateFileSource)
+	mux.HandleFunc("DELETE /api/file-sources/{id}", s.deleteFileSource)
+	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
@@ -167,6 +174,13 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 					AND media_file_location.availability = 'available'
 			) AS available_locations,
 			(
+				SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_file_location.availability = 'available'
+			) AS available_location_types,
+			(
 				SELECT snapshot_json
 				FROM metadata_snapshot
 				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
@@ -209,6 +223,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item work
 		var snapshot sql.NullString
+		var availableLocationTypes sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.PrimaryCode,
@@ -216,6 +231,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			&item.CreatedAt,
 			&item.TrackCount,
 			&item.AvailableLocations,
+			&availableLocationTypes,
 			&snapshot,
 			&item.ListeningStatus,
 		); err != nil {
@@ -229,7 +245,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		item.Rating = metadata.Rating
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
-		item.Availability = availabilityBadges(item.AvailableLocations)
+		item.Availability = availabilityBadges(availableLocationTypes.String)
 		works = append(works, item)
 	}
 
@@ -562,35 +578,11 @@ func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, code, display_name, source_type, enabled
-		FROM file_source
-		ORDER BY priority ASC, id ASC
-	`)
+	sources, err := s.loadFileSources(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
-
-	type source struct {
-		ID          int64  `json:"id"`
-		Code        string `json:"code"`
-		DisplayName string `json:"displayName"`
-		SourceType  string `json:"sourceType"`
-		Enabled     bool   `json:"enabled"`
-	}
-
-	sources := []source{}
-	for rows.Next() {
-		var item source
-		if err := rows.Scan(&item.ID, &item.Code, &item.DisplayName, &item.SourceType, &item.Enabled); err != nil {
-			writeError(w, err)
-			return
-		}
-		sources = append(sources, item)
-	}
-
 	writeJSON(w, http.StatusOK, sources)
 }
 
@@ -669,7 +661,7 @@ type localScanResult struct {
 }
 
 func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
-	scanDepth := s.cfg.LocalScanDepth
+	scanDepth := s.configuredLocalScanDepth(ctx)
 
 	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
 	if err != nil {
@@ -790,6 +782,18 @@ func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
 		ScannedFiles:     scanSummary.ScannedFiles,
 		UpdatedLocations: updatedLocations,
 	}, nil
+}
+
+func (s *Server) configuredLocalScanDepth(ctx context.Context) int {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = 'local_scan_depth'").Scan(&raw); err != nil {
+		return s.cfg.LocalScanDepth
+	}
+	var value int
+	if err := json.Unmarshal([]byte(raw), &value); err != nil || value <= 0 {
+		return s.cfg.LocalScanDepth
+	}
+	return value
 }
 
 func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDepth int) (int64, error) {
@@ -1051,11 +1055,35 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	return metadata
 }
 
-func availabilityBadges(availableLocations int64) []string {
-	if availableLocations > 0 {
-		return []string{"local"}
+func availabilityBadges(rawTypes string) []string {
+	if strings.TrimSpace(rawTypes) == "" {
+		return []string{"missing"}
 	}
-	return []string{"missing"}
+	seen := map[string]bool{}
+	badges := []string{}
+	for _, item := range strings.Split(rawTypes, ",") {
+		switch strings.TrimSpace(item) {
+		case "local":
+			if !seen["local"] {
+				seen["local"] = true
+				badges = append(badges, "local")
+			}
+		case "cache":
+			if !seen["cache"] {
+				seen["cache"] = true
+				badges = append(badges, "cache")
+			}
+		case "remote_stream", "remote_download":
+			if !seen["remote"] {
+				seen["remote"] = true
+				badges = append(badges, "remote")
+			}
+		}
+	}
+	if len(badges) == 0 {
+		return []string{"missing"}
+	}
+	return badges
 }
 
 func (s *Server) coverURL(primaryCode string) string {

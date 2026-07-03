@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { NowPlayingPage } from "@/pages/NowPlayingPage";
-import { SourcesPage } from "@/pages/SourcesPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { WorkflowsPage } from "@/pages/WorkflowsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { UsersPage } from "@/pages/UsersPage";
@@ -97,10 +97,10 @@ function AuthenticatedApp() {
           <div className="px-4 py-5 lg:px-6">
             {page === "library" && <LibraryPage />}
             {page === "now-playing" && <NowPlayingPage />}
-            {page === "sources" && <SourcesPage canManage={auth.hasPermission("sources:write")} />}
+            {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
             {page === "workflows" && <WorkflowsPage canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-            {!["library", "now-playing", "sources", "workflows", "users"].includes(page) && (
+            {!["library", "now-playing", "settings", "workflows", "users"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
           </div>

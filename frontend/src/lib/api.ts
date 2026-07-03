@@ -81,7 +81,56 @@ export type FileSource = {
   code: string;
   displayName: string;
   sourceType: string;
+  priority: number;
   enabled: boolean;
+  config: {
+    cacheEnabled?: boolean;
+    cacheLimitGb?: number;
+    scanDepth?: number;
+  };
+  endpoint: {
+    baseUrl: string;
+    apiUrl: string;
+    fallbackUrl: string;
+  };
+  healthStatus: string;
+  lastCheckedAt: string | null;
+};
+
+export type LibrarySource = {
+  id: number;
+  code: string;
+  displayName: string;
+  sourceType: string;
+  enabled: boolean;
+};
+
+export type AppSettings = {
+  localScanDepth: number;
+  cacheEnabled: boolean;
+  cacheLimitGb: number;
+  dataRoot: string;
+  cacheRoot: string;
+  fileSources: FileSource[];
+};
+
+export type RemoteWorksResponse = {
+  sourceId: number;
+  works: RemoteWork[];
+  page: number;
+  pageSize: number;
+  total: number;
+  status: string;
+};
+
+export type RemoteWork = {
+  remoteId: string;
+  primaryCode: string;
+  title: string;
+  coverUrl: string;
+  circle: string;
+  tags: string[];
+  importStatus: string;
 };
 
 export type WorkflowRun = {
@@ -209,6 +258,9 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
+  listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
+  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24) =>
+    getJSON<RemoteWorksResponse>(`/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}`),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
@@ -220,6 +272,29 @@ export const api = {
     payload,
   ),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
+  getSettings: () => getJSON<AppSettings>("/api/settings"),
+  updateSettings: (payload: { localScanDepth?: number; cacheEnabled?: boolean; cacheLimitGb?: number }) =>
+    patchJSONBody<AppSettings>("/api/settings", payload),
+  createFileSource: (payload: {
+    displayName: string;
+    sourceType: string;
+    priority: number;
+    enabled: boolean;
+    config: FileSource["config"];
+    endpoint: FileSource["endpoint"];
+  }) => postJSONBody<FileSource>("/api/file-sources", payload),
+  updateFileSource: (
+    id: number,
+    payload: {
+      displayName: string;
+      sourceType: string;
+      priority: number;
+      enabled: boolean;
+      config: FileSource["config"];
+      endpoint: FileSource["endpoint"];
+    },
+  ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
+  deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
