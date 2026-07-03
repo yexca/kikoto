@@ -1201,6 +1201,7 @@ type TreeTrack = {
   locationId: number;
   title: string;
   baseName: string;
+  sourcePath: string;
   kind: string;
   folderPath: string;
   locationType: string;
@@ -1266,6 +1267,7 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       locationId: location.id,
       title: fileName,
       baseName: baseNameWithoutExtension(fileName),
+      sourcePath: parts.length > 0 ? `${parts.join("/")}/${fileName}` : fileName,
       kind: item.kind,
       folderPath: cursor.path,
       locationType: location.locationType,
@@ -1307,6 +1309,7 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         locationId: nextID,
         title,
         baseName: baseNameWithoutExtension(title),
+        sourcePath: cursor.path ? `${cursor.path}/${title}` : title,
         kind: node.type || "file",
         folderPath: cursor.path,
         locationType: "remote_stream",
@@ -1420,7 +1423,7 @@ function RemoteSaveSelectionPanel({
   const allPaths = remoteSelectablePaths(root);
   const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
   const setAll = () => onChange(new Set(allPaths));
-  const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.folderPath ? `${file.folderPath}/${file.title}` : file.title)));
+  const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.sourcePath)));
   const clear = () => onChange(new Set());
   return (
     <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
@@ -1508,7 +1511,7 @@ function RemoteSaveSelectionNode({
         />
       ))}
       {files.map((file) => {
-        const path = file.folderPath ? `${file.folderPath}/${file.title}` : file.title;
+        const path = file.sourcePath;
         const plan = planByPath.get(path);
         return (
           <label key={path} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
@@ -1736,7 +1739,7 @@ function remoteSelectableFiles(root: TreeNode) {
 }
 
 function remoteSelectablePaths(root: TreeNode) {
-  return remoteSelectableFiles(root).map((file) => (file.folderPath ? `${file.folderPath}/${file.title}` : file.title));
+  return remoteSelectableFiles(root).map((file) => file.sourcePath);
 }
 
 function sortedFolders(node: TreeNode) {
