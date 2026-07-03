@@ -135,10 +135,54 @@ export type RemoteWork = {
 
 export type WorkflowRun = {
   id: number;
-  templateCode: string;
+  workflowCode: string;
+  displayName: string;
   status: string;
+  triggerType: string;
   triggerReason: string;
   createdAt: string;
+  startedAt: string;
+  finishedAt: string;
+  summaryJson: string;
+  nodeRunCount: number;
+  completedNodeRuns: number;
+  failedNodeRuns: number;
+  jobCount: number;
+  completedJobs: number;
+  failedJobs: number;
+  candidateCount: number;
+  acceptedCandidates: number;
+  rejectedCandidates: number;
+  definitionId: number | null;
+  triggerId: number | null;
+};
+
+export type WorkflowDefinition = {
+  id: number;
+  code: string;
+  displayName: string;
+  description: string;
+  definitionJson: string;
+  triggerCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkflowTrigger = {
+  id: number;
+  workflowDefinitionId: number;
+  workflowCode: string;
+  displayName: string;
+  triggerType: string;
+  enabled: boolean;
+  scheduleJson: string;
+  configJson: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastErrorMessage: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CurrentUser = {
@@ -295,6 +339,8 @@ export const api = {
     },
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
+  listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
+  listWorkflowTriggers: () => getJSON<WorkflowTrigger[]>("/api/workflow-triggers"),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),

@@ -118,9 +118,10 @@ function AuthenticatedApp() {
             {page === "library" && <LibraryPage />}
             {page === "now-playing" && <NowPlayingPage />}
             {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
-            {page === "workflows" && <WorkflowsPage canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+            {page === "workflows" && <WorkflowsPage initialView="definitions" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+            {page === "runs" && <WorkflowsPage initialView="runs" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-            {!["library", "now-playing", "settings", "workflows", "users"].includes(page) && (
+            {!["library", "now-playing", "settings", "workflows", "runs", "users"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
           </div>

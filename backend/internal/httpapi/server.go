@@ -17,6 +17,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type Server struct {
@@ -52,6 +53,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/file-sources/{id}", s.updateFileSource)
 	mux.HandleFunc("DELETE /api/file-sources/{id}", s.deleteFileSource)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
+	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
+	mux.HandleFunc("GET /api/workflow-triggers", s.listWorkflowTriggers)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
@@ -591,9 +594,73 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, template_code, status, trigger_reason, created_at
+		SELECT
+			run.id,
+			run.workflow_code,
+			run.display_name,
+			run.status,
+			run.trigger_type,
+			run.trigger_reason,
+			run.created_at,
+			COALESCE(run.started_at, ''),
+			COALESCE(run.finished_at, ''),
+			run.summary_json,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+			) AS node_run_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status = 'succeeded'
+			) AS completed_node_runs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status = 'failed'
+			) AS failed_node_runs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+			) AS job_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+					AND workflow_job.status = 'succeeded'
+			) AS completed_jobs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+					AND workflow_job.status = 'failed'
+			) AS failed_jobs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+			) AS candidate_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+					AND workflow_candidate.status = 'accepted'
+			) AS accepted_candidates,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+					AND workflow_candidate.status = 'rejected'
+			) AS rejected_candidates,
+			run.workflow_definition_id,
+			run.trigger_id
 		FROM workflow_run
-		ORDER BY created_at DESC
+			AS run
+		ORDER BY run.created_at DESC
 		LIMIT 100
 	`)
 	if err != nil {
@@ -602,25 +669,143 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	type run struct {
-		ID            int64  `json:"id"`
-		TemplateCode  string `json:"templateCode"`
-		Status        string `json:"status"`
-		TriggerReason string `json:"triggerReason"`
-		CreatedAt     string `json:"createdAt"`
-	}
-
-	runs := []run{}
+	runs := []workflowRunRecord{}
 	for rows.Next() {
-		var item run
-		if err := rows.Scan(&item.ID, &item.TemplateCode, &item.Status, &item.TriggerReason, &item.CreatedAt); err != nil {
+		var item workflowRunRecord
+		var definitionID sql.NullInt64
+		var triggerID sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.WorkflowCode,
+			&item.DisplayName,
+			&item.Status,
+			&item.TriggerType,
+			&item.TriggerReason,
+			&item.CreatedAt,
+			&item.StartedAt,
+			&item.FinishedAt,
+			&item.SummaryJSON,
+			&item.NodeRunCount,
+			&item.CompletedNodeRuns,
+			&item.FailedNodeRuns,
+			&item.JobCount,
+			&item.CompletedJobs,
+			&item.FailedJobs,
+			&item.CandidateCount,
+			&item.AcceptedCandidates,
+			&item.RejectedCandidates,
+			&definitionID,
+			&triggerID,
+		); err != nil {
 			writeError(w, err)
 			return
 		}
+		item.DefinitionID = nullableInt64(definitionID)
+		item.TriggerID = nullableInt64(triggerID)
 		runs = append(runs, item)
 	}
 
 	writeJSON(w, http.StatusOK, runs)
+}
+
+func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT
+			definition.id,
+			definition.code,
+			definition.display_name,
+			definition.description,
+			definition.definition_json,
+			(
+				SELECT COUNT(*)
+				FROM workflow_trigger
+				WHERE workflow_trigger.workflow_definition_id = definition.id
+			) AS trigger_count,
+			definition.created_at,
+			definition.updated_at
+		FROM workflow_definition AS definition
+		ORDER BY definition.display_name ASC
+	`)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+	definitions := []workflowDefinitionRecord{}
+	for rows.Next() {
+		var item workflowDefinitionRecord
+		if err := rows.Scan(&item.ID, &item.Code, &item.DisplayName, &item.Description, &item.DefinitionJSON, &item.TriggerCount, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			writeError(w, err)
+			return
+		}
+		definitions = append(definitions, item)
+	}
+	writeJSON(w, http.StatusOK, definitions)
+}
+
+func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT
+			trigger.id,
+			trigger.workflow_definition_id,
+			definition.code,
+			trigger.display_name,
+			trigger.trigger_type,
+			trigger.enabled,
+			trigger.schedule_json,
+			trigger.config_json,
+			trigger.next_run_at,
+			trigger.last_run_at,
+			trigger.last_success_at,
+			trigger.last_error_message,
+			trigger.created_at,
+			trigger.updated_at
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		ORDER BY trigger.enabled DESC, trigger.display_name ASC
+	`)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+	triggers := []workflowTriggerRecord{}
+	for rows.Next() {
+		var item workflowTriggerRecord
+		var nextRunAt sql.NullString
+		var lastRunAt sql.NullString
+		var lastSuccessAt sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.WorkflowDefinitionID,
+			&item.WorkflowCode,
+			&item.DisplayName,
+			&item.TriggerType,
+			&item.Enabled,
+			&item.ScheduleJSON,
+			&item.ConfigJSON,
+			&nextRunAt,
+			&lastRunAt,
+			&lastSuccessAt,
+			&item.LastErrorMessage,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			writeError(w, err)
+			return
+		}
+		item.NextRunAt = nullableString(nextRunAt)
+		item.LastRunAt = nullableString(lastRunAt)
+		item.LastSuccessAt = nullableString(lastSuccessAt)
+		triggers = append(triggers, item)
+	}
+	writeJSON(w, http.StatusOK, triggers)
 }
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
@@ -676,61 +861,29 @@ func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
 		_ = tx.Rollback()
 	}()
 
-	runID, err := insertAndID(ctx, tx, `
-		INSERT INTO workflow_run (
-			template_code,
-			status,
-			trigger_reason,
-			params_json,
-			summary_json,
-			started_at,
-			finished_at
-		)
-		VALUES (
-			'local_scan',
-			'succeeded',
-			'manual',
-			?,
-			?,
-			CURRENT_TIMESTAMP,
-			CURRENT_TIMESTAMP
-		)
-	`, mustJSON(map[string]any{
-		"root":       s.cfg.DataRoot,
-		"scan_depth": scanDepth,
-	}), mustJSON(map[string]any{
-		"candidate_folders": scanSummary.CandidateFolders,
-		"detected_works":    scanSummary.DetectedWorks,
-		"scanned_files":     scanSummary.ScannedFiles,
-		"ambiguous_folders": scanSummary.AmbiguousFolders,
-	}))
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local files, match works, and sync local file locations.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_local_source"},
+			{"id": "discover", "type": "discover_local_files"},
+			{"id": "match", "type": "match_works"},
+			{"id": "sync", "type": "sync_file_locations"},
+		},
+	})
 	if err != nil {
 		return localScanResult{}, err
 	}
 
-	jobID, err := insertAndID(ctx, tx, `
-		INSERT INTO workflow_job (
-			run_id,
-			node_code,
-			worker_type,
-			status,
-			payload_json,
-			progress_current,
-			progress_total
-		)
-		VALUES (
-			?,
-			'scan_local_folder',
-			'local_folder_scan',
-			'succeeded',
-			?,
-			?,
-			?
-		)
-	`, runID, mustJSON(map[string]any{
+	runInput := map[string]any{
 		"root":       s.cfg.DataRoot,
 		"scan_depth": scanDepth,
-	}), scanSummary.ScannedFiles, scanSummary.ScannedFiles)
+	}
+	runSummary := map[string]any{
+		"candidate_folders": scanSummary.CandidateFolders,
+		"detected_works":    scanSummary.DetectedWorks,
+		"scanned_files":     scanSummary.ScannedFiles,
+		"ambiguous_folders": scanSummary.AmbiguousFolders,
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", "manual", "manual", runInput, runSummary)
 	if err != nil {
 		return localScanResult{}, err
 	}
@@ -767,6 +920,79 @@ func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
 			}
 			updatedLocations++
 		}
+	}
+
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "select",
+		NodeType:    "select_local_source",
+		DisplayName: "Select local source",
+		Position:    1,
+		Status:      "succeeded",
+		Input:       runInput,
+		Output: map[string]any{
+			"file_source_id": fileSourceID,
+			"root":           s.cfg.DataRoot,
+		},
+	}); err != nil {
+		return localScanResult{}, err
+	}
+	discoverNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "discover",
+		NodeType:    "discover_local_files",
+		DisplayName: "Discover local files",
+		Position:    2,
+		Status:      "succeeded",
+		Input:       runInput,
+		Output: map[string]any{
+			"candidate_folders": scanSummary.CandidateFolders,
+			"detected_works":    scanSummary.DetectedWorks,
+			"scanned_files":     scanSummary.ScannedFiles,
+			"ambiguous_folders": scanSummary.AmbiguousFolders,
+		},
+	})
+	if err != nil {
+		return localScanResult{}, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID:       discoverNodeID,
+		WorkerType:      "local_folder_discovery",
+		Status:          "succeeded",
+		Payload:         runInput,
+		ProgressCurrent: scanSummary.ScannedFiles,
+		ProgressTotal:   scanSummary.ScannedFiles,
+	})
+	if err != nil {
+		return localScanResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "match",
+		NodeType:    "match_works",
+		DisplayName: "Match works",
+		Position:    3,
+		Status:      "succeeded",
+		Input: map[string]any{
+			"detected_works": scanSummary.DetectedWorks,
+		},
+		Output: map[string]any{
+			"matched_works": scanSummary.DetectedWorks,
+		},
+	}); err != nil {
+		return localScanResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "sync",
+		NodeType:    "sync_file_locations",
+		DisplayName: "Sync file locations",
+		Position:    4,
+		Status:      "succeeded",
+		Input: map[string]any{
+			"file_source_id": fileSourceID,
+		},
+		Output: map[string]any{
+			"updated_locations": updatedLocations,
+		},
+	}); err != nil {
+		return localScanResult{}, err
 	}
 
 	if err := tx.Commit(); err != nil {

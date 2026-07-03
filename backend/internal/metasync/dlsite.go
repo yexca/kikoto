@@ -3,13 +3,13 @@ package metasync
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 var dlsiteWorkNoPattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`)
@@ -180,45 +180,69 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 		_ = tx.Rollback()
 	}()
 
-	summaryJSON, err := json.Marshal(map[string]any{
+	summary := map[string]any{
 		"target_works": result.TargetWorks,
 		"synced_works": result.SyncedWorks,
 		"failed_works": result.FailedWorks,
 		"failures":     result.Failures,
+	}
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "metadata_sync", "Sync work metadata", "Select works and sync normalized metadata snapshots.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_works"},
+			{"id": "sync", "type": "sync_metadata"},
+		},
 	})
 	if err != nil {
 		return 0, 0, err
 	}
 
-	runID, err := insertAndID(ctx, tx, `
-		INSERT INTO workflow_run (
-			template_code,
-			status,
-			trigger_reason,
-			params_json,
-			summary_json,
-			started_at,
-			finished_at
-		)
-		VALUES ('dlsite_metadata_sync', ?, 'manual', '{}', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`, result.Status, string(summaryJSON))
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", result.Status, "manual", "manual", map[string]any{}, summary)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	jobID, err := insertAndID(ctx, tx, `
-		INSERT INTO workflow_job (
-			run_id,
-			node_code,
-			worker_type,
-			status,
-			payload_json,
-			progress_current,
-			progress_total,
-			error_message
-		)
-		VALUES (?, 'sync_dlsite_metadata', 'dlsite_metadata_sync', ?, '{}', ?, ?, ?)
-	`, runID, result.Status, result.SyncedWorks, result.TargetWorks, strings.Join(result.Failures, "\n"))
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "select",
+		NodeType:    "select_works",
+		DisplayName: "Select works",
+		Position:    1,
+		Status:      "succeeded",
+		Input:       map[string]any{},
+		Output: map[string]any{
+			"target_works": result.TargetWorks,
+		},
+	}); err != nil {
+		return 0, 0, err
+	}
+	syncNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "sync",
+		NodeType:    "sync_metadata",
+		DisplayName: "Sync metadata",
+		Position:    2,
+		Status:      result.Status,
+		Input: map[string]any{
+			"target_works": result.TargetWorks,
+		},
+		Output: map[string]any{
+			"synced_works": result.SyncedWorks,
+			"failed_works": result.FailedWorks,
+			"failures":     result.Failures,
+		},
+		Error: strings.Join(result.Failures, "\n"),
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID:       syncNodeID,
+		WorkerType:      "metadata_sync",
+		Status:          result.Status,
+		Payload:         map[string]any{},
+		ProgressCurrent: result.SyncedWorks,
+		ProgressTotal:   result.TargetWorks,
+		Error:           strings.Join(result.Failures, "\n"),
+	})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -254,6 +278,17 @@ func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (in
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
+	var id int64
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, sql.ErrNoRows
+		}
+		return 0, err
+	}
+	return id, nil
 }
 
 func chooseTitle(product dlsite.Product) string {
