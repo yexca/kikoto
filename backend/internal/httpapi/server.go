@@ -54,7 +54,13 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/file-sources/{id}", s.deleteFileSource)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
+	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
+	mux.HandleFunc("PATCH /api/workflow-definitions/{id}", s.updateWorkflowDefinition)
+	mux.HandleFunc("DELETE /api/workflow-definitions/{id}", s.deleteWorkflowDefinition)
 	mux.HandleFunc("GET /api/workflow-triggers", s.listWorkflowTriggers)
+	mux.HandleFunc("POST /api/workflow-triggers", s.createWorkflowTrigger)
+	mux.HandleFunc("PATCH /api/workflow-triggers/{id}", s.updateWorkflowTrigger)
+	mux.HandleFunc("DELETE /api/workflow-triggers/{id}", s.deleteWorkflowTrigger)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
@@ -719,6 +725,9 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 			definition.display_name,
 			definition.description,
 			definition.definition_json,
+			definition.scope,
+			definition.editable,
+			definition.owner_user_id,
 			(
 				SELECT COUNT(*)
 				FROM workflow_trigger
@@ -737,10 +746,24 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	definitions := []workflowDefinitionRecord{}
 	for rows.Next() {
 		var item workflowDefinitionRecord
-		if err := rows.Scan(&item.ID, &item.Code, &item.DisplayName, &item.Description, &item.DefinitionJSON, &item.TriggerCount, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		var ownerUserID sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.Code,
+			&item.DisplayName,
+			&item.Description,
+			&item.DefinitionJSON,
+			&item.Scope,
+			&item.Editable,
+			&ownerUserID,
+			&item.TriggerCount,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
 			writeError(w, err)
 			return
 		}
+		item.OwnerUserID = nullableInt64(ownerUserID)
 		definitions = append(definitions, item)
 	}
 	writeJSON(w, http.StatusOK, definitions)

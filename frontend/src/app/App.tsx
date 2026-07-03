@@ -118,10 +118,10 @@ function AuthenticatedApp() {
             {page === "library" && <LibraryPage />}
             {page === "now-playing" && <NowPlayingPage />}
             {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
-            {page === "workflows" && <WorkflowsPage initialView="definitions" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-            {page === "runs" && <WorkflowsPage initialView="runs" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+            {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+            {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-            {!["library", "now-playing", "settings", "workflows", "runs", "users"].includes(page) && (
+            {!["library", "now-playing", "settings", "workflows", "activity", "users"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
           </div>
@@ -157,6 +157,9 @@ function AuthenticatedApp() {
 function pageFromPath(path: string): PageID {
   if (path === "/" || WORK_CODE_PATH_PATTERN.test(path)) {
     return "library";
+  }
+  if (path === "/runs") {
+    return "activity";
   }
   const item = navItems.find((navItem) => navItem.path === path);
   return item?.id ?? "library";

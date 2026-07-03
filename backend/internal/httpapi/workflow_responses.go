@@ -30,6 +30,9 @@ type workflowDefinitionRecord struct {
 	DisplayName    string `json:"displayName"`
 	Description    string `json:"description"`
 	DefinitionJSON string `json:"definitionJson"`
+	Scope          string `json:"scope"`
+	Editable       bool   `json:"editable"`
+	OwnerUserID    *int64 `json:"ownerUserId"`
 	TriggerCount   int64  `json:"triggerCount"`
 	CreatedAt      string `json:"createdAt"`
 	UpdatedAt      string `json:"updatedAt"`

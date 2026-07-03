@@ -163,6 +163,9 @@ export type WorkflowDefinition = {
   displayName: string;
   description: string;
   definitionJson: string;
+  scope: "system" | "user";
+  editable: boolean;
+  ownerUserId: number | null;
   triggerCount: number;
   createdAt: string;
   updatedAt: string;
@@ -340,7 +343,36 @@ export const api = {
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
+  createWorkflowDefinition: (payload: { code: string; displayName: string; description: string; definitionJson: string }) =>
+    postJSONBody<WorkflowDefinition>("/api/workflow-definitions", payload),
+  updateWorkflowDefinition: (
+    id: number,
+    payload: { code: string; displayName: string; description: string; definitionJson: string },
+  ) => patchJSONBody<WorkflowDefinition>(`/api/workflow-definitions/${id}`, payload),
+  deleteWorkflowDefinition: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-definitions/${id}`),
   listWorkflowTriggers: () => getJSON<WorkflowTrigger[]>("/api/workflow-triggers"),
+  createWorkflowTrigger: (payload: {
+    workflowDefinitionId: number;
+    displayName: string;
+    triggerType: string;
+    enabled: boolean;
+    scheduleJson: string;
+    configJson: string;
+    nextRunAt: string | null;
+  }) => postJSONBody<WorkflowTrigger>("/api/workflow-triggers", payload),
+  updateWorkflowTrigger: (
+    id: number,
+    payload: {
+      workflowDefinitionId: number;
+      displayName: string;
+      triggerType: string;
+      enabled: boolean;
+      scheduleJson: string;
+      configJson: string;
+      nextRunAt: string | null;
+    },
+  ) => patchJSONBody<WorkflowTrigger>(`/api/workflow-triggers/${id}`, payload),
+  deleteWorkflowTrigger: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-triggers/${id}`),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),

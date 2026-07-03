@@ -26,7 +26,7 @@ export const navItems = [
   { id: "circles", label: "Circles", path: "/circles", icon: Users, permission: undefined },
   { id: "tags", label: "Tags", path: "/tags", icon: Tags, permission: undefined },
   { id: "workflows", label: "Workflows", path: "/workflows", icon: Workflow, permission: "workflows:run" },
-  { id: "runs", label: "Runs", path: "/runs", icon: Activity, permission: "workflows:run" },
+  { id: "activity", label: "Activity", path: "/activity", icon: Activity, permission: "workflows:run" },
   { id: "users", label: "Users", path: "/users", icon: ShieldCheck, permission: "users:manage" },
   { id: "settings", label: "Settings", path: "/settings", icon: Settings, permission: undefined },
 ] as const satisfies readonly NavItem[];
