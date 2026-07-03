@@ -24,6 +24,26 @@ type workflowRunRecord struct {
 	TriggerID          *int64 `json:"triggerId"`
 }
 
+type workflowNodeRunRecord struct {
+	ID           int64  `json:"id"`
+	NodeID       string `json:"nodeId"`
+	NodeType     string `json:"nodeType"`
+	DisplayName  string `json:"displayName"`
+	Position     int64  `json:"position"`
+	Status       string `json:"status"`
+	InputJSON    string `json:"inputJson"`
+	OutputJSON   string `json:"outputJson"`
+	ErrorMessage string `json:"errorMessage"`
+	StartedAt    string `json:"startedAt"`
+	FinishedAt   string `json:"finishedAt"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+type workflowRunDetailRecord struct {
+	workflowRunRecord
+	NodeRuns []workflowNodeRunRecord `json:"nodeRuns"`
+}
+
 type workflowDefinitionRecord struct {
 	ID             int64  `json:"id"`
 	Code           string `json:"code"`

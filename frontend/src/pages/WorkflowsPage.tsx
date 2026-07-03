@@ -1,29 +1,49 @@
 import {
   Activity,
+  AlertCircle,
   CalendarClock,
+  CheckCircle2,
+  Clock3,
   Database,
+  Edit3,
+  FileJson,
   ListChecks,
   Play,
   Plus,
   Save,
   Trash2,
   Workflow,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, type WorkflowDefinition, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
+import {
+  api,
+  type WorkflowDefinition,
+  type WorkflowNodeRun,
+  type WorkflowRun,
+  type WorkflowRunDetail,
+  type WorkflowTrigger,
+} from "@/lib/api";
 
 type Surface = "workflows" | "activity";
 type WorkflowView = "definitions" | "scheduled" | "system";
 type ActivityView = "running" | "history" | "failed";
+type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
 
 type WorkflowNode = {
   id: string;
   type: string;
   displayName?: string;
+};
+
+type WorkflowTemplate = {
+  id: string;
+  label: string;
+  nodes: WorkflowNode[];
 };
 
 const nodeOptions = [
@@ -43,9 +63,36 @@ const nodeOptions = [
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
 
-const defaultNodes: WorkflowNode[] = [
-  { id: "select", type: "select_works", displayName: "Select works" },
-  { id: "sync", type: "sync_metadata", displayName: "Sync metadata" },
+const workflowTemplates: WorkflowTemplate[] = [
+  { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
+  {
+    id: "metadata",
+    label: "Metadata sync",
+    nodes: [
+      { id: "select", type: "select_works", displayName: "Select works" },
+      { id: "sync", type: "sync_metadata", displayName: "Sync metadata" },
+    ],
+  },
+  {
+    id: "local",
+    label: "Local scan",
+    nodes: [
+      { id: "select", type: "select_local_source", displayName: "Select local source" },
+      { id: "discover", type: "discover_local_files", displayName: "Discover files" },
+      { id: "match", type: "match_works", displayName: "Match works" },
+      { id: "sync", type: "sync_file_locations", displayName: "Sync locations" },
+    ],
+  },
+  {
+    id: "remote",
+    label: "Remote sync",
+    nodes: [
+      { id: "select", type: "select_remote_source", displayName: "Select source" },
+      { id: "discover", type: "discover_remote_works", displayName: "Discover works" },
+      { id: "filter", type: "filter_candidates", displayName: "Filter" },
+      { id: "sync", type: "sync_file_locations", displayName: "Sync locations" },
+    ],
+  },
 ];
 
 export function WorkflowsPage({
@@ -62,6 +109,12 @@ export function WorkflowsPage({
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(null);
+  const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(null);
+  const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
+  const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
 
@@ -74,6 +127,46 @@ export function WorkflowsPage({
   useEffect(() => {
     refresh();
   }, []);
+
+  const userDefinitions = definitions.filter((definition) => definition.scope === "user");
+  const systemDefinitions = definitions.filter((definition) => definition.scope === "system");
+  const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
+  const runningRuns = runs.filter((run) => ["queued", "running"].includes(run.status));
+  const failedRuns = runs.filter((run) => run.status === "failed");
+  const historyRuns = runs.filter((run) => !["queued", "running"].includes(run.status));
+
+  const visibleDefinitions = workflowView === "system" ? systemDefinitions : userDefinitions;
+  const visibleRuns = activityView === "running" ? runningRuns : activityView === "failed" ? failedRuns : historyRuns;
+
+  const selectedDefinition = useMemo(() => {
+    const pool = workflowView === "system" ? systemDefinitions : definitions;
+    return pool.find((definition) => definition.id === selectedDefinitionId) ?? pool[0] ?? null;
+  }, [definitions, selectedDefinitionId, systemDefinitions, workflowView]);
+
+  const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
+  const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
+  const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedDefinitionId && visibleDefinitions[0]) {
+      setSelectedDefinitionID(visibleDefinitions[0].id);
+    }
+  }, [selectedDefinitionId, visibleDefinitions]);
+
+  useEffect(() => {
+    if (!selectedTriggerId && scheduledTriggers[0]) {
+      setSelectedTriggerID(scheduledTriggers[0].id);
+    }
+  }, [scheduledTriggers, selectedTriggerId]);
+
+  useEffect(() => {
+    if (!selectedRunSummary) {
+      setSelectedRun(null);
+      return;
+    }
+    setSelectedRunID(selectedRunSummary.id);
+    api.getWorkflowRun(selectedRunSummary.id).then(setSelectedRun).catch(() => setSelectedRun(null));
+  }, [selectedRunSummary?.id]);
 
   const runLocalScan = async () => {
     setIsRunningScan(true);
@@ -97,20 +190,13 @@ export function WorkflowsPage({
     }
   };
 
-  const userDefinitions = definitions.filter((definition) => definition.scope === "user");
-  const systemDefinitions = definitions.filter((definition) => definition.scope === "system");
-  const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
-  const runningRuns = runs.filter((run) => ["queued", "running"].includes(run.status));
-  const failedRuns = runs.filter((run) => run.status === "failed");
-  const historyRuns = runs.filter((run) => !["queued", "running"].includes(run.status));
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">{surface === "activity" ? "Activity" : "Workflows"}</h2>
           <p className="text-sm text-muted-foreground">
-            {surface === "activity" ? "Running jobs and historical workflow executions." : "Definitions are editable workflows; scheduled contains non-manual triggers."}
+            {surface === "activity" ? "Inspect runs by node state and failure point." : "Build workflows on the left; inspect and edit their node pipeline on the right."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -139,9 +225,51 @@ export function WorkflowsPage({
             </ViewButton>
           </SegmentedNav>
 
-          {workflowView === "definitions" && <DefinitionWorkspace definitions={userDefinitions} onRefresh={refresh} />}
-          {workflowView === "scheduled" && <ScheduledWorkspace definitions={definitions} triggers={scheduledTriggers} onRefresh={refresh} />}
-          {workflowView === "system" && <DefinitionList definitions={systemDefinitions} readonly />}
+          {workflowView === "scheduled" ? (
+            <Workbench
+              left={
+                <TriggerSidebar
+                  triggers={scheduledTriggers}
+                  selectedId={selectedTrigger?.id ?? null}
+                  onSelect={(trigger) => setSelectedTriggerID(trigger.id)}
+                  onCreate={() => setModalMode("create-trigger")}
+                />
+              }
+              right={
+                <WorkflowDetail
+                  definition={scheduledDefinition}
+                  trigger={selectedTrigger}
+                  readonly
+                  onEditTrigger={() => setModalMode("edit-trigger")}
+                  onEditDefinition={() => undefined}
+                  onEditNode={() => undefined}
+                />
+              }
+            />
+          ) : (
+            <Workbench
+              left={
+                <DefinitionSidebar
+                  definitions={visibleDefinitions}
+                  selectedId={selectedDefinition?.id ?? null}
+                  canCreate={workflowView === "definitions"}
+                  onSelect={(definition) => setSelectedDefinitionID(definition.id)}
+                  onCreate={() => setModalMode("create-workflow")}
+                />
+              }
+              right={
+                <WorkflowDetail
+                  definition={selectedDefinition}
+                  readonly={workflowView === "system" || !selectedDefinition?.editable}
+                  onEditDefinition={() => setModalMode("edit-workflow")}
+                  onEditNode={(index) => {
+                    setEditingNodeIndex(index);
+                    setModalMode("edit-node");
+                  }}
+                />
+              }
+            />
+          )}
         </>
       ) : (
         <>
@@ -152,107 +280,427 @@ export function WorkflowsPage({
             <ViewButton active={activityView === "history"} onClick={() => setActivityView("history")} icon={<ListChecks className="h-4 w-4" />}>
               History
             </ViewButton>
-            <ViewButton active={activityView === "failed"} onClick={() => setActivityView("failed")} icon={<Trash2 className="h-4 w-4" />}>
+            <ViewButton active={activityView === "failed"} onClick={() => setActivityView("failed")} icon={<AlertCircle className="h-4 w-4" />}>
               Failed
             </ViewButton>
           </SegmentedNav>
-
-          {activityView === "running" && <RunList runs={runningRuns} emptyText="No workflow runs are active." />}
-          {activityView === "history" && <RunList runs={historyRuns} emptyText="No completed workflow runs yet." />}
-          {activityView === "failed" && <RunList runs={failedRuns} emptyText="No failed workflow runs." />}
+          <Workbench
+            left={<RunSidebar runs={visibleRuns} selectedId={selectedRunSummary?.id ?? null} onSelect={(run) => setSelectedRunID(run.id)} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} />}
+          />
         </>
+      )}
+
+      {modalMode === "create-workflow" && (
+        <WorkflowModal
+          title="New workflow"
+          definition={null}
+          onClose={() => setModalMode(null)}
+          onSaved={(definition) => {
+            setSelectedDefinitionID(definition.id);
+            setModalMode(null);
+            refresh();
+          }}
+        />
+      )}
+      {modalMode === "edit-workflow" && selectedDefinition && (
+        <WorkflowModal
+          title="Edit workflow"
+          definition={selectedDefinition}
+          onClose={() => setModalMode(null)}
+          onSaved={(definition) => {
+            setSelectedDefinitionID(definition.id);
+            setModalMode(null);
+            refresh();
+          }}
+        />
+      )}
+      {modalMode === "edit-node" && selectedDefinition && editingNodeIndex !== null && (
+        <NodeModal
+          definition={selectedDefinition}
+          nodeIndex={editingNodeIndex}
+          onClose={() => setModalMode(null)}
+          onSaved={() => {
+            setModalMode(null);
+            refresh();
+          }}
+        />
+      )}
+      {modalMode === "create-trigger" && (
+        <TriggerModal
+          definitions={definitions}
+          trigger={null}
+          onClose={() => setModalMode(null)}
+          onSaved={(trigger) => {
+            setSelectedTriggerID(trigger.id);
+            setModalMode(null);
+            refresh();
+          }}
+        />
+      )}
+      {modalMode === "edit-trigger" && selectedTrigger && (
+        <TriggerModal
+          definitions={definitions}
+          trigger={selectedTrigger}
+          onClose={() => setModalMode(null)}
+          onSaved={(trigger) => {
+            setSelectedTriggerID(trigger.id);
+            setModalMode(null);
+            refresh();
+          }}
+        />
       )}
     </div>
   );
 }
 
-function DefinitionWorkspace({ definitions, onRefresh }: { definitions: WorkflowDefinition[]; onRefresh: () => void }) {
-  const [editing, setEditing] = useState<WorkflowDefinition | null>(definitions[0] ?? null);
+function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
+  return <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">{left}{right}</div>;
+}
 
-  useEffect(() => {
-    if (!editing && definitions[0]) {
-      setEditing(definitions[0]);
-    }
-    if (editing && !definitions.some((definition) => definition.id === editing.id)) {
-      setEditing(definitions[0] ?? null);
-    }
-  }, [definitions, editing]);
-
-  const createDraft = () => {
-    setEditing({
-      id: 0,
-      code: `custom_workflow_${Date.now().toString().slice(-5)}`,
-      displayName: "New workflow",
-      description: "",
-      definitionJson: JSON.stringify({ nodes: defaultNodes }),
-      scope: "user",
-      editable: true,
-      ownerUserId: null,
-      triggerCount: 0,
-      createdAt: "",
-      updatedAt: "",
-    });
-  };
-
+function DefinitionSidebar({
+  definitions,
+  selectedId,
+  canCreate,
+  onSelect,
+  onCreate,
+}: {
+  definitions: WorkflowDefinition[];
+  selectedId: number | null;
+  canCreate: boolean;
+  onSelect: (definition: WorkflowDefinition) => void;
+  onCreate: () => void;
+}) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-      <div className="space-y-3">
-        <Button size="sm" onClick={createDraft}>
-          <Plus className="h-4 w-4" />
-          New workflow
-        </Button>
-        <DefinitionList definitions={definitions} selectedId={editing?.id ?? null} onSelect={setEditing} />
+    <Card>
+      <CardContent className="space-y-3 p-3">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="text-sm font-semibold">Workflow list</div>
+          {canCreate && (
+            <Button size="sm" onClick={onCreate}>
+              <Plus className="h-4 w-4" />
+              New
+            </Button>
+          )}
+        </div>
+        <div className="space-y-2">
+          {definitions.map((definition) => (
+            <button
+              key={definition.id}
+              className={`w-full rounded-md border p-3 text-left transition-colors ${
+                selectedId === definition.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
+              }`}
+              onClick={() => onSelect(definition)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{definition.displayName}</div>
+                  <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
+                </div>
+                <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">{parseNodes(definition.definitionJson).length} nodes · {definition.triggerCount} triggers</div>
+            </button>
+          ))}
+          {definitions.length === 0 && <EmptyPanel text="No workflows here yet." />}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TriggerSidebar({
+  triggers,
+  selectedId,
+  onSelect,
+  onCreate,
+}: {
+  triggers: WorkflowTrigger[];
+  selectedId: number | null;
+  onSelect: (trigger: WorkflowTrigger) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-3">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="text-sm font-semibold">Scheduled</div>
+          <Button size="sm" onClick={onCreate}>
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {triggers.map((trigger) => (
+            <button
+              key={trigger.id}
+              className={`w-full rounded-md border p-3 text-left transition-colors ${
+                selectedId === trigger.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
+              }`}
+              onClick={() => onSelect(trigger)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{trigger.displayName}</div>
+                  <div className="truncate text-xs text-muted-foreground">{trigger.triggerType} · {trigger.workflowCode}</div>
+                </div>
+                <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">{trigger.lastSuccessAt ? `Last success ${trigger.lastSuccessAt}` : "No successful run yet"}</div>
+            </button>
+          ))}
+          {triggers.length === 0 && <EmptyPanel text="No scheduled triggers yet." />}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunSidebar({ runs, selectedId, onSelect }: { runs: WorkflowRun[]; selectedId: number | null; onSelect: (run: WorkflowRun) => void }) {
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-3">
+        <div className="px-1 text-sm font-semibold">Runs</div>
+        <div className="space-y-2">
+          {runs.map((run) => (
+            <button
+              key={run.id}
+              className={`w-full rounded-md border p-3 text-left transition-colors ${
+                selectedId === run.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
+              }`}
+              onClick={() => onSelect(run)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{run.displayName}</div>
+                  <div className="truncate text-xs text-muted-foreground">{run.workflowCode}</div>
+                </div>
+                <StatusBadge status={run.status} />
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">{run.createdAt}</div>
+            </button>
+          ))}
+          {runs.length === 0 && <EmptyPanel text="No runs in this view." />}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkflowDetail({
+  definition,
+  trigger,
+  readonly,
+  onEditDefinition,
+  onEditTrigger,
+  onEditNode,
+}: {
+  definition: WorkflowDefinition | null;
+  trigger?: WorkflowTrigger | null;
+  readonly: boolean;
+  onEditDefinition: () => void;
+  onEditTrigger?: () => void;
+  onEditNode: (index: number) => void;
+}) {
+  if (!definition) {
+    return <EmptyPanel text="Select a workflow to inspect its node pipeline." />;
+  }
+  const nodes = parseNodes(definition.definitionJson);
+  return (
+    <Card>
+      <CardContent className="space-y-5 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-semibold">{definition.displayName}</h3>
+              <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
+              {trigger && <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>{definition.code}</span>
+              <span>{nodes.length} nodes</span>
+              <span>{definition.triggerCount} triggers</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {trigger && onEditTrigger && (
+              <Button size="sm" variant="outline" onClick={onEditTrigger}>
+                <CalendarClock className="h-4 w-4" />
+                Edit trigger
+              </Button>
+            )}
+            {!readonly && (
+              <Button size="sm" onClick={onEditDefinition}>
+                <Edit3 className="h-4 w-4" />
+                Edit workflow
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {trigger && <TriggerSummary trigger={trigger} />}
+        <NodePipeline nodes={nodes} readonly={readonly} onEditNode={onEditNode} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunDetail({ run }: { run: WorkflowRunDetail | WorkflowRun | null }) {
+  if (!run) {
+    return <EmptyPanel text="Select a run to inspect execution by node." />;
+  }
+  const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
+  return (
+    <Card>
+      <CardContent className="space-y-5 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-semibold">{run.displayName}</h3>
+              <StatusBadge status={run.status} />
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {run.triggerType} {run.triggerReason ? `· ${run.triggerReason}` : ""} · {run.createdAt}
+            </p>
+          </div>
+          <RunMetrics run={run} />
+        </div>
+        {nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} /> : <EmptyPanel text="This run has no node detail yet." />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NodePipeline({ nodes, readonly, onEditNode }: { nodes: WorkflowNode[]; readonly: boolean; onEditNode: (index: number) => void }) {
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="flex min-w-max items-stretch gap-3">
+        {nodes.map((node, index) => (
+          <div key={`${node.id}-${index}`} className="flex items-center gap-3">
+            <NodeCard
+              title={node.displayName || node.id}
+              subtitle={node.type}
+              status="idle"
+              readonly={readonly}
+              onEdit={() => onEditNode(index)}
+              onDoubleClick={() => !readonly && onEditNode(index)}
+            />
+            {index < nodes.length - 1 && <Connector />}
+          </div>
+        ))}
       </div>
-      <WorkflowEditor definition={editing} onRefresh={onRefresh} onClear={() => setEditing(null)} />
     </div>
   );
 }
 
-function WorkflowEditor({
-  definition,
-  onRefresh,
-  onClear,
+function RunNodePipeline({ nodes }: { nodes: WorkflowNodeRun[] }) {
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="flex min-w-max items-stretch gap-3">
+        {nodes.map((node, index) => (
+          <div key={node.id} className="flex items-center gap-3">
+            <NodeCard title={node.displayName || node.nodeId} subtitle={node.nodeType} status={node.status} error={node.errorMessage} readonly />
+            {index < nodes.length - 1 && <Connector active={node.status === "succeeded"} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NodeCard({
+  title,
+  subtitle,
+  status,
+  error,
+  readonly,
+  onEdit,
+  onDoubleClick,
 }: {
-  definition: WorkflowDefinition | null;
-  onRefresh: () => void;
-  onClear: () => void;
+  title: string;
+  subtitle: string;
+  status: string;
+  error?: string;
+  readonly: boolean;
+  onEdit?: () => void;
+  onDoubleClick?: () => void;
 }) {
-  const [code, setCode] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
-  const [nodes, setNodes] = useState<WorkflowNode[]>(defaultNodes);
+  const tone = nodeTone(status);
+  return (
+    <div className={`relative grid min-h-32 w-56 content-between rounded-md border p-3 ${tone.card}`} onDoubleClick={onDoubleClick}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{title}</div>
+          <div className="mt-1 break-all text-xs text-muted-foreground">{subtitle}</div>
+        </div>
+        {!readonly && (
+          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="Edit node" onClick={onEdit}>
+            <Edit3 className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {error && <div className="line-clamp-2 text-xs text-destructive">{error}</div>}
+        <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${tone.badge}`}>
+          {tone.icon}
+          {status}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Connector({ active = false }: { active?: boolean }) {
+  return <div className={`h-0.5 w-10 rounded-full ${active ? "bg-primary" : "bg-border"}`} />;
+}
+
+function TriggerSummary({ trigger }: { trigger: WorkflowTrigger }) {
+  return (
+    <div className="grid gap-3 rounded-md border bg-muted/40 p-3 md:grid-cols-4">
+      <SummaryCell label="Type" value={trigger.triggerType} />
+      <SummaryCell label="Next" value={trigger.nextRunAt ?? "not scheduled"} />
+      <SummaryCell label="Last run" value={trigger.lastRunAt ?? "never"} />
+      <SummaryCell label="Last error" value={trigger.lastErrorMessage || "none"} />
+    </div>
+  );
+}
+
+function SummaryCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="truncate text-sm font-medium">{value}</div>
+    </div>
+  );
+}
+
+function WorkflowModal({
+  title,
+  definition,
+  onClose,
+  onSaved,
+}: {
+  title: string;
+  definition: WorkflowDefinition | null;
+  onClose: () => void;
+  onSaved: (definition: WorkflowDefinition) => void;
+}) {
+  const [code, setCode] = useState(definition?.code ?? `custom_workflow_${Date.now().toString().slice(-5)}`);
+  const [displayName, setDisplayName] = useState(definition?.displayName ?? "New workflow");
+  const [description, setDescription] = useState(definition?.description ?? "");
+  const [templateId, setTemplateID] = useState(workflowTemplates[1].id);
+  const [nodes, setNodes] = useState<WorkflowNode[]>(definition ? parseNodes(definition.definitionJson) : workflowTemplates[1].nodes);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!definition) return;
-    setCode(definition.code);
-    setDisplayName(definition.displayName);
-    setDescription(definition.description);
-    setNodes(parseNodes(definition.definitionJson));
-    setError("");
-  }, [definition]);
-
-  if (!definition) {
-    return <EmptyState text="Create or select a workflow definition." />;
-  }
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      const payload = {
-        code,
-        displayName,
-        description,
-        definitionJson: JSON.stringify({ nodes }),
-      };
-      if (definition.id === 0) {
-        await api.createWorkflowDefinition(payload);
-      } else {
-        await api.updateWorkflowDefinition(definition.id, payload);
-      }
-      onRefresh();
+      const payload = { code, displayName, description, definitionJson: JSON.stringify({ nodes }) };
+      const saved = definition ? await api.updateWorkflowDefinition(definition.id, payload) : await api.createWorkflowDefinition(payload);
+      onSaved(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -261,16 +709,11 @@ function WorkflowEditor({
   };
 
   const remove = async () => {
-    if (definition.id === 0) {
-      onClear();
-      return;
-    }
+    if (!definition) return;
     setSaving(true);
-    setError("");
     try {
       await api.deleteWorkflowDefinition(definition.id);
-      onClear();
-      onRefresh();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -279,161 +722,145 @@ function WorkflowEditor({
   };
 
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4">
+    <Modal title={title} onClose={onClose}>
+      <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Code">
-            <input
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              disabled={definition.id !== 0}
-            />
+            <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60" value={code} disabled={!!definition} onChange={(event) => setCode(event.target.value)} />
           </Field>
           <Field label="Name">
             <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
           </Field>
         </div>
+        {!definition && (
+          <Field label="Template">
+            <select
+              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={templateId}
+              onChange={(event) => {
+                setTemplateID(event.target.value);
+                setNodes(workflowTemplates.find((template) => template.id === event.target.value)?.nodes ?? workflowTemplates[0].nodes);
+              }}
+            >
+              {workflowTemplates.map((template) => (
+                <option key={template.id} value={template.id}>{template.label}</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Description">
           <textarea className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-medium">Nodes</div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setNodes((current) => [...current, { id: `node_${current.length + 1}`, type: "filter_candidates" }])}
-            >
+            <Button size="sm" variant="outline" onClick={() => setNodes((current) => [...current, { id: `node_${current.length + 1}`, type: "filter_candidates" }])}>
               <Plus className="h-4 w-4" />
               Add node
             </Button>
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-2">
             {nodes.map((node, index) => (
-              <div key={`${node.id}-${index}`} className="grid gap-2 rounded-md border p-3 md:grid-cols-[1fr_1.3fr_1fr_auto]">
-                <input
-                  className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  value={node.id}
-                  onChange={(event) => updateNode(nodes, setNodes, index, { id: event.target.value })}
-                />
-                <select
-                  className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  value={node.type}
-                  onChange={(event) => updateNode(nodes, setNodes, index, { type: event.target.value })}
-                >
-                  {nodeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Display name"
-                  value={node.displayName ?? ""}
-                  onChange={(event) => updateNode(nodes, setNodes, index, { displayName: event.target.value })}
-                />
-                <Button size="icon" variant="outline" aria-label="Remove node" onClick={() => setNodes((current) => current.filter((_, nodeIndex) => nodeIndex !== index))}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              <NodeInlineEditor key={`${node.id}-${index}`} node={node} onChange={(patch) => setNodes(updateNodes(nodes, index, patch))} onRemove={() => setNodes(nodes.filter((_, nodeIndex) => nodeIndex !== index))} />
             ))}
           </div>
         </div>
-        {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={remove} disabled={saving}>
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </Button>
+        {error && <ErrorPanel error={error} />}
+        <div className="flex justify-end gap-2">
+          {definition && (
+            <Button variant="outline" onClick={remove} disabled={saving}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          )}
           <Button onClick={save} disabled={saving}>
             <Save className="h-4 w-4" />
             {saving ? "Saving" : "Save"}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Modal>
   );
 }
 
-function ScheduledWorkspace({
-  definitions,
-  triggers,
-  onRefresh,
+function NodeModal({
+  definition,
+  nodeIndex,
+  onClose,
+  onSaved,
 }: {
-  definitions: WorkflowDefinition[];
-  triggers: WorkflowTrigger[];
-  onRefresh: () => void;
+  definition: WorkflowDefinition;
+  nodeIndex: number;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
-  const [editing, setEditing] = useState<WorkflowTrigger | null>(null);
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <TriggerList triggers={triggers} onSelect={setEditing} onRefresh={onRefresh} />
-      <TriggerEditor definitions={definitions} trigger={editing} onRefresh={onRefresh} onClear={() => setEditing(null)} />
-    </div>
-  );
-}
-
-function TriggerEditor({
-  definitions,
-  trigger,
-  onRefresh,
-  onClear,
-}: {
-  definitions: WorkflowDefinition[];
-  trigger: WorkflowTrigger | null;
-  onRefresh: () => void;
-  onClear: () => void;
-}) {
-  const [workflowDefinitionId, setWorkflowDefinitionID] = useState(definitions[0]?.id ?? 0);
-  const [displayName, setDisplayName] = useState("Scheduled workflow");
-  const [triggerType, setTriggerType] = useState("schedule");
-  const [enabled, setEnabled] = useState(true);
-  const [scheduleJson, setScheduleJson] = useState('{"intervalMinutes":60}');
-  const [configJson, setConfigJson] = useState("{}");
+  const nodes = parseNodes(definition.definitionJson);
+  const [node, setNode] = useState<WorkflowNode>(nodes[nodeIndex] ?? { id: "node", type: "filter_candidates" });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (trigger) {
-      setWorkflowDefinitionID(trigger.workflowDefinitionId);
-      setDisplayName(trigger.displayName);
-      setTriggerType(trigger.triggerType);
-      setEnabled(trigger.enabled);
-      setScheduleJson(trigger.scheduleJson || "{}");
-      setConfigJson(trigger.configJson || "{}");
-    }
-  }, [trigger]);
-
-  useEffect(() => {
-    if (!trigger && definitions[0]) {
-      setWorkflowDefinitionID(definitions[0].id);
-    }
-  }, [definitions, trigger]);
-
-  const createNew = () => {
-    onClear();
-    setWorkflowDefinitionID(definitions[0]?.id ?? 0);
-    setDisplayName("Scheduled workflow");
-    setTriggerType("schedule");
-    setEnabled(true);
-    setScheduleJson('{"intervalMinutes":60}');
-    setConfigJson("{}");
+  const save = async () => {
+    setSaving(true);
     setError("");
+    try {
+      const nextNodes = updateNodes(nodes, nodeIndex, node);
+      await api.updateWorkflowDefinition(definition.id, {
+        code: definition.code,
+        displayName: definition.displayName,
+        description: definition.description,
+        definitionJson: JSON.stringify({ nodes: nextNodes }),
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  return (
+    <Modal title="Edit node" onClose={onClose}>
+      <div className="space-y-3">
+        <NodeInlineEditor node={node} onChange={(patch) => setNode({ ...node, ...patch })} />
+        {error && <ErrorPanel error={error} />}
+        <div className="flex justify-end">
+          <Button onClick={save} disabled={saving}>
+            <Save className="h-4 w-4" />
+            {saving ? "Saving" : "Save"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function TriggerModal({
+  definitions,
+  trigger,
+  onClose,
+  onSaved,
+}: {
+  definitions: WorkflowDefinition[];
+  trigger: WorkflowTrigger | null;
+  onClose: () => void;
+  onSaved: (trigger: WorkflowTrigger) => void;
+}) {
+  const [workflowDefinitionId, setWorkflowDefinitionID] = useState(trigger?.workflowDefinitionId ?? definitions[0]?.id ?? 0);
+  const [displayName, setDisplayName] = useState(trigger?.displayName ?? "Scheduled workflow");
+  const [triggerType, setTriggerType] = useState(trigger?.triggerType ?? "schedule");
+  const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
+  const [scheduleJson, setScheduleJson] = useState(trigger?.scheduleJson ?? '{"intervalMinutes":60}');
+  const [configJson, setConfigJson] = useState(trigger?.configJson ?? "{}");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
       const payload = { workflowDefinitionId, displayName, triggerType, enabled, scheduleJson, configJson, nextRunAt: null };
-      if (trigger) {
-        await api.updateWorkflowTrigger(trigger.id, payload);
-      } else {
-        await api.createWorkflowTrigger(payload);
-      }
-      onRefresh();
+      const saved = trigger ? await api.updateWorkflowTrigger(trigger.id, payload) : await api.createWorkflowTrigger(payload);
+      onSaved(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -444,11 +871,9 @@ function TriggerEditor({
   const remove = async () => {
     if (!trigger) return;
     setSaving(true);
-    setError("");
     try {
       await api.deleteWorkflowTrigger(trigger.id);
-      onClear();
-      onRefresh();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -457,48 +882,39 @@ function TriggerEditor({
   };
 
   return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-semibold">{trigger ? "Edit scheduled trigger" : "New scheduled trigger"}</div>
-          <Button size="sm" variant="outline" onClick={createNew}>
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
-        </div>
+    <Modal title={trigger ? "Edit scheduled trigger" : "New scheduled trigger"} onClose={onClose}>
+      <div className="grid gap-3">
         <Field label="Workflow">
           <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={workflowDefinitionId} onChange={(event) => setWorkflowDefinitionID(Number(event.target.value))}>
             {definitions.map((definition) => (
-              <option key={definition.id} value={definition.id}>
-                {definition.displayName}
-              </option>
+              <option key={definition.id} value={definition.id}>{definition.displayName}</option>
             ))}
           </select>
         </Field>
         <Field label="Name">
           <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
         </Field>
-        <Field label="Trigger type">
-          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={triggerType} onChange={(event) => setTriggerType(event.target.value)}>
-            {triggerTypes.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-          Enabled
-        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Trigger type">
+            <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={triggerType} onChange={(event) => setTriggerType(event.target.value)}>
+              {triggerTypes.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </Field>
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+            Enabled
+          </label>
+        </div>
         <Field label="Schedule JSON">
           <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduleJson} onChange={(event) => setScheduleJson(event.target.value)} />
         </Field>
         <Field label="Config JSON">
           <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={configJson} onChange={(event) => setConfigJson(event.target.value)} />
         </Field>
-        {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
-        <div className="flex flex-wrap justify-end gap-2">
+        {error && <ErrorPanel error={error} />}
+        <div className="flex justify-end gap-2">
           {trigger && (
             <Button variant="outline" onClick={remove} disabled={saving}>
               <Trash2 className="h-4 w-4" />
@@ -510,8 +926,43 @@ function TriggerEditor({
             {saving ? "Saving" : "Save"}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Modal>
+  );
+}
+
+function NodeInlineEditor({ node, onChange, onRemove }: { node: WorkflowNode; onChange: (patch: Partial<WorkflowNode>) => void; onRemove?: () => void }) {
+  return (
+    <div className="grid gap-2 rounded-md border p-3 md:grid-cols-[1fr_1.3fr_1fr_auto]">
+      <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.id} onChange={(event) => onChange({ id: event.target.value })} />
+      <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.type} onChange={(event) => onChange({ type: event.target.value })}>
+        {nodeOptions.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+      <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Display name" value={node.displayName ?? ""} onChange={(event) => onChange({ displayName: event.target.value })} />
+      {onRemove && (
+        <Button size="icon" variant="outline" aria-label="Remove node" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
+      <div className="max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3">
+          <div className="font-semibold">{title}</div>
+          <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -519,17 +970,7 @@ function SegmentedNav({ children }: { children: React.ReactNode }) {
   return <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">{children}</div>;
 }
 
-function ViewButton({
-  active,
-  icon,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
+function ViewButton({ active, icon, children, onClick }: { active: boolean; icon: React.ReactNode; children: React.ReactNode; onClick: () => void }) {
   return (
     <button
       className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium ${
@@ -543,149 +984,29 @@ function ViewButton({
   );
 }
 
-function DefinitionList({
-  definitions,
-  readonly = false,
-  selectedId,
-  onSelect,
-}: {
-  definitions: WorkflowDefinition[];
-  readonly?: boolean;
-  selectedId?: number | null;
-  onSelect?: (definition: WorkflowDefinition) => void;
-}) {
-  return (
-    <div className="grid gap-3">
-      {definitions.map((definition) => (
-        <Card key={definition.id} className={selectedId === definition.id ? "border-primary" : ""}>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-semibold">{definition.displayName}</div>
-                <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
-              </div>
-              <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
-            </div>
-            <WorkflowNodeBadges definitionJson={definition.definitionJson} />
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-muted-foreground">{definition.triggerCount} triggers</div>
-              {!readonly && onSelect && (
-                <Button size="sm" variant="outline" onClick={() => onSelect(definition)}>
-                  Edit
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      {definitions.length === 0 && <EmptyState text={readonly ? "No system workflow definitions are available." : "No custom workflow definitions yet."} />}
-    </div>
-  );
-}
-
-function TriggerList({
-  triggers,
-  onSelect,
-  onRefresh,
-}: {
-  triggers: WorkflowTrigger[];
-  onSelect: (trigger: WorkflowTrigger) => void;
-  onRefresh: () => void;
-}) {
-  const toggle = async (trigger: WorkflowTrigger) => {
-    await api.updateWorkflowTrigger(trigger.id, {
-      workflowDefinitionId: trigger.workflowDefinitionId,
-      displayName: trigger.displayName,
-      triggerType: trigger.triggerType,
-      enabled: !trigger.enabled,
-      scheduleJson: trigger.scheduleJson,
-      configJson: trigger.configJson,
-      nextRunAt: trigger.nextRunAt,
-    });
-    onRefresh();
-  };
-
-  return (
-    <div className="grid gap-3">
-      {triggers.map((trigger) => (
-        <Card key={trigger.id}>
-          <CardContent className="flex min-h-20 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="font-semibold">{trigger.displayName}</div>
-              <div className="text-sm text-muted-foreground">
-                {trigger.triggerType} {"->"} {trigger.workflowCode}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => toggle(trigger)}>
-                {trigger.enabled ? "Disable" : "Enable"}
-              </Button>
-              <Button size="sm" onClick={() => onSelect(trigger)}>
-                Edit
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      {triggers.length === 0 && <EmptyState text="No scheduled triggers are configured." />}
-    </div>
-  );
-}
-
-function RunList({ runs, emptyText }: { runs: WorkflowRun[]; emptyText: string }) {
-  return (
-    <div className="grid gap-3">
-      {runs.map((run) => (
-        <Card key={run.id}>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="font-semibold">{run.displayName}</div>
-                <div className="text-sm text-muted-foreground">
-                  {run.triggerType} {run.triggerReason ? `- ${run.triggerReason}` : ""} at {run.createdAt}
-                </div>
-              </div>
-              <Badge variant={run.status === "succeeded" ? "secondary" : run.status === "failed" ? "warning" : "outline"}>{run.status}</Badge>
-            </div>
-            <RunMetrics run={run} />
-          </CardContent>
-        </Card>
-      ))}
-      {runs.length === 0 && <EmptyState text={emptyText} />}
-    </div>
-  );
-}
-
-function WorkflowNodeBadges({ definitionJson }: { definitionJson: string }) {
-  const nodes = useMemo(() => parseNodes(definitionJson), [definitionJson]);
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {nodes.map((node, index) => (
-        <Badge key={`${node.id}-${index}`} variant="secondary">
-          {node.type}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 function RunMetrics({ run }: { run: WorkflowRun }) {
-  const items = [
-    { icon: <ListChecks className="h-3.5 w-3.5" />, label: "nodes", value: `${run.completedNodeRuns}/${run.nodeRunCount}` },
-    { icon: <Database className="h-3.5 w-3.5" />, label: "jobs", value: `${run.completedJobs}/${run.jobCount}` },
-    { icon: <Activity className="h-3.5 w-3.5" />, label: "candidates", value: `${run.acceptedCandidates}/${run.candidateCount}` },
-  ];
   return (
     <div className="grid gap-2 sm:grid-cols-3">
-      {items.map((item) => (
-        <div key={item.label} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-          <span className="text-muted-foreground">{item.icon}</span>
-          <span className="font-medium">{item.value}</span>
-          <span className="text-muted-foreground">{item.label}</span>
-        </div>
-      ))}
+      <Metric icon={<ListChecks className="h-3.5 w-3.5" />} label="nodes" value={`${run.completedNodeRuns}/${run.nodeRunCount}`} />
+      <Metric icon={<Database className="h-3.5 w-3.5" />} label="jobs" value={`${run.completedJobs}/${run.jobCount}`} />
+      <Metric icon={<Activity className="h-3.5 w-3.5" />} label="candidates" value={`${run.acceptedCandidates}/${run.candidateCount}`} />
     </div>
   );
+}
+
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="font-medium">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const variant = status === "failed" || status === "disabled" ? "warning" : status === "succeeded" || status === "enabled" ? "secondary" : "outline";
+  return <Badge variant={variant}>{status}</Badge>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -697,7 +1018,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function EmptyState({ text }: { text: string }) {
+function EmptyPanel({ text }: { text: string }) {
   return (
     <Card>
       <CardContent className="p-5 text-sm text-muted-foreground">{text}</CardContent>
@@ -705,15 +1026,48 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
+function ErrorPanel({ error }: { error: string }) {
+  return <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>;
+}
+
 function parseNodes(definitionJson: string): WorkflowNode[] {
   try {
     const parsed = JSON.parse(definitionJson) as { nodes?: WorkflowNode[] };
-    return parsed.nodes?.length ? parsed.nodes : defaultNodes;
+    return parsed.nodes?.length ? parsed.nodes : workflowTemplates[0].nodes;
   } catch {
-    return defaultNodes;
+    return workflowTemplates[0].nodes;
   }
 }
 
-function updateNode(nodes: WorkflowNode[], setNodes: (nodes: WorkflowNode[]) => void, index: number, patch: Partial<WorkflowNode>) {
-  setNodes(nodes.map((node, nodeIndex) => (nodeIndex === index ? { ...node, ...patch } : node)));
+function updateNodes(nodes: WorkflowNode[], index: number, patch: Partial<WorkflowNode>) {
+  return nodes.map((node, nodeIndex) => (nodeIndex === index ? { ...node, ...patch } : node));
+}
+
+function nodeTone(status: string) {
+  if (status === "failed") {
+    return {
+      card: "border-destructive/40 bg-destructive/5",
+      badge: "bg-destructive text-destructive-foreground",
+      icon: <AlertCircle className="h-3.5 w-3.5" />,
+    };
+  }
+  if (status === "running" || status === "queued") {
+    return {
+      card: "border-primary/40 bg-secondary",
+      badge: "bg-primary text-primary-foreground",
+      icon: <Clock3 className="h-3.5 w-3.5" />,
+    };
+  }
+  if (status === "succeeded") {
+    return {
+      card: "border-primary/30 bg-card",
+      badge: "bg-secondary text-secondary-foreground",
+      icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+    };
+  }
+  return {
+    card: "bg-card",
+    badge: "bg-muted text-muted-foreground",
+    icon: <FileJson className="h-3.5 w-3.5" />,
+  };
 }

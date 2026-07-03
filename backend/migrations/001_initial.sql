@@ -56,10 +56,21 @@ CREATE TABLE file_source_endpoint (
   id INTEGER PRIMARY KEY,
   file_source_id INTEGER NOT NULL REFERENCES file_source(id) ON DELETE CASCADE,
   base_url TEXT NOT NULL DEFAULT '',
+  api_url TEXT NOT NULL DEFAULT '',
+  fallback_url TEXT NOT NULL DEFAULT '',
   auth_type TEXT NOT NULL DEFAULT 'none',
   credential_ref TEXT NOT NULL DEFAULT '',
   health_status TEXT NOT NULL DEFAULT 'unknown',
   last_checked_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_file_source_endpoint_source
+  ON file_source_endpoint(file_source_id);
+
+CREATE TABLE app_setting (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE media_item (
@@ -177,38 +188,137 @@ CREATE TABLE user_work_tag (
   PRIMARY KEY(user_id, work_id, user_tag_id)
 );
 
-CREATE TABLE workflow_template (
+CREATE TABLE workflow_definition (
   id INTEGER PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   display_name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  description TEXT NOT NULL DEFAULT '',
+  definition_json TEXT NOT NULL DEFAULT '{}',
+  scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'user')),
+  editable INTEGER NOT NULL DEFAULT 0 CHECK(editable IN (0, 1)),
+  owner_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+  created_by_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE workflow_node (
+CREATE INDEX idx_workflow_definition_scope
+  ON workflow_definition(scope, editable);
+
+CREATE INDEX idx_workflow_definition_owner
+  ON workflow_definition(owner_user_id);
+
+CREATE TRIGGER validate_workflow_definition_insert
+BEFORE INSERT ON workflow_definition
+BEGIN
+  SELECT CASE
+    WHEN NEW.scope = 'system' AND NEW.editable != 0
+      THEN RAISE(ABORT, 'system workflow definitions are not editable')
+    WHEN NEW.scope = 'system' AND NEW.owner_user_id IS NOT NULL
+      THEN RAISE(ABORT, 'system workflow definitions cannot have an owner')
+    WHEN NEW.scope = 'user' AND NEW.editable != 1
+      THEN RAISE(ABORT, 'user workflow definitions must be editable')
+  END;
+END;
+
+CREATE TRIGGER validate_workflow_definition_update
+BEFORE UPDATE ON workflow_definition
+BEGIN
+  SELECT CASE
+    WHEN NEW.scope = 'system' AND NEW.editable != 0
+      THEN RAISE(ABORT, 'system workflow definitions are not editable')
+    WHEN NEW.scope = 'system' AND NEW.owner_user_id IS NOT NULL
+      THEN RAISE(ABORT, 'system workflow definitions cannot have an owner')
+    WHEN NEW.scope = 'user' AND NEW.editable != 1
+      THEN RAISE(ABORT, 'user workflow definitions must be editable')
+  END;
+END;
+
+CREATE TABLE workflow_trigger (
   id INTEGER PRIMARY KEY,
-  template_id INTEGER NOT NULL REFERENCES workflow_template(id) ON DELETE CASCADE,
-  code TEXT NOT NULL,
+  workflow_definition_id INTEGER NOT NULL REFERENCES workflow_definition(id) ON DELETE CASCADE,
+  trigger_type TEXT NOT NULL,
   display_name TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(template_id, code)
+  enabled INTEGER NOT NULL DEFAULT 1,
+  schedule_json TEXT NOT NULL DEFAULT '{}',
+  config_json TEXT NOT NULL DEFAULT '{}',
+  next_run_at TEXT,
+  last_run_at TEXT,
+  last_success_at TEXT,
+  last_error_message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_workflow_trigger_enabled_type
+  ON workflow_trigger(enabled, trigger_type);
+
+CREATE TRIGGER validate_workflow_trigger_insert
+BEFORE INSERT ON workflow_trigger
+BEGIN
+  SELECT CASE
+    WHEN NEW.trigger_type NOT IN ('startup', 'schedule', 'filesystem_event', 'source_poll')
+      THEN RAISE(ABORT, 'invalid workflow trigger type')
+  END;
+END;
+
+CREATE TRIGGER validate_workflow_trigger_update
+BEFORE UPDATE ON workflow_trigger
+BEGIN
+  SELECT CASE
+    WHEN NEW.trigger_type NOT IN ('startup', 'schedule', 'filesystem_event', 'source_poll')
+      THEN RAISE(ABORT, 'invalid workflow trigger type')
+  END;
+END;
 
 CREATE TABLE workflow_run (
   id INTEGER PRIMARY KEY,
-  template_code TEXT NOT NULL,
+  workflow_definition_id INTEGER REFERENCES workflow_definition(id) ON DELETE SET NULL,
+  trigger_id INTEGER REFERENCES workflow_trigger(id) ON DELETE SET NULL,
+  workflow_code TEXT NOT NULL,
+  display_name TEXT NOT NULL,
   status TEXT NOT NULL,
-  trigger_reason TEXT NOT NULL,
-  params_json TEXT NOT NULL DEFAULT '{}',
+  trigger_type TEXT NOT NULL,
+  trigger_reason TEXT NOT NULL DEFAULT '',
+  input_json TEXT NOT NULL DEFAULT '{}',
   summary_json TEXT NOT NULL DEFAULT '{}',
   started_at TEXT,
   finished_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_workflow_run_created_at
+  ON workflow_run(created_at);
+
+CREATE INDEX idx_workflow_run_status
+  ON workflow_run(status);
+
+CREATE TABLE workflow_node_run (
+  id INTEGER PRIMARY KEY,
+  workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  input_json TEXT NOT NULL DEFAULT '{}',
+  output_json TEXT NOT NULL DEFAULT '{}',
+  error_message TEXT NOT NULL DEFAULT '',
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_workflow_node_run_run
+  ON workflow_node_run(workflow_run_id, position);
+
+CREATE INDEX idx_workflow_node_run_status
+  ON workflow_node_run(status);
+
 CREATE TABLE workflow_job (
   id INTEGER PRIMARY KEY,
-  run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
-  node_code TEXT NOT NULL,
+  workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
+  workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL,
   worker_type TEXT NOT NULL,
   status TEXT NOT NULL,
   payload_json TEXT NOT NULL DEFAULT '{}',
@@ -219,6 +329,31 @@ CREATE TABLE workflow_job (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_workflow_job_run
+  ON workflow_job(workflow_run_id);
+
+CREATE INDEX idx_workflow_job_node_run
+  ON workflow_job(workflow_node_run_id);
+
+CREATE TABLE workflow_candidate (
+  id INTEGER PRIMARY KEY,
+  workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
+  workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL,
+  candidate_type TEXT NOT NULL,
+  external_key TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  decision_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_workflow_candidate_run
+  ON workflow_candidate(workflow_run_id);
+
+CREATE INDEX idx_workflow_candidate_status
+  ON workflow_candidate(status);
 
 CREATE TABLE audit_log (
   id INTEGER PRIMARY KEY,
@@ -233,5 +368,63 @@ CREATE TABLE audit_log (
 INSERT INTO metadata_provider (code, display_name)
 VALUES ('manual', 'Manual'), ('dlsite', 'DLsite');
 
-INSERT INTO workflow_template (code, display_name)
-VALUES ('local_scan', 'Scan local library');
+INSERT INTO workflow_definition (code, display_name, description, definition_json, scope, editable)
+VALUES
+  (
+    'local_library_scan',
+    'Scan local library',
+    'Discover local files, match works, and sync local file locations.',
+    '{"nodes":[{"id":"select","type":"select_local_source"},{"id":"discover","type":"discover_local_files"},{"id":"match","type":"match_works"},{"id":"sync","type":"sync_file_locations"}]}',
+    'system',
+    0
+  ),
+  (
+    'metadata_sync',
+    'Sync work metadata',
+    'Select works and sync normalized metadata snapshots.',
+    '{"nodes":[{"id":"select","type":"select_works"},{"id":"sync","type":"sync_metadata"}]}',
+    'system',
+    0
+  ),
+  (
+    'remote_source_sync',
+    'Sync remote source',
+    'Discover remote works, filter candidates, match works, and sync remote locations.',
+    '{"nodes":[{"id":"select","type":"select_remote_source"},{"id":"discover","type":"discover_remote_works"},{"id":"filter","type":"filter_candidates"},{"id":"match","type":"match_works"},{"id":"sync","type":"sync_file_locations"}]}',
+    'system',
+    0
+  ),
+  (
+    'media_cache',
+    'Cache media',
+    'Select media items, filter cache misses, sync source state, and materialize cache files.',
+    '{"nodes":[{"id":"select","type":"select_media_items"},{"id":"filter","type":"filter_candidates"},{"id":"sync","type":"sync_file_locations"},{"id":"cache","type":"materialize_cache"}]}',
+    'system',
+    0
+  ),
+  (
+    'media_save',
+    'Save media to local library',
+    'Select media items or folders, sync source state, cache when needed, and save to a local source.',
+    '{"nodes":[{"id":"select","type":"select_media_items"},{"id":"filter","type":"filter_candidates"},{"id":"sync","type":"sync_file_locations"},{"id":"cache","type":"materialize_cache"},{"id":"save","type":"materialize_save"}]}',
+    'system',
+    0
+  );
+
+INSERT INTO workflow_trigger (
+  workflow_definition_id,
+  trigger_type,
+  display_name,
+  enabled,
+  schedule_json,
+  config_json
+)
+SELECT
+  id,
+  'startup',
+  'Startup local library scan',
+  0,
+  '{"type":"startup"}',
+  '{"reason":"system_startup"}'
+FROM workflow_definition
+WHERE code = 'local_library_scan';

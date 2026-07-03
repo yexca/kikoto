@@ -315,6 +315,77 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	run, err := s.loadWorkflowRun(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	nodeRows, err := s.db.QueryContext(r.Context(), `
+		SELECT
+			id,
+			node_id,
+			node_type,
+			display_name,
+			position,
+			status,
+			input_json,
+			output_json,
+			error_message,
+			COALESCE(started_at, ''),
+			COALESCE(finished_at, ''),
+			created_at
+		FROM workflow_node_run
+		WHERE workflow_run_id = ?
+		ORDER BY position ASC, id ASC
+	`, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer nodeRows.Close()
+
+	detail := workflowRunDetailRecord{workflowRunRecord: run, NodeRuns: []workflowNodeRunRecord{}}
+	for nodeRows.Next() {
+		var node workflowNodeRunRecord
+		if err := nodeRows.Scan(
+			&node.ID,
+			&node.NodeID,
+			&node.NodeType,
+			&node.DisplayName,
+			&node.Position,
+			&node.Status,
+			&node.InputJSON,
+			&node.OutputJSON,
+			&node.ErrorMessage,
+			&node.StartedAt,
+			&node.FinishedAt,
+			&node.CreatedAt,
+		); err != nil {
+			writeError(w, err)
+			return
+		}
+		detail.NodeRuns = append(detail.NodeRuns, node)
+	}
+	if err := nodeRows.Err(); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
 func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (workflowDefinitionPayload, bool) {
 	var payload workflowDefinitionPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -326,6 +397,110 @@ func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (wo
 	payload.Description = strings.TrimSpace(payload.Description)
 	payload.DefinitionJSON = strings.TrimSpace(payload.DefinitionJSON)
 	return payload, true
+}
+
+func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunRecord, error) {
+	var item workflowRunRecord
+	var definitionID sql.NullInt64
+	var triggerID sql.NullInt64
+	err := s.db.QueryRowContext(ctx, workflowRunSelectSQL()+`
+		FROM workflow_run AS run
+		WHERE run.id = ?
+	`, id).Scan(
+		&item.ID,
+		&item.WorkflowCode,
+		&item.DisplayName,
+		&item.Status,
+		&item.TriggerType,
+		&item.TriggerReason,
+		&item.CreatedAt,
+		&item.StartedAt,
+		&item.FinishedAt,
+		&item.SummaryJSON,
+		&item.NodeRunCount,
+		&item.CompletedNodeRuns,
+		&item.FailedNodeRuns,
+		&item.JobCount,
+		&item.CompletedJobs,
+		&item.FailedJobs,
+		&item.CandidateCount,
+		&item.AcceptedCandidates,
+		&item.RejectedCandidates,
+		&definitionID,
+		&triggerID,
+	)
+	item.DefinitionID = nullableInt64(definitionID)
+	item.TriggerID = nullableInt64(triggerID)
+	return item, err
+}
+
+func workflowRunSelectSQL() string {
+	return `
+		SELECT
+			run.id,
+			run.workflow_code,
+			run.display_name,
+			run.status,
+			run.trigger_type,
+			run.trigger_reason,
+			run.created_at,
+			COALESCE(run.started_at, ''),
+			COALESCE(run.finished_at, ''),
+			run.summary_json,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+			) AS node_run_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status = 'succeeded'
+			) AS completed_node_runs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status = 'failed'
+			) AS failed_node_runs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+			) AS job_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+					AND workflow_job.status = 'succeeded'
+			) AS completed_jobs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+					AND workflow_job.status = 'failed'
+			) AS failed_jobs,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+			) AS candidate_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+					AND workflow_candidate.status = 'accepted'
+			) AS accepted_candidates,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+					AND workflow_candidate.status = 'rejected'
+			) AS rejected_candidates,
+			run.workflow_definition_id,
+			run.trigger_id
+	`
 }
 
 func decodeWorkflowTriggerPayload(w http.ResponseWriter, r *http.Request) (workflowTriggerPayload, bool) {

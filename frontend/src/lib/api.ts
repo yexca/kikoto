@@ -157,6 +157,25 @@ export type WorkflowRun = {
   triggerId: number | null;
 };
 
+export type WorkflowNodeRun = {
+  id: number;
+  nodeId: string;
+  nodeType: string;
+  displayName: string;
+  position: number;
+  status: string;
+  inputJson: string;
+  outputJson: string;
+  errorMessage: string;
+  startedAt: string;
+  finishedAt: string;
+  createdAt: string;
+};
+
+export type WorkflowRunDetail = WorkflowRun & {
+  nodeRuns: WorkflowNodeRun[];
+};
+
 export type WorkflowDefinition = {
   id: number;
   code: string;
@@ -374,6 +393,7 @@ export const api = {
   ) => patchJSONBody<WorkflowTrigger>(`/api/workflow-triggers/${id}`, payload),
   deleteWorkflowTrigger: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-triggers/${id}`),
   listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
+  getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };

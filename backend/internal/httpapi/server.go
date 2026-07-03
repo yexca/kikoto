@@ -62,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-triggers/{id}", s.updateWorkflowTrigger)
 	mux.HandleFunc("DELETE /api/workflow-triggers/{id}", s.deleteWorkflowTrigger)
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
+	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	return withCORS(s.authMiddleware(mux))
