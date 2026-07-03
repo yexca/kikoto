@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"path/filepath"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 type Server struct {
@@ -134,7 +137,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
-	result, err := s.runLocalScanStub(r.Context())
+	result, err := s.runLocalScan(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return
@@ -144,16 +147,23 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 }
 
 type localScanResult struct {
-	RunID        int64  `json:"runId"`
-	JobID        int64  `json:"jobId"`
-	WorkID       int64  `json:"workId"`
-	MediaItemID  int64  `json:"mediaItemId"`
-	LocationID   int64  `json:"locationId"`
-	FileSourceID int64  `json:"fileSourceId"`
-	Status       string `json:"status"`
+	RunID            int64  `json:"runId"`
+	JobID            int64  `json:"jobId"`
+	FileSourceID     int64  `json:"fileSourceId"`
+	Status           string `json:"status"`
+	DetectedWorks    int    `json:"detectedWorks"`
+	ScannedFiles     int    `json:"scannedFiles"`
+	UpdatedLocations int    `json:"updatedLocations"`
 }
 
-func (s *Server) runLocalScanStub(ctx context.Context) (localScanResult, error) {
+func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
+	scanDepth := s.cfg.LocalScanDepth
+
+	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
+	if err != nil {
+		return localScanResult{}, err
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return localScanResult{}, err
@@ -176,12 +186,20 @@ func (s *Server) runLocalScanStub(ctx context.Context) (localScanResult, error) 
 			'local_scan',
 			'succeeded',
 			'manual',
-			'{"mode":"stub"}',
-			'{"works_upserted":1,"locations_upserted":1}',
+			?,
+			?,
 			CURRENT_TIMESTAMP,
 			CURRENT_TIMESTAMP
 		)
-	`)
+	`, mustJSON(map[string]any{
+		"root":       s.cfg.DataRoot,
+		"scan_depth": scanDepth,
+	}), mustJSON(map[string]any{
+		"candidate_folders": scanSummary.CandidateFolders,
+		"detected_works":    scanSummary.DetectedWorks,
+		"scanned_files":     scanSummary.ScannedFiles,
+		"ambiguous_folders": scanSummary.AmbiguousFolders,
+	}))
 	if err != nil {
 		return localScanResult{}, err
 	}
@@ -198,36 +216,53 @@ func (s *Server) runLocalScanStub(ctx context.Context) (localScanResult, error) 
 		)
 		VALUES (
 			?,
-			'upsert_local_stub',
-			'local_scan_stub',
+			'scan_local_folder',
+			'local_folder_scan',
 			'succeeded',
-			'{"path":"/data/RJ000000"}',
-			1,
-			1
+			?,
+			?,
+			?
 		)
-	`, runID)
+	`, runID, mustJSON(map[string]any{
+		"root":       s.cfg.DataRoot,
+		"scan_depth": scanDepth,
+	}), scanSummary.ScannedFiles, scanSummary.ScannedFiles)
 	if err != nil {
 		return localScanResult{}, err
 	}
 
-	fileSourceID, err := upsertFileSource(ctx, tx)
+	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, scanDepth)
 	if err != nil {
 		return localScanResult{}, err
 	}
 
-	workID, err := upsertSampleWork(ctx, tx)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'missing',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+	`, fileSourceID); err != nil {
 		return localScanResult{}, err
 	}
 
-	mediaItemID, err := upsertSampleMediaItem(ctx, tx, workID)
-	if err != nil {
-		return localScanResult{}, err
-	}
+	updatedLocations := 0
+	for _, folder := range workFolders {
+		workID, err := upsertDetectedWork(ctx, tx, folder)
+		if err != nil {
+			return localScanResult{}, err
+		}
 
-	locationID, err := upsertSampleLocation(ctx, tx, mediaItemID, fileSourceID)
-	if err != nil {
-		return localScanResult{}, err
+		for index, file := range folder.AudioFiles {
+			mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, index+1)
+			if err != nil {
+				return localScanResult{}, err
+			}
+			if _, err := upsertDetectedLocation(ctx, tx, mediaItemID, fileSourceID, file); err != nil {
+				return localScanResult{}, err
+			}
+			updatedLocations++
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -235,20 +270,20 @@ func (s *Server) runLocalScanStub(ctx context.Context) (localScanResult, error) 
 	}
 
 	return localScanResult{
-		RunID:        runID,
-		JobID:        jobID,
-		WorkID:       workID,
-		MediaItemID:  mediaItemID,
-		LocationID:   locationID,
-		FileSourceID: fileSourceID,
-		Status:       "succeeded",
+		RunID:            runID,
+		JobID:            jobID,
+		FileSourceID:     fileSourceID,
+		Status:           "succeeded",
+		DetectedWorks:    scanSummary.DetectedWorks,
+		ScannedFiles:     scanSummary.ScannedFiles,
+		UpdatedLocations: updatedLocations,
 	}, nil
 }
 
-func upsertFileSource(ctx context.Context, tx *sql.Tx) (int64, error) {
+func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDepth int) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
-		VALUES ('main_local_library', 'Main local library', 'local_folder', 1, 1, '{"root":"/data"}')
+		VALUES ('main_local_library', 'Main local library', 'local_folder', 1, 1, ?)
 		ON CONFLICT(code) DO UPDATE SET
 			display_name = excluded.display_name,
 			source_type = excluded.source_type,
@@ -256,34 +291,36 @@ func upsertFileSource(ctx context.Context, tx *sql.Tx) (int64, error) {
 			enabled = excluded.enabled,
 			config_json = excluded.config_json,
 			updated_at = CURRENT_TIMESTAMP
-	`); err != nil {
+	`, mustJSON(map[string]any{
+		"root":             s.cfg.DataRoot,
+		"scan_depth":       scanDepth,
+		"watch_enabled":    false,
+		"code_patterns":    []string{"RJ", "BJ", "VJ", "CC"},
+		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac"},
+	})); err != nil {
 		return 0, err
 	}
 
 	return selectID(ctx, tx, "SELECT id FROM file_source WHERE code = ?", "main_local_library")
 }
 
-func upsertSampleWork(ctx context.Context, tx *sql.Tx) (int64, error) {
+func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFolder) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work (primary_code, work_type, title, description)
-		VALUES (
-			'RJ000000',
-			'audio',
-			'Sample work stub',
-			'Created by the local scan workflow stub.'
-		)
+		VALUES (?, 'audio', ?, ?)
 		ON CONFLICT(primary_code) DO UPDATE SET
 			title = excluded.title,
 			description = excluded.description,
 			updated_at = CURRENT_TIMESTAMP
-	`); err != nil {
+	`, folder.Code, folder.Title, fmt.Sprintf("Detected from local folder %s.", filepath.ToSlash(folder.RelPath))); err != nil {
 		return 0, err
 	}
 
-	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", "RJ000000")
+	return selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", folder.Code)
 }
 
-func upsertSampleMediaItem(ctx context.Context, tx *sql.Tx, workID int64) (int64, error) {
+func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, folder localfs.WorkFolder, file localfs.AudioFile, trackNo int) (int64, error) {
+	fingerprint := fmt.Sprintf("local:%s:%s", folder.Code, file.WorkRelPath)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_item (
 			work_id,
@@ -294,18 +331,28 @@ func upsertSampleMediaItem(ctx context.Context, tx *sql.Tx, workID int64) (int64
 			size_bytes,
 			fingerprint
 		)
-		SELECT ?, 'audio', 'Track 01 - sample', 1, 180, 1048576, 'stub-rj000000-track-01'
+		SELECT ?, 'audio', ?, ?, NULL, ?, ?
 		WHERE NOT EXISTS (
-			SELECT 1 FROM media_item WHERE fingerprint = 'stub-rj000000-track-01'
+			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
-	`, workID); err != nil {
+	`, workID, file.Title, trackNo, file.SizeBytes, fingerprint, fingerprint); err != nil {
 		return 0, err
 	}
 
-	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", "stub-rj000000-track-01")
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE media_item
+		SET title = ?,
+			track_no = ?,
+			size_bytes = ?
+		WHERE fingerprint = ?
+	`, file.Title, trackNo, file.SizeBytes, fingerprint); err != nil {
+		return 0, err
+	}
+
+	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
 }
 
-func upsertSampleLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64) (int64, error) {
+func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.AudioFile) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
@@ -317,16 +364,29 @@ func upsertSampleLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fi
 			availability,
 			last_checked_at
 		)
-		SELECT ?, ?, 'local', '/data/RJ000000/track01.mp3', 1048576, 180, 'available', CURRENT_TIMESTAMP
+		SELECT ?, ?, 'local', ?, ?, NULL, 'available', CURRENT_TIMESTAMP
 		WHERE NOT EXISTS (
 			SELECT 1
 			FROM media_file_location
 			WHERE media_item_id = ?
 				AND file_source_id = ?
 				AND location_type = 'local'
-				AND path = '/data/RJ000000/track01.mp3'
+				AND path = ?
 		)
-	`, mediaItemID, fileSourceID, mediaItemID, fileSourceID); err != nil {
+	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, mediaItemID, fileSourceID, file.RelPath); err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET size_bytes = ?,
+			availability = 'available',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE media_item_id = ?
+			AND file_source_id = ?
+			AND location_type = 'local'
+			AND path = ?
+	`, file.SizeBytes, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
 
@@ -336,8 +396,8 @@ func upsertSampleLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fi
 		WHERE media_item_id = ?
 			AND file_source_id = ?
 			AND location_type = 'local'
-			AND path = '/data/RJ000000/track01.mp3'
-	`, mediaItemID, fileSourceID)
+			AND path = ?
+	`, mediaItemID, fileSourceID, file.RelPath)
 }
 
 func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
@@ -374,6 +434,14 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, err error) {
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+
+func mustJSON(value any) string {
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(bytes)
 }
 
 func withCORS(next http.Handler) http.Handler {
