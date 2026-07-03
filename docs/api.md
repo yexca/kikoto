@@ -120,19 +120,57 @@ Requires `playback:use`. Saving progress automatically moves a work from `none` 
 
 ```http
 GET /api/file-sources
+POST /api/file-sources
+PATCH /api/file-sources/{id}
+DELETE /api/file-sources/{id}
 ```
 
-Returns configured file sources.
+Lists and manages configured file sources.
 
 Requires `sources:write`.
+
+## Settings
+
+```http
+GET /api/settings
+PATCH /api/settings
+```
+
+Returns and updates administrator-managed settings, including local scan depth
+and cache options.
 
 ## Workflows
 
 ```http
-GET /api/workflow-runs
+GET /api/workflow-definitions
+POST /api/workflow-definitions
+PATCH /api/workflow-definitions/{id}
+DELETE /api/workflow-definitions/{id}
 ```
 
-Returns recent workflow runs.
+Lists and manages editable user workflow definitions. System definitions are
+read-only.
+
+Requires `workflows:run`.
+
+```http
+GET /api/workflow-triggers
+POST /api/workflow-triggers
+PATCH /api/workflow-triggers/{id}
+DELETE /api/workflow-triggers/{id}
+```
+
+Lists and manages persisted non-manual workflow triggers.
+
+Requires `workflows:run`.
+
+```http
+GET /api/workflow-runs
+GET /api/workflow-runs/{id}
+```
+
+Returns recent workflow runs. The detail endpoint returns node run records for
+Activity diagnostics.
 
 Requires `workflows:run`.
 

@@ -45,13 +45,13 @@ docker run --rm -v "${PWD}/frontend:/src" -w /src node:22 sh -c "npm install && 
 
 1. Place audio work folders under `data/`.
 2. Start the Docker stack.
-3. Trigger the local scan workflow from the UI or API:
+3. Trigger the local scan workflow from Workflows, Activity, or the API:
 
 ```sh
 curl -X POST http://127.0.0.1:7659/api/workflow-runs/local-scan
 ```
 
-4. Optional: sync DLsite metadata:
+4. Optional: sync metadata:
 
 ```sh
 curl -X POST http://127.0.0.1:7659/api/workflow-runs/dlsite-sync

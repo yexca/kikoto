@@ -29,31 +29,54 @@ DLsite metadata sync stores snapshots for traceability and updates normalized wo
 Important tables:
 
 - `file_source`
+- `file_source_endpoint`
 - `media_item`
 - `media_file_location`
 
-The current implementation creates a local file source and local file locations during scan.
+The current implementation creates a local file source and local file locations during scan. Administrators can configure local and Kikoeru-compatible file sources from Settings.
 
 ## Workflows
 
 Important tables:
 
-- `workflow_template`
-- `workflow_node`
+- `workflow_definition`
+- `workflow_trigger`
 - `workflow_run`
+- `workflow_node_run`
 - `workflow_job`
+- `workflow_candidate`
 
 Current workflows:
 
 - Local scan.
 - DLsite metadata sync.
+- Built-in remote sync, media cache, and media save definitions as scaffolding.
+
+Workflow definitions are either `system` or `user` scoped. System definitions are
+read-only. User definitions can be created and edited from the Workflows page.
+Activity uses `workflow_node_run` records to show node-level status.
+
+## User State
+
+Important tables:
+
+- `user_account`
+- `user_session`
+- `user_work_state`
+- `user_media_progress`
+- `favorite_list`
+- `favorite_list_item`
+- `user_tag`
+- `user_work_tag`
+
+Quick listening marks live on `user_work_state`. Playback progress lives on
+`user_media_progress` and is attached to logical `media_item` records rather than
+raw file locations.
 
 ## Planned Tables
 
 Future features are expected to add tables for:
 
-- Playback progress.
 - Queue or listening history.
-- User tags and favorites.
 - Download tasks.
 - Cache entries.

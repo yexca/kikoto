@@ -15,6 +15,8 @@
 - Global custom player dock.
 - Per-user quick listening marks for works.
 - Per-user playback progress persisted by logical media item.
+- Settings-based source and cache configuration.
+- Workflow definitions, scheduled triggers, system definitions, and Activity run detail.
 
 ## Next
 
@@ -22,8 +24,8 @@
 - Add real search and filters.
 - Add favorite list and custom user tag UI.
 - Add file change detection for local folders.
-- Improve workflow status, errors, and retry actions.
-- Add source editing UI.
+- Add workflow retry actions.
+- Add source connection tests and priority controls.
 
 ## Later
 

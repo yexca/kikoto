@@ -1,6 +1,8 @@
 # Configuration
 
-Kikoto is configured through environment variables in the current implementation. `config/app.example.yaml` documents the equivalent intended shape for file-based configuration.
+Kikoto is configured through environment variables and administrator settings.
+Environment variables provide startup defaults. Settings exposes local scan
+depth, cache options, and file source configuration in the UI.
 
 ## Environment Variables
 
@@ -33,6 +35,15 @@ KIKOTO_ROOT_PASSWORD=change-me
 Copy `.env.example` to `.env` for local overrides. `.env` is intentionally ignored by git.
 
 In dev mode, the frontend opens as the root super administrator without a login step. With dev mode disabled, sign in with the configured root username and password.
+
+## Administrator Settings
+
+The Settings page currently manages:
+
+- Local scan depth.
+- Cache enabled state.
+- Cache size limit.
+- Local and Kikoeru-compatible file sources.
 
 ## Source Control Boundary
 

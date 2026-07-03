@@ -23,7 +23,8 @@ Browser
 Current backend implementation:
 
 - Go standard `net/http`.
-- SQLite migrations in `backend/migrations`.
+- A single current SQLite init schema in `backend/migrations/001_initial.sql`.
+- RBAC auth, dev-mode root login, and admin user management in `backend/internal/httpapi`.
 - Local folder scanner in `backend/internal/localfs`.
 - DLsite metadata client in `backend/internal/dlsite`.
 - Metadata sync workflow in `backend/internal/metasync`.
@@ -50,7 +51,8 @@ SQLite stores:
 - File sources.
 - Media items.
 - Media file locations.
-- Workflow templates, runs, and jobs.
+- Workflow definitions, triggers, runs, node runs, jobs, and candidates.
+- Users, sessions, quick work marks, favorite/tag foundations, and media progress.
 
 Runtime files live under mounted `config/` and `data/` directories.
 
@@ -59,5 +61,6 @@ Runtime files live under mounted `config/` and `data/` directories.
 - Workflow execution is still synchronous-first.
 - Remote file source sync is not implemented.
 - Download/cache workflows are not implemented.
-- Playback progress is not persisted.
-- There is no multi-user permission model.
+- Retry and restart recovery are not implemented.
+- Queue restore is not implemented.
+- Favorite-list and custom-tag UI is not implemented yet.
