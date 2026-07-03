@@ -132,6 +132,49 @@ type remoteWorkSyncResult struct {
 	TriggerReason     string `json:"triggerReason"`
 }
 
+type remoteWorkSaveRequest struct {
+	Paths []string `json:"paths"`
+}
+
+type remoteWorkSavePlan struct {
+	SourceID   int64                    `json:"sourceId"`
+	PrimaryCode string                   `json:"primaryCode"`
+	SaveRoot   string                   `json:"saveRoot"`
+	Items      []remoteWorkSavePlanItem `json:"items"`
+	Summary    remoteWorkSaveSummary    `json:"summary"`
+}
+
+type remoteWorkSavePlanItem struct {
+	Path       string `json:"path"`
+	Kind       string `json:"kind"`
+	SizeBytes  *int64 `json:"sizeBytes"`
+	Action     string `json:"action"`
+	Status     string `json:"status"`
+	SourcePath string `json:"sourcePath"`
+	TargetPath string `json:"targetPath"`
+}
+
+type remoteWorkSaveSummary struct {
+	Total        int `json:"total"`
+	SkipExisting int `json:"skipExisting"`
+	CopyCache    int `json:"copyCache"`
+	Download     int `json:"download"`
+}
+
+type remoteWorkSaveResult struct {
+	RunID           int64                 `json:"runId"`
+	JobID           int64                 `json:"jobId"`
+	WorkID          int64                 `json:"workId"`
+	PrimaryCode     string                `json:"primaryCode"`
+	Status          string                `json:"status"`
+	SaveRoot        string                `json:"saveRoot"`
+	SavedFiles      int                   `json:"savedFiles"`
+	SkippedFiles    int                   `json:"skippedFiles"`
+	CopiedFromCache int                   `json:"copiedFromCache"`
+	DownloadedFiles int                   `json:"downloadedFiles"`
+	Plan            remoteWorkSaveSummary `json:"plan"`
+}
+
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -541,6 +584,38 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
+	if !ok {
+		return
+	}
+	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := s.runRemoteWorkSave(r.Context(), sourceID, code, payload.Paths)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
 func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
@@ -780,6 +855,493 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		SyncedLocations:  locations,
 		TriggerReason:    triggerReason,
 	}, nil
+}
+
+func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string) (remoteWorkSavePlan, error) {
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	if err != nil {
+		return remoteWorkSavePlan{}, err
+	}
+	workCode := normalizedRemoteWorkCode(remoteWork)
+	if workCode == "" {
+		workCode = strings.ToUpper(strings.TrimSpace(code))
+	}
+	saveRoot := s.remoteSaveRoot(source, workCode)
+	selected := normalizeSelectedRemotePaths(selectedPaths)
+	files := flattenRemoteSaveFiles(tracks)
+	items := make([]remoteWorkSavePlanItem, 0, len(files))
+	for _, file := range files {
+		if len(selected) > 0 && !selected[file.Path] {
+			continue
+		}
+		targetRelPath := joinRemotePath(saveRoot, file.Path)
+		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, targetRelPath)
+		if err != nil {
+			return remoteWorkSavePlan{}, err
+		}
+		item := remoteWorkSavePlanItem{
+			Path:       file.Path,
+			Kind:       file.Kind,
+			SizeBytes:  file.SizeBytes,
+			SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL),
+			TargetPath: filepath.ToSlash(targetRelPath),
+		}
+		if existingFileMatches(targetAbsPath, file.SizeBytes) {
+			item.Action = "skip"
+			item.Status = "local_exists"
+		} else if cachePath, ok := s.findRemoteCacheFile(ctx, source.ID, source.Code, workCode, file.Path, file.SizeBytes); ok {
+			item.Action = "copy_from_cache"
+			item.Status = "cache_hit"
+			item.SourcePath = filepath.ToSlash(cachePath)
+		} else {
+			item.Action = "download"
+			item.Status = "remote_only"
+		}
+		items = append(items, item)
+	}
+	plan := remoteWorkSavePlan{
+		SourceID:    source.ID,
+		PrimaryCode: workCode,
+		SaveRoot:    saveRoot,
+		Items:       items,
+	}
+	plan.Summary = summarizeRemoteSavePlan(items)
+	return plan, nil
+}
+
+func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string) (remoteWorkSaveResult, error) {
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	workCode := normalizedRemoteWorkCode(remoteWork)
+	if workCode == "" {
+		workCode = strings.ToUpper(strings.TrimSpace(code))
+	}
+	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	rawWork, _ := json.Marshal(remoteWork)
+	rawTracks, _ := json.Marshal(tracks)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_work_save", "Save remote work", "Select remote files, reuse cache hits, download misses, and materialize files under the local library.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_source"},
+			{"id": "plan", "type": "plan_save"},
+			{"id": "materialize", "type": "materialize_save"},
+			{"id": "sync", "type": "sync_file_locations"},
+		},
+	})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	runInput := map[string]any{"source_id": sourceID, "work_code": workCode, "paths": selectedPaths}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_save", "Save remote work", "running", "manual", "save_selected", runInput, map[string]any{"plan": plan.Summary})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
+		Input: runInput, Output: map[string]any{"source_id": sourceID, "work_code": workCode},
+	})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: selectNodeID, WorkerType: "remote_work_save", Status: "running", Payload: runInput, ProgressCurrent: 0, ProgressTotal: len(plan.Items),
+	})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "plan", NodeType: "plan_save", DisplayName: "Plan save", Position: 2, Status: "succeeded",
+		Input: map[string]any{"paths": selectedPaths}, Output: plan,
+	}); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	materializeNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "materialize", NodeType: "materialize_save", DisplayName: "Materialize selected files", Position: 3, Status: "running",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+
+	saved, skipped, copied, downloaded := 0, 0, 0, 0
+	for index, item := range plan.Items {
+		if item.Action == "skip" {
+			skipped++
+			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items))
+			continue
+		}
+		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
+		if err != nil {
+			_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
+			return remoteWorkSaveResult{}, err
+		}
+		if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0o755); err != nil {
+			_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
+			return remoteWorkSaveResult{}, err
+		}
+		if item.Action == "copy_from_cache" {
+			sourceAbsPath := filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(item.SourcePath))
+			if err := copyFile(sourceAbsPath, targetAbsPath); err != nil {
+				_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
+				return remoteWorkSaveResult{}, err
+			}
+			copied++
+		} else {
+			if _, err := downloadToFile(ctx, item.SourcePath, targetAbsPath); err != nil {
+				_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
+				return remoteWorkSaveResult{}, err
+			}
+			downloaded++
+		}
+		if err := s.upsertSavedLocalLocation(ctx, workID, localSourceID, item, targetAbsPath); err != nil {
+			_ = finishWorkflowRunSimple(ctx, s.db, runID, materializeNodeID, jobID, "failed", err.Error(), index, len(plan.Items), plan.Summary)
+			return remoteWorkSaveResult{}, err
+		}
+		saved++
+		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items))
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"saved": saved, "skipped": skipped, "copied_from_cache": copied, "downloaded": downloaded}), materializeNodeID); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items), len(plan.Items), jobID); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "saved": saved, "skipped": skipped, "copied_from_cache": copied, "downloaded": downloaded, "snapshot_bytes": len(rawWork) + len(rawTracks)}), runID); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	return remoteWorkSaveResult{
+		RunID:           runID,
+		JobID:           jobID,
+		WorkID:          workID,
+		PrimaryCode:     workCode,
+		Status:          "succeeded",
+		SaveRoot:        plan.SaveRoot,
+		SavedFiles:      saved,
+		SkippedFiles:    skipped,
+		CopiedFromCache: copied,
+		DownloadedFiles: downloaded,
+		Plan:            plan.Summary,
+	}, nil
+}
+
+type remoteSaveFile struct {
+	Path        string
+	Kind        string
+	StreamURL   string
+	DownloadURL string
+	SizeBytes   *int64
+}
+
+func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, string, remoteWorkSaveRequest, bool) {
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
+	var payload remoteWorkSaveRequest
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+	return id, code, payload, true
+}
+
+func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {
+	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source not found")
+		}
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	if source.SourceType != "kikoeru_compatible" || !source.Enabled {
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+	}
+	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	remoteWork, _, err := client.WorkInfo(ctx, code)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	return source, remoteWork, tracks, nil
+}
+
+func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) string {
+	template := strings.TrimSpace(source.Config.SaveRootTemplate)
+	if template == "" {
+		template = s.settingStringContext(context.Background(), "remote_save_root_template", "/data/<source_name>/<work_code>")
+	}
+	if template == "" {
+		template = "/data/<source_name>/<work_code>"
+	}
+	value := strings.ReplaceAll(template, "<source_name>", source.Code)
+	value = strings.ReplaceAll(value, "<work_code>", strings.ToUpper(strings.TrimSpace(workCode)))
+	value = strings.TrimPrefix(filepath.ToSlash(value), "/data/")
+	value = strings.TrimPrefix(value, "data/")
+	return strings.Trim(value, "/")
+}
+
+func (s *Server) settingStringContext(ctx context.Context, key string, fallback string) string {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var value string
+	if err := json.Unmarshal([]byte(raw), &value); err != nil || strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func normalizeSelectedRemotePaths(paths []string) map[string]bool {
+	result := map[string]bool{}
+	for _, path := range paths {
+		path = cleanRemoteRelativePath(path)
+		if path != "" {
+			result[path] = true
+		}
+	}
+	return result
+}
+
+func flattenRemoteSaveFiles(tracks []kikoeru.Track) []remoteSaveFile {
+	files := []remoteSaveFile{}
+	var walk func(basePath string, nodes []kikoeru.Track)
+	walk = func(basePath string, nodes []kikoeru.Track) {
+		for index, node := range nodes {
+			title := strings.TrimSpace(node.Title)
+			if title == "" {
+				title = fmt.Sprintf("Track %d", index+1)
+			}
+			path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+			kind := remoteTrackKind(node.Type)
+			if len(node.Children) > 0 || kind == "folder" {
+				walk(path, node.Children)
+				continue
+			}
+			sourceURL := firstNonEmpty(node.MediaDownloadURL, node.MediaStreamURL, node.StreamLowQualityURL)
+			if sourceURL == "" {
+				continue
+			}
+			var size *int64
+			if node.Size > 0 {
+				value := node.Size
+				size = &value
+			}
+			files = append(files, remoteSaveFile{
+				Path:        path,
+				Kind:        kind,
+				StreamURL:   firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL),
+				DownloadURL: node.MediaDownloadURL,
+				SizeBytes:   size,
+			})
+		}
+	}
+	walk("", tracks)
+	return files
+}
+
+func cleanRemoteRelativePath(path string) string {
+	parts := strings.Split(strings.ReplaceAll(path, "\\", "/"), "/")
+	clean := []string{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		clean = append(clean, filepath.Base(part))
+	}
+	return filepath.ToSlash(filepath.Join(clean...))
+}
+
+func existingFileMatches(path string, expectedSize *int64) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return expectedSize == nil || info.Size() == *expectedSize
+}
+
+func (s *Server) findRemoteCacheFile(ctx context.Context, sourceID int64, sourceCode string, workCode string, remotePath string, expectedSize *int64) (string, bool) {
+	cacheRelPath := cacheMediaRelPath(sourceCode, workCode, remotePath)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT path
+		FROM media_file_location
+		WHERE file_source_id = ?
+			AND location_type = 'cache'
+			AND availability = 'available'
+	`, sourceID)
+	if err != nil {
+		return "", false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		if filepath.ToSlash(path) != cacheRelPath {
+			continue
+		}
+		if existingFileMatches(filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(path)), expectedSize) {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func summarizeRemoteSavePlan(items []remoteWorkSavePlanItem) remoteWorkSaveSummary {
+	summary := remoteWorkSaveSummary{Total: len(items)}
+	for _, item := range items {
+		switch item.Action {
+		case "skip":
+			summary.SkipExisting++
+		case "copy_from_cache":
+			summary.CopyCache++
+		case "download":
+			summary.Download++
+		}
+	}
+	return summary
+}
+
+func updateWorkflowJobProgress(ctx context.Context, db *sql.DB, jobID int64, current int, total int) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET progress_current = ?,
+			progress_total = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, current, total, jobID)
+	return err
+}
+
+func finishWorkflowRunSimple(ctx context.Context, db *sql.DB, runID int64, nodeID int64, jobID int64, status string, errorMessage string, current int, total int, summary remoteWorkSaveSummary) error {
+	output := mustJSON(map[string]any{"plan": summary, "error": errorMessage})
+	if _, err := db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, nodeID); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", status, current, total, errorMessage, jobID); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)
+	return err
+}
+
+func copyFile(sourcePath string, targetPath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	tempPath := targetPath + ".tmp"
+	target, err := os.Create(tempPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		_ = os.Remove(tempPath)
+		return err
+	}
+	if err := target.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return err
+	}
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		_ = os.Remove(tempPath)
+		return err
+	}
+	return nil
+}
+
+func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem, targetAbsPath string) error {
+	var mediaItemID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT item.id
+		FROM media_item AS item
+		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		WHERE item.work_id = ?
+			AND location.location_type = 'remote_stream'
+			AND location.path = ?
+		ORDER BY item.id ASC
+		LIMIT 1
+	`, workID, item.Path).Scan(&mediaItemID); err != nil {
+		return err
+	}
+	info, err := os.Stat(targetAbsPath)
+	if err != nil {
+		return err
+	}
+	var size any
+	if info.Size() > 0 {
+		size = info.Size()
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO media_file_location (
+			media_item_id,
+			file_source_id,
+			location_type,
+			path,
+			size_bytes,
+			availability,
+			last_checked_at
+		)
+		SELECT ?, ?, 'local', ?, ?, 'available', CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM media_file_location
+			WHERE media_item_id = ?
+				AND file_source_id = ?
+				AND location_type = 'local'
+				AND path = ?
+		)
+	`, mediaItemID, localSourceID, item.TargetPath, size, mediaItemID, localSourceID, item.TargetPath); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET size_bytes = ?,
+			availability = 'available',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE media_item_id = ?
+			AND file_source_id = ?
+			AND location_type = 'local'
+			AND path = ?
+	`, size, mediaItemID, localSourceID, item.TargetPath)
+	return err
 }
 
 func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkDetail, error) {

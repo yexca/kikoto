@@ -189,6 +189,45 @@ export type RemoteWorkSyncResult = {
   triggerReason: string;
 };
 
+export type RemoteWorkSaveSummary = {
+  total: number;
+  skipExisting: number;
+  copyCache: number;
+  download: number;
+};
+
+export type RemoteWorkSavePlanItem = {
+  path: string;
+  kind: string;
+  sizeBytes: number | null;
+  action: string;
+  status: string;
+  sourcePath: string;
+  targetPath: string;
+};
+
+export type RemoteWorkSavePlan = {
+  sourceId: number;
+  primaryCode: string;
+  saveRoot: string;
+  items: RemoteWorkSavePlanItem[];
+  summary: RemoteWorkSaveSummary;
+};
+
+export type RemoteWorkSaveResult = {
+  runId: number;
+  jobId: number;
+  workId: number;
+  primaryCode: string;
+  status: string;
+  saveRoot: string;
+  savedFiles: number;
+  skippedFiles: number;
+  copiedFromCache: number;
+  downloadedFiles: number;
+  plan: RemoteWorkSaveSummary;
+};
+
 export type WorkflowRun = {
   id: number;
   workflowCode: string;
@@ -402,6 +441,10 @@ export const api = {
     ),
   getRemoteSourceWork: (id: number, code: string) =>
     getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`),
+  planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save-plan`, { paths }),
+  saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save`, { paths }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),

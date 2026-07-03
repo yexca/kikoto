@@ -40,6 +40,7 @@ import {
   type ListeningStatus,
   type MediaItem,
   type RemoteTrack,
+  type RemoteWorkSavePlan,
   type RemoteWorksResponse,
   type RemoteWork,
   type RemoteWorkDetail,
@@ -760,17 +761,27 @@ function RemoteWorkDetailView({
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
+  const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
+  const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
+  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
 
   useEffect(() => {
     setDetail(null);
     setMessage("");
+    setSavePlan(null);
+    setSelectedSavePaths(new Set());
     api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
       setMessage(error instanceof Error ? error.message : "Remote preview failed.");
     });
   }, [source.id, code]);
+
+  useEffect(() => {
+    setSelectedSavePaths(new Set(remoteFilePaths));
+  }, [remoteFilePaths]);
 
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
@@ -791,6 +802,40 @@ function RemoteWorkDetailView({
       setMessage(error instanceof Error ? error.message : "Remote sync failed.");
     } finally {
       setIsFetching(false);
+    }
+  };
+
+  const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+  const planSave = async () => {
+    if (!detail?.primaryCode || selectedPaths.length === 0) return;
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const plan = await api.planRemoteSourceWorkSave(source.id, detail.primaryCode, selectedPaths);
+      setSavePlan(plan);
+      setMessage(`Plan ready: ${plan.summary.total} files, ${plan.summary.copyCache} from cache, ${plan.summary.download} downloads.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save plan failed.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveSelected = async () => {
+    if (!detail?.primaryCode || selectedPaths.length === 0) return;
+    setIsSaving(true);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
+      setMessage(
+        `Saved ${result.savedFiles} files through workflow run #${result.runId}. ${result.copiedFromCache} copied from cache, ${result.downloadedFiles} downloaded, ${result.skippedFiles} skipped.`,
+      );
+      await onWorksChanged();
+      onOpenLocal(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Save failed.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -848,6 +893,14 @@ function RemoteWorkDetailView({
                 Open local detail
               </Button>
             )}
+            <Button size="sm" variant="outline" disabled={isSaving || selectedPaths.length === 0} onClick={() => void planSave()}>
+              <ListChecks className="h-4 w-4" />
+              Plan save
+            </Button>
+            <Button size="sm" disabled={isSaving || selectedPaths.length === 0} onClick={() => void saveSelected()}>
+              <HardDriveDownload className="h-4 w-4" />
+              Save selected
+            </Button>
             {detail.sourceUrl && (
               <Button variant="outline" size="sm" asChild>
                 <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
@@ -903,6 +956,13 @@ function RemoteWorkDetailView({
         </div>
         <Card>
           <CardContent className="p-4">
+            <RemoteSaveSelectionPanel
+              root={tree}
+              selectedPaths={selectedSavePaths}
+              plan={savePlan}
+              onChange={setSelectedSavePaths}
+              disabled={isSaving}
+            />
             {directoryMode === "browse" ? (
               <DirectoryBrowser root={tree} currentLocationId={null} emptyLabel="No remote files detected." />
             ) : (
@@ -1344,6 +1404,135 @@ function DirectoryTree({
   );
 }
 
+function RemoteSaveSelectionPanel({
+  root,
+  selectedPaths,
+  plan,
+  disabled,
+  onChange,
+}: {
+  root: TreeNode;
+  selectedPaths: Set<string>;
+  plan: RemoteWorkSavePlan | null;
+  disabled: boolean;
+  onChange: (paths: Set<string>) => void;
+}) {
+  const allPaths = remoteSelectablePaths(root);
+  const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
+  const setAll = () => onChange(new Set(allPaths));
+  const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.folderPath ? `${file.folderPath}/${file.title}` : file.title)));
+  const clear = () => onChange(new Set());
+  return (
+    <div className="mb-4 space-y-3 rounded-md border bg-background p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold">Save selection</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{selectedPaths.size} / {allPaths.length} files</Badge>
+          {plan && (
+            <>
+              <Badge variant="outline">{plan.summary.copyCache} cache</Badge>
+              <Badge variant="outline">{plan.summary.download} download</Badge>
+              <Badge variant="outline">{plan.summary.skipExisting} skip</Badge>
+            </>
+          )}
+          <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
+          <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
+          <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
+        </div>
+      </div>
+      <div className="max-h-72 overflow-auto rounded-md border bg-card p-2">
+        <RemoteSaveSelectionNode
+          node={root}
+          depth={0}
+          selectedPaths={selectedPaths}
+          planByPath={planByPath}
+          disabled={disabled}
+          onChange={onChange}
+          isRoot
+        />
+      </div>
+    </div>
+  );
+}
+
+function RemoteSaveSelectionNode({
+  node,
+  depth,
+  selectedPaths,
+  planByPath,
+  disabled,
+  isRoot,
+  onChange,
+}: {
+  node: TreeNode;
+  depth: number;
+  selectedPaths: Set<string>;
+  planByPath: Map<string, RemoteWorkSavePlan["items"][number]>;
+  disabled: boolean;
+  isRoot?: boolean;
+  onChange: (paths: Set<string>) => void;
+}) {
+  const folders = sortedFolders(node);
+  const files = sortedFiles(node);
+  const nodePaths = remoteSelectablePaths(node);
+  const checkedCount = nodePaths.filter((path) => selectedPaths.has(path)).length;
+  const checked = nodePaths.length > 0 && checkedCount === nodePaths.length;
+  const mixed = checkedCount > 0 && checkedCount < nodePaths.length;
+  const toggleNode = () => {
+    const next = new Set(selectedPaths);
+    for (const path of nodePaths) {
+      if (checked) next.delete(path);
+      else next.add(path);
+    }
+    onChange(next);
+  };
+  return (
+    <div className="space-y-1">
+      {!isRoot && (
+        <label className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: depth * 14 + 8 }}>
+          <input type="checkbox" checked={checked} ref={(input) => { if (input) input.indeterminate = mixed; }} disabled={disabled || nodePaths.length === 0} onChange={toggleNode} />
+          <Folder className="h-4 w-4 text-primary" />
+          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          <span className="text-xs text-muted-foreground">{checkedCount}/{nodePaths.length}</span>
+        </label>
+      )}
+      {folders.map((child) => (
+        <RemoteSaveSelectionNode
+          key={child.path}
+          node={child}
+          depth={isRoot ? 0 : depth + 1}
+          selectedPaths={selectedPaths}
+          planByPath={planByPath}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      ))}
+      {files.map((file) => {
+        const path = file.folderPath ? `${file.folderPath}/${file.title}` : file.title;
+        const plan = planByPath.get(path);
+        return (
+          <label key={path} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
+            <input
+              type="checkbox"
+              checked={selectedPaths.has(path)}
+              disabled={disabled}
+              onChange={(event) => {
+                const next = new Set(selectedPaths);
+                if (event.target.checked) next.add(path);
+                else next.delete(path);
+                onChange(next);
+              }}
+            />
+            {fileIcon(file)}
+            <span className="min-w-0 flex-1 truncate">{file.title}</span>
+            {plan && <span className="text-xs text-muted-foreground">{plan.status}</span>}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function DirectoryBrowser({
   root,
   currentLocationId,
@@ -1534,6 +1723,20 @@ function TreeFile({
 function folderNameHasPriority(name: string) {
   const lower = name.toLowerCase();
   return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
+}
+
+function remoteSelectableFiles(root: TreeNode) {
+  const files: TreeTrack[] = [];
+  const visit = (node: TreeNode) => {
+    files.push(...node.files.filter((file) => file.downloadUrl || file.streamUrl));
+    for (const child of node.children.values()) visit(child);
+  };
+  visit(root);
+  return files;
+}
+
+function remoteSelectablePaths(root: TreeNode) {
+  return remoteSelectableFiles(root).map((file) => (file.folderPath ? `${file.folderPath}/${file.title}` : file.title));
 }
 
 function sortedFolders(node: TreeNode) {

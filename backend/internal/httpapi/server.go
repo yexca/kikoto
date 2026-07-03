@@ -59,6 +59,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/file-sources/{id}", s.deleteFileSource)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}", s.getRemoteSourceWork)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
 	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
