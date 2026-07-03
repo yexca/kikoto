@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +45,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
+	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
@@ -371,17 +373,47 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if locationType != "local" || availability != "available" {
+	if (locationType != "local" && locationType != "cache") || availability != "available" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location is not available"})
 		return
 	}
 
-	path, err := safeDataPath(s.cfg.DataRoot, relPath)
+	root := s.cfg.DataRoot
+	if locationType == "cache" {
+		root = s.cfg.CacheRoot
+	}
+	path, err := safeDataPath(root, relPath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return
 	}
 	http.ServeFile(w, r, path)
+}
+
+type mediaCacheResult struct {
+	RunID       int64  `json:"runId"`
+	JobID       int64  `json:"jobId"`
+	LocationID  int64  `json:"locationId"`
+	CachePath   string `json:"cachePath"`
+	Status      string `json:"status"`
+	AlreadyDone bool   `json:"alreadyDone"`
+}
+
+func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+	result, err := s.runRemoteMediaCache(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
 }
 
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
@@ -455,6 +487,345 @@ func (s *Server) localMediaPath(r *http.Request, idValue string) (string, string
 		return "", "", fmt.Errorf("invalid media path")
 	}
 	return path, relPath, nil
+}
+
+func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64) (mediaCacheResult, error) {
+	var mediaItemID int64
+	var workCode string
+	var sourceID int64
+	var sourceCode string
+	var sourceName string
+	var sourceConfigJSON string
+	var locationType string
+	var remotePath string
+	var streamURL string
+	var downloadURL string
+	var remoteHash string
+	var sizeBytes sql.NullInt64
+	var durationSeconds sql.NullInt64
+	var availability string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			location.media_item_id,
+			work.primary_code,
+			source.id,
+			source.code,
+			source.display_name,
+			source.config_json,
+			location.location_type,
+			location.path,
+			location.stream_url,
+			location.download_url,
+			location.remote_hash,
+			location.size_bytes,
+			location.duration_seconds,
+			location.availability
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		INNER JOIN work ON work.id = item.work_id
+		INNER JOIN file_source AS source ON source.id = location.file_source_id
+		WHERE location.id = ?
+	`, remoteLocationID).Scan(
+		&mediaItemID,
+		&workCode,
+		&sourceID,
+		&sourceCode,
+		&sourceName,
+		&sourceConfigJSON,
+		&locationType,
+		&remotePath,
+		&streamURL,
+		&downloadURL,
+		&remoteHash,
+		&sizeBytes,
+		&durationSeconds,
+		&availability,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return mediaCacheResult{}, fmt.Errorf("media location not found")
+		}
+		return mediaCacheResult{}, err
+	}
+	if locationType != "remote_stream" || availability != "available" {
+		return mediaCacheResult{}, fmt.Errorf("media location is not an available remote stream")
+	}
+	var sourceConfig fileSourceConfig
+	_ = json.Unmarshal([]byte(sourceConfigJSON), &sourceConfig)
+	if !s.settingBoolContext(ctx, "remote_cache_enabled", false) && !(sourceConfig.CacheEnabled != nil && *sourceConfig.CacheEnabled) {
+		return mediaCacheResult{}, fmt.Errorf("remote cache is not enabled")
+	}
+	cacheRelPath := cacheMediaRelPath(sourceCode, workCode, remotePath)
+	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, mediaItemID, sourceID, cacheRelPath); err != nil {
+		return mediaCacheResult{}, err
+	} else if ok {
+		return mediaCacheResult{LocationID: cacheID, CachePath: cacheRelPath, Status: "succeeded", AlreadyDone: true}, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return mediaCacheResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "media_cache", "Cache media", "Select media items, filter cache misses, sync source state, and materialize cache files.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_media_items"},
+			{"id": "filter", "type": "filter_candidates"},
+			{"id": "cache", "type": "materialize_cache"},
+		},
+	})
+	if err != nil {
+		return mediaCacheResult{}, err
+	}
+	runInput := map[string]any{"media_location_id": remoteLocationID, "media_item_id": mediaItemID, "source_id": sourceID, "source_code": sourceCode, "work_code": workCode}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache", "Cache media", "running", "playback", "auto_cache_on_play", runInput, map[string]any{"cache_path": cacheRelPath})
+	if err != nil {
+		return mediaCacheResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select media item", Position: 1, Status: "succeeded",
+		Input: runInput, Output: map[string]any{"media_item_id": mediaItemID, "remote_location_id": remoteLocationID},
+	}); err != nil {
+		return mediaCacheResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter cache miss", Position: 2, Status: "succeeded",
+		Input: map[string]any{"cache_path": cacheRelPath}, Output: map[string]any{"cache_missing": true},
+	}); err != nil {
+		return mediaCacheResult{}, err
+	}
+	cacheNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Materialize cache file", Position: 3, Status: "running",
+		Input: map[string]any{"download_url": firstNonEmpty(downloadURL, streamURL), "cache_path": cacheRelPath}, Output: nil,
+	})
+	if err != nil {
+		return mediaCacheResult{}, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "running", Payload: runInput, ProgressCurrent: 0, ProgressTotal: 1,
+	})
+	if err != nil {
+		return mediaCacheResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return mediaCacheResult{}, err
+	}
+
+	targetPath := filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(cacheRelPath))
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
+		return mediaCacheResult{}, err
+	}
+	written, err := downloadToFile(ctx, firstNonEmpty(downloadURL, streamURL), targetPath)
+	if err != nil {
+		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
+		return mediaCacheResult{}, err
+	}
+	cacheLocationID, err := s.upsertCacheLocation(ctx, mediaItemID, sourceID, cacheRelPath, remoteHash, nullableInt64(sizeBytes), nullableInt64(durationSeconds), written)
+	if err != nil {
+		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
+		return mediaCacheResult{}, err
+	}
+	if err := s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "succeeded", cacheRelPath, "", written); err != nil {
+		return mediaCacheResult{}, err
+	}
+	_ = sourceName
+	return mediaCacheResult{RunID: runID, JobID: jobID, LocationID: cacheLocationID, CachePath: cacheRelPath, Status: "succeeded"}, nil
+}
+
+func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int64, sourceID int64, cacheRelPath string) (int64, bool, error) {
+	var id int64
+	var path string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id, path
+		FROM media_file_location
+		WHERE media_item_id = ?
+			AND file_source_id = ?
+			AND location_type = 'cache'
+			AND path = ?
+			AND availability = 'available'
+	`, mediaItemID, sourceID, cacheRelPath).Scan(&id, &path); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	if _, err := os.Stat(filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(path))); err != nil {
+		return 0, false, nil
+	}
+	return id, true, nil
+}
+
+func (s *Server) upsertCacheLocation(ctx context.Context, mediaItemID int64, sourceID int64, cacheRelPath string, remoteHash string, sizeBytes *int64, durationSeconds *int64, written int64) (int64, error) {
+	sizeValue := any(sizeBytes)
+	if sizeBytes == nil && written > 0 {
+		sizeValue = written
+	}
+	var durationValue any
+	if durationSeconds != nil {
+		durationValue = *durationSeconds
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO media_file_location (
+			media_item_id,
+			file_source_id,
+			location_type,
+			path,
+			remote_hash,
+			size_bytes,
+			duration_seconds,
+			availability,
+			last_checked_at
+		)
+		SELECT ?, ?, 'cache', ?, ?, ?, ?, 'available', CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM media_file_location
+			WHERE media_item_id = ?
+				AND file_source_id = ?
+				AND location_type = 'cache'
+				AND path = ?
+		)
+	`, mediaItemID, sourceID, cacheRelPath, remoteHash, sizeValue, durationValue, mediaItemID, sourceID, cacheRelPath); err != nil {
+		return 0, err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET remote_hash = ?,
+			size_bytes = ?,
+			duration_seconds = ?,
+			availability = 'available',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE media_item_id = ?
+			AND file_source_id = ?
+			AND location_type = 'cache'
+			AND path = ?
+	`, remoteHash, sizeValue, durationValue, mediaItemID, sourceID, cacheRelPath); err != nil {
+		return 0, err
+	}
+	var id int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM media_file_location
+		WHERE media_item_id = ?
+			AND file_source_id = ?
+			AND location_type = 'cache'
+			AND path = ?
+	`, mediaItemID, sourceID, cacheRelPath).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *Server) finishMediaCacheRun(ctx context.Context, runID int64, nodeID int64, jobID int64, status string, cacheRelPath string, errorMessage string, written int64) error {
+	output := mustJSON(map[string]any{"cache_path": cacheRelPath, "bytes": written})
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = ?,
+			output_json = ?,
+			error_message = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, output, errorMessage, nodeID); err != nil {
+		return err
+	}
+	progress := 1
+	if status != "succeeded" {
+		progress = 0
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = ?,
+			progress_current = ?,
+			progress_total = 1,
+			error_message = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, progress, errorMessage, jobID); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = ?,
+			summary_json = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, output, runID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) settingBoolContext(ctx context.Context, key string, fallback bool) bool {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var value bool
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return fallback
+	}
+	return value
+}
+
+func downloadToFile(ctx context.Context, sourceURL string, targetPath string) (int64, error) {
+	if strings.TrimSpace(sourceURL) == "" {
+		return 0, fmt.Errorf("remote media has no download URL")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return 0, fmt.Errorf("remote media download returned HTTP %d", response.StatusCode)
+	}
+	tempPath := targetPath + ".tmp"
+	file, err := os.Create(tempPath)
+	if err != nil {
+		return 0, err
+	}
+	written, copyErr := io.Copy(file, response.Body)
+	closeErr := file.Close()
+	if copyErr != nil {
+		_ = os.Remove(tempPath)
+		return 0, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tempPath)
+		return 0, closeErr
+	}
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		_ = os.Remove(tempPath)
+		return 0, err
+	}
+	return written, nil
+}
+
+func cacheMediaRelPath(sourceCode string, workCode string, remotePath string) string {
+	cleanSource := sourceCodePattern.ReplaceAllString(strings.ToLower(strings.TrimSpace(sourceCode)), "_")
+	cleanSource = strings.Trim(cleanSource, "_")
+	if cleanSource == "" {
+		cleanSource = "remote"
+	}
+	workCode = strings.ToUpper(strings.TrimSpace(workCode))
+	if workCode == "" {
+		workCode = "UNKNOWN"
+	}
+	parts := strings.Split(strings.ReplaceAll(remotePath, "\\", "/"), "/")
+	cleanParts := []string{"voiceworks_" + cleanSource, workCode}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		cleanParts = append(cleanParts, filepath.Base(part))
+	}
+	return filepath.ToSlash(filepath.Join(cleanParts...))
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {

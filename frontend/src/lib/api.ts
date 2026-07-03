@@ -311,6 +311,15 @@ export type MediaTextPreview = {
   content: string;
 };
 
+export type MediaCacheResult = {
+  runId: number;
+  jobId: number;
+  locationId: number;
+  cachePath: string;
+  status: string;
+  alreadyDone: boolean;
+};
+
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:7659";
 
 export function assetURL(path: string) {
@@ -397,6 +406,7 @@ export const api = {
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
   updateMediaProgress: (

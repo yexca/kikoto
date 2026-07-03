@@ -1143,6 +1143,7 @@ type TreeTrack = {
   baseName: string;
   kind: string;
   folderPath: string;
+  locationType: string;
   streamUrl: string;
   downloadUrl: string;
   assetUrl: string;
@@ -1207,6 +1208,7 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       baseName: baseNameWithoutExtension(fileName),
       kind: item.kind,
       folderPath: cursor.path,
+      locationType: location.locationType,
       streamUrl: location.streamUrl,
       downloadUrl: location.downloadUrl,
       assetUrl: location.locationType === "local" ? `/api/media/${location.id}/asset` : location.downloadUrl,
@@ -1247,6 +1249,7 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         baseName: baseNameWithoutExtension(title),
         kind: node.type || "file",
         folderPath: cursor.path,
+        locationType: "remote_stream",
         streamUrl: node.streamUrl,
         downloadUrl: node.downloadUrl,
         assetUrl: node.downloadUrl || node.streamUrl,

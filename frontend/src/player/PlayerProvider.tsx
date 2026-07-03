@@ -23,6 +23,7 @@ export type PlayerTrack = {
   locationId: number;
   title: string;
   folderPath: string;
+  locationType: string;
   streamUrl: string;
   sizeBytes: number | null;
   availability: string;
@@ -69,6 +70,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<PlayMode>("order");
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
+  const cacheRequestedRef = useRef<Set<number>>(new Set());
   const currentTrack = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -88,6 +90,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       void audio.play().catch(() => setIsPlaying(false));
     }
   }, [currentTrack?.locationId]);
+
+  useEffect(() => {
+    if (!currentTrack || currentTrack.locationType !== "remote_stream") return;
+    if (cacheRequestedRef.current.has(currentTrack.locationId)) return;
+    cacheRequestedRef.current.add(currentTrack.locationId);
+    api.getRuntimeSettings()
+      .then((settings) => {
+        if (settings.cacheEnabled) {
+          void api.cacheMediaLocation(currentTrack.locationId).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, [currentTrack?.locationId, currentTrack?.locationType]);
 
   useEffect(() => {
     const audio = audioRef.current;
