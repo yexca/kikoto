@@ -1,0 +1,13 @@
+server:
+  host: 0.0.0.0
+  port: 7659
+
+database:
+  path: /config/kikoto.db
+
+library:
+  data_root: /data
+
+security:
+  # Store real secrets outside source control. This file is only a template.
+  credential_store: local

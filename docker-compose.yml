@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      KIKOTO_HTTP_ADDR: 0.0.0.0:7659
+      KIKOTO_DB_PATH: /config/kikoto.db
+      KIKOTO_DATA_ROOT: /data
+    ports:
+      - "7659:7659"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "7655:80"
+    depends_on:
+      - backend
