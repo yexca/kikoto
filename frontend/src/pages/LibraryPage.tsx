@@ -11,6 +11,7 @@ import {
   HardDrive,
   Headphones,
   ExternalLink,
+  DownloadCloud,
   Pause,
   Play,
   Search,
@@ -30,6 +31,7 @@ import {
   type ListeningStatus,
   type MediaItem,
   type RemoteWorksResponse,
+  type RemoteWork,
   type Work,
   type WorkDetail,
 } from "@/lib/api";
@@ -50,6 +52,7 @@ export function LibraryPage() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>({ kind: "local" });
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
+  const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
@@ -70,6 +73,10 @@ export function LibraryPage() {
 
   useEffect(() => {
     api.listLibrarySources().then(setSources).catch(() => setSources([]));
+  }, []);
+
+  useEffect(() => {
+    api.getRuntimeSettings().then((next) => setSettings(next)).catch(() => setSettings(null));
   }, []);
 
   useEffect(() => {
@@ -183,7 +190,17 @@ export function LibraryPage() {
       <LibraryTabs activeTab={activeTab} sources={sources} onChange={setActiveTab} />
 
       {activeTab.kind === "source" ? (
-        <RemoteSourcePanel source={activeTab.source} result={remoteResult} />
+        <RemoteSourcePanel
+          source={activeTab.source}
+          result={remoteResult}
+          autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
+          onSynced={async (workId) => {
+            const nextWorks = await api.listWorks();
+            setWorks(nextWorks);
+            const synced = nextWorks.find((item) => item.id === workId);
+            if (synced) openWork(synced);
+          }}
+        />
       ) : (
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleWorks.map((work) => (
@@ -265,38 +282,127 @@ function TabButton({
   );
 }
 
-function RemoteSourcePanel({ source, result }: { source: LibrarySource; result: RemoteWorksResponse | null }) {
+function RemoteSourcePanel({
+  source,
+  result,
+  autoSyncRemote,
+  onSynced,
+}: {
+  source: LibrarySource;
+  result: RemoteWorksResponse | null;
+  autoSyncRemote: boolean;
+  onSynced: (workID: number) => Promise<void>;
+}) {
   const isLoading = result === null;
+  const [query, setQuery] = useState("");
+  const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+
+  const syncWork = async (work: RemoteWork, reason: string) => {
+    if (!work.primaryCode) {
+      setMessage("This remote work has no stable work code.");
+      return;
+    }
+    if (!autoSyncRemote && reason !== "manual_pull") {
+      const confirmed = window.confirm(
+        "This work needs to be pulled into Remote before Kikoto can mark or play it. You can enable automatic pull on interest in Settings.",
+      );
+      if (!confirmed) return;
+    }
+    setIsSyncingCode(work.primaryCode);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, reason);
+      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+      await onSynced(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
+  };
+
+  const visibleWorks = useMemo(() => {
+    const works = result?.works ?? [];
+    const needle = query.trim().toLowerCase();
+    if (!needle) return works;
+    return works.filter((work) =>
+      [work.primaryCode, work.title, work.circle, ...work.tags].some((value) => value.toLowerCase().includes(needle)),
+    );
+  }, [query, result]);
+
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
-          <p className="text-sm text-muted-foreground">Paged remote query surface for a kikoeru-compatible source.</p>
+          <p className="text-sm text-muted-foreground">Browse source results without importing until a user action needs local state.</p>
         </div>
         <div className="flex gap-2">
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
           <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
         </div>
       </div>
+      <div className="flex min-h-10 items-center gap-2 rounded-lg border bg-card px-3 text-sm">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input
+          className="min-w-0 flex-1 bg-transparent outline-none"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Filter current remote page"
+        />
+      </div>
+      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
       <Card>
         <CardContent className="p-5">
           {isLoading ? (
             <div className="text-sm text-muted-foreground">Loading remote page...</div>
-          ) : result.works.length === 0 ? (
+          ) : visibleWorks.length === 0 ? (
             <div className="space-y-2 text-sm text-muted-foreground">
-              <div>No remote works are shown yet.</div>
-              <div>This tab is wired to the Kikoto API shape; the kikoeru-compatible adapter can fill it later.</div>
+              <div>No remote works on this page.</div>
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {result.works.map((work) => (
+              {visibleWorks.map((work) => (
                 <Card key={work.remoteId}>
                   <CardContent className="space-y-2 p-4">
-                    <div className="text-xs font-semibold text-primary">{work.primaryCode}</div>
-                    <h3 className="line-clamp-2 text-sm font-semibold">{work.title}</h3>
+                    <div className="text-xs font-semibold text-primary">{work.primaryCode || work.remoteId}</div>
+                    <h3 className="line-clamp-2 min-h-10 text-sm font-semibold">{work.title}</h3>
                     <p className="truncate text-xs text-muted-foreground">{work.circle}</p>
-                    <Badge variant="outline">{work.importStatus}</Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant={work.importStatus === "synced" ? "secondary" : "outline"}>{work.importStatus}</Badge>
+                      {work.remotePlayable && <Badge variant="outline">remote</Badge>}
+                      {work.tags.slice(0, 2).map((tag) => (
+                        <Badge key={tag} variant="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
+                        onClick={() => void syncWork(work, "manual_pull")}
+                      >
+                        <DownloadCloud className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
+                        onClick={() => void syncWork(work, "mark_interest")}
+                      >
+                        <Star className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
+                        onClick={() => void syncWork(work, "play_interest")}
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}

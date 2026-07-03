@@ -84,8 +84,10 @@ export type FileSource = {
   priority: number;
   enabled: boolean;
   config: {
+    autoSyncOnInterest?: boolean;
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
+    saveRootTemplate?: string;
     scanDepth?: number;
   };
   endpoint: {
@@ -103,12 +105,21 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
+  autoSyncOnInterest: boolean;
+  cacheEnabled: boolean;
+};
+
+export type RuntimeSettings = {
+  autoSyncRemote: boolean;
+  cacheEnabled: boolean;
 };
 
 export type AppSettings = {
   localScanDepth: number;
+  autoSyncRemote: boolean;
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  remoteSaveTemplate: string;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -131,6 +142,19 @@ export type RemoteWork = {
   circle: string;
   tags: string[];
   importStatus: string;
+  remotePlayable: boolean;
+  workId: number | null;
+};
+
+export type RemoteWorkSyncResult = {
+  runId: number;
+  jobId: number;
+  workId: number;
+  primaryCode: string;
+  status: string;
+  syncedMediaItems: number;
+  syncedLocations: number;
+  triggerReason: string;
 };
 
 export type WorkflowRun = {
@@ -325,8 +349,11 @@ export const api = {
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
+  getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
   listRemoteSourceWorks: (id: number, page = 1, pageSize = 24) =>
     getJSON<RemoteWorksResponse>(`/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}`),
+  syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
+    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
@@ -339,7 +366,13 @@ export const api = {
   ),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
-  updateSettings: (payload: { localScanDepth?: number; cacheEnabled?: boolean; cacheLimitGb?: number }) =>
+  updateSettings: (payload: {
+    localScanDepth?: number;
+    autoSyncRemote?: boolean;
+    cacheEnabled?: boolean;
+    cacheLimitGb?: number;
+    remoteSaveTemplate?: string;
+  }) =>
     patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {
     displayName: string;

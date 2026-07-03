@@ -13,7 +13,7 @@ const emptyRemoteSource = {
   sourceType: "kikoeru_compatible",
   priority: 30,
   enabled: true,
-  config: { cacheEnabled: true, cacheLimitGb: 20 },
+  config: { autoSyncOnInterest: false, cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: "/data/<source_name>/<work_code>" },
   endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "" },
   healthStatus: "unknown",
   lastCheckedAt: null,
@@ -22,8 +22,10 @@ const emptyRemoteSource = {
 export function SettingsPage({ canManageSources }: { canManageSources: boolean }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [localScanDepth, setLocalScanDepth] = useState(2);
+  const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
+  const [remoteSaveTemplate, setRemoteSaveTemplate] = useState("/data/<source_name>/<work_code>");
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
@@ -40,8 +42,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       .then((next) => {
         setSettings(next);
         setLocalScanDepth(next.localScanDepth);
+        setAutoSyncRemote(next.autoSyncRemote);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
+        setRemoteSaveTemplate(next.remoteSaveTemplate);
       })
       .catch(() => setMessage("Settings API is unavailable."));
 
@@ -50,8 +54,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   }, []);
 
   const saveRuntimeSettings = async () => {
-    const next = await api.updateSettings({ localScanDepth, cacheEnabled, cacheLimitGb });
+    const next = await api.updateSettings({ localScanDepth, autoSyncRemote: cacheEnabled ? true : autoSyncRemote, cacheEnabled, cacheLimitGb, remoteSaveTemplate });
     setSettings(next);
+    setAutoSyncRemote(next.autoSyncRemote);
+    setCacheEnabled(next.cacheEnabled);
     setMessage("Settings saved.");
   };
 
@@ -143,8 +149,19 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Enable cache</span>
-              <input type="checkbox" checked={cacheEnabled} onChange={(event) => setCacheEnabled(event.target.checked)} />
+              <span className="font-medium">Auto pull on interest</span>
+              <input type="checkbox" checked={autoSyncRemote || cacheEnabled} disabled={cacheEnabled} onChange={(event) => setAutoSyncRemote(event.target.checked)} />
+            </label>
+            <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
+              <span className="font-medium">Auto cache on play</span>
+              <input
+                type="checkbox"
+                checked={cacheEnabled}
+                onChange={(event) => {
+                  setCacheEnabled(event.target.checked);
+                  if (event.target.checked) setAutoSyncRemote(true);
+                }}
+              />
             </label>
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Limit GB</span>
@@ -154,6 +171,14 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
                 min={0}
                 value={cacheLimitGb}
                 onChange={(event) => setCacheLimitGb(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Save path template</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                value={remoteSaveTemplate}
+                onChange={(event) => setRemoteSaveTemplate(event.target.value)}
               />
             </label>
             <Button size="sm" className="w-full" onClick={() => void saveRuntimeSettings()}>
@@ -282,14 +307,36 @@ function SourceForm({
             <input type="checkbox" checked={source.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
           </label>
           <label className="flex items-center justify-between gap-3">
+            <span className="font-medium">Auto pull on interest</span>
+            <input
+              type="checkbox"
+              checked={source.config.autoSyncOnInterest ?? false}
+              disabled={source.config.cacheEnabled ?? false}
+              onChange={(event) => patch({ config: { ...source.config, autoSyncOnInterest: event.target.checked } })}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3">
             <span className="font-medium">Cache this source</span>
             <input
               type="checkbox"
               checked={source.config.cacheEnabled ?? false}
-              onChange={(event) => patch({ config: { ...source.config, cacheEnabled: event.target.checked } })}
+              onChange={(event) =>
+                patch({
+                  config: {
+                    ...source.config,
+                    cacheEnabled: event.target.checked,
+                    autoSyncOnInterest: event.target.checked ? true : source.config.autoSyncOnInterest,
+                  },
+                })
+              }
             />
           </label>
         </div>
+        <TextInput
+          label="Save path template"
+          value={source.config.saveRootTemplate ?? ""}
+          onChange={(value) => patch({ config: { ...source.config, saveRootTemplate: value } })}
+        />
         <div className="flex gap-2">
           <Button size="sm" className="flex-1" disabled={!source.displayName.trim()} onClick={() => void onSave()}>
             <Save className="h-4 w-4" />

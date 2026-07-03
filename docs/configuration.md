@@ -41,9 +41,14 @@ In dev mode, the frontend opens as the root super administrator without a login 
 The Settings page currently manages:
 
 - Local scan depth.
-- Cache enabled state.
+- Remote auto pull on user interest.
+- Remote auto cache on play.
 - Cache size limit.
+- Remote save path template.
 - Local and Kikoeru-compatible file sources.
+
+When automatic remote cache is enabled, automatic remote pull is also enabled
+because caching requires stable local work and media item records first.
 
 ## Source Control Boundary
 

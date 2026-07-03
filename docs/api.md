@@ -129,6 +129,24 @@ Lists and manages configured file sources.
 
 Requires `sources:write`.
 
+```http
+GET /api/library-sources
+```
+
+Returns enabled and disabled Kikoeru-compatible sources visible from Library.
+
+Requires `library:read`.
+
+```http
+GET /api/remote-sources/{id}/works
+POST /api/remote-sources/{id}/works/{code}/sync
+```
+
+Browses a configured Kikoeru-compatible source and pulls a selected remote work
+into the unified local database through the remote source sync workflow.
+
+Requires `library:read`.
+
 ## Settings
 
 ```http
@@ -137,7 +155,14 @@ PATCH /api/settings
 ```
 
 Returns and updates administrator-managed settings, including local scan depth
-and cache options.
+and remote sync/cache options.
+
+```http
+GET /api/runtime-settings
+```
+
+Returns user-visible runtime settings needed by Library, such as whether remote
+interest actions should pull work information automatically.
 
 ## Workflows
 
