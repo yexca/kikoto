@@ -12,6 +12,9 @@ import {
   Headphones,
   ExternalLink,
   DownloadCloud,
+  Bookmark,
+  Cloud,
+  MoreHorizontal,
   Pause,
   Play,
   Search,
@@ -19,7 +22,7 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +55,8 @@ export function LibraryPage() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>({ kind: "local" });
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
+  const [remotePage, setRemotePage] = useState(1);
+  const [remotePageSize, setRemotePageSize] = useState(24);
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
@@ -84,16 +89,23 @@ export function LibraryPage() {
       setRemoteResult(null);
       return;
     }
-    api.listRemoteSourceWorks(activeTab.source.id).then(setRemoteResult).catch(() => {
+    setRemoteResult(null);
+    api.listRemoteSourceWorks(activeTab.source.id, remotePage, remotePageSize).then(setRemoteResult).catch(() => {
       setRemoteResult({
         sourceId: activeTab.source.id,
         works: [],
-        page: 1,
-        pageSize: 24,
+        page: remotePage,
+        pageSize: remotePageSize,
         total: 0,
         status: "unavailable",
       });
     });
+  }, [activeTab, remotePage, remotePageSize]);
+
+  useEffect(() => {
+    if (activeTab.kind === "source") {
+      setRemotePage(1);
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -193,6 +205,13 @@ export function LibraryPage() {
         <RemoteSourcePanel
           source={activeTab.source}
           result={remoteResult}
+          page={remotePage}
+          pageSize={remotePageSize}
+          onPageChange={setRemotePage}
+          onPageSizeChange={(value) => {
+            setRemotePageSize(value);
+            setRemotePage(1);
+          }}
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onSynced={async (workId) => {
             const nextWorks = await api.listWorks();
@@ -285,11 +304,19 @@ function TabButton({
 function RemoteSourcePanel({
   source,
   result,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
   autoSyncRemote,
   onSynced,
 }: {
   source: LibrarySource;
   result: RemoteWorksResponse | null;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   autoSyncRemote: boolean;
   onSynced: (workID: number) => Promise<void>;
 }) {
@@ -330,6 +357,8 @@ function RemoteSourcePanel({
       [work.primaryCode, work.title, work.circle, ...work.tags].some((value) => value.toLowerCase().includes(needle)),
     );
   }, [query, result]);
+  const canGoNext = result !== null && result.works.length >= pageSize;
+  const canGoPrevious = page > 1;
 
   return (
     <section className="space-y-3">
@@ -352,64 +381,55 @@ function RemoteSourcePanel({
           placeholder="Filter current remote page"
         />
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
+        <div className="text-xs text-muted-foreground">
+          Page {page}
+          {result?.total ? ` · ${result.total} works` : ""}
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            aria-label="Remote page size"
+          >
+            {[12, 24, 48, 96].map((value) => (
+              <option key={value} value={value}>
+                {value} / page
+              </option>
+            ))}
+          </select>
+          <IconButton title="Previous page" disabled={!canGoPrevious || isLoading} onClick={() => onPageChange(Math.max(1, page - 1))}>
+            <ChevronLeft className="h-4 w-4" />
+          </IconButton>
+          <IconButton title="Next page" disabled={!canGoNext || isLoading} onClick={() => onPageChange(page + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </IconButton>
+        </div>
+      </div>
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
-      <Card>
-        <CardContent className="p-5">
-          {isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading remote page...</div>
-          ) : visibleWorks.length === 0 ? (
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <div>No remote works on this page.</div>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleWorks.map((work) => (
-                <Card key={work.remoteId}>
-                  <CardContent className="space-y-2 p-4">
-                    <div className="text-xs font-semibold text-primary">{work.primaryCode || work.remoteId}</div>
-                    <h3 className="line-clamp-2 min-h-10 text-sm font-semibold">{work.title}</h3>
-                    <p className="truncate text-xs text-muted-foreground">{work.circle}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      <Badge variant={work.importStatus === "synced" ? "secondary" : "outline"}>{work.importStatus}</Badge>
-                      {work.remotePlayable && <Badge variant="outline">remote</Badge>}
-                      {work.tags.slice(0, 2).map((tag) => (
-                        <Badge key={tag} variant="outline">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
-                        onClick={() => void syncWork(work, "manual_pull")}
-                      >
-                        <DownloadCloud className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
-                        onClick={() => void syncWork(work, "mark_interest")}
-                      >
-                        <Star className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={isSyncingCode === work.primaryCode || !work.primaryCode}
-                        onClick={() => void syncWork(work, "play_interest")}
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">Loading remote page...</CardContent>
+        </Card>
+      ) : visibleWorks.length === 0 ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
+        </Card>
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visibleWorks.map((work) => (
+            <RemoteWorkCard
+              key={work.remoteId}
+              work={work}
+              isBusy={isSyncingCode === work.primaryCode}
+              onPull={() => void syncWork(work, "manual_pull")}
+              onMark={() => void syncWork(work, "mark_interest")}
+              onPlay={() => void syncWork(work, "play_interest")}
+            />
+          ))}
+        </section>
+      )}
     </section>
   );
 }
@@ -423,90 +443,217 @@ function WorkCard({
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
+  const [isMarkOpen, setIsMarkOpen] = useState(false);
   return (
-    <button className="group text-left" onClick={onOpen}>
-      <Card className="h-full overflow-hidden transition-colors hover:border-primary/50">
-        <CardContent className="p-0">
-          <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            {work.coverUrl ? (
-              <img
-                src={assetURL(work.coverUrl)}
-                alt=""
-                className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
-              />
-            ) : (
-              <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">
-                {work.primaryCode.slice(0, 2)}
-              </div>
-            )}
-            <a
-              className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold hover:text-primary"
-              href={work.dlsiteUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
+    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+      <CardContent className="p-0">
+        <div className="block w-full cursor-pointer text-left" onClick={onOpen}>
+          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} externalUrl={work.dlsiteUrl} />
+          <WorkCardBody
+            title={work.title}
+            circle={work.circle || "Unknown circle"}
+            badges={[
+              ...(work.listeningStatus !== "none" ? [{ value: listeningStatusLabel(work.listeningStatus), variant: "warning" as const }] : []),
+              ...work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) })),
+              ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
+            ]}
+            meta={[
+              { icon: <UserRound className="h-3.5 w-3.5" />, value: work.voiceActors.join(", ") || "No voice actor metadata" },
+              { icon: <FileAudio className="h-3.5 w-3.5" />, value: `${work.trackCount} tracks, ${work.availableLocations} files` },
+            ]}
+          />
+        </div>
+        <div className="flex h-11 items-center justify-between border-t px-3">
+          <div className="relative">
+            <IconButton
+              title={`Mark: ${listeningStatusLabel(work.listeningStatus)}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsMarkOpen((value) => !value);
+              }}
             >
-              {work.primaryCode}
-              <ExternalLink className="h-3 w-3" />
-            </a>
-            <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
-              <Star className="h-3.5 w-3.5 fill-current" />
-              {work.rating === null ? "No rating" : work.rating.toFixed(2)}
-            </div>
+              <Bookmark className={work.listeningStatus === "none" ? "h-4 w-4" : "h-4 w-4 fill-current text-primary"} />
+            </IconButton>
+            {isMarkOpen && (
+              <MarkMenu
+                value={work.listeningStatus}
+                onChange={(status) => {
+                  setIsMarkOpen(false);
+                  void onStatusChange(work.id, status);
+                }}
+              />
+            )}
           </div>
-          <div className="space-y-3 p-4">
-            <div className="space-y-1">
-              <h2 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h2>
-              <p className="truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {work.listeningStatus !== "none" && <Badge variant="warning">{listeningStatusLabel(work.listeningStatus)}</Badge>}
-              {work.availability.map((item) => (
-                <Badge key={item} variant={item === "missing" ? "warning" : "secondary"}>
-                  {item}
-                </Badge>
-              ))}
-              {work.tags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <UserRound className="h-3.5 w-3.5" />
-                <span className="truncate">{work.voiceActors.join(", ") || "No voice actor metadata"}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <FileAudio className="h-3.5 w-3.5" />
-                <span>
-                  {work.trackCount} tracks, {work.availableLocations} local files
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Tags className="h-3.5 w-3.5" />
-                <select
-                  className="h-7 min-w-0 flex-1 rounded-md border bg-card px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-                  value={work.listeningStatus}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => {
-                    event.stopPropagation();
-                    void onStatusChange(work.id, event.target.value as ListeningStatus);
-                  }}
-                  aria-label={`Mark ${work.title}`}
-                >
-                  {listeningStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          <div className="flex items-center gap-1">
+            <IconButton title="Open work" onClick={onOpen}>
+              <MoreHorizontal className="h-4 w-4" />
+            </IconButton>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RemoteWorkCard({
+  work,
+  isBusy,
+  onPull,
+  onMark,
+  onPlay,
+}: {
+  work: RemoteWork;
+  isBusy: boolean;
+  onPull: () => void;
+  onMark: () => void;
+  onPlay: () => void;
+}) {
+  return (
+    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+      <CardContent className="p-0">
+        <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
+        <WorkCardBody
+          title={work.title}
+          circle={work.circle || "Unknown circle"}
+          badges={[
+            { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
+            ...(work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []),
+            ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
+          ]}
+          meta={[
+            { icon: <Cloud className="h-3.5 w-3.5" />, value: "Browse source result" },
+            { icon: <FileAudio className="h-3.5 w-3.5" />, value: work.primaryCode || work.remoteId },
+          ]}
+        />
+        <div className="flex h-11 items-center justify-between border-t px-3">
+          <IconButton title="Pull remote info" disabled={isBusy || !work.primaryCode} onClick={onPull}>
+            <DownloadCloud className="h-4 w-4" />
+          </IconButton>
+          <div className="flex items-center gap-1">
+            <IconButton title="Pull and mark" disabled={isBusy || !work.primaryCode} onClick={onMark}>
+              <Bookmark className="h-4 w-4" />
+            </IconButton>
+            <IconButton title="Pull and play" disabled={isBusy || !work.primaryCode} onClick={onPlay}>
+              <Play className="h-4 w-4" />
+            </IconButton>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkCardMedia({
+  coverUrl,
+  code,
+  rating,
+  externalUrl,
+}: {
+  coverUrl: string;
+  code: string;
+  rating: number | null;
+  externalUrl?: string;
+}) {
+  const codeText = code || "Remote";
+  return (
+    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      {coverUrl ? (
+        <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" />
+      ) : (
+        <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{codeText.slice(0, 2)}</div>
+      )}
+      {externalUrl ? (
+        <a
+          className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold hover:text-primary"
+          href={externalUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          title="Open external page"
+        >
+          {codeText}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      ) : (
+        <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
+      )}
+      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
+        <Star className="h-3.5 w-3.5 fill-current" />
+        {rating === null ? "No rating" : rating.toFixed(2)}
+      </div>
+    </div>
+  );
+}
+
+type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
+type CardMeta = { icon: ReactNode; value: string };
+
+function WorkCardBody({ title, circle, badges, meta }: { title: string; circle: string; badges: CardBadge[]; meta: CardMeta[] }) {
+  return (
+    <div className="space-y-3 p-4">
+      <div className="space-y-1">
+        <h2 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{title}</h2>
+        <p className="truncate text-sm text-muted-foreground">{circle}</p>
+      </div>
+      <div className="flex min-h-6 flex-wrap gap-1.5">
+        {badges.map((badge) => (
+          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
+            {badge.value}
+          </Badge>
+        ))}
+      </div>
+      <div className="grid gap-1 text-xs text-muted-foreground">
+        {meta.map((item, index) => (
+          <div key={index} className="flex items-center gap-1.5">
+            {item.icon}
+            <span className="truncate">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IconButton({
+  title,
+  disabled,
+  children,
+  onClick,
+}: {
+  title: string;
+  disabled?: boolean;
+  children: ReactNode;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
     </button>
+  );
+}
+
+function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
+  return (
+    <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-card p-1 shadow-lg">
+      {listeningStatusOptions.map((option) => (
+        <button
+          key={option.value}
+          className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs hover:bg-muted ${
+            value === option.value ? "font-semibold text-primary" : "text-foreground"
+          }`}
+          onClick={() => onChange(option.value)}
+        >
+          <Bookmark className={value === option.value && value !== "none" ? "h-3.5 w-3.5 fill-current" : "h-3.5 w-3.5"} />
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

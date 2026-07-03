@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -80,6 +83,7 @@ type remoteWorkSummary struct {
 	Title          string   `json:"title"`
 	CoverURL       string   `json:"coverUrl"`
 	Circle         string   `json:"circle"`
+	Rating         *float64 `json:"rating"`
 	Tags           []string `json:"tags"`
 	ImportStatus   string   `json:"importStatus"`
 	RemotePlayable bool     `json:"remotePlayable"`
@@ -556,6 +560,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) 
 			Title:          firstNonEmpty(work.Title, work.Name, code),
 			CoverURL:       firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 			Circle:         circle,
+			Rating:         work.RateAverage2DP,
 			Tags:           tags,
 			ImportStatus:   status,
 			RemotePlayable: true,
@@ -633,6 +638,9 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}
 	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
 	if err != nil {
+		return remoteWorkSyncResult{}, err
+	}
+	if err := s.downloadRemoteCover(ctx, workCode, firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
 	mediaItems, locations, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks)
@@ -761,6 +769,45 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		return 0, err
 	}
 	return workID, nil
+}
+
+func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, coverURL string) error {
+	coverURL = strings.TrimSpace(coverURL)
+	if coverURL == "" {
+		return nil
+	}
+	parsedURL, err := url.Parse(coverURL)
+	if err != nil {
+		return nil
+	}
+	extension := strings.ToLower(filepath.Ext(parsedURL.Path))
+	if extension == "" || len(extension) > 6 {
+		extension = ".jpg"
+	}
+	if err := os.MkdirAll(filepath.Join(s.cfg.CacheRoot, "cover"), 0o755); err != nil {
+		return err
+	}
+	targetPath := filepath.Join(s.cfg.CacheRoot, "cover", strings.ToUpper(workCode)+extension)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, coverURL, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("cover download returned HTTP %d", response.StatusCode)
+	}
+	file, err := os.Create(targetPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, response.Body)
+	return err
 }
 
 func syncRemoteTrackTree(ctx context.Context, tx *sql.Tx, fileSourceID int64, workID int64, workCode string, tracks []kikoeru.Track) (int, int, error) {

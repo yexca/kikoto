@@ -140,6 +140,7 @@ export type RemoteWork = {
   title: string;
   coverUrl: string;
   circle: string;
+  rating: number | null;
   tags: string[];
   importStatus: string;
   remotePlayable: boolean;
