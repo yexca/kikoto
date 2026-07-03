@@ -1,5 +1,5 @@
 import {
-  ChevronDown,
+  Captions,
   ListMusic,
   Pause,
   Play,
@@ -209,16 +209,33 @@ export function usePlayer() {
 
 export function PlayerDock() {
   const player = usePlayer();
+  const volumeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const volumePopoverRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
-  const [panel, setPanel] = useState<"queue" | "lyrics">("queue");
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const track = player.currentTrack;
+
+  useEffect(() => {
+    if (!isVolumeOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (volumeButtonRef.current?.contains(target) || volumePopoverRef.current?.contains(target)) {
+        return;
+      }
+      setIsVolumeOpen(false);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    return () => window.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [isVolumeOpen]);
 
   if (!track) return null;
 
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
+  const hasPanel = panel !== null;
 
   if (!expanded) {
     return (
@@ -243,26 +260,62 @@ export function PlayerDock() {
   }
 
   return (
-    <section className="fixed inset-x-3 bottom-[76px] z-40 max-h-[calc(100vh-96px)] overflow-hidden rounded-lg border bg-card shadow-xl lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">Now playing</div>
-          <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={() => setExpanded(false)} aria-label="Collapse player">
-          <ChevronDown className="h-4 w-4" />
-        </Button>
-      </div>
+    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] overflow-hidden rounded-lg border bg-card shadow-xl lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
+      <div className="flex h-full flex-col">
+        <button
+          className="flex h-9 shrink-0 items-center justify-center border-b hover:bg-muted"
+          onClick={() => setExpanded(false)}
+          aria-label="Collapse player"
+        >
+          <span className="h-1.5 w-12 rounded-full bg-muted-foreground/35" />
+        </button>
 
-      <div className="max-h-[calc(100vh-150px)] space-y-4 overflow-auto p-4">
-        <CoverImage track={track} className="mx-auto aspect-[4/3] w-full max-w-[260px]" />
-        <div className="space-y-1 text-center">
-          <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
-          <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
-          <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
+          {hasPanel ? (
+            <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="flex min-h-[72px] items-center gap-3 rounded-md border bg-background p-2">
+                <CoverImage track={track} className="h-14 w-[74px]" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{track.title}</div>
+                  <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
+                  <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background p-2">
+                {panel === "lyrics" ? (
+                  <div className="p-3 text-sm text-muted-foreground">No lyrics for this track.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {player.queue.map((item, index) => (
+                      <button
+                        key={item.locationId}
+                        className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
+                          index === player.currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
+                        }`}
+                        onClick={() => player.selectTrack(index)}
+                      >
+                        {index === player.currentIndex ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        <span className="truncate">{item.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col justify-center gap-4">
+              <CoverImage track={track} className="mx-auto aspect-[4/3] w-full max-w-[260px]" />
+              <div className="space-y-1 text-center">
+                <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
+                <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
+                <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="space-y-1">
+        <div className="shrink-0 space-y-4 border-t p-4">
+          <div className="space-y-1">
           <input
             className="h-2 w-full accent-primary"
             type="range"
@@ -277,9 +330,9 @@ export function PlayerDock() {
             <span>{formatTime(player.currentTime)}</span>
             <span>{formatTime(player.duration)}</span>
           </div>
-        </div>
+          </div>
 
-        <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-2">
           <Button variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
             <SkipBack className="h-4 w-4" />
           </Button>
@@ -295,75 +348,57 @@ export function PlayerDock() {
           <Button variant="outline" size="icon" onClick={player.next} aria-label="Next">
             <SkipForward className="h-4 w-4" />
           </Button>
-        </div>
+          </div>
 
-        <div className="grid grid-cols-4 gap-2">
+          <div className="relative grid grid-cols-4 gap-2">
           <Button variant="outline" size="sm" onClick={player.cycleMode} title={modeLabel}>
             {player.mode === "single" ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
           </Button>
           <Button
-            variant={panel === "queue" && isPanelOpen ? "secondary" : "outline"}
+            variant={panel === "queue" ? "secondary" : "outline"}
             size="sm"
-            onClick={() => {
-              setPanel("queue");
-              setIsPanelOpen((value) => (panel === "queue" ? !value : true));
-            }}
+            onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
           >
             <ListMusic className="h-4 w-4" />
           </Button>
           <Button
-            variant={panel === "lyrics" && isPanelOpen ? "secondary" : "outline"}
+            variant={panel === "lyrics" ? "secondary" : "outline"}
             size="sm"
-            onClick={() => {
-              setPanel("lyrics");
-              setIsPanelOpen((value) => (panel === "lyrics" ? !value : true));
-            }}
+            onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
             disabled
           >
-            Lyrics
+            <Captions className="h-4 w-4" />
           </Button>
-          <Button variant={isVolumeOpen ? "secondary" : "outline"} size="sm" onClick={() => setIsVolumeOpen((value) => !value)}>
+          <Button
+            ref={volumeButtonRef}
+            variant={isVolumeOpen ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setIsVolumeOpen((value) => !value)}
+          >
             <Volume2 className="h-4 w-4" />
           </Button>
+
+          {isVolumeOpen && (
+            <div
+              ref={volumePopoverRef}
+              className="absolute bottom-11 right-0 z-10 flex h-44 w-14 flex-col items-center gap-2 rounded-md border bg-card px-2 py-3 shadow-lg"
+            >
+              <span className="text-xs text-muted-foreground">{Math.round(player.volume * 100)}</span>
+              <input
+                className="h-24 w-2 accent-primary [direction:rtl] [writing-mode:vertical-lr]"
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={player.volume}
+                onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
+                aria-label="Volume"
+              />
+              <Volume2 className="h-4 w-4 text-muted-foreground" />
+            </div>
+          )}
+          </div>
         </div>
-
-        {isVolumeOpen && (
-          <div className="flex items-center gap-3 rounded-md border bg-background px-3 py-2">
-            <Volume2 className="h-4 w-4 text-muted-foreground" />
-            <input
-              className="min-w-0 flex-1 accent-primary"
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={player.volume}
-              onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
-              aria-label="Volume"
-            />
-            <span className="w-9 text-right text-xs text-muted-foreground">{Math.round(player.volume * 100)}</span>
-          </div>
-        )}
-
-        {isPanelOpen && (
-          <div className="max-h-44 space-y-1 overflow-auto rounded-md border bg-background p-2">
-            {panel === "lyrics" ? (
-              <div className="p-3 text-sm text-muted-foreground">No lyrics for this track.</div>
-            ) : (
-              player.queue.map((item, index) => (
-                <button
-                  key={item.locationId}
-                  className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
-                    index === player.currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
-                  }`}
-                  onClick={() => player.selectTrack(index)}
-                >
-                  {index === player.currentIndex ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                  <span className="truncate">{item.title}</span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
       </div>
     </section>
   );
