@@ -65,12 +65,21 @@ type Creator struct {
 }
 
 type MakerProfile struct {
-	MakerID     string   `json:"maker_id"`
-	MakerName   string   `json:"maker_name"`
-	SiteID      string   `json:"site_id"`
-	URL         string   `json:"url"`
-	WorkCodes   []string `json:"work_codes"`
-	RawHTML     string   `json:"raw_html"`
+	MakerID      string   `json:"maker_id"`
+	MakerName    string   `json:"maker_name"`
+	SiteID       string   `json:"site_id"`
+	URL          string   `json:"url"`
+	WorkCodes    []string `json:"work_codes"`
+	RawHTML      string   `json:"raw_html"`
+	PagesFetched int      `json:"pages_fetched"`
+	ReachedEnd   bool     `json:"reached_end"`
+}
+
+type MakerCatalogOptions struct {
+	Mode           string
+	MaxPages       int
+	KnownWorkCodes map[string]bool
+	Delay          time.Duration
 }
 
 func NewClient(httpClient *http.Client) *Client {
@@ -106,13 +115,23 @@ func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, erro
 }
 
 func (c *Client) FetchMakerProfile(ctx context.Context, makerID string) (MakerProfile, error) {
+	return c.FetchMakerCatalog(ctx, makerID, MakerCatalogOptions{Mode: "incremental"})
+}
+
+func (c *Client) FetchMakerCatalog(ctx context.Context, makerID string, options MakerCatalogOptions) (MakerProfile, error) {
 	makerID = strings.ToUpper(strings.TrimSpace(makerID))
 	if makerID == "" {
 		return MakerProfile{}, fmt.Errorf("empty maker id")
 	}
+	if options.MaxPages <= 0 {
+		options.MaxPages = 1
+	}
+	if strings.ToLower(strings.TrimSpace(options.Mode)) == "full" && options.MaxPages < 100 {
+		options.MaxPages = 100
+	}
 	var lastErr error
 	for _, site := range candidateMakerSites(makerID) {
-		profile, err := c.fetchMakerProfileFromSite(ctx, site, makerID)
+		profile, err := c.fetchMakerCatalogFromSite(ctx, site, makerID, options)
 		if err == nil {
 			return profile, nil
 		}
@@ -248,8 +267,85 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	return product, nil
 }
 
-func (c *Client) fetchMakerProfileFromSite(ctx context.Context, site string, makerID string) (MakerProfile, error) {
-	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(c.baseURL, "/"), site, url.PathEscape(makerID))
+func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, makerID string, options MakerCatalogOptions) (MakerProfile, error) {
+	allCodes := []string{}
+	seenCodes := map[string]bool{}
+	var firstProfile MakerProfile
+	var firstRaw string
+	pagesFetched := 0
+	reachedEnd := false
+	knownCodes := normalizeCodeSet(options.KnownWorkCodes)
+	mode := strings.ToLower(strings.TrimSpace(options.Mode))
+	if mode == "" {
+		mode = "incremental"
+	}
+	for page := 1; page <= options.MaxPages; page++ {
+		if page > 1 && options.Delay > 0 {
+			timer := time.NewTimer(options.Delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return MakerProfile{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		profile, err := c.fetchMakerProfilePageCandidates(ctx, site, makerID, page)
+		if err != nil {
+			if page > 1 && len(allCodes) > 0 {
+				reachedEnd = true
+				break
+			}
+			return MakerProfile{}, err
+		}
+		if page == 1 {
+			firstProfile = profile
+			firstRaw = profile.RawHTML
+		}
+		pagesFetched++
+		pageNew := 0
+		for _, code := range profile.WorkCodes {
+			if seenCodes[code] {
+				continue
+			}
+			seenCodes[code] = true
+			allCodes = append(allCodes, code)
+			pageNew++
+		}
+		if len(profile.WorkCodes) == 0 || pageNew == 0 {
+			reachedEnd = true
+			break
+		}
+		if mode != "full" && pageContainsKnown(profile.WorkCodes, knownCodes) {
+			reachedEnd = true
+			break
+		}
+	}
+	if pagesFetched == 0 {
+		return MakerProfile{}, fmt.Errorf("dlsite maker returned no pages")
+	}
+	firstProfile.WorkCodes = allCodes
+	firstProfile.RawHTML = firstRaw
+	firstProfile.PagesFetched = pagesFetched
+	firstProfile.ReachedEnd = reachedEnd
+	return firstProfile, nil
+}
+
+func (c *Client) fetchMakerProfilePageCandidates(ctx context.Context, site string, makerID string, page int) (MakerProfile, error) {
+	var lastErr error
+	for _, endpoint := range makerProfileURLs(c.baseURL, site, makerID, page) {
+		profile, err := c.fetchMakerProfilePage(ctx, site, makerID, endpoint)
+		if err == nil {
+			return profile, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no maker profile URL candidates")
+	}
+	return MakerProfile{}, lastErr
+}
+
+func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID string, endpoint string) (MakerProfile, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return MakerProfile{}, err
@@ -271,12 +367,13 @@ func (c *Client) fetchMakerProfileFromSite(ctx context.Context, site string, mak
 	}
 	rawHTML := string(body)
 	return MakerProfile{
-		MakerID:   makerID,
-		MakerName: parseMakerName(rawHTML),
-		SiteID:    site,
-		URL:       endpoint,
-		WorkCodes: parseWorkCodes(rawHTML),
-		RawHTML:   rawHTML,
+		MakerID:      makerID,
+		MakerName:    parseMakerName(rawHTML),
+		SiteID:       site,
+		URL:          endpoint,
+		WorkCodes:    parseWorkCodes(rawHTML),
+		RawHTML:      rawHTML,
+		PagesFetched: 1,
 	}, nil
 }
 
@@ -369,8 +466,8 @@ func candidateMakerSites(makerID string) []string {
 }
 
 var (
-	titlePattern = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	workCodePattern = regexp.MustCompile(`(?i)\b(?:RJ|BJ|VJ)[0-9]{5,8}\b`)
+	titlePattern    = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	workLinkPattern = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
 )
 
 func parseMakerName(rawHTML string) string {
@@ -389,21 +486,59 @@ func parseMakerName(rawHTML string) string {
 }
 
 func parseWorkCodes(rawHTML string) []string {
-	matches := workCodePattern.FindAllString(rawHTML, -1)
+	matches := workLinkPattern.FindAllStringSubmatch(rawHTML, -1)
 	seen := map[string]bool{}
 	codes := []string{}
 	for _, match := range matches {
-		code := strings.ToUpper(strings.TrimSpace(match))
+		if len(match) < 2 {
+			continue
+		}
+		code := strings.ToUpper(strings.TrimSpace(match[1]))
 		if seen[code] {
 			continue
 		}
 		seen[code] = true
 		codes = append(codes, code)
-		if len(codes) >= 48 {
-			break
-		}
 	}
 	return codes
+}
+
+func makerProfileURLs(baseURL string, site string, makerID string, page int) []string {
+	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID))
+	if page <= 1 {
+		return []string{endpoint}
+	}
+	return []string{
+		fmt.Sprintf("%s?per_page=100&page=%d", endpoint, page),
+		fmt.Sprintf("%s?page=%d", endpoint, page),
+		fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s/page/%d.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID), page),
+	}
+}
+
+func normalizeCodeSet(codes map[string]bool) map[string]bool {
+	result := map[string]bool{}
+	for code, enabled := range codes {
+		if !enabled {
+			continue
+		}
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" {
+			result[code] = true
+		}
+	}
+	return result
+}
+
+func pageContainsKnown(codes []string, known map[string]bool) bool {
+	if len(known) == 0 {
+		return false
+	}
+	for _, code := range codes {
+		if known[strings.ToUpper(strings.TrimSpace(code))] {
+			return true
+		}
+	}
+	return false
 }
 
 func stripTags(value string) string {

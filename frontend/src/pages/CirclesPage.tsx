@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FolderTree,
   ListChecks,
   NotebookPen,
   RefreshCw,
@@ -247,6 +248,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [isEditingState, setIsEditingState] = useState(false);
   const [ratingDraft, setRatingDraft] = useState(0);
   const [noteDraft, setNoteDraft] = useState("");
+  const [refreshMode, setRefreshMode] = useState<"incremental" | "full">("incremental");
+  const [productMode, setProductMode] = useState<"available" | "all">("available");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
@@ -269,13 +273,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const playableCount = circle.works.filter((work) => work.local || work.remote).length;
 
   const refresh = async () => {
+    setIsRefreshing(true);
     try {
-      const result = await api.refreshCircle(externalId);
-      setMessage(`Refresh workflow #${result.runId} finished with ${result.catalogWorks} catalog works.`);
+      const result = await api.refreshCircle(externalId, { mode: refreshMode, productMode });
+      setMessage(`Refresh workflow #${result.runId}: ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -317,11 +324,13 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  <ExternalLink className="h-4 w-4" />
-                  DLsite
+                <Button variant="outline" size="sm" asChild>
+                  <a href={dlsiteMakerURL(circle.externalId)} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    DLsite
+                  </a>
                 </Button>
-                <Button size="sm" disabled={isLoading} onClick={() => void refresh()}>
+                <Button size="sm" disabled={isLoading || isRefreshing} onClick={() => void refresh()}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
@@ -401,11 +410,38 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <CardTitle>Workflow Shortcuts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Shortcut title="Refresh circle info" description="Record a DLsite maker refresh workflow shortcut." onClick={() => void refresh()} />
-            <Shortcut title="Refresh catalog" description="Planned: pull paged maker catalog with rate limits." disabled />
-            <Shortcut title="Check sources" description="Planned: match catalog works against configured sources." disabled />
+            <div className="grid gap-2">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="circle-refresh-mode">Catalog crawl</label>
+              <select
+                id="circle-refresh-mode"
+                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={refreshMode}
+                onChange={(event) => setRefreshMode(event.target.value as "incremental" | "full")}
+              >
+                <option value="incremental">Incremental pages</option>
+                <option value="full">Full catalog pages</option>
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="circle-product-mode">Product JSON</label>
+              <select
+                id="circle-product-mode"
+                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={productMode}
+                onChange={(event) => setProductMode(event.target.value as "available" | "all")}
+              >
+                <option value="available">Available source only</option>
+                <option value="all">All catalog works</option>
+              </select>
+            </div>
+            <Shortcut
+              title={refreshMode === "full" ? "Run full catalog crawl" : "Run incremental crawl"}
+              description={productMode === "all" ? "Fetch paged catalog and product JSON for every catalog work." : "Fetch paged catalog and JSON only for works with sources."}
+              disabled={isRefreshing}
+              onClick={() => void refresh()}
+            />
             <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
-              Auto refresh policy placeholder: refresh on page entry when last sync is older than 1 month.
+              Auto refresh policy: use incremental crawl when the last circle sync is older than the configured threshold.
             </div>
           </CardContent>
         </Card>
@@ -465,6 +501,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 }
 
 function CatalogWorkCard({ work }: { work: CircleCatalogWork }) {
+  const directoryTarget = preferredDirectoryTarget(work);
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -488,6 +525,18 @@ function CatalogWorkCard({ work }: { work: CircleCatalogWork }) {
           )) : (
             <span className="text-xs text-muted-foreground">Unavailable</span>
           )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={!directoryTarget} onClick={() => directoryTarget && openWorkDirectoryRoute(directoryTarget)}>
+            <FolderTree className="h-4 w-4" />
+            Open files
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              DLsite
+            </a>
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -556,6 +605,35 @@ function sourceTags(sources: CircleSourceStat[]) {
     seen.add(key);
     return true;
   });
+}
+
+function preferredDirectoryTarget(work: CircleCatalogWork) {
+  const tags = sourceTags(work.sourceTags);
+  const local = tags.find((tag) => tag.key === "local");
+  if (local && work.workId !== null) {
+    return { code: work.primaryCode, sourceId: null };
+  }
+  const remote = tags.find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
+  if (remote?.sourceId) {
+    return { code: work.primaryCode, sourceId: remote.sourceId };
+  }
+  return null;
+}
+
+function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }) {
+  const path = target.sourceId ? `/${encodeURIComponent(target.code)}?source=${target.sourceId}` : `/${encodeURIComponent(target.code)}`;
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function dlsiteMakerURL(externalId: string) {
+  const site = externalId.toUpperCase().startsWith("VG") ? "pro" : "maniax";
+  return `https://www.dlsite.com/${site}/circle/profile/=/maker_id/${encodeURIComponent(externalId)}.html`;
+}
+
+function dlsiteWorkURL(code: string) {
+  const site = code.toUpperCase().startsWith("VJ") ? "pro" : "maniax";
+  return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
 }
 
 function circleExternalIdFromPath(path: string) {

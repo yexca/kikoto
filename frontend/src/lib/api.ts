@@ -384,6 +384,7 @@ export type DLsiteSyncResult = {
 
 export type CircleSourceStat = {
   key: string;
+  sourceId?: number | null;
   displayName: string;
   status: string;
   count: number;
@@ -430,6 +431,10 @@ export type CircleRefreshResult = {
   externalId: string;
   status: string;
   catalogWorks: number;
+  pagesFetched: number;
+  productSynced: number;
+  mode: "incremental" | "full";
+  productMode: "available" | "all";
 };
 
 export type MediaTextPreview = {
@@ -568,7 +573,8 @@ export const api = {
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
-  refreshCircle: (externalId: string) => postJSON<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`),
+  refreshCircle: (externalId: string, payload: { mode: "incremental" | "full"; productMode: "available" | "all" }) =>
+    postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
   updateMediaProgress: (
     id: number,
     payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },

@@ -95,6 +95,8 @@ export function LibraryPage() {
     api.listLibrarySources().then((items) => {
       setSources(items);
       setActiveTab((tab) => resolveTabFromPath(window.location.pathname, items, tab));
+      const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
+      if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
     }).catch(() => setSources([]));
   }, []);
 
@@ -139,7 +141,7 @@ export function LibraryPage() {
   useEffect(() => {
     const syncFromPath = () => {
       setSelectedCode(codeFromPath(window.location.pathname));
-      setSelectedRemoteTarget(null);
+      setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
       setActiveTab((tab) => resolveTabFromPath(window.location.pathname, sources, tab));
     };
     const handlePopState = () => syncFromPath();
@@ -162,7 +164,7 @@ export function LibraryPage() {
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     if (!work.primaryCode) return;
     setSelectedRemoteTarget({ source, code: work.primaryCode });
-    window.history.pushState({}, "", `/${work.primaryCode}`);
+    window.history.pushState({}, "", `/${work.primaryCode}?source=${source.id}`);
     setSelectedCode(work.primaryCode);
   };
 
@@ -2639,6 +2641,16 @@ function hasLocalAvailability(work: Work) {
 function codeFromPath(path: string) {
   const match = path.match(WORK_CODE_PATTERN);
   return match ? match[1].toUpperCase() : null;
+}
+
+function remoteTargetFromLocation(path: string, search: string, sources: LibrarySource[]) {
+  const code = codeFromPath(path);
+  if (!code) return null;
+  const params = new URLSearchParams(search);
+  const sourceID = Number(params.get("source"));
+  if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
+  const source = sources.find((candidate) => candidate.id === sourceID);
+  return source ? { source, code } : null;
 }
 
 function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {

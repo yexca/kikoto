@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -36,6 +37,7 @@ type circleSummary struct {
 
 type circleSourceStat struct {
 	Key         string `json:"key"`
+	SourceID    *int64 `json:"sourceId"`
 	DisplayName string `json:"displayName"`
 	Status      string `json:"status"`
 	Count       int    `json:"count"`
@@ -51,13 +53,18 @@ type circleCatalogWork struct {
 	PrimaryCode   string             `json:"primaryCode"`
 	Title         string             `json:"title"`
 	ReleaseDate   *string            `json:"releaseDate"`
-	CoverURL       string             `json:"coverUrl"`
-	DLsiteURL      string             `json:"dlsiteUrl"`
+	CoverURL      string             `json:"coverUrl"`
+	DLsiteURL     string             `json:"dlsiteUrl"`
 	CatalogStatus string             `json:"catalogStatus"`
 	ListeningMark string             `json:"listeningMark"`
 	Local         bool               `json:"local"`
 	Remote        bool               `json:"remote"`
 	SourceTags    []circleSourceStat `json:"sourceTags"`
+}
+
+type circleRefreshRequest struct {
+	Mode        string `json:"mode"`
+	ProductMode string `json:"productMode"`
 }
 
 func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
@@ -245,16 +252,25 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	result, err := s.runCircleRefresh(r.Context(), partyID, externalID)
+	var payload circleRefreshRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+	}
+	payload = normalizeCircleRefreshRequest(payload)
+	result, err := s.runCircleRefresh(r.Context(), partyID, externalID, payload)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"runId":      result.RunID,
-		"externalId": externalID,
-		"status":     result.Status,
-		"catalogWorks": result.CatalogWorks,
+		"runId":         result.RunID,
+		"externalId":    externalID,
+		"status":        result.Status,
+		"catalogWorks":  result.CatalogWorks,
+		"pagesFetched":  result.PagesFetched,
+		"productSynced": result.ProductSynced,
+		"mode":          result.Mode,
+		"productMode":   result.ProductMode,
 	})
 }
 
@@ -620,7 +636,12 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		}
 		stat := combined[statKey]
 		if stat.Key == "" {
-			stat = circleSourceStat{Key: key, DisplayName: display, Status: "available"}
+			stat = circleSourceStat{Key: statKey, DisplayName: display, Status: "available"}
+			if key == "remote" {
+				stat.SourceID = &sourceID
+			} else {
+				stat.SourceID = nil
+			}
 		}
 		stat.Count += count
 		combined[statKey] = stat
@@ -628,7 +649,7 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 	result := []circleSourceStat{}
 	remoteTotal := 0
 	for _, stat := range combined {
-		if stat.Key == "remote" {
+		if stat.SourceID != nil {
 			remoteTotal += stat.Count
 		}
 		result = append(result, stat)
@@ -718,7 +739,7 @@ func (s *Server) workSourceTags(ctx context.Context, code string) ([]circleSourc
 			continue
 		}
 		hasRemote = true
-		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), DisplayName: sourceName, Status: "available", Count: count})
+		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: sourceName, Status: "available", Count: count})
 	}
 	if hasRemote {
 		tags = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: 1}}, tags...)
@@ -727,17 +748,30 @@ func (s *Server) workSourceTags(ctx context.Context, code string) ([]circleSourc
 }
 
 type circleRefreshResult struct {
-	RunID        int64
-	JobID        int64
-	Status       string
-	CatalogWorks int
-	Error        string
+	RunID         int64
+	JobID         int64
+	Status        string
+	CatalogWorks  int
+	PagesFetched  int
+	ProductSynced int
+	Mode          string
+	ProductMode   string
+	Error         string
 }
 
-func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID string) (circleRefreshResult, error) {
+func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID string, request circleRefreshRequest) (circleRefreshResult, error) {
 	client := dlsite.NewClient(nil)
-	profile, fetchErr := client.FetchMakerProfile(ctx, externalID)
-	result := circleRefreshResult{Status: "succeeded"}
+	knownCodes, err := s.knownCircleCatalogCodes(ctx, partyID)
+	if err != nil {
+		return circleRefreshResult{}, err
+	}
+	profile, fetchErr := client.FetchMakerCatalog(ctx, externalID, dlsite.MakerCatalogOptions{
+		Mode:           request.Mode,
+		MaxPages:       circleRefreshMaxPages(request.Mode),
+		KnownWorkCodes: knownCodes,
+		Delay:          s.circleRefreshDelay(ctx),
+	})
+	result := circleRefreshResult{Status: "succeeded", Mode: request.Mode, ProductMode: request.ProductMode}
 	if fetchErr != nil {
 		result.Status = "failed"
 		result.Error = fetchErr.Error()
@@ -747,6 +781,14 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 			result.Error = err.Error()
 		} else {
 			result.CatalogWorks = len(profile.WorkCodes)
+			result.PagesFetched = profile.PagesFetched
+			productSynced, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
+			if err != nil {
+				result.Status = "failed"
+				result.Error = err.Error()
+			} else {
+				result.ProductSynced = productSynced
+			}
 		}
 	}
 	runID, jobID, err := s.recordCircleRefreshWorkflow(ctx, partyID, externalID, profile, result)
@@ -756,7 +798,7 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 	result.RunID = runID
 	result.JobID = jobID
 	if result.Status == "failed" {
-		return result, fmt.Errorf(result.Error)
+		return result, fmt.Errorf("%s", result.Error)
 	}
 	return result, nil
 }
@@ -771,11 +813,13 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 		name = "Unfetched circle " + profile.MakerID
 	}
 	raw, err := json.Marshal(map[string]any{
-		"maker_id": profile.MakerID,
-		"maker_name": name,
-		"site_id": profile.SiteID,
-		"url": profile.URL,
-		"work_codes": profile.WorkCodes,
+		"maker_id":      profile.MakerID,
+		"maker_name":    name,
+		"site_id":       profile.SiteID,
+		"url":           profile.URL,
+		"work_codes":    profile.WorkCodes,
+		"pages_fetched": profile.PagesFetched,
+		"reached_end":   profile.ReachedEnd,
 	})
 	if err != nil {
 		return err
@@ -817,6 +861,136 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 	return tx.Commit()
 }
 
+func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workCodes []string, productMode string, client *dlsite.Client) (int, error) {
+	if len(workCodes) == 0 {
+		return 0, nil
+	}
+	candidates := workCodes
+	if productMode != "all" {
+		available, err := s.availableCircleCatalogCodes(ctx, partyID)
+		if err != nil {
+			return 0, err
+		}
+		filtered := []string{}
+		for _, code := range workCodes {
+			if available[strings.ToUpper(strings.TrimSpace(code))] {
+				filtered = append(filtered, code)
+			}
+		}
+		candidates = filtered
+	}
+	synced := 0
+	for _, code := range candidates {
+		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
+			return synced, err
+		}
+		product, err := client.FetchProduct(ctx, code)
+		if err != nil {
+			continue
+		}
+		raw := string(product.Raw)
+		title := firstNonEmpty(product.WorkName, product.ProductName, product.WorkNo)
+		release := nullableStringFromText(product.RegistDate)
+		if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
+			return synced, err
+		}
+		party := parsedParty{ExternalID: normalizeMakerID(product.MakerID), DisplayName: strings.TrimSpace(product.MakerName)}
+		if party.ExternalID == "" {
+			party.ExternalID = normalizeMakerID(product.MakerID)
+		}
+		if dlsiteMakerIDPattern.MatchString(party.ExternalID) && party.DisplayName != "" {
+			if _, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, raw); err != nil {
+				return synced, err
+			}
+		}
+		synced++
+	}
+	return synced, nil
+}
+
+func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT primary_code FROM party_catalog_item WHERE party_id = ?", partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" {
+			result[code] = true
+		}
+	}
+	return result, rows.Err()
+}
+
+func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT catalog.primary_code
+		FROM party_catalog_item AS catalog
+		INNER JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		INNER JOIN media_item AS item ON item.work_id = work.id
+		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		WHERE catalog.party_id = ?
+			AND location.availability = 'available'
+	`, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" {
+			result[code] = true
+		}
+	}
+	return result, rows.Err()
+}
+
+func normalizeCircleRefreshRequest(request circleRefreshRequest) circleRefreshRequest {
+	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
+	if request.Mode != "full" {
+		request.Mode = "incremental"
+	}
+	request.ProductMode = strings.ToLower(strings.TrimSpace(request.ProductMode))
+	if request.ProductMode != "all" {
+		request.ProductMode = "available"
+	}
+	return request
+}
+
+func circleRefreshMaxPages(mode string) int {
+	if mode == "full" {
+		return 100
+	}
+	return 10
+}
+
+func (s *Server) circleRefreshDelay(ctx context.Context) time.Duration {
+	base := s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)
+	if base < 0.25 {
+		base = 0.25
+	}
+	return time.Duration(base * float64(time.Second))
+}
+
+func nullableStringFromText(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64, externalID string, profile dlsite.MakerProfile, result circleRefreshResult) (int64, int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -837,9 +1011,13 @@ func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64,
 		"party_id":    partyID,
 		"external_id": externalID,
 	}, map[string]any{
-		"status": result.Status,
-		"catalog_works": result.CatalogWorks,
-		"error": result.Error,
+		"status":         result.Status,
+		"catalog_works":  result.CatalogWorks,
+		"pages_fetched":  result.PagesFetched,
+		"product_synced": result.ProductSynced,
+		"mode":           result.Mode,
+		"product_mode":   result.ProductMode,
+		"error":          result.Error,
 	})
 	if err != nil {
 		return 0, 0, err
@@ -861,8 +1039,8 @@ func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64,
 		DisplayName: "Refresh circle metadata",
 		Position:    2,
 		Status:      result.Status,
-		Input:       map[string]any{"external_id": externalID},
-		Output:      map[string]any{"maker_name": profile.MakerName, "catalog_works": result.CatalogWorks, "url": profile.URL},
+		Input:       map[string]any{"external_id": externalID, "mode": result.Mode, "product_mode": result.ProductMode},
+		Output:      map[string]any{"maker_name": profile.MakerName, "catalog_works": result.CatalogWorks, "pages_fetched": result.PagesFetched, "product_synced": result.ProductSynced, "url": profile.URL},
 		Error:       result.Error,
 	})
 	if err != nil {
@@ -872,7 +1050,7 @@ func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64,
 		NodeRunID:       refreshNodeID,
 		WorkerType:      "circle_metadata_refresh",
 		Status:          result.Status,
-		Payload:         map[string]any{"external_id": externalID},
+		Payload:         map[string]any{"external_id": externalID, "mode": result.Mode, "product_mode": result.ProductMode},
 		ProgressCurrent: result.CatalogWorks,
 		ProgressTotal:   result.CatalogWorks,
 		Error:           result.Error,
