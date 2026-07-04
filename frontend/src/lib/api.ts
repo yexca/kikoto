@@ -36,10 +36,17 @@ export type WorkDetail = {
   circle: string;
   circleExternalId: string;
   rating: number | null;
+  sales: number | null;
   tags: string[];
   voiceActors: string[];
+  voiceCredits: VoiceCredit[];
   listeningStatus: ListeningStatus;
   mediaItems: MediaItem[];
+};
+
+export type VoiceCredit = {
+  personId: number;
+  displayName: string;
 };
 
 export type ListeningStatus = "none" | "want_to_listen" | "listening" | "finished" | "relisten" | "paused";
