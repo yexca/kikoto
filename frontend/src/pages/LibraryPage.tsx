@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Pause,
   Play,
+  RefreshCw,
   Search,
   Star,
   Tags,
@@ -41,7 +42,6 @@ import {
   type ListeningStatus,
   type MediaItem,
   type RemoteTrack,
-  type RemoteWorkSavePlan,
   type RemoteWorksResponse,
   type RemoteWork,
   type RemoteWorkDetail,
@@ -813,7 +813,6 @@ function RemoteWorkDetailView({
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
-  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
@@ -825,7 +824,6 @@ function RemoteWorkDetailView({
   useEffect(() => {
     setDetail(null);
     setMessage("");
-    setSavePlan(null);
     setSelectedSavePaths(new Set());
     api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
       setMessage(error instanceof Error ? error.message : "Remote preview failed.");
@@ -859,30 +857,14 @@ function RemoteWorkDetailView({
   };
 
   const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-  const planSave = async () => {
-    if (!detail?.primaryCode || selectedPaths.length === 0) return;
-    setIsSaving(true);
-    setMessage("");
-    try {
-      const plan = await api.planRemoteSourceWorkSave(source.id, detail.primaryCode, selectedPaths);
-      setSavePlan(plan);
-      setMessage(`Plan ready: ${plan.summary.total} files, ${plan.summary.copyCache} from cache, ${plan.summary.download} downloads.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save plan failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const saveSelected = async () => {
     if (!detail?.primaryCode || selectedPaths.length === 0) return;
     setIsSaving(true);
     setMessage("");
     try {
       const result = await api.saveRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
-      setMessage(
-        `Saved ${result.savedFiles} files through workflow run #${result.runId}. ${result.copiedFromCache} copied from cache, ${result.downloadedFiles} downloaded, ${result.skippedFiles} skipped.`,
-      );
+      setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
+      setIsSaveSelectionOpen(false);
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
@@ -952,6 +934,12 @@ function RemoteWorkDetailView({
         fileValue={`${trackCount} files`}
         voiceActors={detail.voiceActors}
         tags={detail.tags}
+        actions={
+          <Button variant="outline" size="sm" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
+            <RefreshCw className="h-4 w-4" />
+            Sync DLsite
+          </Button>
+        }
       />
 
       <SourceDirectoryPanel
@@ -972,8 +960,6 @@ function RemoteWorkDetailView({
             message={message}
             busy={isFetching || isSaving}
             onPlay={remotePlayableTracks.length > 0 ? () => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId) : undefined}
-            onFetch={detail.primaryCode ? () => void fetchWork("manual_fetch") : undefined}
-            onFetchAndMark={detail.primaryCode ? () => void fetchWork("mark_interest") : undefined}
             onOpenLocal={detail.workId !== null ? () => onOpenLocal(detail.workId!) : undefined}
             onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
             selectedCount={selectedPaths.length}
@@ -983,11 +969,9 @@ function RemoteWorkDetailView({
           <RemoteSaveSelectionPanel
             root={tree}
             selectedPaths={selectedSavePaths}
-            plan={savePlan}
             onChange={setSelectedSavePaths}
             disabled={isSaving}
             onClose={() => setIsSaveSelectionOpen(false)}
-            onPlanSave={() => void planSave()}
             onSave={() => void saveSelected()}
           />
         ) : null}
@@ -1033,8 +1017,8 @@ function WorkDetailView({
   const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
-  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncingDetail, setIsSyncingDetail] = useState(false);
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
@@ -1103,7 +1087,6 @@ function WorkDetailView({
 
   useEffect(() => {
     setSelectedSavePaths(new Set(remoteFilePaths));
-    setSavePlan(null);
   }, [remoteFilePaths]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -1161,26 +1144,8 @@ function WorkDetailView({
     setIsSaving(true);
     setMessage("");
     try {
-      const plan = await api.planRemoteSourceWorkSave(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
-      setSavePlan(plan);
-      setMessage(`Plan ready: ${plan.summary.total} files, ${plan.summary.copyCache} from cache, ${plan.summary.download} downloads.`);
-      setIsSaveSelectionOpen(true);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save plan failed.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const saveRemoteSelected = async () => {
-    if (!selectedRemoteSource?.detail || selectedPaths.length === 0) return;
-    setIsSaving(true);
-    setMessage("");
-    try {
       const result = await api.saveRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
-      setMessage(
-        `Saved ${result.savedFiles} files through workflow run #${result.runId}. ${result.copiedFromCache} copied from cache, ${result.downloadedFiles} downloaded, ${result.skippedFiles} skipped.`,
-      );
+      setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       await onWorksChanged();
       openRemoteLocal(result.workId);
@@ -1188,6 +1153,28 @@ function WorkDetailView({
       setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const syncDetailMetadata = async () => {
+    if (!work?.primaryCode) return;
+    setIsSyncingDetail(true);
+    setMessage("");
+    try {
+      if (selectedRemoteSource?.detail?.primaryCode) {
+        const result = await api.syncRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_fetch");
+        setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+        await onWorksChanged();
+        openRemoteLocal(result.workId);
+      } else {
+        const result = await api.runDLsiteSync();
+        setMessage(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
+        await onWorksChanged();
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sync failed.");
+    } finally {
+      setIsSyncingDetail(false);
     }
   };
 
@@ -1239,7 +1226,8 @@ function WorkDetailView({
                 DLsite
               </a>
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled={isSyncingDetail} onClick={() => void syncDetailMetadata()}>
+              <RefreshCw className="h-4 w-4" />
               Sync DLsite
             </Button>
             <select
@@ -1285,11 +1273,6 @@ function WorkDetailView({
               message={message}
               busy={isSaving}
               onPlay={allTracks.length > 0 ? playAll : undefined}
-              onFetch={selectedRemoteSource.detail.primaryCode ? () => void api.syncRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail!.primaryCode, "manual_fetch").then(async (result) => {
-                setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
-                await onWorksChanged();
-                openRemoteLocal(result.workId);
-              }).catch((error) => setMessage(error instanceof Error ? error.message : "Remote sync failed.")) : undefined}
               onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
               selectedCount={selectedPaths.length}
             />
@@ -1307,12 +1290,10 @@ function WorkDetailView({
           <RemoteSaveSelectionPanel
             root={tree}
             selectedPaths={selectedSavePaths}
-            plan={savePlan}
             onChange={setSelectedSavePaths}
             disabled={isSaving}
             onClose={() => setIsSaveSelectionOpen(false)}
-            onPlanSave={() => void planRemoteSave()}
-            onSave={() => void saveRemoteSelected()}
+            onSave={() => void planRemoteSave()}
           />
         ) : null}
         loadingMessage={selectedRemoteSource && !selectedRemoteSource.detail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
@@ -1557,8 +1538,6 @@ function SourceDirectoryToolbar({
   message,
   busy,
   onPlay,
-  onFetch,
-  onFetchAndMark,
   onOpenLocal,
   onSelectSaveFiles,
   selectedCount,
@@ -1568,8 +1547,6 @@ function SourceDirectoryToolbar({
   message?: string;
   busy: boolean;
   onPlay?: () => void;
-  onFetch?: () => void;
-  onFetchAndMark?: () => void;
   onOpenLocal?: () => void;
   onSelectSaveFiles?: () => void;
   selectedCount?: number;
@@ -1588,18 +1565,6 @@ function SourceDirectoryToolbar({
               Play
             </Button>
           )}
-          {onFetch && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={onFetch}>
-              <DownloadCloud className="h-4 w-4" />
-              Cache
-            </Button>
-          )}
-          {onFetchAndMark && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={onFetchAndMark}>
-              <ListChecks className="h-4 w-4" />
-              Cache and mark
-            </Button>
-          )}
           {onOpenLocal && (
             <Button size="sm" onClick={onOpenLocal}>
               <MoreHorizontal className="h-4 w-4" />
@@ -1609,7 +1574,7 @@ function SourceDirectoryToolbar({
           {onSelectSaveFiles && (
             <Button size="sm" disabled={busy} onClick={onSelectSaveFiles}>
               <HardDriveDownload className="h-4 w-4" />
-              Save{selectedCount !== undefined ? ` (${selectedCount})` : ""}
+              Fetch{selectedCount !== undefined ? ` (${selectedCount})` : ""}
             </Button>
           )}
         </div>
@@ -1924,24 +1889,20 @@ function DirectoryTree({
 function RemoteSaveSelectionPanel({
   root,
   selectedPaths,
-  plan,
   disabled,
   onClose,
-  onPlanSave,
   onSave,
   onChange,
 }: {
   root: TreeNode;
   selectedPaths: Set<string>;
-  plan: RemoteWorkSavePlan | null;
   disabled: boolean;
   onClose: () => void;
-  onPlanSave: () => void;
   onSave: () => void;
   onChange: (paths: Set<string>) => void;
 }) {
   const allPaths = remoteSelectablePaths(root);
-  const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
+  const planByPath = useMemo(() => new Map<string, never>(), []);
   const setAll = () => onChange(new Set(allPaths));
   const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.sourcePath)));
   const clear = () => onChange(new Set());
@@ -1950,8 +1911,8 @@ function RemoteSaveSelectionPanel({
       <div className="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div>
-            <h3 className="text-base font-semibold">Save selection</h3>
-            <p className="text-xs text-muted-foreground">Choose which remote files should be saved to the local library.</p>
+            <h3 className="text-base font-semibold">Fetch selection</h3>
+            <p className="text-xs text-muted-foreground">Choose which remote files should be fetched to the local library.</p>
           </div>
           <IconButton title="Close" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -1959,13 +1920,6 @@ function RemoteSaveSelectionPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Badge variant="secondary">{selectedPaths.size} / {allPaths.length} files</Badge>
-          {plan && (
-            <>
-              <Badge variant="outline">{plan.summary.copyCache} cache</Badge>
-              <Badge variant="outline">{plan.summary.download} download</Badge>
-              <Badge variant="outline">{plan.summary.skipExisting} skip</Badge>
-            </>
-          )}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
@@ -1987,13 +1941,9 @@ function RemoteSaveSelectionPanel({
           <Button variant="outline" onClick={onClose} disabled={disabled}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={onPlanSave} disabled={disabled || selectedPaths.size === 0}>
-            <ListChecks className="h-4 w-4" />
-            Plan
-          </Button>
           <Button onClick={onSave} disabled={disabled || selectedPaths.size === 0}>
             <HardDriveDownload className="h-4 w-4" />
-            Fetch to local
+            Fetch
           </Button>
         </div>
       </div>
@@ -2013,7 +1963,7 @@ function RemoteSaveSelectionNode({
   node: TreeNode;
   depth: number;
   selectedPaths: Set<string>;
-  planByPath: Map<string, RemoteWorkSavePlan["items"][number]>;
+  planByPath: Map<string, { status: string }>;
   disabled: boolean;
   isRoot?: boolean;
   onChange: (paths: Set<string>) => void;
