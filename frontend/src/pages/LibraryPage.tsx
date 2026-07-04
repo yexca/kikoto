@@ -199,9 +199,17 @@ export function LibraryPage() {
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
     const result = await api.updateWorkUserState(workID, { listeningStatus: status });
     setWorks((items) =>
-      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item)),
+      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
     );
-    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus } : item));
+    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
+  };
+
+  const updateWorkFavorite = async (workID: number, favorite: boolean) => {
+    const result = await api.updateWorkUserState(workID, { favorite });
+    setWorks((items) =>
+      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
+    );
+    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
   };
 
   const activeRemoteSourceState =
@@ -241,6 +249,7 @@ export function LibraryPage() {
         autoSyncRemoteGlobal={settings?.autoSyncRemote ?? false}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
+        onFavoriteChange={updateWorkFavorite}
         onWorksChanged={async () => setWorks(await api.listWorks())}
       />
     );
@@ -967,6 +976,33 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
   );
 }
 
+function RemoteStateConfirmModal({
+  title,
+  description,
+  confirmLabel,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>{confirmLabel}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WorkCardMedia({
   coverUrl,
   code,
@@ -1245,6 +1281,8 @@ function RemoteWorkDetailView({
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
+  const [markTarget, setMarkTarget] = useState<ListeningStatus | null>(null);
+  const [favoriteTarget, setFavoriteTarget] = useState<boolean | null>(null);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
@@ -1283,6 +1321,49 @@ function RemoteWorkDetailView({
     } finally {
       setIsFetching(false);
     }
+  };
+
+  const syncForUserState = async (reason: string) => {
+    if (!detail?.primaryCode) return null;
+    setIsFetching(true);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
+      await onWorksChanged();
+      setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
+      return result.workId;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      return null;
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const updateRemoteMark = async (status: ListeningStatus, forceSync = false) => {
+    if (!detail?.primaryCode) return;
+    const workID = detail.workId ?? (autoSyncRemote || forceSync ? await syncForUserState("detail_mark_interest") : null);
+    if (!workID) {
+      setMarkTarget(status);
+      return;
+    }
+    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+    setMessage(`Marked ${detail.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
+    setMarkTarget(null);
+    await onWorksChanged();
+  };
+
+  const updateRemoteFavorite = async (favorite: boolean, forceSync = false) => {
+    if (!detail?.primaryCode) return;
+    const workID = detail.workId ?? (autoSyncRemote || forceSync ? await syncForUserState("detail_favorite_interest") : null);
+    if (!workID) {
+      setFavoriteTarget(favorite);
+      return;
+    }
+    const result = await api.updateWorkUserState(workID, { favorite });
+    setMessage(result.favorite ? `Added ${detail.primaryCode} to favorites.` : `Removed ${detail.primaryCode} from favorites.`);
+    setFavoriteTarget(null);
+    await onWorksChanged();
   };
 
   const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
@@ -1359,37 +1440,32 @@ function RemoteWorkDetailView({
         circleExternalId=""
         ratingLabel="Rating"
         rating={detail.rating}
-        sales={null}
+        ratingCount={null}
+        sales={detail.sales}
+        series=""
+        dlsiteFetchedAt=""
         releaseDate={detail.releaseDate || "Unknown"}
         durationSeconds={detail.durationSeconds}
-        fileLabel={source.displayName}
-        fileValue={`${trackCount} files`}
         voiceActors={detail.voiceActors}
         voiceCredits={[]}
         tags={detail.tags}
         actions={
-          <>
-            {remotePlayableTracks.length > 0 && (
-              <Button size="sm" onClick={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}>
-                <Play className="h-4 w-4" />
-                Play
-              </Button>
-            )}
-            <Button variant="outline" size="sm" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
-              <RefreshCw className="h-4 w-4" />
-              Sync
-            </Button>
-            {detail.sourceUrl && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Source
-                </a>
-              </Button>
-            )}
-          </>
+          <DetailActionBar
+            canPlay={remotePlayableTracks.length > 0}
+            busy={isFetching || isSaving}
+            listeningStatus="none"
+            favorite={false}
+            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
+            onMark={(status) => void updateRemoteMark(status)}
+            onFavorite={() => void updateRemoteFavorite(true)}
+            onSync={() => void fetchWork("manual_fetch")}
+            onFetch={() => setIsSaveSelectionOpen(true)}
+            dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
+            syncLabel="Sync"
+            showSync
+            showFetch
+          />
         }
-        availability={<Badge variant="outline">{detail.sourceName}</Badge>}
       />
 
       <SourceDirectoryPanel
@@ -1403,18 +1479,7 @@ function RemoteWorkDetailView({
         root={tree}
         currentLocationId={player.currentTrack?.locationId ?? null}
         emptyLabel="No remote files detected."
-        toolbar={
-          <SourceDirectoryToolbar
-            label={detail.sourceName}
-            description={`${trackCount} remote files detected.`}
-            message={message}
-            busy={isFetching || isSaving}
-            onPlay={remotePlayableTracks.length > 0 ? () => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId) : undefined}
-            onOpenLocal={detail.workId !== null ? () => onOpenLocal(detail.workId!) : undefined}
-            onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
-            selectedCount={selectedPaths.length}
-          />
-        }
+        toolbar={message ? <DirectoryMessage message={message} /> : undefined}
         selectionModal={isSaveSelectionOpen ? (
           <RemoteSaveSelectionPanel
             root={tree}
@@ -1436,6 +1501,22 @@ function RemoteWorkDetailView({
           onConfirm={() => void deleteCache()}
         />
       )}
+      {markTarget && (
+        <RemoteMarkConfirmModal
+          workCode={detail.primaryCode}
+          onClose={() => setMarkTarget(null)}
+          onConfirm={() => void updateRemoteMark(markTarget, true)}
+        />
+      )}
+      {favoriteTarget !== null && (
+        <RemoteStateConfirmModal
+          title="Sync before favorite"
+          description={`${detail.primaryCode} will be synced into Remote metadata before the favorite is saved. You can enable Auto sync in Settings to skip this prompt.`}
+          confirmLabel="Sync and favorite"
+          onClose={() => setFavoriteTarget(null)}
+          onConfirm={() => void updateRemoteFavorite(favoriteTarget, true)}
+        />
+      )}
     </div>
   );
 }
@@ -1447,6 +1528,7 @@ function WorkDetailView({
   autoSyncRemoteGlobal,
   onBack,
   onStatusChange,
+  onFavoriteChange,
   onWorksChanged,
 }: {
   code: string;
@@ -1455,6 +1537,7 @@ function WorkDetailView({
   autoSyncRemoteGlobal: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
@@ -1664,51 +1747,30 @@ function WorkDetailView({
         circleExternalId={work.circleExternalId}
         ratingLabel="DL rating"
         rating={work.rating}
+        ratingCount={work.ratingCount}
         sales={work.sales}
+        series={work.series}
+        dlsiteFetchedAt={work.dlsiteFetchedAt}
         releaseDate={work.releaseDate ?? "Unknown"}
         durationSeconds={work.durationSeconds}
-        fileLabel="Known files"
-        fileValue={`${work.mediaItems.length} items`}
         voiceActors={work.voiceActors}
         voiceCredits={work.voiceCredits ?? []}
         tags={work.tags}
         actions={
-          <>
-            {allTracks.length > 0 && (
-              <Button size="sm" onClick={playAll}>
-                <Play className="h-4 w-4" />
-                Play
-              </Button>
-            )}
-            <Button variant="outline" size="sm" asChild>
-              <a href={work.dlsiteUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                DLsite
-              </a>
-            </Button>
-            <Button variant="outline" size="sm" disabled={isSyncingDetail} onClick={() => void syncDetailMetadata()}>
-              <RefreshCw className="h-4 w-4" />
-              Sync
-            </Button>
-            <select
-              className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
-              value={work.listeningStatus}
-              onChange={(event) => void onStatusChange(work.id, event.target.value as ListeningStatus)}
-              aria-label="Listening mark"
-            >
-              {listeningStatusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </>
-        }
-        availability={
-          <SourceAvailabilitySummary
-            tabs={sourceTabs}
-            remoteSources={remoteSources}
-            checking={isCheckingSources}
+          <DetailActionBar
+            canPlay={allTracks.length > 0}
+            busy={isSyncingDetail || isSaving}
+            listeningStatus={work.listeningStatus}
+            favorite={work.favorite}
+            onPlay={playAll}
+            onMark={(status) => void onStatusChange(work.id, status)}
+            onFavorite={() => void onFavoriteChange(work.id, !work.favorite)}
+            onSync={() => void syncDetailMetadata()}
+            onFetch={selectedRemoteDetail ? () => setIsSaveSelectionOpen(true) : undefined}
+            dlsiteUrl={work.dlsiteUrl}
+            syncLabel="Sync"
+            showSync
+            showFetch={Boolean(selectedRemoteDetail)}
           />
         }
       />
@@ -1725,27 +1787,7 @@ function WorkDetailView({
         root={tree}
         currentLocationId={player.currentTrack?.locationId ?? null}
         emptyLabel={selectedRemoteSource ? "No remote files detected." : "No local files detected."}
-        toolbar={
-          selectedRemoteSource?.detail ? (
-            <SourceDirectoryToolbar
-              label={selectedRemoteSource.source.displayName}
-              description={`${countTreeFiles(tree)} remote files detected.`}
-              message={message}
-              busy={isSaving}
-              onPlay={allTracks.length > 0 ? playAll : undefined}
-              onSelectSaveFiles={() => setIsSaveSelectionOpen(true)}
-              selectedCount={selectedPaths.length}
-            />
-          ) : (
-            <SourceDirectoryToolbar
-              label={directoryTitle}
-              description={`${allTracks.length} playable files in this source.`}
-              message={message}
-              busy={false}
-              onPlay={allTracks.length > 0 ? playAll : undefined}
-            />
-          )
-        }
+        toolbar={message ? <DirectoryMessage message={message} /> : undefined}
         selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
           <RemoteSaveSelectionPanel
             root={tree}
@@ -1784,16 +1826,16 @@ function DetailHero({
   circleExternalId,
   ratingLabel,
   rating,
+  ratingCount,
   sales,
+  series,
+  dlsiteFetchedAt,
   releaseDate,
   durationSeconds,
-  fileLabel,
-  fileValue,
   voiceActors,
   voiceCredits,
   tags,
   actions,
-  availability,
 }: {
   coverUrl: string;
   fallbackCode: string;
@@ -1803,16 +1845,16 @@ function DetailHero({
   circleExternalId: string;
   ratingLabel: string;
   rating: number | null;
+  ratingCount: number | null;
   sales: number | null;
+  series: string;
+  dlsiteFetchedAt: string;
   releaseDate: string;
   durationSeconds: number | null;
-  fileLabel: string;
-  fileValue: string;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   tags: string[];
   actions?: ReactNode;
-  availability?: ReactNode;
 }) {
   const codeLabel = code || fallbackCode || "Remote";
   const displayVoiceCredits = voiceCredits.length > 0
@@ -1822,7 +1864,7 @@ function DetailHero({
   return (
     <section className="grid gap-5 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
       <div className="self-start overflow-hidden rounded-lg border bg-muted">
-        <div className="aspect-[4/3] lg:aspect-square">
+        <div className="aspect-[4/3]">
           {coverUrl ? (
             <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
           ) : (
@@ -1849,15 +1891,15 @@ function DetailHero({
                 <span className="truncate">{circle || "Unknown circle"}</span>
               </span>
             )}
-            {availability}
+            {series && <span className="inline-flex max-w-full items-center gap-1 truncate"><span className="text-border">/</span><span className="truncate">{series}</span></span>}
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label={ratingLabel} value={rating === null ? "No rating" : rating.toFixed(2)} />
-          <MetaTile icon={<HardDriveDownload className="h-4 w-4" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
-          <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={releaseDate} />
-          <MetaTile icon={<FileAudio className="h-4 w-4" />} label={fileLabel} value={fileValue} />
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <MetaTile icon={<Star className="h-3.5 w-3.5 fill-current" />} label={ratingLabel} value={rating === null ? "No rating" : `${rating.toFixed(2)}${ratingCount ? ` / ${ratingCount.toLocaleString()}` : ""}`} />
+          <MetaTile icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
+          <MetaTile icon={<Clock3 className="h-3.5 w-3.5" />} label="Released" value={releaseDate} />
+          <MetaTile icon={<RefreshCw className="h-3.5 w-3.5" />} label="DL updated" value={dlsiteFetchedAt || "Unknown"} />
         </div>
 
         <div className="space-y-3 rounded-lg border bg-card p-3">
@@ -2089,14 +2131,94 @@ function SourceDirectoryToolbar({
   );
 }
 
+function DetailActionBar({
+  canPlay,
+  busy,
+  listeningStatus,
+  favorite,
+  onPlay,
+  onMark,
+  onFavorite,
+  onSync,
+  onFetch,
+  dlsiteUrl,
+  syncLabel,
+  showSync,
+  showFetch,
+}: {
+  canPlay: boolean;
+  busy: boolean;
+  listeningStatus: ListeningStatus;
+  favorite: boolean;
+  onPlay: () => void;
+  onMark: (status: ListeningStatus) => void;
+  onFavorite: () => void;
+  onSync?: () => void;
+  onFetch?: () => void;
+  dlsiteUrl: string;
+  syncLabel: string;
+  showSync?: boolean;
+  showFetch?: boolean;
+}) {
+  return (
+    <>
+      <Button size="sm" disabled={!canPlay || busy} onClick={onPlay}>
+        <Play className="h-4 w-4" />
+        Play
+      </Button>
+      <select
+        className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
+        value={listeningStatus}
+        disabled={busy}
+        onChange={(event) => onMark(event.target.value as ListeningStatus)}
+        aria-label="Listening mark"
+      >
+        {listeningStatusOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <Button variant={favorite ? "default" : "outline"} size="sm" disabled={busy} onClick={onFavorite}>
+        <Star className={`h-4 w-4 ${favorite ? "fill-current" : ""}`} />
+        Favorite
+      </Button>
+      {showSync && onSync && (
+        <Button variant="outline" size="sm" disabled={busy} onClick={onSync}>
+          <RefreshCw className="h-4 w-4" />
+          {syncLabel}
+        </Button>
+      )}
+      {showFetch && onFetch && (
+        <Button variant="outline" size="sm" disabled={busy} onClick={onFetch}>
+          <HardDriveDownload className="h-4 w-4" />
+          Fetch
+        </Button>
+      )}
+      {dlsiteUrl && (
+        <Button variant="outline" size="sm" asChild>
+          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
+            <ExternalLink className="h-4 w-4" />
+            DLsite
+          </a>
+        </Button>
+      )}
+    </>
+  );
+}
+
+function DirectoryMessage({ message }: { message: string }) {
+  return <div className="mb-4 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">{message}</div>;
+}
+
 function MetaTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-card p-3">
+    <div className="rounded-md border bg-card p-2.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon}
         {label}
       </div>
-      <div className="mt-1 truncate text-sm font-semibold">{value}</div>
+      <div className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</div>
     </div>
   );
 }
