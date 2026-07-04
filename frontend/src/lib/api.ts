@@ -126,6 +126,7 @@ export type AppSettings = {
   remoteDelayRandomSeconds: number;
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
+  circleAutoRefreshDays: number;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -586,6 +587,7 @@ export const api = {
     remoteDelayRandomSeconds?: number;
     remoteBackoffSeconds?: number;
     remoteMaxBackoffSeconds?: number;
+    circleAutoRefreshDays?: number;
   }) =>
     patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {

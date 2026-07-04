@@ -1,4 +1,4 @@
-import { Database, Folder, Plus, Save, Settings2, Trash2, X } from "lucide-react";
+import { Database, Folder, Plus, RefreshCw, Save, Settings2, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type SettingsTab = "local" | "remote";
+type SettingsTab = "local" | "remote" | "metadata";
 
 export function SettingsPage({ canManageSources }: { canManageSources: boolean }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -35,6 +35,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
+  const [circleAutoRefreshDays, setCircleAutoRefreshDays] = useState(30);
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -63,6 +64,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setRemoteDelayRandom(next.remoteDelayRandomSeconds);
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
+        setCircleAutoRefreshDays(next.circleAutoRefreshDays);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch(() => setMessage("Settings API is unavailable."));
@@ -86,6 +88,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
+      circleAutoRefreshDays,
     });
     setSettings(next);
     setAutoSyncRemote(next.autoSyncRemote);
@@ -159,6 +162,9 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         <SettingsTabButton active={activeTab === "remote"} onClick={() => setActiveTab("remote")} icon={<Database className="h-4 w-4" />}>
           Remote sources
         </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "metadata"} onClick={() => setActiveTab("metadata")} icon={<RefreshCw className="h-4 w-4" />}>
+          Metadata
+        </SettingsTabButton>
       </div>
 
       {activeTab === "local" ? (
@@ -171,7 +177,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onPathsOpenChange={setIsPathsOpen}
           onSave={saveRuntimeSettings}
         />
-      ) : (
+      ) : activeTab === "remote" ? (
         <RemoteSourceSettings
           settings={settings}
           remoteSources={remoteSources}
@@ -201,6 +207,12 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onEditSource={openEditSource}
           onDeleteSource={deleteSource}
         />
+      ) : (
+        <MetadataSettings
+          circleAutoRefreshDays={circleAutoRefreshDays}
+          onCircleAutoRefreshDaysChange={setCircleAutoRefreshDays}
+          onSave={saveRuntimeSettings}
+        />
       )}
 
       {isSourceModalOpen && (
@@ -213,6 +225,51 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         />
       )}
     </div>
+  );
+}
+
+function MetadataSettings({
+  circleAutoRefreshDays,
+  onCircleAutoRefreshDaysChange,
+  onSave,
+}: {
+  circleAutoRefreshDays: number;
+  onCircleAutoRefreshDaysChange: (value: number) => void;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 text-primary" />
+          Circle metadata
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Auto refresh days</span>
+            <input
+              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+              type="number"
+              min={0}
+              max={365}
+              value={circleAutoRefreshDays}
+              onChange={(event) => onCircleAutoRefreshDaysChange(Number(event.target.value))}
+            />
+          </label>
+          <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            {circleAutoRefreshDays === 0
+              ? "Automatic circle refresh on detail entry is disabled."
+              : `Circle detail pages may refresh when local metadata is older than ${circleAutoRefreshDays} days.`}
+          </div>
+        </div>
+        <Button size="sm" onClick={() => void onSave()}>
+          <Save className="h-4 w-4" />
+          Save metadata settings
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

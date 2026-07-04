@@ -30,6 +30,7 @@ type appSettingsResponse struct {
 	RemoteDelayRandom  float64             `json:"remoteDelayRandomSeconds"`
 	RemoteBackoff      float64             `json:"remoteBackoffSeconds"`
 	RemoteMaxBackoff   float64             `json:"remoteMaxBackoffSeconds"`
+	CircleAutoRefreshDays int               `json:"circleAutoRefreshDays"`
 	DataRoot           string              `json:"dataRoot"`
 	CacheRoot          string              `json:"cacheRoot"`
 	FileSources        []fileSourceSummary `json:"fileSources"`
@@ -248,6 +249,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		RemoteDelayRandom  *float64 `json:"remoteDelayRandomSeconds"`
 		RemoteBackoff      *float64 `json:"remoteBackoffSeconds"`
 		RemoteMaxBackoff   *float64 `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays *int   `json:"circleAutoRefreshDays"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -352,6 +354,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := upsertSetting(r, tx, "remote_max_backoff_seconds", *payload.RemoteMaxBackoff); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.CircleAutoRefreshDays != nil {
+		if *payload.CircleAutoRefreshDays < 0 || *payload.CircleAutoRefreshDays > 365 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "circleAutoRefreshDays must be between 0 and 365"})
+			return
+		}
+		if err := upsertSetting(r, tx, "circle_auto_refresh_days", *payload.CircleAutoRefreshDays); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -2280,6 +2292,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteDelayRandom:  s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
 		RemoteBackoff:      s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
 		RemoteMaxBackoff:   s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		CircleAutoRefreshDays: s.settingInt(r, "circle_auto_refresh_days", 30),
 		DataRoot:           s.cfg.DataRoot,
 		CacheRoot:          s.cfg.CacheRoot,
 		FileSources:        sources,

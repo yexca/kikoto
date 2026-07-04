@@ -244,12 +244,22 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [isEditingState, setIsEditingState] = useState(false);
+  const [ratingDraft, setRatingDraft] = useState(0);
+  const [noteDraft, setNoteDraft] = useState("");
 
   useEffect(() => {
     setIsLoading(true);
     setMessage("");
-    api.getCircle(externalId).then(setDetail).catch((error) => {
-      setDetail(fakeDetail(externalId));
+    api.getCircle(externalId).then((next) => {
+      setDetail(next);
+      setRatingDraft(next.rating ?? 0);
+      setNoteDraft(next.note);
+    }).catch((error) => {
+      const fallback = fakeDetail(externalId);
+      setDetail(fallback);
+      setRatingDraft(fallback.rating ?? 0);
+      setNoteDraft(fallback.note);
       setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholder.");
     }).finally(() => setIsLoading(false));
   }, [externalId]);
@@ -264,6 +274,21 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       setMessage(`Refresh workflow recorded as run #${result.runId}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
+    }
+  };
+
+  const saveUserState = async () => {
+    try {
+      const next = await api.updateCircleUserState(externalId, {
+        rating: ratingDraft > 0 ? ratingDraft : null,
+        note: noteDraft,
+        favorite: circle.favorite,
+      });
+      setDetail((current) => current ? { ...current, ...next, works: current.works } : current);
+      setIsEditingState(false);
+      setMessage("Circle note saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Circle note save failed.");
     }
   };
 
@@ -315,9 +340,33 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     <Star className="h-4 w-4 fill-current text-primary" />
                     User rating
                   </div>
-                  <div className="text-2xl font-semibold">{circle.rating !== null && circle.rating > 0 ? `${circle.rating}/5` : "Unrated"}</div>
-                  <Button variant="outline" size="sm" className="w-full" disabled>
-                    Edit rating
+                  {isEditingState ? (
+                    <select
+                      className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={ratingDraft}
+                      onChange={(event) => setRatingDraft(Number(event.target.value))}
+                    >
+                      <option value={0}>Unrated</option>
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <option key={value} value={value}>
+                          {value}/5
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-2xl font-semibold">{circle.rating !== null && circle.rating > 0 ? `${circle.rating}/5` : "Unrated"}</div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setRatingDraft(circle.rating ?? 0);
+                      setNoteDraft(circle.note);
+                      setIsEditingState((value) => !value);
+                    }}
+                  >
+                    {isEditingState ? "Cancel" : "Edit rating"}
                   </Button>
                 </CardContent>
               </Card>
@@ -327,9 +376,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     <NotebookPen className="h-4 w-4 text-primary" />
                     User note
                   </div>
-                  <p className="text-sm text-muted-foreground">{circle.note || "No note yet."}</p>
-                  <Button variant="outline" size="sm" disabled>
-                    Edit note
+                  {isEditingState ? (
+                    <textarea
+                      className="min-h-24 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{circle.note || "No note yet."}</p>
+                  )}
+                  <Button variant="outline" size="sm" disabled={!isEditingState} onClick={() => void saveUserState()}>
+                    Save note
                   </Button>
                 </CardContent>
               </Card>
