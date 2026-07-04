@@ -6,6 +6,7 @@ export type Work = {
   coverUrl: string;
   dlsiteUrl: string;
   circle: string;
+  circleExternalId: string;
   rating: number | null;
   tags: string[];
   voiceActors: string[];
@@ -30,6 +31,7 @@ export type WorkDetail = {
   coverUrl: string;
   dlsiteUrl: string;
   circle: string;
+  circleExternalId: string;
   rating: number | null;
   tags: string[];
   voiceActors: string[];
@@ -379,6 +381,55 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
+export type CircleSourceStat = {
+  key: string;
+  displayName: string;
+  status: string;
+  count: number;
+};
+
+export type CircleSummary = {
+  id: number;
+  externalId: string;
+  displayName: string;
+  aliases: string[];
+  rating: number | null;
+  note: string;
+  favorite: boolean;
+  localWorks: number;
+  playableWorks: number;
+  remoteWorks: number;
+  missingWorks: number;
+  catalogWorks: number;
+  lastSyncedAt: string | null;
+  syncState: string;
+  sourceSummaries: CircleSourceStat[];
+};
+
+export type CircleCatalogWork = {
+  workId: number | null;
+  primaryCode: string;
+  title: string;
+  releaseDate: string | null;
+  coverUrl: string;
+  dlsiteUrl: string;
+  catalogStatus: string;
+  listeningMark: string;
+  local: boolean;
+  remote: boolean;
+  sourceTags: CircleSourceStat[];
+};
+
+export type CircleDetail = CircleSummary & {
+  works: CircleCatalogWork[];
+};
+
+export type CircleRefreshResult = {
+  runId: number;
+  externalId: string;
+  status: string;
+};
+
 export type MediaTextPreview = {
   path: string;
   content: string;
@@ -511,6 +562,11 @@ export const api = {
   deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
   updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
+  listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
+  getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
+  updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
+    patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
+  refreshCircle: (externalId: string) => postJSON<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`),
   updateMediaProgress: (
     id: number,
     payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },

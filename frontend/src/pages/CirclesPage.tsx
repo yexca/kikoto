@@ -1,150 +1,108 @@
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Cloud,
-  Database,
   ExternalLink,
-  FileAudio,
-  HardDrive,
   ListChecks,
   NotebookPen,
   RefreshCw,
   Search,
   SlidersHorizontal,
   Star,
-  XCircle,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSourceStat, type CircleSummary } from "@/lib/api";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 
-type CircleSummary = {
-  externalId: string;
-  name: string;
-  aliases: string[];
-  rating: number;
-  note: string;
-  localWorks: number;
-  playableWorks: number;
-  remoteWorks: number;
-  missingWorks: number;
-  lastSynced: string;
-  syncState: "fresh" | "stale" | "pending";
-};
-
-type CircleCatalogWork = {
-  code: string;
-  title: string;
-  releaseDate: string;
-  dlsiteStatus: "catalog" | "imported";
-  mark: "none" | "want" | "listening" | "finished";
-  local: "available" | "missing";
-  cache: "available" | "missing";
-  remote: "available" | "missing" | "unavailable";
-  userTags: string[];
-};
-
-const circles: CircleSummary[] = [
+const fallbackCircles: CircleSummary[] = [
   {
+    id: 0,
     externalId: "RG012345",
-    name: "Fake Circle 001",
+    displayName: "Fake Circle 001",
     aliases: ["Demo Circle Alias 001"],
     rating: 4,
     note: "Fake note: review catalog refresh behavior.",
+    favorite: false,
     localWorks: 12,
     playableWorks: 9,
     remoteWorks: 22,
     missingWorks: 5,
-    lastSynced: "2099-01-01",
+    catalogWorks: 39,
+    lastSyncedAt: "2099-01-01",
     syncState: "stale",
-  },
-  {
-    externalId: "RG023456",
-    name: "Fake Circle 002",
-    aliases: ["Demo Circle Alias 002"],
-    rating: 3,
-    note: "Fake note: source match needs review.",
-    localWorks: 4,
-    playableWorks: 3,
-    remoteWorks: 8,
-    missingWorks: 2,
-    lastSynced: "2099-02-02",
-    syncState: "fresh",
-  },
-  {
-    externalId: "RG034567",
-    name: "Fake Circle 003",
-    aliases: ["Demo Circle Alias 003"],
-    rating: 0,
-    note: "Fake note: first pull placeholder.",
-    localWorks: 0,
-    playableWorks: 0,
-    remoteWorks: 3,
-    missingWorks: 7,
-    lastSynced: "never",
-    syncState: "pending",
+    sourceSummaries: [
+      { key: "local", displayName: "Local", status: "available", count: 12 },
+      { key: "remote", displayName: "Remote", status: "available", count: 22 },
+      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 22 },
+    ],
   },
 ];
 
-const catalogWorks: CircleCatalogWork[] = [
+const fallbackWorks: CircleCatalogWork[] = [
   {
-    code: "RJ0123456",
+    workId: 0,
+    primaryCode: "RJ0123456",
     title: "Demo Circle Catalog Work 001",
     releaseDate: "2099-01-01",
-    dlsiteStatus: "imported",
-    mark: "listening",
-    local: "available",
-    cache: "available",
-    remote: "available",
-    userTags: ["fake-user-tag-001", "fake-user-tag-002"],
+    coverUrl: "",
+    dlsiteUrl: "",
+    catalogStatus: "imported",
+    listeningMark: "listening",
+    local: true,
+    remote: true,
+    sourceTags: [
+      { key: "local", displayName: "Local", status: "available", count: 1 },
+      { key: "remote", displayName: "Remote", status: "available", count: 1 },
+      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 1 },
+    ],
   },
   {
-    code: "RJ0234567",
+    workId: null,
+    primaryCode: "RJ0234567",
     title: "Demo Circle Catalog Work 002",
     releaseDate: "2099-02-02",
-    dlsiteStatus: "catalog",
-    mark: "want",
-    local: "missing",
-    cache: "missing",
-    remote: "available",
-    userTags: ["fake-user-tag-003"],
+    coverUrl: "",
+    dlsiteUrl: "",
+    catalogStatus: "catalog",
+    listeningMark: "want",
+    local: false,
+    remote: true,
+    sourceTags: [
+      { key: "remote", displayName: "Remote", status: "available", count: 1 },
+      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 1 },
+    ],
   },
   {
-    code: "RJ0345678",
+    workId: null,
+    primaryCode: "RJ0345678",
     title: "Demo Circle Catalog Work 003",
     releaseDate: "2099-03-03",
-    dlsiteStatus: "catalog",
-    mark: "none",
-    local: "missing",
-    cache: "missing",
-    remote: "unavailable",
-    userTags: [],
+    coverUrl: "",
+    dlsiteUrl: "",
+    catalogStatus: "catalog",
+    listeningMark: "none",
+    local: false,
+    remote: false,
+    sourceTags: [],
   },
-  {
-    code: "RJ0456789",
-    title: "Demo Circle Catalog Work 004",
-    releaseDate: "2099-04-04",
-    dlsiteStatus: "imported",
-    mark: "finished",
-    local: "available",
-    cache: "missing",
-    remote: "available",
-    userTags: ["fake-user-tag-004"],
-  },
-];
-
-const sourceRows = [
-  { name: "Local library", status: "available", count: 12, icon: HardDrive },
-  { name: "Fake Remote Source 001", status: "available", count: 22, icon: Cloud },
-  { name: "Fake Remote Source 002", status: "unavailable", count: 0, icon: Database },
 ];
 
 export function CirclesPage() {
-  const externalId = circleExternalIdFromPath(window.location.pathname);
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const syncPath = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", syncPath);
+    window.addEventListener("kikoto:navigation", syncPath);
+    return () => {
+      window.removeEventListener("popstate", syncPath);
+      window.removeEventListener("kikoto:navigation", syncPath);
+    };
+  }, []);
+  const externalId = circleExternalIdFromPath(path);
   if (externalId) {
     return <CircleDetailPage externalId={externalId} />;
   }
@@ -157,6 +115,26 @@ export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
 }
 
 function CircleListPage() {
+  const [circles, setCircles] = useState<CircleSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setIsLoading(true);
+    api.listCircles().then((items) => {
+      setCircles(items);
+      setMessage(items.length === 0 ? "No circles have been derived from local DLsite metadata yet. Showing fake placeholders." : "");
+    }).catch((error) => {
+      setCircles([]);
+      setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholders.");
+    }).finally(() => setIsLoading(false));
+  }, []);
+
+  const visibleCircles = circles.length > 0 ? circles : fallbackCircles;
+  const ratedCount = visibleCircles.filter((circle) => circle.rating !== null && circle.rating > 0).length;
+  const needsRefresh = visibleCircles.filter((circle) => circle.syncState !== "fresh").length;
+  const remoteMatches = visibleCircles.reduce((total, circle) => total + circle.remoteWorks, 0);
+
   return (
     <div className="space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -177,15 +155,17 @@ function CircleListPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Known circles" value="123" />
-        <Stat label="Rated" value="45" />
-        <Stat label="Needs refresh" value="8" />
-        <Stat label="Remote matches" value="88" />
+        <Stat label="Known circles" value={String(visibleCircles.length)} />
+        <Stat label="Rated" value={String(ratedCount)} />
+        <Stat label="Needs refresh" value={String(needsRefresh)} />
+        <Stat label="Remote matches" value={String(remoteMatches)} />
       </section>
+
+      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm">
-          <div className="text-muted-foreground">Page 1 · fake local database result set</div>
+          <div className="text-muted-foreground">{isLoading ? "Loading circles..." : "Page 1 · local database result set"}</div>
           <div className="flex gap-2">
             <Button variant="outline" size="icon" aria-label="Previous page">
               <ChevronLeft className="h-4 w-4" />
@@ -197,47 +177,8 @@ function CircleListPage() {
         </div>
 
         <div className="grid gap-3 xl:grid-cols-2">
-          {circles.map((circle) => (
-            <Card key={circle.externalId} className="transition-colors hover:border-primary/50">
-              <CardContent className="space-y-3 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{circle.externalId}</Badge>
-                      <SyncBadge state={circle.syncState} />
-                    </div>
-                    <h3 className="mt-2 truncate text-base font-semibold">{circle.name}</h3>
-                    <p className="truncate text-sm text-muted-foreground">{circle.aliases.join(", ")}</p>
-                  </button>
-                  <div className="flex items-center gap-1 text-sm font-medium">
-                    <Star className="h-4 w-4 fill-current text-primary" />
-                    {circle.rating > 0 ? circle.rating : "Unrated"}
-                  </div>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-4">
-                  <MiniStat label="Local" value={circle.localWorks} />
-                  <MiniStat label="Playable" value={circle.playableWorks} />
-                  <MiniStat label="Remote" value={circle.remoteWorks} />
-                  <MiniStat label="Missing" value={circle.missingWorks} />
-                </div>
-
-                <div className="rounded-md border bg-background p-3 text-sm">
-                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <NotebookPen className="h-3.5 w-3.5" />
-                    User note
-                  </div>
-                  <p className="text-muted-foreground">{circle.note}</p>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>Last synced: {circle.lastSynced}</span>
-                  <Button variant="outline" size="sm" onClick={() => openCircleRoute(circle.externalId)}>
-                    Open
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+          {visibleCircles.map((circle) => (
+            <CircleCard key={circle.externalId} circle={circle} />
           ))}
         </div>
       </section>
@@ -245,23 +186,86 @@ function CircleListPage() {
   );
 }
 
+function CircleCard({ circle }: { circle: CircleSummary }) {
+  return (
+    <Card className="transition-colors hover:border-primary/50">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{circle.externalId}</Badge>
+              <SyncBadge state={circle.syncState} />
+            </div>
+            <h3 className="mt-2 truncate text-base font-semibold">{circle.displayName}</h3>
+            <p className="truncate text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
+          </button>
+          <div className="flex items-center gap-1 text-sm font-medium">
+            <Star className="h-4 w-4 fill-current text-primary" />
+            {circle.rating !== null && circle.rating > 0 ? circle.rating : "Unrated"}
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-4">
+          <MiniStat label="Local" value={circle.localWorks} />
+          <MiniStat label="Playable" value={circle.playableWorks} />
+          <MiniStat label="Remote" value={circle.remoteWorks} />
+          <MiniStat label="Missing" value={circle.missingWorks} />
+        </div>
+
+        <div className="flex min-h-6 flex-wrap gap-1">
+          {sourceTags(circle.sourceSummaries).map((source) => (
+            <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
+              {source.displayName}
+              {source.count > 0 ? ` ${source.count}` : ""}
+            </Badge>
+          ))}
+        </div>
+
+        <div className="rounded-md border bg-background p-3 text-sm">
+          <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <NotebookPen className="h-3.5 w-3.5" />
+            User note
+          </div>
+          <p className="text-muted-foreground">{circle.note || "No note yet."}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Last synced: {circle.lastSyncedAt ?? "never"}</span>
+          <Button variant="outline" size="sm" onClick={() => openCircleRoute(circle.externalId)}>
+            Open
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CircleDetailPage({ externalId }: { externalId: string }) {
-  const circle = circles.find((item) => item.externalId.toLowerCase() === externalId.toLowerCase()) ?? {
-    ...circles[0],
-    externalId,
-    name: "Fake Circle From First Pull",
-    aliases: ["Demo Pending Alias"],
-    rating: 0,
-    note: "Fake note: this represents a first-time DLsite pull.",
-    localWorks: 0,
-    playableWorks: 0,
-    remoteWorks: 0,
-    missingWorks: 0,
-    lastSynced: "never",
-    syncState: "pending" as const,
+  const [detail, setDetail] = useState<CircleDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setIsLoading(true);
+    setMessage("");
+    api.getCircle(externalId).then(setDetail).catch((error) => {
+      setDetail(fakeDetail(externalId));
+      setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholder.");
+    }).finally(() => setIsLoading(false));
+  }, [externalId]);
+
+  const circle = detail ?? fakeDetail(externalId);
+  const importedCount = circle.works.filter((work) => work.catalogStatus === "imported").length;
+  const playableCount = circle.works.filter((work) => work.local || work.remote).length;
+
+  const refresh = async () => {
+    try {
+      const result = await api.refreshCircle(externalId);
+      setMessage(`Refresh workflow recorded as run #${result.runId}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
+    }
   };
-  const importedCount = catalogWorks.filter((work) => work.dlsiteStatus === "imported").length;
-  const playableCount = catalogWorks.filter((work) => work.local === "available" || work.cache === "available").length;
 
   return (
     <div className="space-y-5">
@@ -269,6 +273,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         <ChevronLeft className="h-4 w-4" />
         Back to circles
       </Button>
+
+      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
@@ -280,15 +286,15 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                   <SyncBadge state={circle.syncState} />
                   <Badge variant="secondary">external ID route</Badge>
                 </div>
-                <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.name}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ")}</p>
+                <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" disabled>
                   <ExternalLink className="h-4 w-4" />
                   DLsite
                 </Button>
-                <Button size="sm">
+                <Button size="sm" disabled={isLoading} onClick={() => void refresh()}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
@@ -296,10 +302,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-4">
-              <Stat label="Catalog works" value="128" />
+              <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
               <Stat label="Imported" value={String(importedCount)} />
               <Stat label="Playable" value={String(playableCount)} />
-              <Stat label="Unavailable" value={String(catalogWorks.filter((work) => work.remote === "unavailable").length)} />
+              <Stat label="Unavailable" value={String(circle.works.filter((work) => !work.local && !work.remote).length)} />
             </div>
 
             <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
@@ -309,8 +315,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     <Star className="h-4 w-4 fill-current text-primary" />
                     User rating
                   </div>
-                  <div className="text-2xl font-semibold">{circle.rating > 0 ? `${circle.rating}/5` : "Unrated"}</div>
-                  <Button variant="outline" size="sm" className="w-full">
+                  <div className="text-2xl font-semibold">{circle.rating !== null && circle.rating > 0 ? `${circle.rating}/5` : "Unrated"}</div>
+                  <Button variant="outline" size="sm" className="w-full" disabled>
                     Edit rating
                   </Button>
                 </CardContent>
@@ -321,8 +327,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     <NotebookPen className="h-4 w-4 text-primary" />
                     User note
                   </div>
-                  <p className="text-sm text-muted-foreground">{circle.note}</p>
-                  <Button variant="outline" size="sm">
+                  <p className="text-sm text-muted-foreground">{circle.note || "No note yet."}</p>
+                  <Button variant="outline" size="sm" disabled>
                     Edit note
                   </Button>
                 </CardContent>
@@ -336,9 +342,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <CardTitle>Workflow Shortcuts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Shortcut title="Refresh circle info" description="Pull fake DLsite circle profile and aliases." />
-            <Shortcut title="Refresh catalog" description="Pull fake DLsite work pages for this external ID." />
-            <Shortcut title="Check sources" description="Match catalog works against all configured file sources." />
+            <Shortcut title="Refresh circle info" description="Record a DLsite maker refresh workflow shortcut." onClick={() => void refresh()} />
+            <Shortcut title="Refresh catalog" description="Planned: pull paged maker catalog with rate limits." disabled />
+            <Shortcut title="Check sources" description="Planned: match catalog works against configured sources." disabled />
             <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
               Auto refresh policy placeholder: refresh on page entry when last sync is older than 1 month.
             </div>
@@ -351,14 +357,14 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
           <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
               <Search className="h-4 w-4" />
-              <span>Search fake DLsite catalog works</span>
+              <span>Search circle catalog works</span>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm">
                 <SlidersHorizontal className="h-4 w-4" />
                 Availability
               </Button>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" disabled>
                 <ListChecks className="h-4 w-4" />
                 Pull selected
               </Button>
@@ -366,9 +372,13 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {catalogWorks.map((work) => (
-              <CatalogWorkCard key={work.code} work={work} />
-            ))}
+            {circle.works.length > 0 ? circle.works.map((work) => (
+              <CatalogWorkCard key={work.primaryCode} work={work} />
+            )) : (
+              <Card>
+                <CardContent className="p-5 text-sm text-muted-foreground">No catalog works have been derived yet.</CardContent>
+              </Card>
+            )}
           </div>
         </div>
 
@@ -377,18 +387,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <CardTitle>Source Match</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sourceRows.map((source) => (
-              <div key={source.name} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
-                <div className="flex min-w-0 items-center gap-2">
-                  <source.icon className="h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{source.name}</div>
-                    <div className="text-xs text-muted-foreground">{source.count} fake matches</div>
-                  </div>
+            {sourceTags(circle.sourceSummaries).length > 0 ? sourceTags(circle.sourceSummaries).map((source) => (
+              <div key={source.key} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{source.displayName}</div>
+                  <div className="text-xs text-muted-foreground">{source.count} matches</div>
                 </div>
                 <AvailabilityBadge status={source.status} />
               </div>
-            ))}
+            )) : (
+              <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">No source matches yet.</div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -400,51 +409,39 @@ function CatalogWorkCard({ work }: { work: CircleCatalogWork }) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div className="aspect-[4/3] rounded-md border bg-muted" />
+        <div className="aspect-[4/3] overflow-hidden rounded-md border bg-muted">
+          {work.coverUrl ? <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" /> : null}
+        </div>
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{work.code}</Badge>
-            <Badge variant={work.dlsiteStatus === "imported" ? "secondary" : "outline"}>{work.dlsiteStatus}</Badge>
-            {work.mark !== "none" && <Badge>{work.mark}</Badge>}
+            <Badge variant="outline">{work.primaryCode}</Badge>
+            <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
+            {work.listeningMark !== "none" && <Badge>{work.listeningMark}</Badge>}
           </div>
           <h3 className="line-clamp-2 min-h-10 text-sm font-semibold">{work.title}</h3>
-          <div className="truncate text-xs text-muted-foreground">{work.releaseDate}</div>
+          <div className="truncate text-xs text-muted-foreground">{work.releaseDate ?? "Unknown release"}</div>
         </div>
         <div className="flex min-h-6 flex-wrap gap-1">
-          {work.userTags.length > 0 ? (
-            work.userTags.map((tag) => (
-              <Badge key={tag} variant="outline">
-                {tag}
-              </Badge>
-            ))
-          ) : (
-            <span className="text-xs text-muted-foreground">No fake user tags</span>
+          {sourceTags(work.sourceTags).length > 0 ? sourceTags(work.sourceTags).map((tag) => (
+            <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
+              {tag.displayName}
+            </Badge>
+          )) : (
+            <span className="text-xs text-muted-foreground">Unavailable</span>
           )}
-        </div>
-        <div className="grid grid-cols-3 gap-1 text-xs">
-          <SourcePill label="Local" status={work.local} />
-          <SourcePill label="Cache" status={work.cache} />
-          <SourcePill label="Remote" status={work.remote} />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function SourcePill({ label, status }: { label: string; status: "available" | "missing" | "unavailable" }) {
-  const isGood = status === "available";
-  const isUnavailable = status === "unavailable";
+function Shortcut({ title, description, disabled, onClick }: { title: string; description: string; disabled?: boolean; onClick?: () => void }) {
   return (
-    <div className={`flex min-h-8 items-center justify-center gap-1 rounded-md border px-2 ${isGood ? "bg-secondary text-secondary-foreground" : "bg-background text-muted-foreground"}`}>
-      {isGood ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-      <span className="truncate">{isUnavailable ? "N/A" : label}</span>
-    </div>
-  );
-}
-
-function Shortcut({ title, description }: { title: string; description: string }) {
-  return (
-    <button className="flex w-full items-center justify-between gap-3 rounded-md border bg-background p-3 text-left text-sm hover:bg-muted">
+    <button
+      className="flex w-full items-center justify-between gap-3 rounded-md border bg-background p-3 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+      disabled={disabled}
+      onClick={onClick}
+    >
       <span>
         <span className="block font-medium">{title}</span>
         <span className="block text-xs text-muted-foreground">{description}</span>
@@ -454,7 +451,7 @@ function Shortcut({ title, description }: { title: string; description: string }
   );
 }
 
-function SyncBadge({ state }: { state: CircleSummary["syncState"] }) {
+function SyncBadge({ state }: { state: string }) {
   const label = state === "fresh" ? "fresh" : state === "stale" ? "needs refresh" : "first pull";
   return <Badge variant={state === "fresh" ? "secondary" : "warning"}>{label}</Badge>;
 }
@@ -481,6 +478,25 @@ function MiniStat({ label, value }: { label: string; value: number }) {
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );
+}
+
+function fakeDetail(externalId: string): CircleDetail {
+  return {
+    ...fallbackCircles[0],
+    externalId,
+    works: fallbackWorks,
+  };
+}
+
+function sourceTags(sources: CircleSourceStat[]) {
+  const seen = new Set<string>();
+  return sources.filter((source) => {
+    if (source.key === "cache") return false;
+    const key = source.key;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function circleExternalIdFromPath(path: string) {

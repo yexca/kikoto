@@ -45,6 +45,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
+	mux.HandleFunc("GET /api/circles", s.listCircles)
+	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
+	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
+	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
@@ -236,6 +240,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		CoverURL           string   `json:"coverUrl"`
 		DLsiteURL          string   `json:"dlsiteUrl"`
 		Circle             string   `json:"circle"`
+		CircleExternalID   string   `json:"circleExternalId"`
 		Rating             *float64 `json:"rating"`
 		Tags               []string `json:"tags"`
 		VoiceActors        []string `json:"voiceActors"`
@@ -268,6 +273,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		item.CoverURL = s.coverURL(item.PrimaryCode)
 		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
+		item.CircleExternalID = metadata.CircleExternalID
 		item.Rating = metadata.Rating
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
@@ -293,6 +299,7 @@ type workDetail struct {
 	CoverURL        string            `json:"coverUrl"`
 	DLsiteURL       string            `json:"dlsiteUrl"`
 	Circle          string            `json:"circle"`
+	CircleExternalID string            `json:"circleExternalId"`
 	Rating          *float64          `json:"rating"`
 	Tags            []string          `json:"tags"`
 	VoiceActors     []string          `json:"voiceActors"`
@@ -1295,6 +1302,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	}
 	metadata := parseDLsiteSnapshot(snapshot.String)
 	work.Circle = metadata.Circle
+	work.CircleExternalID = metadata.CircleExternalID
 	work.Rating = metadata.Rating
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
@@ -2110,10 +2118,11 @@ func nullableInt64(value sql.NullInt64) *int64 {
 }
 
 type dlsiteSnapshotMetadata struct {
-	Circle      string
-	Rating      *float64
-	Tags        []string
-	VoiceActors []string
+	Circle           string
+	CircleExternalID string
+	Rating           *float64
+	Tags             []string
+	VoiceActors      []string
 }
 
 func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
@@ -2136,6 +2145,10 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 
 	var payload struct {
 		MakerName      string   `json:"maker_name"`
+		MakerID        string   `json:"maker_id"`
+		CircleID       string   `json:"circle_id"`
+		BrandID        string   `json:"brand_id"`
+		LabelID        string   `json:"label_id"`
 		RateAverage2DP *float64 `json:"rate_average_2dp"`
 		RateAverage    *float64 `json:"rate_average"`
 		Genres         []struct {
@@ -2164,6 +2177,7 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
+	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
 	if payload.RateAverage2DP != nil {
 		metadata.Rating = payload.RateAverage2DP
 	} else if payload.RateAverage != nil {

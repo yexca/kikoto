@@ -567,6 +567,7 @@ function WorkCard({
           <WorkCardBody
             title={work.title}
             circle={work.circle || "Unknown circle"}
+            circleExternalId={work.circleExternalId}
             badges={[
               ...(work.listeningStatus !== "none" ? [{ value: listeningStatusLabel(work.listeningStatus), variant: "warning" as const }] : []),
               ...work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) })),
@@ -631,6 +632,7 @@ function RemoteWorkCard({
           <WorkCardBody
             title={work.title}
             circle={work.circle || "Unknown circle"}
+            circleExternalId=""
             badges={[
               { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
               ...(work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []),
@@ -719,7 +721,19 @@ function WorkCardMedia({
 type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
 type CardMeta = { icon: ReactNode; value: string };
 
-function WorkCardBody({ title, circle, badges, meta }: { title: string; circle: string; badges: CardBadge[]; meta: CardMeta[] }) {
+function WorkCardBody({
+  title,
+  circle,
+  circleExternalId,
+  badges,
+  meta,
+}: {
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  badges: CardBadge[];
+  meta: CardMeta[];
+}) {
   return (
     <div className="space-y-3 p-4">
       <div className="space-y-1">
@@ -728,7 +742,7 @@ function WorkCardBody({ title, circle, badges, meta }: { title: string; circle: 
           className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
           onClick={(event) => {
             event.stopPropagation();
-            openCircleRoute();
+            openCircleRoute(circleExternalId || undefined);
           }}
         >
           {circle}
@@ -936,6 +950,7 @@ function RemoteWorkDetailView({
         code={detail.primaryCode || detail.remoteId}
         title={detail.title}
         circle={detail.circle}
+        circleExternalId=""
         ratingLabel="Rating"
         rating={detail.rating}
         releaseDate={detail.releaseDate || "Unknown"}
@@ -1220,6 +1235,7 @@ function WorkDetailView({
         code={work.primaryCode}
         title={work.title}
         circle={work.circle}
+        circleExternalId={work.circleExternalId}
         ratingLabel="DL rating"
         rating={work.rating}
         releaseDate={work.releaseDate ?? "Unknown"}
@@ -1330,6 +1346,7 @@ function DetailHero({
   code,
   title,
   circle,
+  circleExternalId,
   ratingLabel,
   rating,
   releaseDate,
@@ -1345,6 +1362,7 @@ function DetailHero({
   code: string;
   title: string;
   circle: string;
+  circleExternalId: string;
   ratingLabel: string;
   rating: number | null;
   releaseDate: string;
@@ -1371,7 +1389,7 @@ function DetailHero({
         <div>
           <div className="text-sm font-semibold text-primary">{code}</div>
           <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
-          <button className="mt-2 block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary" onClick={() => openCircleRoute()}>
+          <button className="mt-2 block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary" onClick={() => openCircleRoute(circleExternalId || undefined)}>
             {circle || "Unknown circle"}
           </button>
         </div>
