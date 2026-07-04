@@ -41,13 +41,13 @@ In dev mode, the frontend opens as the root super administrator without a login 
 The Settings page currently manages:
 
 - Local scan depth.
-- Remote auto pull on user interest.
+- Remote auto sync on user interest.
 - Remote auto cache on play.
 - Cache size limit.
-- Remote save path template.
+- Remote fetch path template.
 - Local and compatible remote file sources.
 
-When automatic remote cache is enabled, automatic remote pull is also enabled
+When automatic remote cache is enabled, automatic remote sync is also enabled
 because caching requires stable local work and media item records first.
 
 ## Source Control Boundary

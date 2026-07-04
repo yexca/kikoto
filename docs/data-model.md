@@ -59,7 +59,7 @@ Current workflows include:
 - DLsite metadata sync.
 - Compatible remote source sync.
 - Source availability checks.
-- Media cache and remote save actions.
+- Media cache, remote fetch actions, and parent bulk remote actions.
 - Circle metadata and catalog refresh.
 
 Workflow definitions are either `system` or `user` scoped. System definitions are
@@ -79,12 +79,18 @@ Important tables:
 - `user_tag`
 - `user_work_tag`
 - `user_party_state`
+- `person`
+- `person_alias`
+- `person_user_state`
+- `person_user_tag`
+- `work_credit`
 
 Quick listening marks live on `user_work_state`. Playback progress lives on
 `user_media_progress` and is attached to logical `media_item` records rather than
 raw file locations.
 
-Circle ratings and notes live on `user_party_state`.
+Circle ratings and notes live on `user_party_state`. Voice actor favorite,
+rating, note, and tag state lives on person user-state and user-tag tables.
 
 ## Planned Tables
 

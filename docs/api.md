@@ -137,6 +137,32 @@ Runs a circle metadata and catalog refresh workflow.
 
 Requires `metadata:sync`.
 
+## Voices
+
+```http
+GET /api/voices
+GET /api/voices/{personId}
+PATCH /api/voices/{personId}/user-state
+PUT /api/voices/{personId}/tags
+```
+
+Lists voice actors, loads voice detail pages, and stores favorite, rating, note,
+and user tag state.
+
+Requires `library:read`; write operations require the current user's library
+state permissions.
+
+```http
+GET /api/voices/{personId}/alias-candidates
+POST /api/voices/{personId}/aliases
+DELETE /api/voices/{personId}/aliases/{aliasId}
+GET /api/voices/{personId}/merge-reviews
+POST /api/voices/{personId}/merge-candidates/{sourcePersonId}
+POST /api/voices/{personId}/merge-reviews/{reviewId}/undo
+```
+
+Supports voice alias review, duplicate person merge, and merge undo.
+
 ```http
 DELETE /api/circles/{externalId}/catalog/{code}
 ```
@@ -209,10 +235,11 @@ POST /api/remote-sources/{id}/works/{code}/sync
 POST /api/remote-sources/{id}/works/{code}/cache
 ```
 
-Browses a configured compatible remote source and pulls a selected remote work
-into the unified local database through the remote source sync workflow. Detail,
-save planning, save, and cache endpoints operate on selected works without
-creating duplicate work identities.
+Browses a configured compatible remote source and syncs a selected remote work
+into the unified local database through the remote source sync workflow.
+Detail, save planning, save, and cache endpoints operate on selected works
+without creating duplicate work identities. The public UI calls remote file
+materialization "Fetch"; the API path still uses `save` for compatibility.
 
 Requires `library:read`.
 
@@ -283,6 +310,25 @@ POST /api/workflow-runs/dlsite-sync
 Runs DLsite metadata sync for detected works.
 
 Requires `metadata:sync`.
+
+```http
+POST /api/workflow-runs/remote-bulk
+```
+
+Runs a parent bulk remote workflow for one configured compatible source.
+
+```json
+{
+  "action": "sync_save",
+  "sourceId": 1,
+  "codes": ["RJ000001", "RJ000002"]
+}
+```
+
+`action` may be `sync`, `save`, or `sync_save`. The response includes the
+parent run id, child run ids, synced count, and fetched count.
+
+Requires `workflows:run`.
 
 ## Error Shape
 
