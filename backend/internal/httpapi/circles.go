@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -270,6 +271,7 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		"catalogWorks":  result.CatalogWorks,
 		"pagesFetched":  result.PagesFetched,
 		"productSynced": result.ProductSynced,
+		"sourceSynced":  result.SourceSynced,
 		"mode":          result.Mode,
 		"productMode":   result.ProductMode,
 	})
@@ -357,6 +359,16 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(party_id, provider_id, primary_code)
 		)`,
+		`CREATE TABLE IF NOT EXISTS work_party (
+			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+			role TEXT NOT NULL DEFAULT 'circle',
+			provider_id INTEGER REFERENCES metadata_provider(id),
+			source TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(work_id, party_id, role)
+		)`,
 		`CREATE TABLE IF NOT EXISTS user_party_state (
 			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
 			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
@@ -377,6 +389,9 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE party_catalog_item ADD COLUMN dlsite_available INTEGER NOT NULL DEFAULT 1"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return err
 	}
+	if _, err := s.db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS idx_work_party_party ON work_party(party_id, role)"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -392,33 +407,49 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	type snapshotWork struct {
+		WorkID  int64
+		Code    string
+		Title   string
+		Release sql.NullString
+		Raw     string
+	}
+	snapshots := []snapshotWork{}
 	seenWork := map[int64]bool{}
 	for rows.Next() {
-		var workID int64
-		var code, title string
-		var release sql.NullString
-		var raw string
-		if err := rows.Scan(&workID, &code, &title, &release, &raw); err != nil {
+		var snapshot snapshotWork
+		if err := rows.Scan(&snapshot.WorkID, &snapshot.Code, &snapshot.Title, &snapshot.Release, &snapshot.Raw); err != nil {
 			return err
 		}
-		if seenWork[workID] {
+		if seenWork[snapshot.WorkID] {
 			continue
 		}
-		seenWork[workID] = true
-		party := parsePartyFromDLsiteSnapshot(raw)
+		seenWork[snapshot.WorkID] = true
+		snapshots = append(snapshots, snapshot)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, snapshot := range snapshots {
+		party := parsePartyFromDLsiteSnapshot(snapshot.Raw)
 		if !dlsiteMakerIDPattern.MatchString(party.ExternalID) || party.DisplayName == "" {
 			continue
 		}
-		partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, raw)
+		partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, snapshot.Raw)
 		if err != nil {
 			return err
 		}
-		if err := s.upsertPartyCatalogItem(ctx, partyID, code, title, nullableStringValue(release), dlsiteURL(code), "imported", raw); err != nil {
+		if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
+			return err
+		}
+		if err := s.upsertWorkParty(ctx, snapshot.WorkID, partyID, "circle", "dlsite_snapshot"); err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
 type parsedParty struct {
@@ -541,18 +572,42 @@ func (s *Server) upsertPartyCatalogItem(ctx context.Context, partyID int64, code
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	return s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, releaseDate, url, status, raw, true)
+}
+
+func (s *Server) upsertPartyCatalogItemForProvider(ctx context.Context, partyID int64, providerID int64, code string, title string, releaseDate *string, url string, status string, raw string, dlsiteAvailable bool) error {
+	available := 0
+	if dlsiteAvailable {
+		available = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date, url, catalog_status, dlsite_available, raw_json, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(party_id, provider_id, primary_code) DO UPDATE SET
 			title = excluded.title,
 			release_date = excluded.release_date,
 			url = excluded.url,
 			catalog_status = excluded.catalog_status,
-			dlsite_available = 1,
+			dlsite_available = excluded.dlsite_available,
 			raw_json = excluded.raw_json,
 			last_seen_at = CURRENT_TIMESTAMP
-	`, partyID, providerID, strings.ToUpper(strings.TrimSpace(code)), title, releaseDate, url, status, raw)
+	`, partyID, providerID, strings.ToUpper(strings.TrimSpace(code)), title, releaseDate, url, status, available, raw)
+	return err
+}
+
+func (s *Server) upsertWorkParty(ctx context.Context, workID int64, partyID int64, role string, source string) error {
+	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+			provider_id = excluded.provider_id,
+			source = excluded.source,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, partyID, strings.TrimSpace(firstNonEmpty(role, "circle")), providerID, source)
 	return err
 }
 
@@ -614,7 +669,7 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
 	var catalogWorks int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM party_catalog_item WHERE party_id = ?", item.ID).Scan(&catalogWorks); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT primary_code) FROM party_catalog_item WHERE party_id = ?", item.ID).Scan(&catalogWorks); err != nil {
 		return err
 	}
 	item.CatalogWorks = catalogWorks
@@ -648,12 +703,12 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circleSourceStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(DISTINCT work.id)
-		FROM party_catalog_item AS catalog
-		INNER JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		FROM work_party AS relation
+		INNER JOIN work ON work.id = relation.work_id
 		INNER JOIN media_item AS item ON item.work_id = work.id
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
-		WHERE catalog.party_id = ?
+		WHERE relation.party_id = ?
 			AND location.availability = 'available'
 		GROUP BY source.id, source.display_name, location.location_type
 		ORDER BY source.display_name ASC
@@ -692,6 +747,43 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		stat.Count += count
 		combined[statKey] = stat
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	remoteRows, err := s.db.QueryContext(ctx, `
+		SELECT source.id, source.display_name, COUNT(DISTINCT catalog.primary_code)
+		FROM party_catalog_item AS catalog
+		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
+		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+		WHERE catalog.party_id = ?
+			AND source.source_type = 'kikoeru_compatible'
+			AND source.enabled = 1
+		GROUP BY source.id, source.display_name
+	`, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer remoteRows.Close()
+	for remoteRows.Next() {
+		var sourceID int64
+		var sourceName string
+		var count int
+		if err := remoteRows.Scan(&sourceID, &sourceName, &count); err != nil {
+			return nil, err
+		}
+		statKey := fmt.Sprintf("source:%d", sourceID)
+		stat := combined[statKey]
+		if stat.Key == "" {
+			stat = circleSourceStat{Key: statKey, SourceID: &sourceID, DisplayName: sourceName, Status: "available"}
+		}
+		if count > stat.Count {
+			stat.Count = count
+		}
+		combined[statKey] = stat
+	}
+	if err := remoteRows.Err(); err != nil {
+		return nil, err
+	}
 	result := []circleSourceStat{}
 	remoteTotal := 0
 	for _, stat := range combined {
@@ -703,27 +795,46 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 	if remoteTotal > 0 {
 		result = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: remoteTotal}}, result...)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int64) ([]circleCatalogWork, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			catalog.primary_code,
-			catalog.title,
-			catalog.release_date,
-			catalog.url,
-			catalog.catalog_status,
-			COALESCE(catalog.dlsite_available, 1),
+			codes.primary_code,
+			COALESCE(dlsite_catalog.title, remote_catalog.title, codes.primary_code),
+			COALESCE(dlsite_catalog.release_date, remote_catalog.release_date),
+			COALESCE(dlsite_catalog.url, remote_catalog.url, ''),
+			COALESCE(dlsite_catalog.catalog_status, remote_catalog.catalog_status, 'catalog'),
+			COALESCE(dlsite_catalog.dlsite_available, 1),
 			work.id,
 			COALESCE(user_work_state.listening_status, 'none')
-		FROM party_catalog_item AS catalog
-		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		FROM (
+			SELECT DISTINCT primary_code
+			FROM party_catalog_item
+			WHERE party_id = ?
+		) AS codes
+		LEFT JOIN metadata_provider AS dlsite_provider ON dlsite_provider.code = 'dlsite'
+		LEFT JOIN party_catalog_item AS dlsite_catalog
+			ON dlsite_catalog.party_id = ?
+			AND dlsite_catalog.provider_id = dlsite_provider.id
+			AND UPPER(dlsite_catalog.primary_code) = UPPER(codes.primary_code)
+		LEFT JOIN party_catalog_item AS remote_catalog
+			ON remote_catalog.id = (
+				SELECT catalog.id
+				FROM party_catalog_item AS catalog
+				INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
+				WHERE catalog.party_id = ?
+					AND UPPER(catalog.primary_code) = UPPER(codes.primary_code)
+					AND provider.code != 'dlsite'
+				ORDER BY catalog.last_seen_at DESC, catalog.id DESC
+				LIMIT 1
+			)
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(codes.primary_code)
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
-		WHERE catalog.party_id = ?
-		ORDER BY catalog.release_date DESC, catalog.primary_code DESC
+		ORDER BY COALESCE(dlsite_catalog.release_date, remote_catalog.release_date, '') DESC, codes.primary_code DESC
 		LIMIT 100
-	`, userID, partyID)
+	`, partyID, partyID, partyID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -741,7 +852,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		item.WorkID = nullableInt64(workID)
 		item.DLsiteAvailable = dlsiteAvailable != 0
 		item.CoverURL = s.coverURL(item.PrimaryCode)
-		tags, err := s.workSourceTags(ctx, item.PrimaryCode)
+		tags, err := s.workSourceTags(ctx, partyID, item.PrimaryCode)
 		if err != nil {
 			return nil, err
 		}
@@ -759,7 +870,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	return works, rows.Err()
 }
 
-func (s *Server) workSourceTags(ctx context.Context, code string) ([]circleSourceStat, error) {
+func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string) ([]circleSourceStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(*)
 		FROM work
@@ -790,6 +901,43 @@ func (s *Server) workSourceTags(ctx context.Context, code string) ([]circleSourc
 		hasRemote = true
 		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: sourceName, Status: "available", Count: count})
 	}
+	catalogRows, err := s.db.QueryContext(ctx, `
+		SELECT source.id, source.display_name, COUNT(*)
+		FROM party_catalog_item AS catalog
+		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
+		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+		WHERE catalog.party_id = ?
+			AND UPPER(catalog.primary_code) = UPPER(?)
+			AND source.source_type = 'kikoeru_compatible'
+			AND source.enabled = 1
+		GROUP BY source.id, source.display_name
+	`, partyID, code)
+	if err != nil {
+		return nil, err
+	}
+	defer catalogRows.Close()
+	seenSource := map[int64]bool{}
+	for _, tag := range tags {
+		if tag.SourceID != nil {
+			seenSource[*tag.SourceID] = true
+		}
+	}
+	for catalogRows.Next() {
+		var sourceID int64
+		var sourceName string
+		var count int
+		if err := catalogRows.Scan(&sourceID, &sourceName, &count); err != nil {
+			return nil, err
+		}
+		if seenSource[sourceID] {
+			continue
+		}
+		hasRemote = true
+		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: sourceName, Status: "available", Count: count})
+	}
+	if err := catalogRows.Err(); err != nil {
+		return nil, err
+	}
 	if hasRemote {
 		tags = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: 1}}, tags...)
 	}
@@ -803,6 +951,7 @@ type circleRefreshResult struct {
 	CatalogWorks  int
 	PagesFetched  int
 	ProductSynced int
+	SourceSynced  int
 	Mode          string
 	ProductMode   string
 	Error         string
@@ -831,12 +980,20 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 		} else {
 			result.CatalogWorks = len(profile.WorkCodes)
 			result.PagesFetched = profile.PagesFetched
-			productSynced, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
+			sourceSynced, err := s.syncCircleRemoteSourceCatalogs(ctx, partyID, profile.MakerName, request.Mode)
 			if err != nil {
 				result.Status = "failed"
 				result.Error = err.Error()
-			} else {
-				result.ProductSynced = productSynced
+			}
+			result.SourceSynced = sourceSynced
+			if result.Status != "failed" {
+				productSynced, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
+				if err != nil {
+					result.Status = "failed"
+					result.Error = err.Error()
+				} else {
+					result.ProductSynced = productSynced
+				}
 			}
 		}
 	}
@@ -955,8 +1112,17 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 			party.ExternalID = normalizeMakerID(product.MakerID)
 		}
 		if dlsiteMakerIDPattern.MatchString(party.ExternalID) && party.DisplayName != "" {
-			if _, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, raw); err != nil {
+			syncedPartyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, raw)
+			if err != nil {
 				return synced, err
+			}
+			if productPartyID := syncedPartyID; productPartyID > 0 {
+				var workID int64
+				if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", strings.ToUpper(strings.TrimSpace(product.WorkNo))).Scan(&workID); err == nil {
+					if err := s.upsertWorkParty(ctx, workID, productPartyID, "circle", "dlsite_product"); err != nil {
+						return synced, err
+					}
+				}
 			}
 		}
 		synced++
@@ -964,11 +1130,141 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 	return synced, nil
 }
 
+func (s *Server) syncCircleRemoteSourceCatalogs(ctx context.Context, partyID int64, circleName string, mode string) (int, error) {
+	circleName = strings.TrimSpace(circleName)
+	if circleName == "" || strings.HasPrefix(circleName, "Unfetched circle ") {
+		return 0, nil
+	}
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
+	if err != nil {
+		return 0, err
+	}
+	totalSynced := 0
+	for _, source := range sources {
+		if source.SourceType != "kikoeru_compatible" || !source.Enabled || strings.TrimSpace(source.Endpoint.APIURL) == "" {
+			continue
+		}
+		synced, err := s.syncCircleRemoteSourceCatalog(ctx, partyID, circleName, source, mode)
+		if err != nil {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			return totalSynced, err
+		}
+		if synced > 0 {
+			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		}
+		totalSynced += synced
+	}
+	return totalSynced, nil
+}
+
+func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int64, circleName string, source remoteSourceForUse, mode string) (int, error) {
+	providerID, err := s.metadataProviderID(ctx, "kikoeru_source_"+source.Code, source.DisplayName)
+	if err != nil {
+		return 0, err
+	}
+	knownCodes, err := s.knownCircleCatalogCodesForProvider(ctx, partyID, providerID)
+	if err != nil {
+		return 0, err
+	}
+	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	keyword := "$circle:" + circleName + "$"
+	pageSize := 20
+	maxPages := 10
+	if mode == "full" {
+		maxPages = 100
+	}
+	synced := 0
+	for page := 1; page <= maxPages; page++ {
+		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
+			return synced, err
+		}
+		worksPage, err := client.ListWorks(ctx, page, pageSize, keyword)
+		if err != nil {
+			return synced, err
+		}
+		pageCodes := []string{}
+		remoteWorks := map[string]kikoeru.Work{}
+		for _, remoteWork := range worksPage.Works {
+			code := normalizedRemoteWorkCode(remoteWork)
+			if code == "" {
+				continue
+			}
+			code = strings.ToUpper(strings.TrimSpace(code))
+			pageCodes = append(pageCodes, code)
+			remoteWorks[code] = remoteWork
+		}
+		if mode != "full" {
+			if beforeKnown, foundKnown := codesBeforeFirstKnown(pageCodes, knownCodes); foundKnown {
+				pageCodes = beforeKnown
+				for _, code := range pageCodes {
+					if remoteWork, ok := remoteWorks[code]; ok {
+						if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, remoteWork); err != nil {
+							return synced, err
+						}
+						synced++
+					}
+				}
+				break
+			}
+		}
+		for _, code := range pageCodes {
+			remoteWork, ok := remoteWorks[code]
+			if !ok {
+				continue
+			}
+			if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, remoteWork); err != nil {
+				return synced, err
+			}
+			synced++
+		}
+		if len(worksPage.Works) == 0 || len(worksPage.Works) < pageSize {
+			break
+		}
+		total := worksPage.Pagination.TotalCount
+		if total == 0 {
+			total = worksPage.Pagination.Total
+		}
+		if total == 0 {
+			total = worksPage.Pagination.Count
+		}
+		if pages := pagesFromTotal(total, pageSize); pages > 0 && page >= pages {
+			break
+		}
+	}
+	return synced, nil
+}
+
+func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int64, providerID int64, remoteWork kikoeru.Work) error {
+	code := normalizedRemoteWorkCode(remoteWork)
+	if code == "" {
+		return nil
+	}
+	raw, err := json.Marshal(remoteWork)
+	if err != nil {
+		return err
+	}
+	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
+	release := nullableStringFromText(normalizeDateText(remoteWork.Release))
+	return s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), true)
+}
+
 func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT primary_code FROM party_catalog_item WHERE party_id = ?", partyID)
+	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT primary_code FROM party_catalog_item WHERE party_id = ?", partyID)
 	if err != nil {
 		return nil, err
 	}
+	return scanCatalogCodeRows(rows)
+}
+
+func (s *Server) knownCircleCatalogCodesForProvider(ctx context.Context, partyID int64, providerID int64) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT primary_code FROM party_catalog_item WHERE party_id = ? AND provider_id = ?", partyID, providerID)
+	if err != nil {
+		return nil, err
+	}
+	return scanCatalogCodeRows(rows)
+}
+
+func scanCatalogCodeRows(rows *sql.Rows) (map[string]bool, error) {
 	defer rows.Close()
 	result := map[string]bool{}
 	for rows.Next() {
@@ -1010,6 +1306,30 @@ func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64,
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	catalogRows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT catalog.primary_code
+		FROM party_catalog_item AS catalog
+		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
+		WHERE catalog.party_id = ?
+			AND provider.code != 'dlsite'
+	`, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer catalogRows.Close()
+	for catalogRows.Next() {
+		var code string
+		if err := catalogRows.Scan(&code); err != nil {
+			return nil, err
+		}
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" {
+			result[code] = true
+		}
+	}
+	if err := catalogRows.Err(); err != nil {
 		return nil, err
 	}
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
@@ -1068,12 +1388,42 @@ func circleRefreshMaxPages(mode string) int {
 	return 10
 }
 
+func codesBeforeFirstKnown(codes []string, known map[string]bool) ([]string, bool) {
+	if len(known) == 0 {
+		return codes, false
+	}
+	for index, code := range codes {
+		if known[strings.ToUpper(strings.TrimSpace(code))] {
+			return codes[:index], true
+		}
+	}
+	return codes, false
+}
+
+func pagesFromTotal(total int, perPage int) int {
+	if total <= 0 || perPage <= 0 {
+		return 0
+	}
+	return (total + perPage - 1) / perPage
+}
+
 func (s *Server) circleRefreshDelay(ctx context.Context) time.Duration {
 	base := s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)
 	if base < 0.25 {
 		base = 0.25
 	}
 	return time.Duration(base * float64(time.Second))
+}
+
+func normalizeDateText(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) >= 10 {
+		return value[:10]
+	}
+	return value
 }
 
 func nullableStringFromText(value string) *string {

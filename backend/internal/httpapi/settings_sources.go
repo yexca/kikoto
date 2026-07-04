@@ -21,19 +21,19 @@ import (
 )
 
 type appSettingsResponse struct {
-	LocalScanDepth     int                 `json:"localScanDepth"`
-	AutoSyncRemote     bool                `json:"autoSyncRemote"`
-	CacheEnabled       bool                `json:"cacheEnabled"`
-	CacheLimitGB       int                 `json:"cacheLimitGb"`
-	RemoteSaveTemplate string              `json:"remoteSaveTemplate"`
-	RemoteDelayBase    float64             `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom  float64             `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff      float64             `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff   float64             `json:"remoteMaxBackoffSeconds"`
-	CircleAutoRefreshDays int               `json:"circleAutoRefreshDays"`
-	DataRoot           string              `json:"dataRoot"`
-	CacheRoot          string              `json:"cacheRoot"`
-	FileSources        []fileSourceSummary `json:"fileSources"`
+	LocalScanDepth        int                 `json:"localScanDepth"`
+	AutoSyncRemote        bool                `json:"autoSyncRemote"`
+	CacheEnabled          bool                `json:"cacheEnabled"`
+	CacheLimitGB          int                 `json:"cacheLimitGb"`
+	RemoteSaveTemplate    string              `json:"remoteSaveTemplate"`
+	RemoteDelayBase       float64             `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom     float64             `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff         float64             `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff      float64             `json:"remoteMaxBackoffSeconds"`
+	CircleAutoRefreshDays int                 `json:"circleAutoRefreshDays"`
+	DataRoot              string              `json:"dataRoot"`
+	CacheRoot             string              `json:"cacheRoot"`
+	FileSources           []fileSourceSummary `json:"fileSources"`
 }
 
 type fileSourceSummary struct {
@@ -240,16 +240,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth     *int     `json:"localScanDepth"`
-		AutoSyncRemote     *bool    `json:"autoSyncRemote"`
-		CacheEnabled       *bool    `json:"cacheEnabled"`
-		CacheLimitGB       *int     `json:"cacheLimitGb"`
-		RemoteSaveTemplate *string  `json:"remoteSaveTemplate"`
-		RemoteDelayBase    *float64 `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom  *float64 `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff      *float64 `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff   *float64 `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays *int   `json:"circleAutoRefreshDays"`
+		LocalScanDepth        *int     `json:"localScanDepth"`
+		AutoSyncRemote        *bool    `json:"autoSyncRemote"`
+		CacheEnabled          *bool    `json:"cacheEnabled"`
+		CacheLimitGB          *int     `json:"cacheLimitGb"`
+		RemoteSaveTemplate    *string  `json:"remoteSaveTemplate"`
+		RemoteDelayBase       *float64 `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom     *float64 `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff         *float64 `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff      *float64 `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays *int     `json:"circleAutoRefreshDays"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -2036,6 +2036,30 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	`, workID, providerID, code, string(rawWork)); err != nil {
 		return 0, err
 	}
+	if remoteWork.Circle != nil && strings.TrimSpace(remoteWork.Circle.Name) != "" {
+		var partyID int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM party
+			WHERE party_type IN ('circle', 'brand', 'maker')
+				AND LOWER(display_name) = LOWER(?)
+			ORDER BY id ASC
+			LIMIT 1
+		`, strings.TrimSpace(remoteWork.Circle.Name)).Scan(&partyID); err == nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
+				VALUES (?, ?, 'circle', ?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+					provider_id = excluded.provider_id,
+					source = excluded.source,
+					updated_at = CURRENT_TIMESTAMP
+			`, workID, partyID, providerID, "remote_source"); err != nil {
+				return 0, err
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+	}
 	return workID, nil
 }
 
@@ -2283,19 +2307,19 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		return appSettingsResponse{}, err
 	}
 	return appSettingsResponse{
-		LocalScanDepth:     s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		AutoSyncRemote:     s.settingBool(r, "remote_auto_sync_enabled", false) || s.settingBool(r, "remote_cache_enabled", false),
-		CacheEnabled:       s.settingBool(r, "remote_cache_enabled", false),
-		CacheLimitGB:       s.settingInt(r, "remote_cache_limit_gb", 20),
-		RemoteSaveTemplate: s.settingString(r, "remote_save_root_template", "/data/<source_name>/<work_code>"),
-		RemoteDelayBase:    s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
-		RemoteDelayRandom:  s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
-		RemoteBackoff:      s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
-		RemoteMaxBackoff:   s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		LocalScanDepth:        s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		AutoSyncRemote:        s.settingBool(r, "remote_auto_sync_enabled", false) || s.settingBool(r, "remote_cache_enabled", false),
+		CacheEnabled:          s.settingBool(r, "remote_cache_enabled", false),
+		CacheLimitGB:          s.settingInt(r, "remote_cache_limit_gb", 20),
+		RemoteSaveTemplate:    s.settingString(r, "remote_save_root_template", "/data/<source_name>/<work_code>"),
+		RemoteDelayBase:       s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:     s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:         s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:      s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		CircleAutoRefreshDays: s.settingInt(r, "circle_auto_refresh_days", 30),
-		DataRoot:           s.cfg.DataRoot,
-		CacheRoot:          s.cfg.CacheRoot,
-		FileSources:        sources,
+		DataRoot:              s.cfg.DataRoot,
+		CacheRoot:             s.cfg.CacheRoot,
+		FileSources:           sources,
 	}, nil
 }
 
