@@ -1809,18 +1809,29 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
 		return
 	}
-	runID, err := s.recordRemoteBulkWorkflow(r.Context(), payload.SourceID, payload.Action, codes)
+	result, err := s.runRemoteBulkWorkflow(context.WithoutCancel(r.Context()), payload.SourceID, payload.Action, codes)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"runId": runID, "sourceId": payload.SourceID, "action": payload.Action, "codes": codes})
+	writeJSON(w, http.StatusAccepted, result)
 }
 
-func (s *Server) recordRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (int64, error) {
+type remoteBulkWorkflowResult struct {
+	RunID     int64    `json:"runId"`
+	SourceID  int64    `json:"sourceId"`
+	Action    string   `json:"action"`
+	Codes     []string `json:"codes"`
+	Status    string   `json:"status"`
+	Synced    int      `json:"synced"`
+	Fetched   int      `json:"fetched"`
+	ChildRuns []int64  `json:"childRuns"`
+}
+
+func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return remoteBulkWorkflowResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work sync or save workflows.", map[string]any{
@@ -1830,27 +1841,80 @@ func (s *Server) recordRemoteBulkWorkflow(ctx context.Context, sourceID int64, a
 		},
 	})
 	if err != nil {
-		return 0, err
+		return remoteBulkWorkflowResult{}, err
 	}
 	input := map[string]any{"source_id": sourceID, "action": action, "codes": codes}
 	summary := map[string]any{"source_id": sourceID, "action": action, "works": len(codes)}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "succeeded", "manual", action, input, summary)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "running", "manual", action, input, summary)
 	if err != nil {
-		return 0, err
+		return remoteBulkWorkflowResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "select", NodeType: "select_remote_works", DisplayName: "Select remote works", Position: 1, Status: "succeeded",
 		Input: input, Output: map[string]any{"works": len(codes)},
 	}); err != nil {
-		return 0, err
+		return remoteBulkWorkflowResult{}, err
 	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "succeeded",
+	dispatchNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "running",
 		Input: map[string]any{"action": action}, Output: map[string]any{"expected_child_runs": len(codes)},
-	}); err != nil {
-		return 0, err
+	})
+	if err != nil {
+		return remoteBulkWorkflowResult{}, err
 	}
-	return runID, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return remoteBulkWorkflowResult{}, err
+	}
+
+	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded"}
+	for _, code := range codes {
+		if action == "sync" || action == "sync_save" {
+			syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
+			if err != nil {
+				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
+				return remoteBulkWorkflowResult{}, err
+			}
+			result.Synced++
+			result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
+		}
+		if action == "save" || action == "sync_save" {
+			saveResult, err := s.runRemoteWorkSave(ctx, sourceID, code, []string{})
+			if err != nil {
+				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
+				return remoteBulkWorkflowResult{}, err
+			}
+			result.Fetched++
+			result.ChildRuns = append(result.ChildRuns, saveResult.RunID)
+		}
+	}
+	if err := s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "succeeded", result, nil); err != nil {
+		return remoteBulkWorkflowResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, dispatchNodeID int64, status string, result remoteBulkWorkflowResult, runErr error) error {
+	result.Status = status
+	output := map[string]any{
+		"action":     result.Action,
+		"source_id":  result.SourceID,
+		"codes":      result.Codes,
+		"synced":     result.Synced,
+		"fetched":    result.Fetched,
+		"child_runs": result.ChildRuns,
+	}
+	errorMessage := ""
+	if runErr != nil {
+		errorMessage = runErr.Error()
+		output["error"] = errorMessage
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), errorMessage, dispatchNodeID); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), runID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) RunStartupWorkflows(ctx context.Context) error {

@@ -814,6 +814,6 @@ export const api = {
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   recordRemoteBulkRun: (payload: { action: "sync" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
-    postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[] }>("/api/workflow-runs/remote-bulk", payload),
+    postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };
