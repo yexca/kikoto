@@ -6,15 +6,16 @@ import { navItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LibraryPage } from "@/pages/LibraryPage";
-import { NowPlayingPage } from "@/pages/NowPlayingPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { WorkflowsPage } from "@/pages/WorkflowsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { UsersPage } from "@/pages/UsersPage";
+import { FavoritesPage } from "@/pages/FavoritesPage";
+import { CreatorWorksPage } from "@/pages/CreatorWorksPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
-const mobileTabs: PageID[] = ["library", "favorites", "now-playing", "settings"];
+const mobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 
 export function App() {
@@ -116,12 +117,14 @@ function AuthenticatedApp() {
 
           <div className="px-4 py-5 lg:px-6">
             {page === "library" && <LibraryPage />}
-            {page === "now-playing" && <NowPlayingPage />}
+            {page === "favorites" && <FavoritesPage />}
+            {page === "circles" && <CreatorWorksPage kind="circle" />}
+            {page === "voice-actors" && <CreatorWorksPage kind="voice" />}
             {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
             {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
             {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-            {!["library", "now-playing", "settings", "workflows", "activity", "users"].includes(page) && (
+            {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
               <PlaceholderPage title={activeItem?.label ?? "Page"} />
             )}
           </div>
