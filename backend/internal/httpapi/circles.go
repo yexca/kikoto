@@ -49,17 +49,18 @@ type circleDetail struct {
 }
 
 type circleCatalogWork struct {
-	WorkID        *int64             `json:"workId"`
-	PrimaryCode   string             `json:"primaryCode"`
-	Title         string             `json:"title"`
-	ReleaseDate   *string            `json:"releaseDate"`
-	CoverURL      string             `json:"coverUrl"`
-	DLsiteURL     string             `json:"dlsiteUrl"`
-	CatalogStatus string             `json:"catalogStatus"`
-	ListeningMark string             `json:"listeningMark"`
-	Local         bool               `json:"local"`
-	Remote        bool               `json:"remote"`
-	SourceTags    []circleSourceStat `json:"sourceTags"`
+	WorkID          *int64             `json:"workId"`
+	PrimaryCode     string             `json:"primaryCode"`
+	Title           string             `json:"title"`
+	ReleaseDate     *string            `json:"releaseDate"`
+	CoverURL        string             `json:"coverUrl"`
+	DLsiteURL       string             `json:"dlsiteUrl"`
+	CatalogStatus   string             `json:"catalogStatus"`
+	DLsiteAvailable bool               `json:"dlsiteAvailable"`
+	ListeningMark   string             `json:"listeningMark"`
+	Local           bool               `json:"local"`
+	Remote          bool               `json:"remote"`
+	SourceTags      []circleSourceStat `json:"sourceTags"`
 }
 
 type circleRefreshRequest struct {
@@ -274,6 +275,46 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	externalID := normalizeMakerID(r.PathValue("externalId"))
+	if !dlsiteMakerIDPattern.MatchString(externalID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if !regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`).MatchString(code) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		return
+	}
+	if err := s.ensureCircleSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	providerID, err := s.metadataProviderID(r.Context(), "dlsite", "DLsite")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), `
+		DELETE FROM party_catalog_item
+		WHERE party_id = ? AND provider_id = ? AND UPPER(primary_code) = ?
+	`, partyID, providerID, code)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	deleted, _ := result.RowsAffected()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
+}
+
 func (s *Server) ensureCircleSchema(ctx context.Context) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS party (
@@ -311,6 +352,7 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 			release_date TEXT,
 			url TEXT NOT NULL DEFAULT '',
 			catalog_status TEXT NOT NULL DEFAULT 'imported',
+			dlsite_available INTEGER NOT NULL DEFAULT 1,
 			raw_json TEXT NOT NULL DEFAULT '{}',
 			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(party_id, provider_id, primary_code)
@@ -331,6 +373,9 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return err
 		}
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE party_catalog_item ADD COLUMN dlsite_available INTEGER NOT NULL DEFAULT 1"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return err
 	}
 	return nil
 }
@@ -497,13 +542,14 @@ func (s *Server) upsertPartyCatalogItem(ctx context.Context, partyID int64, code
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date, url, catalog_status, raw_json, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date, url, catalog_status, dlsite_available, raw_json, last_seen_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(party_id, provider_id, primary_code) DO UPDATE SET
 			title = excluded.title,
 			release_date = excluded.release_date,
 			url = excluded.url,
 			catalog_status = excluded.catalog_status,
+			dlsite_available = 1,
 			raw_json = excluded.raw_json,
 			last_seen_at = CURRENT_TIMESTAMP
 	`, partyID, providerID, strings.ToUpper(strings.TrimSpace(code)), title, releaseDate, url, status, raw)
@@ -668,6 +714,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			catalog.release_date,
 			catalog.url,
 			catalog.catalog_status,
+			COALESCE(catalog.dlsite_available, 1),
 			work.id,
 			COALESCE(user_work_state.listening_status, 'none')
 		FROM party_catalog_item AS catalog
@@ -686,11 +733,13 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var item circleCatalogWork
 		var release sql.NullString
 		var workID sql.NullInt64
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &workID, &item.ListeningMark); err != nil {
+		var dlsiteAvailable int
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.ListeningMark); err != nil {
 			return nil, err
 		}
 		item.ReleaseDate = nullableString(release)
 		item.WorkID = nullableInt64(workID)
+		item.DLsiteAvailable = dlsiteAvailable != 0
 		item.CoverURL = s.coverURL(item.PrimaryCode)
 		tags, err := s.workSourceTags(ctx, item.PrimaryCode)
 		if err != nil {
@@ -820,6 +869,7 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 		"work_codes":    profile.WorkCodes,
 		"pages_fetched": profile.PagesFetched,
 		"reached_end":   profile.ReachedEnd,
+		"total_works":   profile.TotalWorks,
 	})
 	if err != nil {
 		return err
@@ -843,33 +893,21 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 		return err
 	}
 	if pruneMissing {
-		if len(profile.WorkCodes) == 0 {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM party_catalog_item WHERE party_id = ? AND provider_id = ?", partyID, providerID); err != nil {
-				return err
-			}
-		} else {
-			placeholders := make([]string, 0, len(profile.WorkCodes))
-			args := []any{partyID, providerID}
-			for _, code := range profile.WorkCodes {
-				placeholders = append(placeholders, "?")
-				args = append(args, strings.ToUpper(strings.TrimSpace(code)))
-			}
-			query := fmt.Sprintf("DELETE FROM party_catalog_item WHERE party_id = ? AND provider_id = ? AND UPPER(primary_code) NOT IN (%s)", strings.Join(placeholders, ","))
-			if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-				return err
-			}
+		if _, err := tx.ExecContext(ctx, "UPDATE party_catalog_item SET dlsite_available = 0 WHERE party_id = ? AND provider_id = ?", partyID, providerID); err != nil {
+			return err
 		}
 	}
 	for _, code := range profile.WorkCodes {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, url, catalog_status, raw_json, last_seen_at)
-			VALUES (?, ?, ?, ?, ?, 'catalog', ?, CURRENT_TIMESTAMP)
+			INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, url, catalog_status, dlsite_available, raw_json, last_seen_at)
+			VALUES (?, ?, ?, ?, ?, 'catalog', 1, ?, CURRENT_TIMESTAMP)
 			ON CONFLICT(party_id, provider_id, primary_code) DO UPDATE SET
 				url = excluded.url,
 				catalog_status = CASE
 					WHEN party_catalog_item.catalog_status = 'imported' THEN party_catalog_item.catalog_status
 					ELSE excluded.catalog_status
 				END,
+				dlsite_available = 1,
 				raw_json = excluded.raw_json,
 				last_seen_at = CURRENT_TIMESTAMP
 		`, partyID, providerID, code, code, dlsiteURL(code), string(raw)); err != nil {

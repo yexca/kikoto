@@ -49,6 +49,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
+	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
@@ -285,26 +286,26 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 }
 
 type workDetail struct {
-	ID              int64             `json:"id"`
-	PrimaryCode     string            `json:"primaryCode"`
-	WorkType        string            `json:"workType"`
-	Title           string            `json:"title"`
-	TitleKana       string            `json:"titleKana"`
-	Description     string            `json:"description"`
-	ReleaseDate     *string           `json:"releaseDate"`
-	AgeRating       string            `json:"ageRating"`
-	DurationSeconds *int64            `json:"durationSeconds"`
-	CreatedAt       string            `json:"createdAt"`
-	UpdatedAt       string            `json:"updatedAt"`
-	CoverURL        string            `json:"coverUrl"`
-	DLsiteURL       string            `json:"dlsiteUrl"`
-	Circle          string            `json:"circle"`
+	ID               int64             `json:"id"`
+	PrimaryCode      string            `json:"primaryCode"`
+	WorkType         string            `json:"workType"`
+	Title            string            `json:"title"`
+	TitleKana        string            `json:"titleKana"`
+	Description      string            `json:"description"`
+	ReleaseDate      *string           `json:"releaseDate"`
+	AgeRating        string            `json:"ageRating"`
+	DurationSeconds  *int64            `json:"durationSeconds"`
+	CreatedAt        string            `json:"createdAt"`
+	UpdatedAt        string            `json:"updatedAt"`
+	CoverURL         string            `json:"coverUrl"`
+	DLsiteURL        string            `json:"dlsiteUrl"`
+	Circle           string            `json:"circle"`
 	CircleExternalID string            `json:"circleExternalId"`
-	Rating          *float64          `json:"rating"`
-	Tags            []string          `json:"tags"`
-	VoiceActors     []string          `json:"voiceActors"`
-	ListeningStatus string            `json:"listeningStatus"`
-	MediaItems      []mediaItemDetail `json:"mediaItems"`
+	Rating           *float64          `json:"rating"`
+	Tags             []string          `json:"tags"`
+	VoiceActors      []string          `json:"voiceActors"`
+	ListeningStatus  string            `json:"listeningStatus"`
+	MediaItems       []mediaItemDetail `json:"mediaItems"`
 }
 
 type mediaItemDetail struct {

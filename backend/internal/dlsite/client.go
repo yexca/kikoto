@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -73,6 +74,7 @@ type MakerProfile struct {
 	RawHTML      string   `json:"raw_html"`
 	PagesFetched int      `json:"pages_fetched"`
 	ReachedEnd   bool     `json:"reached_end"`
+	TotalWorks   int      `json:"total_works"`
 }
 
 type MakerCatalogOptions struct {
@@ -126,7 +128,7 @@ func (c *Client) FetchMakerCatalog(ctx context.Context, makerID string, options 
 	if options.MaxPages <= 0 {
 		options.MaxPages = 1
 	}
-	if strings.ToLower(strings.TrimSpace(options.Mode)) == "full" && options.MaxPages < 100 {
+	if strings.ToLower(strings.TrimSpace(options.Mode)) == "full" && options.MaxPages < 1000 {
 		options.MaxPages = 100
 	}
 	var lastErr error
@@ -279,7 +281,8 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 	if mode == "" {
 		mode = "incremental"
 	}
-	for page := 1; page <= options.MaxPages; page++ {
+	maxPages := options.MaxPages
+	for page := 1; page <= maxPages; page++ {
 		if page > 1 && options.Delay > 0 {
 			timer := time.NewTimer(options.Delay)
 			select {
@@ -300,10 +303,27 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 		if page == 1 {
 			firstProfile = profile
 			firstRaw = profile.RawHTML
+			if mode == "full" {
+				pageTotal := pagesFromTotal(profile.TotalWorks, 50)
+				pageNoTotal := parsePageNoMax(profile.RawHTML)
+				if pageNoTotal > pageTotal {
+					pageTotal = pageNoTotal
+				}
+				if pageTotal > 0 && pageTotal < maxPages {
+					maxPages = pageTotal
+				}
+			}
 		}
 		pagesFetched++
 		pageNew := 0
-		for _, code := range profile.WorkCodes {
+		pageCodes := profile.WorkCodes
+		if mode != "full" {
+			if beforeKnown, foundKnown := codesBeforeFirstKnown(pageCodes, knownCodes); foundKnown {
+				pageCodes = beforeKnown
+				reachedEnd = true
+			}
+		}
+		for _, code := range pageCodes {
 			if seenCodes[code] {
 				continue
 			}
@@ -315,8 +335,7 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 			reachedEnd = true
 			break
 		}
-		if mode != "full" && pageContainsKnown(profile.WorkCodes, knownCodes) {
-			reachedEnd = true
+		if reachedEnd {
 			break
 		}
 	}
@@ -374,6 +393,7 @@ func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID
 		WorkCodes:    parseWorkCodes(rawHTML),
 		RawHTML:      rawHTML,
 		PagesFetched: 1,
+		TotalWorks:   parsePageTotal(rawHTML),
 	}, nil
 }
 
@@ -466,8 +486,11 @@ func candidateMakerSites(makerID string) []string {
 }
 
 var (
-	titlePattern    = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	workLinkPattern = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	titlePattern      = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	workLinkPattern   = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	pageTotalPattern  = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
+	numberTextPattern = regexp.MustCompile(`[0-9][0-9,]*`)
+	pagePathPattern   = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
 )
 
 func parseMakerName(rawHTML string) string {
@@ -506,14 +529,10 @@ func parseWorkCodes(rawHTML string) []string {
 func makerProfileURLs(baseURL string, site string, makerID string, page int) []string {
 	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID))
 	if page <= 1 {
-		return []string{
-			fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/per_page/100/show_type/3/page/1/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID)),
-			endpoint,
-		}
+		return []string{endpoint}
 	}
 	return []string{
-		fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/per_page/100/show_type/3/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
-		fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/options%%5B0%%5D/JPN/options%%5B1%%5D/NM/per_page/100/show_type/3/hd/1/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
+		fmt.Sprintf("%s/%s/circle/profile/=/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
 	}
 }
 
@@ -531,16 +550,51 @@ func normalizeCodeSet(codes map[string]bool) map[string]bool {
 	return result
 }
 
-func pageContainsKnown(codes []string, known map[string]bool) bool {
+func codesBeforeFirstKnown(codes []string, known map[string]bool) ([]string, bool) {
 	if len(known) == 0 {
-		return false
+		return codes, false
 	}
-	for _, code := range codes {
+	for index, code := range codes {
 		if known[strings.ToUpper(strings.TrimSpace(code))] {
-			return true
+			return codes[:index], true
 		}
 	}
-	return false
+	return codes, false
+}
+
+func parsePageTotal(rawHTML string) int {
+	match := pageTotalPattern.FindStringSubmatch(rawHTML)
+	if len(match) < 2 {
+		return 0
+	}
+	text := html.UnescapeString(stripTags(match[1]))
+	value := strings.ReplaceAll(numberTextPattern.FindString(text), ",", "")
+	if value == "" {
+		return 0
+	}
+	total, _ := strconv.Atoi(value)
+	return total
+}
+
+func parsePageNoMax(rawHTML string) int {
+	maxPage := 0
+	for _, match := range pagePathPattern.FindAllStringSubmatch(rawHTML, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		page, _ := strconv.Atoi(match[1])
+		if page > maxPage {
+			maxPage = page
+		}
+	}
+	return maxPage
+}
+
+func pagesFromTotal(total int, perPage int) int {
+	if total <= 0 || perPage <= 0 {
+		return 0
+	}
+	return (total + perPage - 1) / perPage
 }
 
 func stripTags(value string) string {

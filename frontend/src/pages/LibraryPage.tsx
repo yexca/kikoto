@@ -77,7 +77,8 @@ export function LibraryPage() {
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
-  const [cardLayout, setCardLayout] = useState<"single" | "adaptive">("adaptive");
+  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
+  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
 
   useEffect(() => {
     api
@@ -268,20 +269,7 @@ export function LibraryPage() {
           <span>Search title, code, circle, tag, or creator</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="flex rounded-md border bg-card p-1 sm:hidden" aria-label="Card layout">
-            <button
-              className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "single" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              onClick={() => setCardLayout("single")}
-            >
-              1
-            </button>
-            <button
-              className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "adaptive" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              onClick={() => setCardLayout("adaptive")}
-            >
-              2
-            </button>
-          </div>
+          <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
           <select
             className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
             value={statusFilter}
@@ -328,7 +316,7 @@ export function LibraryPage() {
           }}
         />
       ) : (
-        <section className={workGridClassName(cardLayout)}>
+        <section className={workGridClassName(mobileColumns, desktopColumns)}>
           {visibleWorks.map((work) => (
             <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
           ))}
@@ -529,7 +517,7 @@ function RemoteSourcePanel({
           <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
         </Card>
       ) : (
-        <section className={workGridClassName("adaptive")}>
+        <section className={workGridClassName(2, 6)}>
           {visibleWorks.map((work) => (
             <RemoteWorkCard
               key={work.remoteId}
@@ -802,10 +790,49 @@ function WorkCardBody({
   );
 }
 
-function workGridClassName(mode: "single" | "adaptive") {
-  return mode === "single"
-    ? "grid grid-cols-1 gap-4"
-    : "grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,600px),1fr))]";
+function ColumnPicker({
+  mobileColumns,
+  desktopColumns,
+  onMobileChange,
+  onDesktopChange,
+}: {
+  mobileColumns: 1 | 2;
+  desktopColumns: 4 | 6 | 8;
+  onMobileChange: (value: 1 | 2) => void;
+  onDesktopChange: (value: 4 | 6 | 8) => void;
+}) {
+  return (
+    <>
+      <div className="flex rounded-md border bg-card p-1 sm:hidden" aria-label="Mobile card columns">
+        {[1, 2].map((value) => (
+          <button
+            key={value}
+            className={`h-7 rounded px-2 text-xs font-medium ${mobileColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            onClick={() => onMobileChange(value as 1 | 2)}
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+      <div className="hidden rounded-md border bg-card p-1 sm:flex" aria-label="Desktop card columns">
+        {[4, 6, 8].map((value) => (
+          <button
+            key={value}
+            className={`h-7 rounded px-2 text-xs font-medium ${desktopColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            onClick={() => onDesktopChange(value as 4 | 6 | 8)}
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
+  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
+  const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
+  return `grid gap-4 ${mobileClass} ${desktopClass}`;
 }
 
 function IconButton({

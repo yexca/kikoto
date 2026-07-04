@@ -416,6 +416,7 @@ export type CircleCatalogWork = {
   coverUrl: string;
   dlsiteUrl: string;
   catalogStatus: string;
+  dlsiteAvailable: boolean;
   listeningMark: string;
   local: boolean;
   remote: boolean;
@@ -575,6 +576,8 @@ export const api = {
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
   refreshCircle: (externalId: string, payload: { mode: "incremental" | "full"; productMode: "available" | "all" }) =>
     postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
+  deleteCircleCatalogWork: (externalId: string, code: string) =>
+    deleteJSON<{ ok: boolean; deleted: number }>(`/api/circles/${encodeURIComponent(externalId)}/catalog/${encodeURIComponent(code)}`),
   updateMediaProgress: (
     id: number,
     payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },
