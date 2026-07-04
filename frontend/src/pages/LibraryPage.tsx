@@ -443,7 +443,9 @@ function RemoteSourcePanel({
   const isLoading = result === null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const [message, setMessage] = useState("");
   const { page, pageSize, query } = viewState;
 
@@ -483,7 +485,7 @@ function RemoteSourcePanel({
   const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
   const selectedSaveable = selectedWorks;
-  const selectionActive = bulkCodes.size > 0;
+  const selectionActive = selectionMode;
   const canGoNext = result !== null && result.works.length >= pageSize;
   const canGoPrevious = page > 1;
 
@@ -510,12 +512,13 @@ function RemoteSourcePanel({
     setMessage("");
     let synced = 0;
     try {
+      const parent = await api.recordRemoteBulkRun({ action: "sync", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) }).catch(() => null);
       for (const work of selectedSyncable) {
         const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "bulk_manual_fetch");
         synced++;
         await onSynced(result.workId);
       }
-      setMessage(`Synced ${synced} remote-only works.`);
+      setMessage(parent ? `Bulk workflow #${parent.runId}: synced ${synced} remote-only works.` : `Synced ${synced} remote-only works.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk sync failed.");
     } finally {
@@ -525,21 +528,47 @@ function RemoteSourcePanel({
 
   const bulkSaveSelected = async () => {
     if (selectedSaveable.length === 0) return;
+    setSaveConfirm({ codes: selectedSaveable.map((work) => work.primaryCode), run: runBulkSaveSelected });
+  };
+
+  const runBulkSaveSelected = async () => {
     setIsBulkBusy(true);
     setMessage("");
     let saved = 0;
     try {
+      const parent = await api.recordRemoteBulkRun({ action: "save", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) }).catch(() => null);
       for (const work of selectedSaveable) {
         const result = await api.saveRemoteSourceWork(source.id, work.primaryCode, []);
         saved++;
         await onSynced(result.workId);
       }
-      setMessage(`Saved ${saved} selected works.`);
+      setMessage(parent ? `Bulk workflow #${parent.runId}: saved ${saved} selected works.` : `Saved ${saved} selected works.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk save failed.");
     } finally {
       setIsBulkBusy(false);
+      setSaveConfirm(null);
     }
+  };
+
+  const saveSingle = (work: RemoteWork) => {
+    setSaveConfirm({
+      codes: [work.primaryCode],
+      run: async () => {
+        setIsSyncingCode(work.primaryCode);
+        setMessage("");
+        try {
+          const result = await api.saveRemoteSourceWork(source.id, work.primaryCode, []);
+          setMessage(`Saved ${result.primaryCode} through workflow run #${result.runId}.`);
+          await onSynced(result.workId);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Save failed.");
+        } finally {
+          setIsSyncingCode(null);
+          setSaveConfirm(null);
+        }
+      },
+    });
   };
 
   return (
@@ -549,9 +578,12 @@ function RemoteSourcePanel({
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
           <p className="text-sm text-muted-foreground">Browse source results without importing until a user action needs local state.</p>
         </div>
-        <div className="flex gap-2">
-          <label className="flex items-center gap-2 rounded-md border bg-card px-2 text-xs text-muted-foreground">
-            <input type="checkbox" checked={selectableWorks.length > 0 && selectedWorks.length === selectableWorks.length} onChange={(event) => toggleAllVisible(event.target.checked)} />
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground">
+            <input type="checkbox" checked={selectionMode} onChange={(event) => {
+              setSelectionMode(event.target.checked);
+              if (!event.target.checked) setBulkCodes(new Set());
+            }} />
             Select
           </label>
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
@@ -596,9 +628,14 @@ function RemoteSourcePanel({
           </IconButton>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+      {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
         <div className="text-muted-foreground">{selectedWorks.length} selected</div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => toggleAllVisible(true)}>Select all</Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            setBulkCodes(new Set());
+            setSelectionMode(false);
+          }}>Cancel selection</Button>
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
             <DownloadCloud className="h-4 w-4" />
             Sync {selectedSyncable.length}
@@ -608,7 +645,7 @@ function RemoteSourcePanel({
             Save {selectedSaveable.length}
           </Button>
         </div>
-      </div>
+      </div>}
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
       {isLoading ? (
         <Card>
@@ -632,10 +669,17 @@ function RemoteSourcePanel({
               onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
               onFetchAndMark={() => void syncWork(work, "mark_interest")}
-              onSave={() => void api.saveRemoteSourceWork(source.id, work.primaryCode, []).then((result) => onSynced(result.workId)).catch((error) => setMessage(error instanceof Error ? error.message : "Save failed."))}
+              onSave={() => saveSingle(work)}
             />
           ))}
         </section>
+      )}
+      {saveConfirm && (
+        <SaveConfirmModal
+          count={saveConfirm.codes.length}
+          onClose={() => setSaveConfirm(null)}
+          onConfirm={() => void saveConfirm.run()}
+        />
       )}
     </section>
   );
@@ -689,6 +733,11 @@ function WorkCard({
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
+          <Button variant="ghost" size="icon" asChild title="Open DLsite">
+            <a href={work.dlsiteUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
           <div className="relative" ref={markMenuRef}>
             <IconButton
               title={`Mark: ${listeningStatusLabel(work.listeningStatus)}`}
@@ -708,14 +757,6 @@ function WorkCard({
                 }}
               />
             )}
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" asChild>
-              <a href={work.dlsiteUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                <ExternalLink className="h-4 w-4" />
-                DLsite
-              </a>
-            </Button>
           </div>
         </div>
       </CardContent>
@@ -769,27 +810,32 @@ function RemoteWorkCard({
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
-          <IconButton
-            title="Fetch remote info"
-            disabled={isBusy || !work.primaryCode}
-            onClick={(event) => {
-              event.stopPropagation();
-              onFetch();
-            }}
-          >
-            <DownloadCloud className="h-4 w-4" />
-          </IconButton>
-          <IconButton
-            title="Save to library"
-            disabled={isBusy || !work.primaryCode}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSave();
-            }}
-          >
-            <HardDriveDownload className="h-4 w-4" />
-          </IconButton>
+          <Button variant="ghost" size="icon" asChild title="Open DLsite">
+            <a href={dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
           <div className="flex items-center gap-1">
+            <IconButton
+              title="Fetch remote info"
+              disabled={isBusy || !work.primaryCode}
+              onClick={(event) => {
+                event.stopPropagation();
+                onFetch();
+              }}
+            >
+              <DownloadCloud className="h-4 w-4" />
+            </IconButton>
+            <IconButton
+              title="Save to library"
+              disabled={isBusy || !work.primaryCode}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSave();
+              }}
+            >
+              <HardDriveDownload className="h-4 w-4" />
+            </IconButton>
             <IconButton
               title="Fetch and mark"
               disabled={isBusy || !work.primaryCode}
@@ -804,6 +850,21 @@ function RemoteWorkCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Save remote directory</h3>
+        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>Save</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1006,6 +1067,11 @@ function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
   const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
   const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
   return `grid gap-4 ${mobileClass} ${desktopClass}`;
+}
+
+function dlsiteWorkURL(code: string) {
+  const site = code.toUpperCase().startsWith("RJ") ? "maniax" : "home";
+  return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
 }
 
 function IconButton({
