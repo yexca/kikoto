@@ -450,6 +450,22 @@ export type VoiceUserTag = {
   color: string;
 };
 
+export type VoiceAlias = {
+  id: number;
+  alias: string;
+  source: string;
+  createdAt: string;
+};
+
+export type VoiceAliasCandidate = {
+  personId: number;
+  displayName: string;
+  aliases: VoiceAlias[];
+  knownWorks: number;
+  localWorks: number;
+  remoteWorks: number;
+};
+
 export type VoiceKnownWork = {
   workId: number;
   primaryCode: string;
@@ -499,6 +515,7 @@ export type VoiceRemoteSourceSet = {
 };
 
 export type VoiceDetail = VoiceSummary & {
+  aliasRecords: VoiceAlias[];
   works: VoiceKnownWork[];
   remoteMatches: VoiceRemoteSourceSet[];
 };
@@ -664,6 +681,19 @@ export const api = {
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
   getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
+  listVoiceAliasCandidates: (personId: number, query = "") =>
+    getJSON<VoiceAliasCandidate[]>(
+      `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
+    ),
+  createVoiceAlias: (personId: number, alias: string) =>
+    postJSONBody<VoiceAlias[]>(`/api/voices/${personId}/aliases`, { alias }),
+  deleteVoiceAlias: (personId: number, aliasId: number) =>
+    deleteJSON<{ deleted: number; aliases: VoiceAlias[] }>(`/api/voices/${personId}/aliases/${aliasId}`),
+  mergeVoiceAliasCandidate: (personId: number, sourcePersonId: number) =>
+    postJSONBody<{ targetPersonId: number; sourcePersonId: number; targetName: string; mergedName: string }>(
+      `/api/voices/${personId}/merge`,
+      { sourcePersonId },
+    ),
   updateVoiceUserState: (personId: number, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload),
   setVoiceUserTags: (personId: number, tags: string[]) =>

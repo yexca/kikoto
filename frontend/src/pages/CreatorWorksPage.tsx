@@ -3,29 +3,42 @@ import {
   ChevronRight,
   Cloud,
   Database,
+  ExternalLink,
   FileAudio,
+  GitMerge,
   HardDrive,
   Layers3,
+  ListChecks,
   Loader2,
   NotebookPen,
+  Plus,
   Search,
   SlidersHorizontal,
   Star,
   Tags,
+  Trash2,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceDetail, type VoiceKnownWork, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "local" | "remote" | "missing";
 type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
 const voicePageSizeOptions = [20, 40, 80];
 const workPageSizeOptions = [24, 48] as const;
+const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
+  { value: "none", label: "Unmarked" },
+  { value: "want_to_listen", label: "Want" },
+  { value: "listening", label: "Listening" },
+  { value: "finished", label: "Finished" },
+  { value: "relisten", label: "Relisten" },
+  { value: "paused", label: "Paused" },
+];
 
 export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
   if (kind !== "voice") {
@@ -291,6 +304,28 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
+  const refreshDetail = async () => {
+    const item = await api.getVoice(personId);
+    setDetail(item);
+    setRatingDraft(item.rating ?? 0);
+    setNoteDraft(item.note);
+    setTagDraft(item.userTags.map((tag) => tag.name).join(", "));
+  };
+
+  const updateWorkMark = async (work: VoiceKnownWork | VoiceRemoteWork, status: ListeningStatus) => {
+    const workId = "workId" in work ? work.workId : null;
+    if (!workId) return;
+    try {
+      const result = await api.updateWorkUserState(workId, { listeningStatus: status });
+      setDetail((current) => current ? {
+        ...current,
+        works: current.works.map((item) => item.workId === workId ? { ...item, listeningMark: result.listeningStatus } : item),
+      } : current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Listening mark update failed.");
+    }
+  };
+
   if (isLoading) {
     return <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading voice actor</div>;
   }
@@ -399,7 +434,16 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </CardContent>
         </Card>
 
-        <RemoteSourcePanel sources={detail.remoteMatches} />
+        <div className="space-y-5">
+          <AliasReviewPanel
+            personId={detail.personId}
+            aliases={detail.aliasRecords ?? []}
+            onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+            onMerged={() => void refreshDetail()}
+            onMessage={setMessage}
+          />
+          <RemoteSourcePanel sources={detail.remoteMatches} />
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -424,7 +468,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </div>
         </div>
         <div className={voiceWorkGridClassName(mobileColumns, desktopColumns)}>
-          {pageWorks.map((work) => <VoiceWorkCard key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`} work={work} />)}
+          {pageWorks.map((work) => (
+            <VoiceWorkCard
+              key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}
+              work={work}
+              onStatusChange={(status) => void updateWorkMark(work, status)}
+            />
+          ))}
           {pageWorks.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
         </div>
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
@@ -433,7 +483,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work }: { work: VoiceKnownWork | VoiceRemoteWork }) {
+function VoiceWorkCard({ work, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; onStatusChange: (status: ListeningStatus) => void }) {
   const isKnown = "local" in work;
   const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
@@ -441,22 +491,49 @@ function VoiceWorkCard({ work }: { work: VoiceKnownWork | VoiceRemoteWork }) {
   const cache = "cache" in work ? work.cache : work.hasCache;
   const cover = assetURL(work.coverUrl);
   const tags = "sourceTags" in work ? sourceTags(work.sourceTags) : [];
+  const sourceName = "sourceName" in work ? work.sourceName : "";
+  const workId = "workId" in work ? work.workId : null;
+  const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
+  const isUnavailable = !local && !remote && !cache;
+  const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
+  const [isMarkOpen, setIsMarkOpen] = useState(false);
+  const markMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isMarkOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (markMenuRef.current?.contains(target)) return;
+      setIsMarkOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMarkOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMarkOpen]);
+
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
-        <button className="block w-full text-left" onClick={() => openWorkRoute(work)}>
+        <button className={`block w-full text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`} disabled={!canOpen} onClick={() => openWorkRoute(work)}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
             {cover && <img src={cover} alt="" className="h-full w-full object-contain" loading="lazy" />}
-            <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode || "Remote"}</div>
+            <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode || sourceName || "Source"}</div>
           </div>
           <div className="flex min-h-52 flex-col gap-3 p-4">
             <div className="space-y-1">
               <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <div className="truncate text-xs text-muted-foreground">{work.circle || "Unknown circle"}{work.rating ? ` · ${work.rating}` : ""}</div>
+              <div className="truncate text-xs text-muted-foreground">{work.circle || sourceName || "Unknown circle"}{work.rating ? ` · ${work.rating}` : ""}</div>
             </div>
             <div className="flex min-h-6 flex-wrap gap-1.5">
               <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
               {cache && <Badge variant="secondary">Cache</Badge>}
+              {listeningMark !== "none" && <Badge variant="warning">{listeningStatusLabel(listeningMark)}</Badge>}
             </div>
             <div className="grid gap-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
@@ -468,13 +545,160 @@ function VoiceWorkCard({ work }: { work: VoiceKnownWork | VoiceRemoteWork }) {
               {tags.length > 0 ? tags.map((tag) => <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>{tag.displayName}</Badge>) : (
                 <>
                   {local && <Badge variant="secondary">Local</Badge>}
-                  {remote && <Badge variant="outline">Remote</Badge>}
+                  {remote && <Badge variant="outline">{sourceName || "Source"}</Badge>}
                   {!local && !remote && !cache && <Badge variant="warning">Unavailable</Badge>}
                 </>
               )}
             </div>
           </div>
         </button>
+        <div className="flex h-11 items-center justify-between gap-1 border-t px-3">
+          <div className="relative min-w-0" ref={markMenuRef}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={isUnavailable || workId === null}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsMarkOpen((value) => !value);
+              }}
+            >
+              <ListChecks className={listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
+              {listeningStatusLabel(listeningMark)}
+            </Button>
+            {isMarkOpen && (
+              <MarkMenu
+                value={normalizeListeningStatus(listeningMark)}
+                onChange={(next) => {
+                  setIsMarkOpen(false);
+                  onStatusChange(next);
+                }}
+              />
+            )}
+          </div>
+          <div className="flex min-w-0 items-center gap-1">
+            {sourceName && <span className="max-w-28 truncate text-xs text-muted-foreground">{sourceName}</span>}
+            <Button variant="ghost" size="sm" disabled={!canOpen} onClick={() => openWorkRoute(work)}>
+              <ExternalLink className="h-4 w-4" />
+              Open
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AliasReviewPanel({
+  personId,
+  aliases,
+  onAliasesChange,
+  onMerged,
+  onMessage,
+}: {
+  personId: number;
+  aliases: VoiceAlias[];
+  onAliasesChange: (aliases: VoiceAlias[]) => void;
+  onMerged: () => void;
+  onMessage: (message: string) => void;
+}) {
+  const [aliasDraft, setAliasDraft] = useState("");
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidates, setCandidates] = useState<VoiceAliasCandidate[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadCandidates = async () => {
+    setIsLoading(true);
+    try {
+      setCandidates(await api.listVoiceAliasCandidates(personId, candidateQuery));
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Alias candidate search failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadCandidates();
+  }, [personId]);
+
+  const addAlias = async () => {
+    if (!aliasDraft.trim()) return;
+    try {
+      const next = await api.createVoiceAlias(personId, aliasDraft);
+      onAliasesChange(next);
+      setAliasDraft("");
+      onMessage("Alias saved.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Alias save failed.");
+    }
+  };
+
+  const deleteAlias = async (alias: VoiceAlias) => {
+    try {
+      const result = await api.deleteVoiceAlias(personId, alias.id);
+      onAliasesChange(result.aliases);
+      onMessage(result.deleted > 0 ? "Alias deleted." : "Primary alias is kept.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Alias delete failed.");
+    }
+  };
+
+  const mergeCandidate = async (candidate: VoiceAliasCandidate) => {
+    try {
+      const result = await api.mergeVoiceAliasCandidate(personId, candidate.personId);
+      onMessage(`Merged ${result.mergedName} into ${result.targetName}.`);
+      onMerged();
+      setCandidates((items) => items.filter((item) => item.personId !== candidate.personId));
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Alias merge failed.");
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div>
+          <h3 className="font-semibold">Aliases</h3>
+          <p className="text-sm text-muted-foreground">Review alternate names and merge duplicate voice actors.</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {aliases.length > 0 ? aliases.map((alias) => (
+            <Badge key={alias.id} variant={alias.source === "primary_name" ? "secondary" : "outline"} className="gap-1">
+              {alias.alias}
+              {alias.source !== "primary_name" && (
+                <button className="rounded-sm hover:text-destructive" aria-label={`Delete alias ${alias.alias}`} onClick={() => void deleteAlias(alias)}>
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </Badge>
+          )) : <Badge variant="warning">No aliases</Badge>}
+        </div>
+        <div className="flex gap-2">
+          <input className="min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={aliasDraft} onChange={(event) => setAliasDraft(event.target.value)} placeholder="Add alias" />
+          <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
+        </div>
+        <div className="flex gap-2">
+          <input className="min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} placeholder="Search duplicate voice actor" />
+          <Button variant="outline" size="sm" onClick={() => void loadCandidates()}><Search className="h-4 w-4" /> Search</Button>
+        </div>
+        <div className="space-y-2">
+          {candidates.slice(0, 6).map((candidate) => (
+            <div key={candidate.personId} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{candidate.displayName}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => void mergeCandidate(candidate)}>
+                <GitMerge className="h-4 w-4" />
+                Merge
+              </Button>
+            </div>
+          ))}
+          {candidates.length === 0 && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">{isLoading ? "Loading candidates..." : "No candidates loaded."}</div>}
+        </div>
       </CardContent>
     </Card>
   );
@@ -513,7 +737,34 @@ function SourceTags({ sources }: { sources: CircleSourceStat[] }) {
 }
 
 function sourceTags(sources: CircleSourceStat[]) {
-  return sources.filter((source) => source.status === "available" || source.count > 0);
+  const available = sources.filter((source) => source.status === "available" || source.count > 0);
+  const hasSpecificRemote = available.some((source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache");
+  return hasSpecificRemote ? available.filter((source) => source.key !== "remote") : available;
+}
+
+function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
+  return (
+    <div className="absolute bottom-10 left-0 z-20 w-44 overflow-hidden rounded-md border bg-popover p-1 shadow-lg">
+      {listeningStatusOptions.map((option) => (
+        <button
+          key={option.value}
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+          onClick={() => onChange(option.value)}
+        >
+          <ListChecks className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"} />
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function normalizeListeningStatus(status: string): ListeningStatus {
+  return listeningStatusOptions.some((option) => option.value === status) ? status as ListeningStatus : "none";
+}
+
+function listeningStatusLabel(status: string) {
+  return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
 }
 
 function ColumnPicker({ mobileColumns, desktopColumns, onMobileChange, onDesktopChange }: { mobileColumns: 1 | 2; desktopColumns: 4 | 6 | 8; onMobileChange: (value: 1 | 2) => void; onDesktopChange: (value: 4 | 6 | 8) => void }) {

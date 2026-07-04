@@ -52,6 +52,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/voices", s.listVoices)
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
+	mux.HandleFunc("GET /api/voices/{personId}/alias-candidates", s.listVoiceAliasCandidates)
+	mux.HandleFunc("POST /api/voices/{personId}/aliases", s.createVoiceAlias)
+	mux.HandleFunc("DELETE /api/voices/{personId}/aliases/{aliasId}", s.deleteVoiceAlias)
+	mux.HandleFunc("POST /api/voices/{personId}/merge", s.mergeVoiceAliasCandidate)
 	mux.HandleFunc("PATCH /api/voices/{personId}/user-state", s.updateVoiceUserState)
 	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
@@ -1755,13 +1759,32 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
-	result, err := s.runLocalScan(r.Context())
+	result, err := s.runLocalScan(r.Context(), "manual", "manual")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) RunStartupWorkflows(ctx context.Context) error {
+	var enabled int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(trigger.enabled), 0)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan'
+			AND trigger.trigger_type = 'startup'
+	`).Scan(&enabled)
+	if err != nil {
+		return err
+	}
+	if enabled == 0 {
+		return nil
+	}
+	_, err = s.runLocalScan(ctx, "startup", "system_startup")
+	return err
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
@@ -1788,7 +1811,7 @@ type localScanResult struct {
 	UpdatedLocations int    `json:"updatedLocations"`
 }
 
-func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
+func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
 
 	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
@@ -1826,7 +1849,7 @@ func (s *Server) runLocalScan(ctx context.Context) (localScanResult, error) {
 		"scanned_files":     scanSummary.ScannedFiles,
 		"ambiguous_folders": scanSummary.AmbiguousFolders,
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", "manual", "manual", runInput, runSummary)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", triggerType, triggerReason, runInput, runSummary)
 	if err != nil {
 		return localScanResult{}, err
 	}
