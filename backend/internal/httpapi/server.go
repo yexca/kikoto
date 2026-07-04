@@ -50,6 +50,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
+	mux.HandleFunc("GET /api/voices", s.listVoices)
+	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)

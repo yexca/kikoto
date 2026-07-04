@@ -427,6 +427,72 @@ export type CircleDetail = CircleSummary & {
   works: CircleCatalogWork[];
 };
 
+export type VoiceSummary = {
+  personId: string;
+  displayName: string;
+  aliases: string[];
+  knownWorks: number;
+  localWorks: number;
+  remoteWorks: number;
+  cachedWorks: number;
+  playableWorks: number;
+  lastSeenAt: string | null;
+  sourceSummaries: CircleSourceStat[];
+};
+
+export type VoiceKnownWork = {
+  workId: number;
+  primaryCode: string;
+  title: string;
+  releaseDate: string | null;
+  coverUrl: string;
+  dlsiteUrl: string;
+  circle: string;
+  circleExternalId: string;
+  rating: number | null;
+  tags: string[];
+  listeningMark: ListeningStatus;
+  local: boolean;
+  remote: boolean;
+  cache: boolean;
+  sourceTags: CircleSourceStat[];
+};
+
+export type VoiceRemoteWork = {
+  sourceId: number;
+  sourceCode: string;
+  sourceName: string;
+  remoteId: string;
+  primaryCode: string;
+  title: string;
+  coverUrl: string;
+  circle: string;
+  rating: number | null;
+  tags: string[];
+  importStatus: string;
+  remotePlayable: boolean;
+  workId: number | null;
+  hasLocal: boolean;
+  hasCache: boolean;
+  hasRemote: boolean;
+};
+
+export type VoiceRemoteSourceSet = {
+  sourceId: number;
+  sourceCode: string;
+  displayName: string;
+  status: string;
+  error: string;
+  elapsedMs: number;
+  total: number;
+  works: VoiceRemoteWork[];
+};
+
+export type VoiceDetail = VoiceSummary & {
+  works: VoiceKnownWork[];
+  remoteMatches: VoiceRemoteSourceSet[];
+};
+
 export type CircleRefreshResult = {
   runId: number;
   externalId: string;
@@ -572,6 +638,8 @@ export const api = {
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
   listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
+  listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
+  getVoice: (personId: string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(personId)}`),
   updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
   refreshCircle: (externalId: string, payload: { mode: "incremental" | "full"; productMode: "available" | "all" }) =>
