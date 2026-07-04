@@ -56,6 +56,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/voices/{personId}/aliases", s.createVoiceAlias)
 	mux.HandleFunc("DELETE /api/voices/{personId}/aliases/{aliasId}", s.deleteVoiceAlias)
 	mux.HandleFunc("POST /api/voices/{personId}/merge", s.mergeVoiceAliasCandidate)
+	mux.HandleFunc("GET /api/voices/{personId}/merges", s.listVoiceMergeReviews)
+	mux.HandleFunc("POST /api/voices/{personId}/merges/{mergeId}/undo", s.undoVoiceMergeReview)
 	mux.HandleFunc("PATCH /api/voices/{personId}/user-state", s.updateVoiceUserState)
 	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)

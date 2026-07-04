@@ -466,6 +466,17 @@ export type VoiceAliasCandidate = {
   remoteWorks: number;
 };
 
+export type VoiceMergeReview = {
+  id: number;
+  targetPersonId: number;
+  sourcePersonId: number;
+  targetName: string;
+  sourceName: string;
+  status: string;
+  createdAt: string;
+  undoneAt: string;
+};
+
 export type VoiceKnownWork = {
   workId: number;
   primaryCode: string;
@@ -690,9 +701,14 @@ export const api = {
   deleteVoiceAlias: (personId: number, aliasId: number) =>
     deleteJSON<{ deleted: number; aliases: VoiceAlias[] }>(`/api/voices/${personId}/aliases/${aliasId}`),
   mergeVoiceAliasCandidate: (personId: number, sourcePersonId: number) =>
-    postJSONBody<{ targetPersonId: number; sourcePersonId: number; targetName: string; mergedName: string }>(
+    postJSONBody<{ mergeId: number; targetPersonId: number; sourcePersonId: number; targetName: string; mergedName: string }>(
       `/api/voices/${personId}/merge`,
       { sourcePersonId },
+    ),
+  listVoiceMergeReviews: (personId: number) => getJSON<VoiceMergeReview[]>(`/api/voices/${personId}/merges`),
+  undoVoiceMerge: (personId: number, mergeId: number) =>
+    postJSON<{ mergeId: number; targetPersonId: number; restoredPersonId: number; restoredName: string }>(
+      `/api/voices/${personId}/merges/${mergeId}/undo`,
     ),
   updateVoiceUserState: (personId: number, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload),

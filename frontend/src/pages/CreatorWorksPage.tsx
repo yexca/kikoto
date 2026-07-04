@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "local" | "remote" | "missing";
@@ -603,14 +603,16 @@ function AliasReviewPanel({
   onMessage: (message: string) => void;
 }) {
   const [aliasDraft, setAliasDraft] = useState("");
-  const [candidateQuery, setCandidateQuery] = useState("");
   const [candidates, setCandidates] = useState<VoiceAliasCandidate[]>([]);
+  const [mergeReviews, setMergeReviews] = useState<VoiceMergeReview[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const loadCandidates = async () => {
     setIsLoading(true);
     try {
-      setCandidates(await api.listVoiceAliasCandidates(personId, candidateQuery));
+      setCandidates(await api.listVoiceAliasCandidates(personId, aliasDraft));
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Alias candidate search failed.");
     } finally {
@@ -618,9 +620,25 @@ function AliasReviewPanel({
     }
   };
 
+  const loadMergeReviews = async () => {
+    try {
+      setMergeReviews(await api.listVoiceMergeReviews(personId));
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Merge review history failed.");
+    }
+  };
+
   useEffect(() => {
     void loadCandidates();
+    void loadMergeReviews();
   }, [personId]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void loadCandidates();
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [aliasDraft, personId]);
 
   const addAlias = async () => {
     if (!aliasDraft.trim()) return;
@@ -650,8 +668,20 @@ function AliasReviewPanel({
       onMessage(`Merged ${result.mergedName} into ${result.targetName}.`);
       onMerged();
       setCandidates((items) => items.filter((item) => item.personId !== candidate.personId));
+      void loadMergeReviews();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Alias merge failed.");
+    }
+  };
+
+  const undoMerge = async (review: VoiceMergeReview) => {
+    try {
+      const result = await api.undoVoiceMerge(personId, review.id);
+      onMessage(`Restored ${result.restoredName}.`);
+      onMerged();
+      void loadMergeReviews();
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Merge undo failed.");
     }
   };
 
@@ -674,16 +704,52 @@ function AliasReviewPanel({
             </Badge>
           )) : <Badge variant="warning">No aliases</Badge>}
         </div>
-        <div className="flex gap-2">
-          <input className="min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={aliasDraft} onChange={(event) => setAliasDraft(event.target.value)} placeholder="Add alias" />
-          <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
-        </div>
-        <div className="flex gap-2">
-          <input className="min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} placeholder="Search duplicate voice actor" />
-          <Button variant="outline" size="sm" onClick={() => void loadCandidates()}><Search className="h-4 w-4" /> Search</Button>
+        <div className="relative">
+          <div className="flex gap-2">
+            <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                value={aliasDraft}
+                onChange={(event) => {
+                  setAliasDraft(event.target.value);
+                  setIsSuggestOpen(true);
+                }}
+                onFocus={() => setIsSuggestOpen(true)}
+                placeholder="Add alias or search duplicate voice actor"
+              />
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
+          </div>
+          {isSuggestOpen && (
+            <div className="absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
+              {candidates.slice(0, 8).map((candidate) => (
+                <button
+                  key={candidate.personId}
+                  className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setAliasDraft(candidate.displayName);
+                    setIsSuggestOpen(false);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{candidate.displayName}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+                    </span>
+                  </span>
+                  <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
+              {candidates.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">{isLoading ? "Loading candidates..." : "No duplicate candidates."}</div>}
+            </div>
+          )}
         </div>
         <div className="space-y-2">
-          {candidates.slice(0, 6).map((candidate) => (
+          {candidates.slice(0, 4).map((candidate) => (
             <div key={candidate.personId} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
               <div className="min-w-0">
                 <div className="truncate font-medium">{candidate.displayName}</div>
@@ -699,6 +765,22 @@ function AliasReviewPanel({
           ))}
           {candidates.length === 0 && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">{isLoading ? "Loading candidates..." : "No candidates loaded."}</div>}
         </div>
+        {mergeReviews.length > 0 && (
+          <div className="space-y-2 border-t pt-3">
+            <div className="text-sm font-medium">Merge history</div>
+            {mergeReviews.slice(0, 4).map((review) => (
+              <div key={review.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{review.sourceName}</div>
+                  <div className="truncate text-xs text-muted-foreground">{review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}</div>
+                </div>
+                <Button variant="ghost" size="sm" disabled={review.status !== "merged"} onClick={() => void undoMerge(review)}>
+                  Undo
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
