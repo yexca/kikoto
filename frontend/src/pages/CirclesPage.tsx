@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  DownloadCloud,
   ExternalLink,
   FileAudio,
   HardDriveDownload,
@@ -350,7 +351,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -486,10 +489,15 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
   const bulkSaveSelected = async () => {
     if (selectedWorks.length === 0) return;
+    setSaveConfirm({ count: selectedWorks.length, run: runBulkSaveSelected });
+  };
+
+  const runBulkSaveSelected = async () => {
     setIsBulkSaving(true);
     setMessage("");
     let saved = 0;
     try {
+      await api.recordRemoteBulkRun({ action: "save", sourceId: circleWorkRemoteTarget(selectedWorks[0])?.sourceId ?? 0, codes: selectedWorks.map((work) => work.primaryCode) }).catch(() => null);
       for (const work of selectedWorks) {
         const target = circleWorkRemoteTarget(work);
         if (!target) continue;
@@ -503,6 +511,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       setMessage(error instanceof Error ? error.message : "Bulk save failed.");
     } finally {
       setIsBulkSaving(false);
+      setSaveConfirm(null);
     }
   };
 
@@ -512,6 +521,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     setMessage("");
     let saved = 0;
     try {
+      await api.recordRemoteBulkRun({ action: "sync_save", sourceId: circleWorkRemoteTarget(selectedSyncableWorks[0])?.sourceId ?? 0, codes: selectedSyncableWorks.map((work) => work.primaryCode) }).catch(() => null);
       for (const work of selectedSyncableWorks) {
         const target = circleWorkRemoteTarget(work);
         if (!target) continue;
@@ -524,6 +534,42 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       setDetail(next);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk sync/save failed.");
+    } finally {
+      setIsBulkSaving(false);
+    }
+  };
+
+  const saveSingleWork = (work: CircleCatalogWork) => {
+    setSaveConfirm({
+      count: 1,
+      run: async () => {
+        const target = circleWorkRemoteTarget(work);
+        if (!target) return;
+        setIsBulkSaving(true);
+        try {
+          await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
+          setMessage(`Saved ${work.primaryCode}.`);
+          setDetail(await api.getCircle(externalId));
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Save failed.");
+        } finally {
+          setIsBulkSaving(false);
+          setSaveConfirm(null);
+        }
+      },
+    });
+  };
+
+  const syncSingleWork = async (work: CircleCatalogWork) => {
+    const target = circleWorkRemoteTarget(work);
+    if (!target) return;
+    setIsBulkSaving(true);
+    try {
+      const result = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
+      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+      setDetail(await api.getCircle(externalId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sync failed.");
     } finally {
       setIsBulkSaving(false);
     }
@@ -712,10 +758,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <SlidersHorizontal className="h-4 w-4" />
                 More
               </Button>
+              <label className="flex items-center gap-2 rounded-md border bg-background px-2 text-sm text-muted-foreground">
+                <input type="checkbox" checked={selectionMode} onChange={(event) => {
+                  setSelectionMode(event.target.checked);
+                  if (!event.target.checked) setSelectedWorkCodes(new Set());
+                }} />
+                Select
+              </label>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+          {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
             <label className="flex items-center gap-2 text-muted-foreground">
               <input
                 type="checkbox"
@@ -725,6 +778,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               {selectedWorks.length} selected
             </label>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>Select all</Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                setSelectedWorkCodes(new Set());
+                setSelectionMode(false);
+              }}>Cancel selection</Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
                 <RefreshCw className="h-4 w-4" />
                 Sync + Save {selectedSyncableWorks.length}
@@ -734,7 +792,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 Save {selectedWorks.length}
               </Button>
             </div>
-          </div>
+          </div>}
 
           <div className={circleWorkGridClassName(mobileColumns, desktopColumns)}>
             {filteredWorks.length > 0 ? pagedWorks.map((work) => (
@@ -743,8 +801,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 work={work}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
-                selectionActive={selectedWorkCodes.size > 0}
+                selectionActive={selectionMode}
                 onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                onSync={() => void syncSingleWork(work)}
+                onSave={() => saveSingleWork(work)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
               />
@@ -792,6 +852,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
           onConfirm={() => void deleteCatalogWork()}
         />
       )}
+      {saveConfirm && (
+        <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />
+      )}
     </div>
   );
 }
@@ -802,6 +865,8 @@ function CatalogWorkCard({
   selectable,
   selectionActive,
   onSelectedChange,
+  onSync,
+  onSave,
   onDeleteMissing,
   onStatusChange,
 }: {
@@ -810,6 +875,8 @@ function CatalogWorkCard({
   selectable: boolean;
   selectionActive: boolean;
   onSelectedChange: (checked: boolean) => void;
+  onSync: () => void;
+  onSave: () => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
 }) {
@@ -892,10 +959,29 @@ function CatalogWorkCard({
           </div>
         </button>
         <div className="flex h-11 items-center justify-between gap-1 border-t px-3">
-          <div className="relative" ref={markMenuRef}>
+          <Button variant="ghost" size="icon" asChild title="Open DLsite">
+            <a href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" title="Fetch remote info" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+              event.stopPropagation();
+              onSync();
+            }}>
+              <DownloadCloud className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Save to library" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+              event.stopPropagation();
+              onSave();
+            }}>
+              <HardDriveDownload className="h-4 w-4" />
+            </Button>
+            <div className="relative" ref={markMenuRef}>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              title={`Mark: ${listeningStatusLabel(work.listeningMark)}`}
               disabled={isUnavailable || work.workId === null}
               onClick={(event) => {
                 event.stopPropagation();
@@ -903,7 +989,6 @@ function CatalogWorkCard({
               }}
             >
               <ListChecks className={work.listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-              {listeningStatusLabel(work.listeningMark)}
             </Button>
             {isMarkOpen && (
               <MarkMenu
@@ -915,7 +1000,8 @@ function CatalogWorkCard({
               />
             )}
           </div>
-          <div className="flex items-center gap-1">
+          </div>
+          <div className="hidden items-center gap-1">
             {!work.dlsiteAvailable && (
               <Button variant="ghost" size="sm" onClick={onDeleteMissing}>
                 Delete
@@ -931,6 +1017,21 @@ function CatalogWorkCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Save remote directory</h3>
+        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>Save</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

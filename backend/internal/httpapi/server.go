@@ -93,6 +93,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
+	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	return withCORS(s.authMiddleware(mux))
 }
@@ -1774,6 +1775,82 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	var payload struct {
+		Action   string   `json:"action"`
+		SourceID int64    `json:"sourceId"`
+		Codes    []string `json:"codes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	payload.Action = strings.TrimSpace(payload.Action)
+	if payload.Action != "sync" && payload.Action != "save" && payload.Action != "sync_save" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be sync, save, or sync_save"})
+		return
+	}
+	codes := []string{}
+	seen := map[string]bool{}
+	for _, raw := range payload.Codes {
+		code := strings.ToUpper(strings.TrimSpace(raw))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	if payload.SourceID <= 0 || len(codes) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
+		return
+	}
+	runID, err := s.recordRemoteBulkWorkflow(r.Context(), payload.SourceID, payload.Action, codes)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"runId": runID, "sourceId": payload.SourceID, "action": payload.Action, "codes": codes})
+}
+
+func (s *Server) recordRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work sync or save workflows.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_works"},
+			{"id": "dispatch", "type": "dispatch_child_workflows"},
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	input := map[string]any{"source_id": sourceID, "action": action, "codes": codes}
+	summary := map[string]any{"source_id": sourceID, "action": action, "works": len(codes)}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "succeeded", "manual", action, input, summary)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_works", DisplayName: "Select remote works", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"works": len(codes)},
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch per-work workflows", Position: 2, Status: "succeeded",
+		Input: map[string]any{"action": action}, Output: map[string]any{"expected_child_runs": len(codes)},
+	}); err != nil {
+		return 0, err
+	}
+	return runID, tx.Commit()
 }
 
 func (s *Server) RunStartupWorkflows(ctx context.Context) error {

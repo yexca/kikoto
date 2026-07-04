@@ -226,7 +226,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -368,6 +370,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setMessage("");
     let completed = 0;
     try {
+      const firstTarget = voiceWorkRemoteTarget(selectedSyncable[0]);
+      if (firstTarget) {
+        await api.recordRemoteBulkRun({ action: "sync_save", sourceId: firstTarget.sourceId, codes: selectedSyncable.map((work) => work.primaryCode) }).catch(() => null);
+      }
       for (const work of selectedSyncable) {
         const target = voiceWorkRemoteTarget(work);
         if (!target) continue;
@@ -386,10 +392,18 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const bulkSave = async () => {
     if (selectedSaveable.length === 0) return;
+    setSaveConfirm({ count: selectedSaveable.length, run: runBulkSave });
+  };
+
+  const runBulkSave = async () => {
     setIsBulkBusy(true);
     setMessage("");
     let completed = 0;
     try {
+      const firstTarget = voiceWorkRemoteTarget(selectedSaveable[0]);
+      if (firstTarget) {
+        await api.recordRemoteBulkRun({ action: "save", sourceId: firstTarget.sourceId, codes: selectedSaveable.map((work) => work.primaryCode) }).catch(() => null);
+      }
       for (const work of selectedSaveable) {
         const target = voiceWorkRemoteTarget(work);
         if (!target) continue;
@@ -400,6 +414,43 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       await refreshDetail();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+    } finally {
+      setIsBulkBusy(false);
+      setSaveConfirm(null);
+    }
+  };
+
+  const saveSingleWork = (work: VoiceKnownWork | VoiceRemoteWork) => {
+    setSaveConfirm({
+      count: 1,
+      run: async () => {
+        const target = voiceWorkRemoteTarget(work);
+        if (!target) return;
+        setIsBulkBusy(true);
+        try {
+          await api.saveRemoteSourceWork(target.sourceId, target.code, []);
+          setMessage(`Saved ${target.code}.`);
+          await refreshDetail();
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Save failed.");
+        } finally {
+          setIsBulkBusy(false);
+          setSaveConfirm(null);
+        }
+      },
+    });
+  };
+
+  const syncSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+    const target = voiceWorkRemoteTarget(work);
+    if (!target) return;
+    setIsBulkBusy(true);
+    try {
+      const result = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
+      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+      await refreshDetail();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Sync failed.");
     } finally {
       setIsBulkBusy(false);
     }
@@ -544,9 +595,16 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <SlidersHorizontal className="h-4 w-4" />
               More
             </Button>
+            <label className="flex items-center gap-2 rounded-md border bg-background px-2 text-sm text-muted-foreground">
+              <input type="checkbox" checked={selectionMode} onChange={(event) => {
+                setSelectionMode(event.target.checked);
+                if (!event.target.checked) setSelectedWorkKeys(new Set());
+              }} />
+              Select
+            </label>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+        {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
           <label className="flex items-center gap-2 text-muted-foreground">
             <input
               type="checkbox"
@@ -556,6 +614,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             {selectedWorks.length} selected
           </label>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>Select all</Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              setSelectedWorkKeys(new Set());
+              setSelectionMode(false);
+            }}>Cancel selection</Button>
             <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncAndSave()}>
               <DownloadCloud className="h-4 w-4" />
               Sync + Save {selectedSyncable.length}
@@ -565,7 +628,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               Save {selectedSaveable.length}
             </Button>
           </div>
-        </div>
+        </div>}
         <div className={voiceWorkGridClassName(mobileColumns, desktopColumns)}>
           {pageWorks.map((work) => (
             <VoiceWorkCard
@@ -573,8 +636,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               work={work}
               selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
               selectable={isVoiceBulkSelectable(work)}
-              selectionActive={selectedWorkKeys.size > 0}
+              selectionActive={selectionMode}
               onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+              onSync={() => void syncSingleWork(work)}
+              onSave={() => saveSingleWork(work)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
             />
           ))}
@@ -582,11 +647,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         </div>
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
       </section>
+      {saveConfirm && <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />}
     </div>
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onStatusChange: (status: ListeningStatus) => void }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void }) {
   const isKnown = "local" in work;
   const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
@@ -668,10 +734,29 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
           </div>
         </button>
         <div className="flex h-11 items-center justify-between gap-1 border-t px-3">
-          <div className="relative min-w-0" ref={markMenuRef}>
+          <Button variant="ghost" size="icon" asChild title="Open DLsite">
+            <a href={voiceWorkDLsiteURL(work)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" title="Fetch remote info" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
+              event.stopPropagation();
+              onSync();
+            }}>
+              <DownloadCloud className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" title="Save to library" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
+              event.stopPropagation();
+              onSave();
+            }}>
+              <HardDriveDownload className="h-4 w-4" />
+            </Button>
+            <div className="relative min-w-0" ref={markMenuRef}>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              title={`Mark: ${listeningStatusLabel(listeningMark)}`}
               disabled={isUnavailable || workId === null}
               onClick={(event) => {
                 event.stopPropagation();
@@ -679,7 +764,6 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               }}
             >
               <ListChecks className={listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-              {listeningStatusLabel(listeningMark)}
             </Button>
             {isMarkOpen && (
               <MarkMenu
@@ -691,18 +775,6 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               />
             )}
           </div>
-          <div className="flex min-w-0 items-center gap-1">
-            {sourceName && <span className="max-w-28 truncate text-xs text-muted-foreground">{sourceName}</span>}
-            <Button variant="ghost" size="sm" asChild>
-              <a href={voiceWorkDLsiteURL(work)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                <ExternalLink className="h-4 w-4" />
-                DLsite
-              </a>
-            </Button>
-            <Button variant="ghost" size="sm" disabled={!canOpen} onClick={() => openWorkRoute(work)}>
-              <ExternalLink className="h-4 w-4" />
-              Open
-            </Button>
           </div>
         </div>
       </CardContent>
@@ -952,6 +1024,21 @@ function FloatingConfirm({ title, description, confirmLabel, onClose, onConfirm 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onConfirm}>{confirmLabel}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Save remote directory</h3>
+        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>Save</Button>
         </div>
       </div>
     </div>
