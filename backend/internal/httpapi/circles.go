@@ -50,19 +50,24 @@ type circleDetail struct {
 }
 
 type circleCatalogWork struct {
-	WorkID          *int64             `json:"workId"`
-	PrimaryCode     string             `json:"primaryCode"`
-	Title           string             `json:"title"`
-	ReleaseDate     *string            `json:"releaseDate"`
-	CoverURL        string             `json:"coverUrl"`
-	DLsiteURL       string             `json:"dlsiteUrl"`
-	Tags            []string           `json:"tags"`
-	CatalogStatus   string             `json:"catalogStatus"`
-	DLsiteAvailable bool               `json:"dlsiteAvailable"`
-	ListeningMark   string             `json:"listeningMark"`
-	Local           bool               `json:"local"`
-	Remote          bool               `json:"remote"`
-	SourceTags      []circleSourceStat `json:"sourceTags"`
+	WorkID           *int64             `json:"workId"`
+	PrimaryCode      string             `json:"primaryCode"`
+	Title            string             `json:"title"`
+	ReleaseDate      *string            `json:"releaseDate"`
+	UpdatedAt        string             `json:"updatedAt"`
+	CoverURL         string             `json:"coverUrl"`
+	DLsiteURL        string             `json:"dlsiteUrl"`
+	Circle           string             `json:"circle"`
+	CircleExternalID string             `json:"circleExternalId"`
+	Tags             []string           `json:"tags"`
+	Rating           *float64           `json:"rating"`
+	Sales            *int64             `json:"sales"`
+	CatalogStatus    string             `json:"catalogStatus"`
+	DLsiteAvailable  bool               `json:"dlsiteAvailable"`
+	ListeningMark    string             `json:"listeningMark"`
+	Local            bool               `json:"local"`
+	Remote           bool               `json:"remote"`
+	SourceTags       []circleSourceStat `json:"sourceTags"`
 }
 
 type circleRefreshRequest struct {
@@ -857,11 +862,19 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark); err != nil {
 			return nil, err
 		}
-		item.Tags = parseDLsiteSnapshot(snapshot).Tags
+		metadata := parseDLsiteSnapshot(snapshot)
+		item.Tags = metadata.Tags
+		item.Rating = metadata.Rating
+		item.Sales = metadata.Sales
 		item.ReleaseDate = nullableString(release)
+		if item.ReleaseDate != nil {
+			item.UpdatedAt = *item.ReleaseDate
+		}
 		item.WorkID = nullableInt64(workID)
 		item.DLsiteAvailable = dlsiteAvailable != 0
 		item.CoverURL = s.coverURL(item.PrimaryCode)
+		item.Circle = metadata.Circle
+		item.CircleExternalID = metadata.CircleExternalID
 		tags, err := s.workSourceTags(ctx, partyID, item.PrimaryCode)
 		if err != nil {
 			return nil, err

@@ -86,9 +86,12 @@ type remoteWorkSummary struct {
 	RemoteID       string   `json:"remoteId"`
 	PrimaryCode    string   `json:"primaryCode"`
 	Title          string   `json:"title"`
+	ReleaseDate    string   `json:"releaseDate"`
+	UpdatedAt      string   `json:"updatedAt"`
 	CoverURL       string   `json:"coverUrl"`
 	Circle         string   `json:"circle"`
 	Rating         *float64 `json:"rating"`
+	Sales          *int64   `json:"sales"`
 	Tags           []string `json:"tags"`
 	ImportStatus   string   `json:"importStatus"`
 	RemotePlayable bool     `json:"remotePlayable"`
@@ -1121,9 +1124,12 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) 
 			RemoteID:       strconv.FormatInt(work.ID, 10),
 			PrimaryCode:    code,
 			Title:          firstNonEmpty(work.Title, work.Name, code),
+			ReleaseDate:    work.Release,
+			UpdatedAt:      work.Release,
 			CoverURL:       firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 			Circle:         circle,
 			Rating:         work.RateAverage2DP,
+			Sales:          work.DLCount,
 			Tags:           tags,
 			ImportStatus:   status,
 			RemotePlayable: true,
