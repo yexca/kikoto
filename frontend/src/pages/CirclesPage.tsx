@@ -3,6 +3,7 @@ import {
   ChevronRight,
   ExternalLink,
   FileAudio,
+  HardDriveDownload,
   ListChecks,
   NotebookPen,
   RefreshCw,
@@ -63,6 +64,7 @@ const fallbackWorks: CircleCatalogWork[] = [
     releaseDate: "2099-01-01",
     coverUrl: "",
     dlsiteUrl: "",
+    tags: ["demo-tag-a", "demo-tag-b"],
     catalogStatus: "imported",
     dlsiteAvailable: true,
     listeningMark: "listening",
@@ -81,6 +83,7 @@ const fallbackWorks: CircleCatalogWork[] = [
     releaseDate: "2099-02-02",
     coverUrl: "",
     dlsiteUrl: "",
+    tags: ["demo-tag-c"],
     catalogStatus: "catalog",
     dlsiteAvailable: true,
     listeningMark: "want_to_listen",
@@ -98,6 +101,7 @@ const fallbackWorks: CircleCatalogWork[] = [
     releaseDate: "2099-03-03",
     coverUrl: "",
     dlsiteUrl: "",
+    tags: [],
     catalogStatus: "catalog",
     dlsiteAvailable: false,
     listeningMark: "none",
@@ -330,6 +334,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
+  const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
+  const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -376,10 +382,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const totalWorkPages = Math.max(1, Math.ceil(filteredWorks.length / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = filteredWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
+  const selectablePagedWorks = pagedWorks.filter(isCircleBulkSaveSelectable);
+  const selectedWorks = circle.works.filter((work) => selectedWorkCodes.has(work.primaryCode));
+  const selectedSyncableWorks = selectedWorks.filter((work) => work.workId === null);
 
   useEffect(() => {
     setWorkPage(1);
   }, [availabilityFilter, externalId, workPageSize, workQuery]);
+
+  useEffect(() => {
+    setSelectedWorkCodes((current) => new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))));
+  }, [filteredWorks]);
 
   const refresh = async () => {
     setIsRefreshing(true);
@@ -433,6 +446,71 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       } : current);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    }
+  };
+
+  const toggleWorkSelection = (work: CircleCatalogWork, checked: boolean) => {
+    setSelectedWorkCodes((current) => {
+      const next = new Set(current);
+      if (checked) next.add(work.primaryCode);
+      else next.delete(work.primaryCode);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = (checked: boolean) => {
+    setSelectedWorkCodes((current) => {
+      const next = new Set(current);
+      selectablePagedWorks.forEach((work) => {
+        if (checked) next.add(work.primaryCode);
+        else next.delete(work.primaryCode);
+      });
+      return next;
+    });
+  };
+
+  const bulkSaveSelected = async () => {
+    if (selectedWorks.length === 0) return;
+    setIsBulkSaving(true);
+    setMessage("");
+    let saved = 0;
+    try {
+      for (const work of selectedWorks) {
+        const target = circleWorkRemoteTarget(work);
+        if (!target) continue;
+        await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
+        saved++;
+      }
+      setMessage(`Saved ${saved} selected works.`);
+      const next = await api.getCircle(externalId);
+      setDetail(next);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+    } finally {
+      setIsBulkSaving(false);
+    }
+  };
+
+  const bulkSyncAndSaveSelected = async () => {
+    if (selectedSyncableWorks.length === 0) return;
+    setIsBulkSaving(true);
+    setMessage("");
+    let saved = 0;
+    try {
+      for (const work of selectedSyncableWorks) {
+        const target = circleWorkRemoteTarget(work);
+        if (!target) continue;
+        await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_bulk_sync_save");
+        await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
+        saved++;
+      }
+      setMessage(`Synced and saved ${saved} selected works.`);
+      const next = await api.getCircle(externalId);
+      setDetail(next);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk sync/save failed.");
+    } finally {
+      setIsBulkSaving(false);
     }
   };
 
@@ -619,9 +697,26 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <SlidersHorizontal className="h-4 w-4" />
                 More
               </Button>
-              <Button variant="outline" size="sm" disabled>
-                <ListChecks className="h-4 w-4" />
-                Pull selected
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+            <label className="flex items-center gap-2 text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={selectablePagedWorks.length > 0 && selectablePagedWorks.every((work) => selectedWorkCodes.has(work.primaryCode))}
+                onChange={(event) => toggleVisibleSelection(event.target.checked)}
+              />
+              {selectedWorks.length} selected
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
+                <RefreshCw className="h-4 w-4" />
+                Sync + Save {selectedSyncableWorks.length}
+              </Button>
+              <Button variant="outline" size="sm" disabled={isBulkSaving || selectedWorks.length === 0} onClick={() => void bulkSaveSelected()}>
+                <HardDriveDownload className="h-4 w-4" />
+                Save {selectedWorks.length}
               </Button>
             </div>
           </div>
@@ -631,6 +726,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               <CatalogWorkCard
                 key={work.primaryCode}
                 work={work}
+                selected={selectedWorkCodes.has(work.primaryCode)}
+                selectable={isCircleBulkSaveSelectable(work)}
+                onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
               />
@@ -684,10 +782,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
 function CatalogWorkCard({
   work,
+  selected,
+  selectable,
+  onSelectedChange,
   onDeleteMissing,
   onStatusChange,
 }: {
   work: CircleCatalogWork;
+  selected: boolean;
+  selectable: boolean;
+  onSelectedChange: (checked: boolean) => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
 }) {
@@ -728,6 +832,9 @@ function CatalogWorkCard({
           onClick={openTarget}
         >
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+            </label>
             {work.coverUrl ? <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" /> : null}
             <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode}</div>
           </div>
@@ -740,6 +847,11 @@ function CatalogWorkCard({
               <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
               {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
               {work.listeningMark !== "none" && <Badge variant="warning">{listeningStatusLabel(work.listeningMark)}</Badge>}
+            </div>
+            <div className="flex min-h-6 flex-wrap gap-1.5">
+              {work.tags.slice(0, 4).length > 0 ? work.tags.slice(0, 4).map((tag) => (
+                <Badge key={tag} variant="outline">{tag}</Badge>
+              )) : <span className="text-xs text-muted-foreground">No tags</span>}
             </div>
             <div className="grid gap-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
@@ -912,6 +1024,16 @@ function preferredDirectoryTarget(work: CircleCatalogWork) {
     return { code: work.primaryCode, sourceId: remote.sourceId };
   }
   return null;
+}
+
+function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
+  if (work.local) return false;
+  return circleWorkRemoteTarget(work) !== null;
+}
+
+function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number } | null {
+  const remote = sourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
+  return remote?.sourceId ? { sourceId: remote.sourceId } : null;
 }
 
 function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }) {

@@ -3,9 +3,11 @@ import {
   ChevronRight,
   Cloud,
   Database,
+  DownloadCloud,
   ExternalLink,
   FileAudio,
   GitMerge,
+  HardDriveDownload,
   HardDrive,
   Layers3,
   ListChecks,
@@ -31,6 +33,8 @@ type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "loca
 type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
 const voicePageSizeOptions = [20, 40, 80];
 const workPageSizeOptions = [24, 48] as const;
+const aliasSuggestMinChars = 2;
+const aliasSuggestMaxResults = 12;
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
@@ -220,6 +224,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
@@ -271,6 +277,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const currentPage = Math.min(page, totalPages);
   const pageWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   useEffect(() => setPage(1), [filter, pageSize, query]);
+  useEffect(() => {
+    setSelectedWorkKeys((current) => new Set(Array.from(current).filter((key) => filteredWorks.some((work) => voiceWorkSelectionKey(work) === key))));
+  }, [filteredWorks]);
+  const selectedWorks = mergedWorks.filter((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)));
+  const selectablePageWorks = pageWorks.filter(isVoiceBulkSelectable);
+  const selectedSaveable = selectedWorks.filter(voiceWorkRemoteTarget);
+  const selectedSyncable = selectedWorks.filter((work) => voiceWorkRemoteTarget(work) && !voiceWorkHasImportedRemote(work));
 
   const saveUserState = async () => {
     if (!detail) return;
@@ -323,6 +336,71 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       } : current);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Listening mark update failed.");
+    }
+  };
+
+  const toggleWorkSelection = (work: VoiceKnownWork | VoiceRemoteWork, checked: boolean) => {
+    const key = voiceWorkSelectionKey(work);
+    setSelectedWorkKeys((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = (checked: boolean) => {
+    setSelectedWorkKeys((current) => {
+      const next = new Set(current);
+      selectablePageWorks.forEach((work) => {
+        const key = voiceWorkSelectionKey(work);
+        if (checked) next.add(key);
+        else next.delete(key);
+      });
+      return next;
+    });
+  };
+
+  const bulkSyncAndSave = async () => {
+    if (selectedSyncable.length === 0) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    let completed = 0;
+    try {
+      for (const work of selectedSyncable) {
+        const target = voiceWorkRemoteTarget(work);
+        if (!target) continue;
+        await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_bulk_sync_save");
+        await api.saveRemoteSourceWork(target.sourceId, target.code, []);
+        completed++;
+      }
+      setMessage(`Synced and saved ${completed} selected works.`);
+      await refreshDetail();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk sync/save failed.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  };
+
+  const bulkSave = async () => {
+    if (selectedSaveable.length === 0) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    let completed = 0;
+    try {
+      for (const work of selectedSaveable) {
+        const target = voiceWorkRemoteTarget(work);
+        if (!target) continue;
+        await api.saveRemoteSourceWork(target.sourceId, target.code, []);
+        completed++;
+      }
+      setMessage(`Saved ${completed} selected works.`);
+      await refreshDetail();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+    } finally {
+      setIsBulkBusy(false);
     }
   };
 
@@ -467,11 +545,34 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             </Button>
           </div>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={selectablePageWorks.length > 0 && selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))}
+              onChange={(event) => toggleVisibleSelection(event.target.checked)}
+            />
+            {selectedWorks.length} selected
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncAndSave()}>
+              <DownloadCloud className="h-4 w-4" />
+              Sync + Save {selectedSyncable.length}
+            </Button>
+            <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSave()}>
+              <HardDriveDownload className="h-4 w-4" />
+              Save {selectedSaveable.length}
+            </Button>
+          </div>
+        </div>
         <div className={voiceWorkGridClassName(mobileColumns, desktopColumns)}>
           {pageWorks.map((work) => (
             <VoiceWorkCard
               key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}
               work={work}
+              selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
+              selectable={isVoiceBulkSelectable(work)}
+              onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
             />
           ))}
@@ -483,7 +584,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; onStatusChange: (status: ListeningStatus) => void }) {
+function VoiceWorkCard({ work, selected, selectable, onSelectedChange, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; onSelectedChange: (checked: boolean) => void; onStatusChange: (status: ListeningStatus) => void }) {
   const isKnown = "local" in work;
   const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
@@ -491,6 +592,7 @@ function VoiceWorkCard({ work, onStatusChange }: { work: VoiceKnownWork | VoiceR
   const cache = "cache" in work ? work.cache : work.hasCache;
   const cover = assetURL(work.coverUrl);
   const tags = "sourceTags" in work ? sourceTags(work.sourceTags) : [];
+  const metadataTags = work.tags.slice(0, 4);
   const sourceName = "sourceName" in work ? work.sourceName : "";
   const workId = "workId" in work ? work.workId : null;
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
@@ -522,6 +624,9 @@ function VoiceWorkCard({ work, onStatusChange }: { work: VoiceKnownWork | VoiceR
       <CardContent className="p-0">
         <button className={`block w-full text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`} disabled={!canOpen} onClick={() => openWorkRoute(work)}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+            </label>
             {cover && <img src={cover} alt="" className="h-full w-full object-contain" loading="lazy" />}
             <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode || sourceName || "Source"}</div>
           </div>
@@ -534,6 +639,9 @@ function VoiceWorkCard({ work, onStatusChange }: { work: VoiceKnownWork | VoiceR
               <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
               {cache && <Badge variant="secondary">Cache</Badge>}
               {listeningMark !== "none" && <Badge variant="warning">{listeningStatusLabel(listeningMark)}</Badge>}
+            </div>
+            <div className="flex min-h-6 flex-wrap gap-1.5">
+              {metadataTags.length > 0 ? metadataTags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>) : <span className="text-xs text-muted-foreground">No tags</span>}
             </div>
             <div className="grid gap-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
@@ -605,11 +713,18 @@ function AliasReviewPanel({
   const [aliasDraft, setAliasDraft] = useState("");
   const [candidates, setCandidates] = useState<VoiceAliasCandidate[]>([]);
   const [mergeReviews, setMergeReviews] = useState<VoiceMergeReview[]>([]);
+  const [mergeTarget, setMergeTarget] = useState<VoiceAliasCandidate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const suggestRef = useRef<HTMLDivElement | null>(null);
+  const shouldShowSuggestions = isSuggestOpen && candidates.length > 0 && candidates.length <= aliasSuggestMaxResults;
 
   const loadCandidates = async () => {
+    if (aliasDraft.trim().length < aliasSuggestMinChars) {
+      setCandidates([]);
+      return;
+    }
     setIsLoading(true);
     try {
       setCandidates(await api.listVoiceAliasCandidates(personId, aliasDraft));
@@ -629,7 +744,6 @@ function AliasReviewPanel({
   };
 
   useEffect(() => {
-    void loadCandidates();
     void loadMergeReviews();
   }, [personId]);
 
@@ -639,6 +753,24 @@ function AliasReviewPanel({
     }, 180);
     return () => window.clearTimeout(timeout);
   }, [aliasDraft, personId]);
+
+  useEffect(() => {
+    if (!isSuggestOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (suggestRef.current?.contains(target)) return;
+      setIsSuggestOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSuggestOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSuggestOpen]);
 
   const addAlias = async () => {
     if (!aliasDraft.trim()) return;
@@ -668,6 +800,7 @@ function AliasReviewPanel({
       onMessage(`Merged ${result.mergedName} into ${result.targetName}.`);
       onMerged();
       setCandidates((items) => items.filter((item) => item.personId !== candidate.personId));
+      setMergeTarget(null);
       void loadMergeReviews();
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Alias merge failed.");
@@ -704,7 +837,7 @@ function AliasReviewPanel({
             </Badge>
           )) : <Badge variant="warning">No aliases</Badge>}
         </div>
-        <div className="relative">
+        <div className="relative" ref={suggestRef}>
           <div className="flex gap-2">
             <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -716,15 +849,14 @@ function AliasReviewPanel({
                   setAliasDraft(event.target.value);
                   setIsSuggestOpen(true);
                 }}
-                onFocus={() => setIsSuggestOpen(true)}
                 placeholder="Add alias or search duplicate voice actor"
               />
             </div>
             <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
           </div>
-          {isSuggestOpen && (
+          {shouldShowSuggestions && (
             <div className="absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
-              {candidates.slice(0, 8).map((candidate) => (
+              {candidates.slice(0, aliasSuggestMaxResults).map((candidate) => (
                 <button
                   key={candidate.personId}
                   className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
@@ -744,27 +876,30 @@ function AliasReviewPanel({
                   <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               ))}
-              {candidates.length === 0 && <div className="px-3 py-2 text-sm text-muted-foreground">{isLoading ? "Loading candidates..." : "No duplicate candidates."}</div>}
             </div>
           )}
         </div>
-        <div className="space-y-2">
-          {candidates.slice(0, 4).map((candidate) => (
-            <div key={candidate.personId} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{candidate.displayName}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+        {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
+          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">Too many matches. Keep typing to narrow candidates.</div>
+        )}
+        {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
+          <div className="space-y-2">
+            {candidates.slice(0, 4).map((candidate) => (
+              <div key={candidate.personId} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{candidate.displayName}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+                  </div>
                 </div>
+                <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
+                  <GitMerge className="h-4 w-4" />
+                  Merge
+                </Button>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => void mergeCandidate(candidate)}>
-                <GitMerge className="h-4 w-4" />
-                Merge
-              </Button>
-            </div>
-          ))}
-          {candidates.length === 0 && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">{isLoading ? "Loading candidates..." : "No candidates loaded."}</div>}
-        </div>
+            ))}
+          </div>
+        )}
         {mergeReviews.length > 0 && (
           <div className="space-y-2 border-t pt-3">
             <div className="text-sm font-medium">Merge history</div>
@@ -782,7 +917,31 @@ function AliasReviewPanel({
           </div>
         )}
       </CardContent>
+      {mergeTarget && (
+        <FloatingConfirm
+          title="Merge voice actor"
+          description={`Merge ${mergeTarget.displayName} into this voice actor? You can undo it from merge history.`}
+          confirmLabel="Merge"
+          onClose={() => setMergeTarget(null)}
+          onConfirm={() => void mergeCandidate(mergeTarget)}
+        />
+      )}
     </Card>
+  );
+}
+
+function FloatingConfirm({ title, description, confirmLabel, onClose, onConfirm }: { title: string; description: string; confirmLabel: string; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/40 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>{confirmLabel}</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -822,6 +981,27 @@ function sourceTags(sources: CircleSourceStat[]) {
   const available = sources.filter((source) => source.status === "available" || source.count > 0);
   const hasSpecificRemote = available.some((source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache");
   return hasSpecificRemote ? available.filter((source) => source.key !== "remote") : available;
+}
+
+function voiceWorkSelectionKey(work: VoiceKnownWork | VoiceRemoteWork) {
+  return `${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`;
+}
+
+function isVoiceBulkSelectable(work: VoiceKnownWork | VoiceRemoteWork) {
+  if ("local" in work && work.local) return false;
+  return voiceWorkRemoteTarget(work) !== null;
+}
+
+function voiceWorkHasImportedRemote(work: VoiceKnownWork | VoiceRemoteWork) {
+  if ("remote" in work) return work.remote;
+  return work.hasRemote;
+}
+
+function voiceWorkRemoteTarget(work: VoiceKnownWork | VoiceRemoteWork): { sourceId: number; code: string } | null {
+  if (!work.primaryCode) return null;
+  if ("sourceId" in work) return { sourceId: work.sourceId, code: work.primaryCode };
+  const remoteSource = work.sourceTags.find((tag) => tag.sourceId !== null && tag.sourceId !== undefined && tag.key !== "cache");
+  return remoteSource?.sourceId ? { sourceId: remoteSource.sourceId, code: work.primaryCode } : null;
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
