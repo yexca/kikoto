@@ -52,6 +52,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/voices", s.listVoices)
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
+	mux.HandleFunc("PATCH /api/voices/{personId}/user-state", s.updateVoiceUserState)
+	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
@@ -2380,7 +2382,7 @@ func withCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

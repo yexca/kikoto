@@ -3,22 +3,22 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const voiceRemotePageSize = 48
 
 type voiceSummary struct {
-	PersonID        string             `json:"personId"`
+	PersonID        int64              `json:"personId"`
 	DisplayName     string             `json:"displayName"`
 	Aliases         []string           `json:"aliases"`
 	KnownWorks      int                `json:"knownWorks"`
@@ -27,7 +27,17 @@ type voiceSummary struct {
 	CachedWorks     int                `json:"cachedWorks"`
 	PlayableWorks   int                `json:"playableWorks"`
 	LastSeenAt      *string            `json:"lastSeenAt"`
+	Rating          *int               `json:"rating"`
+	Note            string             `json:"note"`
+	Favorite        bool               `json:"favorite"`
+	UserTags        []voiceUserTag     `json:"userTags"`
 	SourceSummaries []circleSourceStat `json:"sourceSummaries"`
+}
+
+type voiceUserTag struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
 }
 
 type voiceDetail struct {
@@ -85,10 +95,19 @@ type voiceRemoteWork struct {
 }
 
 func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
 		return
 	}
-	summaries, err := s.loadVoiceSummaries(r.Context())
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	summaries, err := s.loadVoiceSummaries(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -101,145 +120,308 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	name, err := decodeVoicePersonID(r.PathValue("personId"))
-	if err != nil || strings.TrimSpace(name) == "" {
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	summaries, err := s.loadVoiceSummaries(r.Context())
-	if err != nil {
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
-	var summary *voiceSummary
-	for index := range summaries {
-		if sameVoiceName(summaries[index].DisplayName, name) {
-			summary = &summaries[index]
-			break
+	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
 		}
-	}
-	if summary == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+		writeError(w, err)
 		return
 	}
-	works, err := s.loadVoiceKnownWorks(r.Context(), user.ID, summary.DisplayName)
+	works, err := s.loadVoiceKnownWorks(r.Context(), user.ID, personID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	matches, err := s.searchVoiceRemoteSources(r.Context(), summary.DisplayName)
+	matches, err := s.searchVoiceRemoteSources(r.Context(), summary.PersonID, summary.DisplayName)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, voiceDetail{voiceSummary: *summary, Works: works, RemoteMatches: matches})
+	writeJSON(w, http.StatusOK, voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: matches})
 }
 
-func (s *Server) loadVoiceSummaries(ctx context.Context) ([]voiceSummary, error) {
-	rows, err := s.db.QueryContext(ctx, voiceWorksBaseQuery())
+func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:write")
+	if !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	var payload struct {
+		Rating   *int    `json:"rating"`
+		Note     *string `json:"note"`
+		Favorite *bool   `json:"favorite"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if payload.Rating != nil && (*payload.Rating < 0 || *payload.Rating > 5) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rating must be between 0 and 5"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	ratingValue := any(nil)
+	if payload.Rating != nil && *payload.Rating > 0 {
+		ratingValue = *payload.Rating
+	}
+	note := ""
+	if payload.Note != nil {
+		note = strings.TrimSpace(*payload.Note)
+	}
+	favorite := 0
+	if payload.Favorite != nil && *payload.Favorite {
+		favorite = 1
+	}
+	if _, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, updated_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id, person_id) DO UPDATE SET
+			rating = excluded.rating,
+			note = excluded.note,
+			favorite = excluded.favorite,
+			updated_at = CURRENT_TIMESTAMP
+	`, user.ID, personID, ratingValue, note, favorite); err != nil {
+		writeError(w, err)
+		return
+	}
+	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) setVoiceUserTags(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "tags:write")
+	if !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	tags, err := s.replaceVoiceUserTags(r.Context(), user.ID, personID, payload.Tags)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"personId": personID, "userTags": tags})
+}
+
+func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceSummary, error) {
+	rows, err := s.db.QueryContext(ctx, voiceSummaryQuery("")+" ORDER BY known_works DESC, person.display_name ASC", userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	type aggregate struct {
-		summary voiceSummary
-		codes   map[string]bool
-		local   map[string]bool
-		remote  map[string]bool
-		cache   map[string]bool
-	}
-	byName := map[string]*aggregate{}
+	summaries := []voiceSummary{}
 	for rows.Next() {
-		work, err := scanVoiceWorkRow(rows)
+		item, err := s.scanVoiceSummary(ctx, rows, userID)
 		if err != nil {
 			return nil, err
 		}
-		metadata := parseDLsiteSnapshot(work.Snapshot)
-		if len(metadata.VoiceActors) == 0 {
-			metadata.VoiceActors = parseKikoeruVoiceActors(work.Snapshot)
-		}
-		for _, actor := range metadata.VoiceActors {
-			name := strings.TrimSpace(actor)
-			if name == "" {
-				continue
-			}
-			key := voiceNameKey(name)
-			item := byName[key]
-			if item == nil {
-				item = &aggregate{
-					summary: voiceSummary{
-						PersonID:        encodeVoicePersonID(name),
-						DisplayName:     name,
-						Aliases:         []string{},
-						SourceSummaries: []circleSourceStat{},
-					},
-					codes:  map[string]bool{},
-					local:  map[string]bool{},
-					remote: map[string]bool{},
-					cache:  map[string]bool{},
-				}
-				byName[key] = item
-			}
-			item.codes[work.PrimaryCode] = true
-			if work.HasLocal {
-				item.local[work.PrimaryCode] = true
-			}
-			if work.HasRemote {
-				item.remote[work.PrimaryCode] = true
-			}
-			if work.HasCache {
-				item.cache[work.PrimaryCode] = true
-			}
-			if item.summary.LastSeenAt == nil || strings.Compare(work.UpdatedAt, *item.summary.LastSeenAt) > 0 {
-				seen := work.UpdatedAt
-				item.summary.LastSeenAt = &seen
-			}
-		}
+		summaries = append(summaries, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	summaries := []voiceSummary{}
-	for _, item := range byName {
-		item.summary.KnownWorks = len(item.codes)
-		item.summary.LocalWorks = len(item.local)
-		item.summary.RemoteWorks = len(item.remote)
-		item.summary.CachedWorks = len(item.cache)
-		item.summary.PlayableWorks = countUnion(item.local, item.cache, item.remote)
-		item.summary.SourceSummaries = voiceSourceSummaries(item.summary.LocalWorks, item.summary.RemoteWorks, item.summary.CachedWorks)
-		summaries = append(summaries, item.summary)
-	}
-	sort.Slice(summaries, func(i, j int) bool {
-		if summaries[i].KnownWorks == summaries[j].KnownWorks {
-			return summaries[i].DisplayName < summaries[j].DisplayName
-		}
-		return summaries[i].KnownWorks > summaries[j].KnownWorks
-	})
-	return summaries, nil
+	return summaries, rows.Err()
 }
 
-func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, voiceName string) ([]voiceKnownWork, error) {
-	rows, err := s.db.QueryContext(ctx, voiceWorksBaseQueryWithUser(), userID)
+func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID int64) (voiceSummary, error) {
+	row := s.db.QueryRowContext(ctx, voiceSummaryQuery("WHERE person.id = ?"), userID, personID)
+	return s.scanVoiceSummary(ctx, row, userID)
+}
+
+func voiceSummaryQuery(where string) string {
+	return `
+		SELECT
+			person.id,
+			person.display_name,
+			COALESCE((
+				SELECT GROUP_CONCAT(alias.alias, char(31))
+				FROM person_alias AS alias
+				WHERE alias.person_id = person.id
+			), '') AS aliases,
+			COUNT(DISTINCT credit.work_id) AS known_works,
+			COUNT(DISTINCT CASE WHEN EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = credit.work_id AND location.location_type = 'local' AND location.availability = 'available'
+			) THEN credit.work_id END) AS local_works,
+			COUNT(DISTINCT CASE WHEN EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = credit.work_id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
+			) THEN credit.work_id END) AS remote_works,
+			COUNT(DISTINCT CASE WHEN EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = credit.work_id AND location.location_type = 'cache' AND location.availability = 'available'
+			) THEN credit.work_id END) AS cached_works,
+			MAX(work.updated_at) AS last_seen_at,
+			state.rating,
+			COALESCE(state.note, '') AS note,
+			COALESCE(state.favorite, 0) AS favorite
+		FROM person
+		INNER JOIN work_credit AS credit ON credit.person_id = person.id AND credit.role = 'voice_actor'
+		INNER JOIN work ON work.id = credit.work_id
+		LEFT JOIN user_person_state AS state ON state.person_id = person.id AND state.user_id = ?
+		` + where + `
+		GROUP BY person.id, person.display_name, state.rating, state.note, state.favorite
+	`
+}
+
+type voiceSummaryScanner interface {
+	Scan(dest ...any) error
+}
+
+func (s *Server) scanVoiceSummary(ctx context.Context, scanner voiceSummaryScanner, userID int64) (voiceSummary, error) {
+	var item voiceSummary
+	var aliasesRaw string
+	var lastSeen sql.NullString
+	var rating sql.NullInt64
+	var favorite int
+	if err := scanner.Scan(
+		&item.PersonID,
+		&item.DisplayName,
+		&aliasesRaw,
+		&item.KnownWorks,
+		&item.LocalWorks,
+		&item.RemoteWorks,
+		&item.CachedWorks,
+		&lastSeen,
+		&rating,
+		&item.Note,
+		&favorite,
+	); err != nil {
+		return voiceSummary{}, err
+	}
+	item.Aliases = splitAliases(aliasesRaw)
+	item.PlayableWorks = maxInt(item.LocalWorks, countUnionInts(item.LocalWorks, item.CachedWorks, item.RemoteWorks))
+	item.LastSeenAt = nullableString(lastSeen)
+	if rating.Valid {
+		value := int(rating.Int64)
+		item.Rating = &value
+	}
+	item.Favorite = favorite != 0
+	tags, err := s.loadVoiceUserTags(ctx, userID, item.PersonID)
+	if err != nil {
+		return voiceSummary{}, err
+	}
+	item.UserTags = tags
+	item.SourceSummaries = voiceSourceSummaries(item.LocalWorks, item.RemoteWorks, item.CachedWorks)
+	return item, nil
+}
+
+func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID int64) ([]voiceKnownWork, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			work.id,
+			work.primary_code,
+			work.title,
+			work.release_date,
+			COALESCE((
+				SELECT snapshot_json
+				FROM metadata_snapshot
+				WHERE metadata_snapshot.work_id = work.id
+				ORDER BY fetched_at DESC, id DESC
+				LIMIT 1
+			), '') AS snapshot_json,
+			(
+				SELECT party.display_name || '|' || COALESCE(external.external_id, '')
+				FROM work_party AS relation
+				INNER JOIN party ON party.id = relation.party_id
+				LEFT JOIN party_external_id AS external ON external.party_id = party.id
+					AND external.is_primary = 1
+				WHERE relation.work_id = work.id
+					AND relation.role = 'circle'
+				ORDER BY relation.updated_at DESC
+				LIMIT 1
+			) AS party_link,
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+			EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = work.id AND location.location_type = 'local' AND location.availability = 'available'
+			) AS has_local,
+			EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = work.id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
+			) AS has_remote,
+			EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = work.id AND location.location_type = 'cache' AND location.availability = 'available'
+			) AS has_cache
+		FROM work_credit AS credit
+		INNER JOIN work ON work.id = credit.work_id
+		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+			AND user_work_state.user_id = ?
+		WHERE credit.person_id = ?
+			AND credit.role = 'voice_actor'
+		ORDER BY COALESCE(work.release_date, '') DESC, work.primary_code DESC
+	`, userID, personID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	works := []voiceKnownWork{}
 	for rows.Next() {
-		row, err := scanVoiceWorkRowWithUser(rows)
+		row, err := scanVoiceWorkRow(rows)
 		if err != nil {
 			return nil, err
 		}
 		metadata := parseDLsiteSnapshot(row.Snapshot)
-		actors := metadata.VoiceActors
-		if len(actors) == 0 {
-			actors = parseKikoeruVoiceActors(row.Snapshot)
-		}
-		if !voiceNamesContain(actors, voiceName) {
-			continue
-		}
 		sourceTags, err := s.workSourceTagsByCode(ctx, row.PrimaryCode)
 		if err != nil {
 			return nil, err
@@ -268,27 +450,10 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, voiceNam
 			SourceTags:       sourceTags,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	sort.Slice(works, func(i, j int) bool {
-		left := ""
-		right := ""
-		if works[i].ReleaseDate != nil {
-			left = *works[i].ReleaseDate
-		}
-		if works[j].ReleaseDate != nil {
-			right = *works[j].ReleaseDate
-		}
-		if left == right {
-			return works[i].PrimaryCode > works[j].PrimaryCode
-		}
-		return left > right
-	})
-	return works, nil
+	return works, rows.Err()
 }
 
-func (s *Server) searchVoiceRemoteSources(ctx context.Context, voiceName string) ([]voiceRemoteSourceSet, error) {
+func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, voiceName string) ([]voiceRemoteSourceSet, error) {
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
 		return nil, err
@@ -362,7 +527,312 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, voiceName string)
 		}
 		results = append(results, result)
 	}
-	return results, nil
+	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
+	return results, err
+}
+
+func (s *Server) recordVoiceRemoteSearchWorkflow(ctx context.Context, personID int64, voiceName string, keyword string, results []voiceRemoteSourceSet) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "voice_remote_search", "Search voice remote sources", "Search configured Kikoeru-compatible sources for a voice actor.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "select", "type": "select_remote_source"},
+			{"id": "discover", "type": "discover_remote_works"},
+			{"id": "match", "type": "match_works"},
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	available := 0
+	errorsCount := 0
+	matches := 0
+	for _, result := range results {
+		if result.Status == "ok" {
+			available++
+		}
+		if result.Status == "error" {
+			errorsCount++
+		}
+		matches += len(result.Works)
+	}
+	input := map[string]any{"person_id": personID, "voice_name": voiceName, "keyword": keyword}
+	summary := map[string]any{"sources": len(results), "ok": available, "errors": errorsCount, "matches": matches}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "voice_remote_search", "Search voice remote sources", "succeeded", "detail_view", "voice_detail_remote_matches", input, summary)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote sources", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"sources": len(results)},
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover voice matches", Position: 2, Status: "succeeded",
+		Input: map[string]any{"keyword": keyword}, Output: summary,
+	}); err != nil {
+		return 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "match", NodeType: "match_works", DisplayName: "Match local and cached availability", Position: 3, Status: "succeeded",
+		Input: map[string]any{"person_id": personID}, Output: voiceRemoteSearchOutput(results),
+	}); err != nil {
+		return 0, err
+	}
+	return runID, tx.Commit()
+}
+
+func voiceRemoteSearchOutput(results []voiceRemoteSourceSet) map[string]any {
+	output := map[string]any{}
+	for _, result := range results {
+		output[result.SourceCode] = map[string]any{
+			"status":  result.Status,
+			"total":   result.Total,
+			"matches": len(result.Works),
+			"error":   result.Error,
+		}
+	}
+	return output
+}
+
+func (s *Server) syncVoiceCreditsFromSnapshots(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT work.id, snapshot.provider_id, snapshot.snapshot_json
+		FROM work
+		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
+		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type snapshotRow struct {
+		WorkID     int64
+		ProviderID sql.NullInt64
+		Raw        string
+	}
+	snapshots := []snapshotRow{}
+	seen := map[int64]bool{}
+	for rows.Next() {
+		var item snapshotRow
+		if err := rows.Scan(&item.WorkID, &item.ProviderID, &item.Raw); err != nil {
+			return err
+		}
+		if seen[item.WorkID] {
+			continue
+		}
+		seen[item.WorkID] = true
+		snapshots = append(snapshots, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, snapshot := range snapshots {
+		metadata := parseDLsiteSnapshot(snapshot.Raw)
+		actors := metadata.VoiceActors
+		if len(actors) == 0 {
+			actors = parseKikoeruVoiceActors(snapshot.Raw)
+		}
+		seenActor := map[string]bool{}
+		for _, actor := range actors {
+			name := strings.TrimSpace(actor)
+			if name == "" || seenActor[voiceNameKey(name)] {
+				continue
+			}
+			seenActor[voiceNameKey(name)] = true
+			personID, err := upsertPerson(ctx, tx, name)
+			if err != nil {
+				return err
+			}
+			var provider any
+			if snapshot.ProviderID.Valid {
+				provider = snapshot.ProviderID.Int64
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO work_credit (work_id, person_id, role, provider_id, source, updated_at)
+				VALUES (?, ?, 'voice_actor', ?, 'metadata_snapshot', CURRENT_TIMESTAMP)
+				ON CONFLICT(work_id, person_id, role) DO UPDATE SET
+					provider_id = excluded.provider_id,
+					source = excluded.source,
+					updated_at = CURRENT_TIMESTAMP
+			`, snapshot.WorkID, personID, provider); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+	name = strings.TrimSpace(name)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person (display_name, sort_name)
+		VALUES (?, ?)
+		ON CONFLICT(display_name) DO UPDATE SET
+			updated_at = CURRENT_TIMESTAMP
+	`, name, strings.ToLower(name)); err != nil {
+		return 0, err
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM person WHERE display_name = ?", name).Scan(&id); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person_alias (person_id, alias, source)
+		VALUES (?, ?, 'primary_name')
+		ON CONFLICT(person_id, alias) DO NOTHING
+	`, id, name); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *Server) ensureVoiceSchema(ctx context.Context) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS person (
+			id INTEGER PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			sort_name TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(display_name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS person_alias (
+			id INTEGER PRIMARY KEY,
+			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+			alias TEXT NOT NULL,
+			source TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(person_id, alias)
+		)`,
+		`CREATE TABLE IF NOT EXISTS work_credit (
+			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+			role TEXT NOT NULL,
+			provider_id INTEGER REFERENCES metadata_provider(id),
+			source TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(work_id, person_id, role)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_person_state (
+			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+			rating INTEGER,
+			note TEXT NOT NULL DEFAULT '',
+			favorite INTEGER NOT NULL DEFAULT 0,
+			last_viewed_at TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(user_id, person_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_person_tag (
+			id INTEGER PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			color TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(user_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_person_tag_assignment (
+			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+			user_person_tag_id INTEGER NOT NULL REFERENCES user_person_tag(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(user_id, person_id, user_person_tag_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_credit_person ON work_credit(person_id, role)`,
+	}
+	for _, statement := range statements {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) loadPersonName(ctx context.Context, personID int64) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", personID).Scan(&name)
+	return name, err
+}
+
+func (s *Server) replaceVoiceUserTags(ctx context.Context, userID int64, personID int64, rawTags []string) ([]voiceUserTag, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_tag_assignment WHERE user_id = ? AND person_id = ?", userID, personID); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, raw := range rawTags {
+		name := strings.TrimSpace(raw)
+		if name == "" || seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		if len(name) > 40 {
+			name = name[:40]
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_person_tag (user_id, name)
+			VALUES (?, ?)
+			ON CONFLICT(user_id, name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+		`, userID, name); err != nil {
+			return nil, err
+		}
+		tagID, err := selectID(ctx, tx, "SELECT id FROM user_person_tag WHERE user_id = ? AND name = ?", userID, name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id)
+			VALUES (?, ?, ?)
+			ON CONFLICT(user_id, person_id, user_person_tag_id) DO NOTHING
+		`, userID, personID, tagID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.loadVoiceUserTags(ctx, userID, personID)
+}
+
+func (s *Server) loadVoiceUserTags(ctx context.Context, userID int64, personID int64) ([]voiceUserTag, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT tag.id, tag.name, tag.color
+		FROM user_person_tag_assignment AS assignment
+		INNER JOIN user_person_tag AS tag ON tag.id = assignment.user_person_tag_id
+		WHERE assignment.user_id = ?
+			AND assignment.person_id = ?
+		ORDER BY tag.name ASC
+	`, userID, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tags := []voiceUserTag{}
+	for rows.Next() {
+		var tag voiceUserTag
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Color); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
 }
 
 func (s *Server) workSourceTagsByCode(ctx context.Context, code string) ([]circleSourceStat, error) {
@@ -420,7 +890,6 @@ type voiceWorkRow struct {
 	PrimaryCode     string
 	Title           string
 	ReleaseDate     sql.NullString
-	UpdatedAt       string
 	Snapshot        string
 	CircleLink      sql.NullString
 	ListeningStatus string
@@ -429,104 +898,14 @@ type voiceWorkRow struct {
 	HasCache        bool
 }
 
-func voiceWorksBaseQuery() string {
-	return `
-		SELECT
-			work.id,
-			work.primary_code,
-			work.title,
-			work.release_date,
-			work.updated_at,
-			COALESCE((
-				SELECT snapshot_json
-				FROM metadata_snapshot
-				WHERE metadata_snapshot.work_id = work.id
-				ORDER BY fetched_at DESC, id DESC
-				LIMIT 1
-			), '') AS snapshot_json,
-			'' AS party_link,
-			'none' AS listening_status,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type = 'local' AND location.availability = 'available'
-			) AS has_local,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
-			) AS has_remote,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type = 'cache' AND location.availability = 'available'
-			) AS has_cache
-		FROM work
-		ORDER BY work.updated_at DESC
-	`
-}
-
-func voiceWorksBaseQueryWithUser() string {
-	return `
-		SELECT
-			work.id,
-			work.primary_code,
-			work.title,
-			work.release_date,
-			work.updated_at,
-			COALESCE((
-				SELECT snapshot_json
-				FROM metadata_snapshot
-				WHERE metadata_snapshot.work_id = work.id
-				ORDER BY fetched_at DESC, id DESC
-				LIMIT 1
-			), '') AS snapshot_json,
-			(
-				SELECT party.display_name || '|' || COALESCE(external.external_id, '')
-				FROM work_party AS relation
-				INNER JOIN party ON party.id = relation.party_id
-				LEFT JOIN party_external_id AS external ON external.party_id = party.id
-					AND external.is_primary = 1
-				WHERE relation.work_id = work.id
-					AND relation.role = 'circle'
-				ORDER BY relation.updated_at DESC
-				LIMIT 1
-			) AS party_link,
-			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type = 'local' AND location.availability = 'available'
-			) AS has_local,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
-			) AS has_remote,
-			EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = work.id AND location.location_type = 'cache' AND location.availability = 'available'
-			) AS has_cache
-		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
-			AND user_work_state.user_id = ?
-		ORDER BY work.updated_at DESC
-	`
-}
-
 func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var item voiceWorkRow
 	var hasLocal, hasRemote, hasCache int
-	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.UpdatedAt, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &hasLocal, &hasRemote, &hasCache)
+	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &hasLocal, &hasRemote, &hasCache)
 	item.HasLocal = hasLocal != 0
 	item.HasRemote = hasRemote != 0
 	item.HasCache = hasCache != 0
 	return item, err
-}
-
-func scanVoiceWorkRowWithUser(rows *sql.Rows) (voiceWorkRow, error) {
-	return scanVoiceWorkRow(rows)
 }
 
 func parseKikoeruVoiceActors(raw string) []string {
@@ -554,43 +933,38 @@ func parseKikoeruVoiceActors(raw string) []string {
 	return names
 }
 
-func encodeVoicePersonID(name string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(name)))
-}
-
-func decodeVoicePersonID(value string) (string, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
-	if err != nil {
-		return "", err
+func splitAliases(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
 	}
-	return string(decoded), nil
+	parts := strings.Split(raw, "\x1f")
+	aliases := []string{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			aliases = append(aliases, part)
+		}
+	}
+	return aliases
 }
 
 func voiceNameKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-func sameVoiceName(left string, right string) bool {
-	return voiceNameKey(left) == voiceNameKey(right)
-}
-
-func voiceNamesContain(values []string, name string) bool {
+func countUnionInts(values ...int) int {
+	total := 0
 	for _, value := range values {
-		if sameVoiceName(value, name) {
-			return true
-		}
+		total += value
 	}
-	return false
+	return total
 }
 
-func countUnion(groups ...map[string]bool) int {
-	seen := map[string]bool{}
-	for _, group := range groups {
-		for key := range group {
-			seen[key] = true
-		}
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
 	}
-	return len(seen)
+	return right
 }
 
 func voiceSourceSummaries(local int, remote int, cache int) []circleSourceStat {
@@ -633,4 +1007,9 @@ func remoteImportStatus(workID *int64) string {
 		return "remote"
 	}
 	return "imported"
+}
+
+func parseInt64Text(value string) int64 {
+	id, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	return id
 }
