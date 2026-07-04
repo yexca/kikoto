@@ -428,7 +428,7 @@ export type CircleDetail = CircleSummary & {
 };
 
 export type VoiceSummary = {
-  personId: string;
+  personId: number;
   displayName: string;
   aliases: string[];
   knownWorks: number;
@@ -437,7 +437,17 @@ export type VoiceSummary = {
   cachedWorks: number;
   playableWorks: number;
   lastSeenAt: string | null;
+  rating: number | null;
+  note: string;
+  favorite: boolean;
+  userTags: VoiceUserTag[];
   sourceSummaries: CircleSourceStat[];
+};
+
+export type VoiceUserTag = {
+  id: number;
+  name: string;
+  color: string;
 };
 
 export type VoiceKnownWork = {
@@ -589,6 +599,20 @@ async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `PUT ${path} failed with ${response.status}` }));
+    throw new Error(payload.error ?? `PUT ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 async function deleteJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
   if (!response.ok) {
@@ -639,7 +663,11 @@ export const api = {
   listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
-  getVoice: (personId: string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(personId)}`),
+  getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
+  updateVoiceUserState: (personId: number, payload: { rating: number | null; note: string; favorite: boolean }) =>
+    patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload),
+  setVoiceUserTags: (personId: number, tags: string[]) =>
+    putJSONBody<{ personId: number; userTags: VoiceUserTag[] }>(`/api/voices/${personId}/tags`, { tags }),
   updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
   refreshCircle: (externalId: string, payload: { mode: "incremental" | "full"; productMode: "available" | "all" }) =>
