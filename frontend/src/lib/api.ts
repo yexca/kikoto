@@ -429,6 +429,7 @@ export type CircleRefreshResult = {
   runId: number;
   externalId: string;
   status: string;
+  catalogWorks: number;
 };
 
 export type MediaTextPreview = {

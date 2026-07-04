@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -244,15 +245,16 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	runID, err := s.recordCircleRefreshShortcut(r.Context(), partyID, externalID)
+	result, err := s.runCircleRefresh(r.Context(), partyID, externalID)
 	if err != nil {
-		writeError(w, err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"runId":      runID,
+		"runId":      result.RunID,
 		"externalId": externalID,
-		"status":     "queued_placeholder",
+		"status":     result.Status,
+		"catalogWorks": result.CatalogWorks,
 	})
 }
 
@@ -724,10 +726,101 @@ func (s *Server) workSourceTags(ctx context.Context, code string) ([]circleSourc
 	return tags, rows.Err()
 }
 
-func (s *Server) recordCircleRefreshShortcut(ctx context.Context, partyID int64, externalID string) (int64, error) {
+type circleRefreshResult struct {
+	RunID        int64
+	JobID        int64
+	Status       string
+	CatalogWorks int
+	Error        string
+}
+
+func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID string) (circleRefreshResult, error) {
+	client := dlsite.NewClient(nil)
+	profile, fetchErr := client.FetchMakerProfile(ctx, externalID)
+	result := circleRefreshResult{Status: "succeeded"}
+	if fetchErr != nil {
+		result.Status = "failed"
+		result.Error = fetchErr.Error()
+	} else {
+		if err := s.applyMakerProfile(ctx, partyID, profile); err != nil {
+			result.Status = "failed"
+			result.Error = err.Error()
+		} else {
+			result.CatalogWorks = len(profile.WorkCodes)
+		}
+	}
+	runID, jobID, err := s.recordCircleRefreshWorkflow(ctx, partyID, externalID, profile, result)
+	if err != nil {
+		return circleRefreshResult{}, err
+	}
+	result.RunID = runID
+	result.JobID = jobID
+	if result.Status == "failed" {
+		return result, fmt.Errorf(result.Error)
+	}
+	return result, nil
+}
+
+func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile dlsite.MakerProfile) error {
+	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
+	if err != nil {
+		return err
+	}
+	name := strings.TrimSpace(profile.MakerName)
+	if name == "" {
+		name = "Unfetched circle " + profile.MakerID
+	}
+	raw, err := json.Marshal(map[string]any{
+		"maker_id": profile.MakerID,
+		"maker_name": name,
+		"site_id": profile.SiteID,
+		"url": profile.URL,
+		"work_codes": profile.WorkCodes,
+	})
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE party
+		SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, name, strings.ToLower(name), partyID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO party_metadata_snapshot (party_id, provider_id, external_id, snapshot_json)
+		VALUES (?, ?, ?, ?)
+	`, partyID, providerID, profile.MakerID, string(raw)); err != nil {
+		return err
+	}
+	for _, code := range profile.WorkCodes {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, url, catalog_status, raw_json, last_seen_at)
+			VALUES (?, ?, ?, ?, ?, 'catalog', ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(party_id, provider_id, primary_code) DO UPDATE SET
+				url = excluded.url,
+				catalog_status = CASE
+					WHEN party_catalog_item.catalog_status = 'imported' THEN party_catalog_item.catalog_status
+					ELSE excluded.catalog_status
+				END,
+				raw_json = excluded.raw_json,
+				last_seen_at = CURRENT_TIMESTAMP
+		`, partyID, providerID, code, code, dlsiteURL(code), string(raw)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64, externalID string, profile dlsite.MakerProfile, result circleRefreshResult) (int64, int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "circle_metadata_refresh", "Refresh circle metadata", "Refresh DLsite maker profile and catalog for one circle.", map[string]any{
@@ -738,16 +831,18 @@ func (s *Server) recordCircleRefreshShortcut(ctx context.Context, partyID int64,
 		},
 	})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "circle_metadata_refresh", "Refresh circle metadata", "succeeded", "manual", "circle_shortcut", map[string]any{
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "circle_metadata_refresh", "Refresh circle metadata", result.Status, "manual", "circle_shortcut", map[string]any{
 		"party_id":    partyID,
 		"external_id": externalID,
 	}, map[string]any{
-		"status": "placeholder_recorded",
+		"status": result.Status,
+		"catalog_works": result.CatalogWorks,
+		"error": result.Error,
 	})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID:      "select",
@@ -758,23 +853,37 @@ func (s *Server) recordCircleRefreshShortcut(ctx context.Context, partyID int64,
 		Input:       map[string]any{"external_id": externalID},
 		Output:      map[string]any{"party_id": partyID},
 	}); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+	refreshNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID:      "refresh",
 		NodeType:    "refresh_party_metadata",
 		DisplayName: "Refresh circle metadata",
 		Position:    2,
-		Status:      "succeeded",
+		Status:      result.Status,
 		Input:       map[string]any{"external_id": externalID},
-		Output:      map[string]any{"mode": "placeholder_no_network"},
-	}); err != nil {
-		return 0, err
+		Output:      map[string]any{"maker_name": profile.MakerName, "catalog_works": result.CatalogWorks, "url": profile.URL},
+		Error:       result.Error,
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID:       refreshNodeID,
+		WorkerType:      "circle_metadata_refresh",
+		Status:          result.Status,
+		Payload:         map[string]any{"external_id": externalID},
+		ProgressCurrent: result.CatalogWorks,
+		ProgressTotal:   result.CatalogWorks,
+		Error:           result.Error,
+	})
+	if err != nil {
+		return 0, 0, err
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return runID, nil
+	return runID, jobID, nil
 }
 
 func (s *Server) metadataProviderID(ctx context.Context, code string, displayName string) (int64, error) {

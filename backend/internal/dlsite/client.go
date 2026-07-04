@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -62,6 +64,15 @@ type Creator struct {
 	Classification string `json:"classification"`
 }
 
+type MakerProfile struct {
+	MakerID     string   `json:"maker_id"`
+	MakerName   string   `json:"maker_name"`
+	SiteID      string   `json:"site_id"`
+	URL         string   `json:"url"`
+	WorkCodes   []string `json:"work_codes"`
+	RawHTML     string   `json:"raw_html"`
+}
+
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
@@ -92,6 +103,25 @@ func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, erro
 		lastErr = fmt.Errorf("no candidate sites for %s", workno)
 	}
 	return Product{}, lastErr
+}
+
+func (c *Client) FetchMakerProfile(ctx context.Context, makerID string) (MakerProfile, error) {
+	makerID = strings.ToUpper(strings.TrimSpace(makerID))
+	if makerID == "" {
+		return MakerProfile{}, fmt.Errorf("empty maker id")
+	}
+	var lastErr error
+	for _, site := range candidateMakerSites(makerID) {
+		profile, err := c.fetchMakerProfileFromSite(ctx, site, makerID)
+		if err == nil {
+			return profile, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no candidate sites for %s", makerID)
+	}
+	return MakerProfile{}, lastErr
 }
 
 func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot string) (string, error) {
@@ -218,6 +248,38 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	return product, nil
 }
 
+func (c *Client) fetchMakerProfileFromSite(ctx context.Context, site string, makerID string) (MakerProfile, error) {
+	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(c.baseURL, "/"), site, url.PathEscape(makerID))
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return MakerProfile{}, err
+	}
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("User-Agent", c.userAgent)
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return MakerProfile{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return MakerProfile{}, fmt.Errorf("dlsite maker %s returned %s", site, response.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	if err != nil {
+		return MakerProfile{}, err
+	}
+	rawHTML := string(body)
+	return MakerProfile{
+		MakerID:   makerID,
+		MakerName: parseMakerName(rawHTML),
+		SiteID:    site,
+		URL:       endpoint,
+		WorkCodes: parseWorkCodes(rawHTML),
+		RawHTML:   rawHTML,
+	}, nil
+}
+
 func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMessage, *float64, error) {
 	site := product.SiteID
 	if site == "" {
@@ -295,4 +357,69 @@ func candidateSites(workno string) []string {
 	default:
 		return []string{"maniax", "pro"}
 	}
+}
+
+func candidateMakerSites(makerID string) []string {
+	switch {
+	case strings.HasPrefix(makerID, "VG"):
+		return []string{"pro", "maniax"}
+	default:
+		return []string{"maniax", "pro"}
+	}
+}
+
+var (
+	titlePattern = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	workCodePattern = regexp.MustCompile(`(?i)\b(?:RJ|BJ|VJ)[0-9]{5,8}\b`)
+)
+
+func parseMakerName(rawHTML string) string {
+	match := titlePattern.FindStringSubmatch(rawHTML)
+	if len(match) < 2 {
+		return ""
+	}
+	title := html.UnescapeString(stripTags(match[1]))
+	for _, separator := range []string{"|", "｜", " - ", " / "} {
+		if index := strings.Index(title, separator); index > 0 {
+			title = title[:index]
+		}
+	}
+	title = strings.TrimSpace(strings.Join(strings.Fields(title), " "))
+	return title
+}
+
+func parseWorkCodes(rawHTML string) []string {
+	matches := workCodePattern.FindAllString(rawHTML, -1)
+	seen := map[string]bool{}
+	codes := []string{}
+	for _, match := range matches {
+		code := strings.ToUpper(strings.TrimSpace(match))
+		if seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+		if len(codes) >= 48 {
+			break
+		}
+	}
+	return codes
+}
+
+func stripTags(value string) string {
+	var builder strings.Builder
+	inTag := false
+	for _, char := range value {
+		switch char {
+		case '<':
+			inTag = true
+		case '>':
+			inTag = false
+		default:
+			if !inTag {
+				builder.WriteRune(char)
+			}
+		}
+	}
+	return builder.String()
 }

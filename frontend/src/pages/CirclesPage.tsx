@@ -271,7 +271,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const refresh = async () => {
     try {
       const result = await api.refreshCircle(externalId);
-      setMessage(`Refresh workflow recorded as run #${result.runId}.`);
+      setMessage(`Refresh workflow #${result.runId} finished with ${result.catalogWorks} catalog works.`);
+      const next = await api.getCircle(externalId);
+      setDetail(next);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
     }
