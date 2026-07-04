@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { openCircleRoute } from "@/pages/CirclesPage";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "local" | "remote" | "missing";
@@ -572,6 +573,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               work={work}
               selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
               selectable={isVoiceBulkSelectable(work)}
+              selectionActive={selectedWorkKeys.size > 0}
               onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
             />
@@ -584,7 +586,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, onSelectedChange, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; onSelectedChange: (checked: boolean) => void; onStatusChange: (status: ListeningStatus) => void }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onStatusChange: (status: ListeningStatus) => void }) {
   const isKnown = "local" in work;
   const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
@@ -624,32 +626,37 @@ function VoiceWorkCard({ work, selected, selectable, onSelectedChange, onStatusC
       <CardContent className="p-0">
         <button className={`block w-full text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`} disabled={!canOpen} onClick={() => openWorkRoute(work)}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-            </label>
+            {selectionActive && (
+              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+              </label>
+            )}
             {cover && <img src={cover} alt="" className="h-full w-full object-contain" loading="lazy" />}
             <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode || sourceName || "Source"}</div>
           </div>
           <div className="flex min-h-52 flex-col gap-3 p-4">
             <div className="space-y-1">
               <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <div className="truncate text-xs text-muted-foreground">{work.circle || sourceName || "Unknown circle"}{work.rating ? ` · ${work.rating}` : ""}</div>
-            </div>
-            <div className="flex min-h-6 flex-wrap gap-1.5">
-              <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
-              {cache && <Badge variant="secondary">Cache</Badge>}
-              {listeningMark !== "none" && <Badge variant="warning">{listeningStatusLabel(listeningMark)}</Badge>}
+              <button
+                className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if ("circleExternalId" in work && work.circleExternalId) openCircleRoute(work.circleExternalId);
+                }}
+              >
+                {work.circle || sourceName || "Unknown circle"}
+              </button>
             </div>
             <div className="flex min-h-6 flex-wrap gap-1.5">
               {metadataTags.length > 0 ? metadataTags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>) : <span className="text-xs text-muted-foreground">No tags</span>}
             </div>
             <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <FileAudio className="h-3.5 w-3.5" />
-                <span>{local || remote || cache ? "Matched file source" : "No playable source"}</span>
-              </div>
+              <div className="truncate">Release {voiceWorkReleaseDate(work) || "unknown"} · Updated {voiceWorkUpdatedAt(work) || "unknown"}</div>
+              <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {voiceWorkSales(work) === null ? "unknown" : voiceWorkSales(work)?.toLocaleString()}</div>
             </div>
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
+              <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
+              {cache && <Badge variant="secondary">Cache</Badge>}
               {tags.length > 0 ? tags.map((tag) => <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>{tag.displayName}</Badge>) : (
                 <>
                   {local && <Badge variant="secondary">Local</Badge>}
@@ -686,6 +693,12 @@ function VoiceWorkCard({ work, selected, selectable, onSelectedChange, onStatusC
           </div>
           <div className="flex min-w-0 items-center gap-1">
             {sourceName && <span className="max-w-28 truncate text-xs text-muted-foreground">{sourceName}</span>}
+            <Button variant="ghost" size="sm" asChild>
+              <a href={voiceWorkDLsiteURL(work)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                <ExternalLink className="h-4 w-4" />
+                DLsite
+              </a>
+            </Button>
             <Button variant="ghost" size="sm" disabled={!canOpen} onClick={() => openWorkRoute(work)}>
               <ExternalLink className="h-4 w-4" />
               Open
@@ -995,6 +1008,22 @@ function isVoiceBulkSelectable(work: VoiceKnownWork | VoiceRemoteWork) {
 function voiceWorkHasImportedRemote(work: VoiceKnownWork | VoiceRemoteWork) {
   if ("remote" in work) return work.remote;
   return work.hasRemote;
+}
+
+function voiceWorkReleaseDate(work: VoiceKnownWork | VoiceRemoteWork) {
+  return "releaseDate" in work ? work.releaseDate || "" : "";
+}
+
+function voiceWorkUpdatedAt(work: VoiceKnownWork | VoiceRemoteWork) {
+  return work.updatedAt || voiceWorkReleaseDate(work);
+}
+
+function voiceWorkSales(work: VoiceKnownWork | VoiceRemoteWork) {
+  return work.sales ?? null;
+}
+
+function voiceWorkDLsiteURL(work: VoiceKnownWork | VoiceRemoteWork) {
+  return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : `https://www.dlsite.com/maniax/work/=/product_id/${encodeURIComponent(work.primaryCode)}.html`;
 }
 
 function voiceWorkRemoteTarget(work: VoiceKnownWork | VoiceRemoteWork): { sourceId: number; code: string } | null {

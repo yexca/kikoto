@@ -483,6 +483,7 @@ function RemoteSourcePanel({
   const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
   const selectedSaveable = selectedWorks;
+  const selectionActive = bulkCodes.size > 0;
   const canGoNext = result !== null && result.works.length >= pageSize;
   const canGoPrevious = page > 1;
 
@@ -549,6 +550,10 @@ function RemoteSourcePanel({
           <p className="text-sm text-muted-foreground">Browse source results without importing until a user action needs local state.</p>
         </div>
         <div className="flex gap-2">
+          <label className="flex items-center gap-2 rounded-md border bg-card px-2 text-xs text-muted-foreground">
+            <input type="checkbox" checked={selectableWorks.length > 0 && selectedWorks.length === selectableWorks.length} onChange={(event) => toggleAllVisible(event.target.checked)} />
+            Select
+          </label>
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
           <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
         </div>
@@ -592,10 +597,7 @@ function RemoteSourcePanel({
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-        <label className="flex items-center gap-2 text-muted-foreground">
-          <input type="checkbox" checked={selectableWorks.length > 0 && selectedWorks.length === selectableWorks.length} onChange={(event) => toggleAllVisible(event.target.checked)} />
-          {selectedWorks.length} selected
-        </label>
+        <div className="text-muted-foreground">{selectedWorks.length} selected</div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
             <DownloadCloud className="h-4 w-4" />
@@ -624,11 +626,13 @@ function RemoteSourcePanel({
               work={work}
               selected={bulkCodes.has(work.primaryCode)}
               selectable={Boolean(work.primaryCode)}
+              selectionActive={selectionActive}
               isBusy={isSyncingCode === work.primaryCode}
               onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
               onFetchAndMark={() => void syncWork(work, "mark_interest")}
+              onSave={() => void api.saveRemoteSourceWork(source.id, work.primaryCode, []).then((result) => onSynced(result.workId)).catch((error) => setMessage(error instanceof Error ? error.message : "Save failed."))}
             />
           ))}
         </section>
@@ -671,20 +675,17 @@ function WorkCard({
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
-          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} externalUrl={work.dlsiteUrl} />
+          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} />
           <WorkCardBody
             title={work.title}
             circle={work.circle || "Unknown circle"}
             circleExternalId={work.circleExternalId}
-            statusBadges={[
-              ...(work.listeningStatus !== "none" ? [{ value: listeningStatusLabel(work.listeningStatus), variant: "warning" as const }] : []),
-            ]}
+            releaseDate={work.releaseDate}
+            updatedAt={work.updatedAt || work.createdAt}
+            rating={work.rating}
+            sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
             sourceBadges={work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) }))}
-            meta={[
-              { icon: <UserRound className="h-3.5 w-3.5" />, value: work.voiceActors.join(", ") || "No voice actor metadata" },
-              { icon: <FileAudio className="h-3.5 w-3.5" />, value: `${work.trackCount} tracks, ${work.availableLocations} files` },
-            ]}
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
@@ -709,9 +710,12 @@ function WorkCard({
             )}
           </div>
           <div className="flex items-center gap-1">
-            <IconButton title="Open work" onClick={onOpen}>
-              <MoreHorizontal className="h-4 w-4" />
-            </IconButton>
+            <Button variant="ghost" size="sm" asChild>
+              <a href={work.dlsiteUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                <ExternalLink className="h-4 w-4" />
+                DLsite
+              </a>
+            </Button>
           </div>
         </div>
       </CardContent>
@@ -723,42 +727,45 @@ function RemoteWorkCard({
   work,
   selected,
   selectable,
+  selectionActive,
   isBusy,
   onSelectedChange,
   onOpen,
   onFetch,
   onFetchAndMark,
+  onSave,
 }: {
   work: RemoteWork;
   selected: boolean;
   selectable: boolean;
+  selectionActive: boolean;
   isBusy: boolean;
   onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
   onFetch: () => void;
   onFetchAndMark: () => void;
+  onSave: () => void;
 }) {
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
-        <div className="block w-full cursor-pointer text-left" onClick={onOpen}>
-          <label className="absolute z-10 m-2 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-            <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-          </label>
+        <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
+          {selectionActive && (
+            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+            </label>
+          )}
           <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
           <WorkCardBody
             title={work.title}
             circle={work.circle || "Unknown circle"}
             circleExternalId=""
-            statusBadges={[
-              { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
-            ]}
+            releaseDate={work.releaseDate || null}
+            updatedAt={work.updatedAt || work.releaseDate}
+            rating={work.rating}
+            sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []}
-            meta={[
-              { icon: <Cloud className="h-3.5 w-3.5" />, value: "Browse source result" },
-              { icon: <FileAudio className="h-3.5 w-3.5" />, value: work.primaryCode || work.remoteId },
-            ]}
+            sourceBadges={work.remotePlayable ? [{ value: "remote source", variant: "outline" as const }] : []}
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
@@ -772,6 +779,16 @@ function RemoteWorkCard({
           >
             <DownloadCloud className="h-4 w-4" />
           </IconButton>
+          <IconButton
+            title="Save to library"
+            disabled={isBusy || !work.primaryCode}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSave();
+            }}
+          >
+            <HardDriveDownload className="h-4 w-4" />
+          </IconButton>
           <div className="flex items-center gap-1">
             <IconButton
               title="Fetch and mark"
@@ -782,9 +799,6 @@ function RemoteWorkCard({
               }}
             >
               <ListChecks className="h-4 w-4" />
-            </IconButton>
-            <IconButton title="Save to library is not available yet" disabled onClick={() => {}}>
-              <HardDriveDownload className="h-4 w-4" />
             </IconButton>
           </div>
         </div>
@@ -797,12 +811,10 @@ function WorkCardMedia({
   coverUrl,
   code,
   rating,
-  externalUrl,
 }: {
   coverUrl: string;
   code: string;
   rating: number | null;
-  externalUrl?: string;
 }) {
   const codeText = code || "Remote";
   return (
@@ -812,21 +824,7 @@ function WorkCardMedia({
       ) : (
         <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{codeText.slice(0, 2)}</div>
       )}
-      {externalUrl ? (
-        <a
-          className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold hover:text-primary"
-          href={externalUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          title="Open external page"
-        >
-          {codeText}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      ) : (
-        <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
-      )}
+      <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
       <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
         <Star className="h-3.5 w-3.5 fill-current" />
         {rating === null ? "No rating" : rating.toFixed(2)}
@@ -836,24 +834,27 @@ function WorkCardMedia({
 }
 
 type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
-type CardMeta = { icon: ReactNode; value: string };
 
 function WorkCardBody({
   title,
   circle,
   circleExternalId,
-  statusBadges,
+  releaseDate,
+  updatedAt,
+  rating,
+  sales,
   tagBadges,
   sourceBadges,
-  meta,
 }: {
   title: string;
   circle: string;
   circleExternalId: string;
-  statusBadges: CardBadge[];
+  releaseDate: string | null;
+  updatedAt: string;
+  rating: number | null;
+  sales: number | null;
   tagBadges: CardBadge[];
   sourceBadges: CardBadge[];
-  meta: CardMeta[];
 }) {
   return (
     <div className="flex min-h-52 flex-col gap-3 p-4">
@@ -870,13 +871,6 @@ function WorkCardBody({
         </button>
       </div>
       <div className="flex min-h-6 flex-wrap gap-1.5">
-        {statusBadges.map((badge) => (
-          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
-            {badge.value}
-          </Badge>
-        ))}
-      </div>
-      <div className="flex min-h-6 flex-wrap gap-1.5">
         {tagBadges.length > 0 ? tagBadges.map((badge) => (
           <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
             {badge.value}
@@ -884,12 +878,8 @@ function WorkCardBody({
         )) : <span className="text-xs text-muted-foreground">No tags</span>}
       </div>
       <div className="grid gap-1 text-xs text-muted-foreground">
-        {meta.map((item, index) => (
-          <div key={index} className="flex items-center gap-1.5">
-            {item.icon}
-            <span className="truncate">{item.value}</span>
-          </div>
-        ))}
+        <div className="truncate">Release {releaseDate || "unknown"} · Updated {updatedAt || "unknown"}</div>
+        <div className="truncate">DLsite rate {rating === null ? "unknown" : rating.toFixed(2)} · Sales {sales === null ? "unknown" : sales.toLocaleString()}</div>
       </div>
       <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
         {sourceBadges.length > 0 ? sourceBadges.map((badge) => (

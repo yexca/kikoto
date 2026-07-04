@@ -129,11 +129,13 @@ type voiceKnownWork struct {
 	PrimaryCode      string             `json:"primaryCode"`
 	Title            string             `json:"title"`
 	ReleaseDate      *string            `json:"releaseDate"`
+	UpdatedAt        string             `json:"updatedAt"`
 	CoverURL         string             `json:"coverUrl"`
 	DLsiteURL        string             `json:"dlsiteUrl"`
 	Circle           string             `json:"circle"`
 	CircleExternalID string             `json:"circleExternalId"`
 	Rating           *float64           `json:"rating"`
+	Sales            *int64             `json:"sales"`
 	Tags             []string           `json:"tags"`
 	ListeningMark    string             `json:"listeningMark"`
 	Local            bool               `json:"local"`
@@ -160,9 +162,12 @@ type voiceRemoteWork struct {
 	RemoteID       string   `json:"remoteId"`
 	PrimaryCode    string   `json:"primaryCode"`
 	Title          string   `json:"title"`
+	ReleaseDate    string   `json:"releaseDate"`
+	UpdatedAt      string   `json:"updatedAt"`
 	CoverURL       string   `json:"coverUrl"`
 	Circle         string   `json:"circle"`
 	Rating         *float64 `json:"rating"`
+	Sales          *int64   `json:"sales"`
 	Tags           []string `json:"tags"`
 	ImportStatus   string   `json:"importStatus"`
 	RemotePlayable bool     `json:"remotePlayable"`
@@ -716,16 +721,23 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				metadata.CircleExternalID = externalID
 			}
 		}
+		releaseDate := nullableString(row.ReleaseDate)
+		updatedAt := ""
+		if releaseDate != nil {
+			updatedAt = *releaseDate
+		}
 		works = append(works, voiceKnownWork{
 			WorkID:           row.ID,
 			PrimaryCode:      row.PrimaryCode,
 			Title:            row.Title,
-			ReleaseDate:      nullableString(row.ReleaseDate),
+			ReleaseDate:      releaseDate,
+			UpdatedAt:        updatedAt,
 			CoverURL:         s.coverURL(row.PrimaryCode),
 			DLsiteURL:        dlsiteURL(row.PrimaryCode),
 			Circle:           metadata.Circle,
 			CircleExternalID: metadata.CircleExternalID,
 			Rating:           metadata.Rating,
+			Sales:            metadata.Sales,
 			Tags:             metadata.Tags,
 			ListeningMark:    row.ListeningStatus,
 			Local:            row.HasLocal,
@@ -797,9 +809,12 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				RemoteID:       fmt.Sprintf("%d", remoteWork.ID),
 				PrimaryCode:    code,
 				Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, code),
+				ReleaseDate:    remoteWork.Release,
+				UpdatedAt:      remoteWork.Release,
 				CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
 				Circle:         remoteCircleName(remoteWork),
 				Rating:         remoteWork.RateAverage2DP,
+				Sales:          remoteWork.DLCount,
 				Tags:           remoteTagNames(remoteWork.Tags),
 				ImportStatus:   remoteImportStatus(flags.WorkID),
 				RemotePlayable: true,

@@ -263,11 +263,14 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		PrimaryCode        string   `json:"primaryCode"`
 		Title              string   `json:"title"`
 		CreatedAt          string   `json:"createdAt"`
+		UpdatedAt          string   `json:"updatedAt"`
+		ReleaseDate        *string  `json:"releaseDate"`
 		CoverURL           string   `json:"coverUrl"`
 		DLsiteURL          string   `json:"dlsiteUrl"`
 		Circle             string   `json:"circle"`
 		CircleExternalID   string   `json:"circleExternalId"`
 		Rating             *float64 `json:"rating"`
+		Sales              *int64   `json:"sales"`
 		Tags               []string `json:"tags"`
 		VoiceActors        []string `json:"voiceActors"`
 		TrackCount         int64    `json:"trackCount"`
@@ -298,6 +301,8 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		metadata := parseDLsiteSnapshot(snapshot.String)
+		item.ReleaseDate = metadata.ReleaseDate
+		item.UpdatedAt = item.CreatedAt
 		item.CoverURL = s.coverURL(item.PrimaryCode)
 		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
@@ -307,6 +312,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			item.CircleExternalID = externalID
 		}
 		item.Rating = metadata.Rating
+		item.Sales = metadata.Sales
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Availability = availabilityBadges(availableLocationTypes.String)
@@ -2192,7 +2198,9 @@ func nullableInt64(value sql.NullInt64) *int64 {
 type dlsiteSnapshotMetadata struct {
 	Circle           string
 	CircleExternalID string
+	ReleaseDate      *string
 	Rating           *float64
+	Sales            *int64
 	Tags             []string
 	VoiceActors      []string
 }
@@ -2221,6 +2229,10 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		CircleID       string   `json:"circle_id"`
 		BrandID        string   `json:"brand_id"`
 		LabelID        string   `json:"label_id"`
+		ReleaseDate    string   `json:"release_date"`
+		Sales          *int64   `json:"dl_count"`
+		DLCount        *int64   `json:"download_count"`
+		SalesCount     *int64   `json:"sales_count"`
 		RateAverage2DP *float64 `json:"rate_average_2dp"`
 		RateAverage    *float64 `json:"rate_average"`
 		Genres         []struct {
@@ -2238,6 +2250,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		var dynamic struct {
 			RateAverage2DP *float64 `json:"rate_average_2dp"`
 			RateAverage    *float64 `json:"rate_average"`
+			Sales          *int64   `json:"dl_count"`
+			DLCount        *int64   `json:"download_count"`
+			SalesCount     *int64   `json:"sales_count"`
 		}
 		if err := json.Unmarshal(combined.Dynamic, &dynamic); err == nil {
 			if dynamic.RateAverage2DP != nil {
@@ -2245,15 +2260,32 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 			} else if dynamic.RateAverage != nil {
 				payload.RateAverage = dynamic.RateAverage
 			}
+			if dynamic.Sales != nil {
+				payload.Sales = dynamic.Sales
+			} else if dynamic.DLCount != nil {
+				payload.DLCount = dynamic.DLCount
+			} else if dynamic.SalesCount != nil {
+				payload.SalesCount = dynamic.SalesCount
+			}
 		}
 	}
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
 	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
+	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
+		metadata.ReleaseDate = &release
+	}
 	if payload.RateAverage2DP != nil {
 		metadata.Rating = payload.RateAverage2DP
 	} else if payload.RateAverage != nil {
 		metadata.Rating = payload.RateAverage
+	}
+	if payload.Sales != nil {
+		metadata.Sales = payload.Sales
+	} else if payload.DLCount != nil {
+		metadata.Sales = payload.DLCount
+	} else if payload.SalesCount != nil {
+		metadata.Sales = payload.SalesCount
 	}
 
 	seenTags := map[string]bool{}

@@ -62,9 +62,14 @@ const fallbackWorks: CircleCatalogWork[] = [
     primaryCode: "RJ0123456",
     title: "Demo Circle Catalog Work 001",
     releaseDate: "2099-01-01",
+    updatedAt: "2099-01-02",
     coverUrl: "",
     dlsiteUrl: "",
+    circle: "Demo Circle 001",
+    circleExternalId: "RG012345",
     tags: ["demo-tag-a", "demo-tag-b"],
+    rating: 4.2,
+    sales: 1200,
     catalogStatus: "imported",
     dlsiteAvailable: true,
     listeningMark: "listening",
@@ -81,9 +86,14 @@ const fallbackWorks: CircleCatalogWork[] = [
     primaryCode: "RJ0234567",
     title: "Demo Circle Catalog Work 002",
     releaseDate: "2099-02-02",
+    updatedAt: "2099-02-03",
     coverUrl: "",
     dlsiteUrl: "",
+    circle: "Demo Circle 001",
+    circleExternalId: "RG012345",
     tags: ["demo-tag-c"],
+    rating: 4.6,
+    sales: 800,
     catalogStatus: "catalog",
     dlsiteAvailable: true,
     listeningMark: "want_to_listen",
@@ -99,9 +109,14 @@ const fallbackWorks: CircleCatalogWork[] = [
     primaryCode: "RJ0345678",
     title: "Demo Circle Catalog Work 003",
     releaseDate: "2099-03-03",
+    updatedAt: "2099-03-04",
     coverUrl: "",
     dlsiteUrl: "",
+    circle: "Demo Circle 001",
+    circleExternalId: "RG012345",
     tags: [],
+    rating: null,
+    sales: null,
     catalogStatus: "catalog",
     dlsiteAvailable: false,
     listeningMark: "none",
@@ -728,6 +743,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 work={work}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
+                selectionActive={selectedWorkCodes.size > 0}
                 onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
@@ -784,6 +800,7 @@ function CatalogWorkCard({
   work,
   selected,
   selectable,
+  selectionActive,
   onSelectedChange,
   onDeleteMissing,
   onStatusChange,
@@ -791,6 +808,7 @@ function CatalogWorkCard({
   work: CircleCatalogWork;
   selected: boolean;
   selectable: boolean;
+  selectionActive: boolean;
   onSelectedChange: (checked: boolean) => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
@@ -832,21 +850,26 @@ function CatalogWorkCard({
           onClick={openTarget}
         >
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-            </label>
+            {selectionActive && (
+              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+              </label>
+            )}
             {work.coverUrl ? <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" /> : null}
             <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode}</div>
           </div>
           <div className="flex min-h-52 flex-col gap-3 p-4">
             <div className="space-y-1">
               <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <div className="truncate text-xs text-muted-foreground">{work.releaseDate ?? "Unknown release"}</div>
-            </div>
-            <div className="flex min-h-6 flex-wrap gap-1.5">
-              <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
-              {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
-              {work.listeningMark !== "none" && <Badge variant="warning">{listeningStatusLabel(work.listeningMark)}</Badge>}
+              <button
+                className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openCircleRoute(work.circleExternalId || undefined);
+                }}
+              >
+                {work.circle || "Unknown circle"}
+              </button>
             </div>
             <div className="flex min-h-6 flex-wrap gap-1.5">
               {work.tags.slice(0, 4).length > 0 ? work.tags.slice(0, 4).map((tag) => (
@@ -854,12 +877,12 @@ function CatalogWorkCard({
               )) : <span className="text-xs text-muted-foreground">No tags</span>}
             </div>
             <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <FileAudio className="h-3.5 w-3.5" />
-                <span>{work.local || work.remote ? "Matched file source" : "No playable source"}</span>
-              </div>
+              <div className="truncate">Release {work.releaseDate ?? "unknown"} · Updated {work.updatedAt || "unknown"}</div>
+              <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {work.sales === null ? "unknown" : work.sales.toLocaleString()}</div>
             </div>
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
+              <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
+              {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
               {tags.length > 0 ? tags.map((tag) => (
                 <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
                   {tag.displayName}
