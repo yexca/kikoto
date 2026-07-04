@@ -5,7 +5,9 @@ Kikoto's frontend is a compact personal library and player interface.
 ## Implemented Surfaces
 
 - Library grid.
+- Library pagination with 24/48 works per page.
 - Work detail routes by product code.
+- Circle list and circle detail routes.
 - Local directory tree.
 - Settings page with source, local scan, and cache configuration.
 - Workflows page for definitions, scheduled triggers, and system definitions.
@@ -13,6 +15,7 @@ Kikoto's frontend is a compact personal library and player interface.
 - Users page for administrators.
 - Quick listening mark controls.
 - Global player dock.
+- Favorites placeholder for marks, playlists, and user-tag workflows.
 
 ## Library
 
@@ -27,6 +30,10 @@ Work cards show:
 - Voice actor metadata.
 - Local availability.
 - Quick listening mark.
+- Source tags separated from metadata tags.
+
+Large local result sets are paginated. Page controls are only shown when the
+current result set spans more than one page.
 
 ## Work Detail
 
@@ -40,8 +47,27 @@ Work detail shows:
 - Play action.
 - Quick listening mark.
 - Per-track progress for resume.
+- Source availability tabs for local, cached, remote, and configured compatible
+  sources.
 
 Clicking a playable file queues the playable audio files in that same folder. The work-level Play action queues all playable tracks in the work.
+
+## Circles
+
+The Circles page lists known circles or makers from the local database. It
+supports search, availability/status filters, paging, and selectable list
+density.
+
+Circle detail pages use `/circles/{externalId}` routes and show:
+
+- User rating and note.
+- Catalog, imported, playable, and unavailable counts.
+- Refresh controls for incremental or full catalog refresh.
+- Product JSON mode for available-only or all catalog works.
+- Source match tags.
+- Catalog work cards with quick listening marks when the work is available.
+- Manual deletion for catalog rows that are no longer present in the external
+  catalog.
 
 ## Player Dock
 
@@ -65,9 +91,10 @@ The expanded player keeps a stable outer size. Queue and lyrics panels replace t
 ## Future Frontend Work
 
 - Real search and filtering.
-- Now Playing page.
-- Favorites and custom tags.
+- Favorites playlists and custom tag UI.
+- Voice actor detail implementation.
 - Persisted queue restore.
 - Source connection tests and priority controls.
 - Workflow retry actions.
+- Review/maintenance triage for stale or ambiguous scan results.
 - Mobile gesture support for the player dock.
