@@ -19,6 +19,8 @@ import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSo
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const circlePageSizeOptions = [10, 20, 40];
+const catalogWorkPageSizeOptions = [24, 48] as const;
+type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
@@ -330,6 +332,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
+  const [workPage, setWorkPage] = useState(1);
+  const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
 
   useEffect(() => {
     setIsLoading(true);
@@ -369,6 +373,13 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   }, [availabilityFilter, circle.works, workQuery]);
   const importedCount = filteredWorks.filter((work) => work.catalogStatus === "imported").length;
   const playableCount = filteredWorks.filter((work) => work.local || work.remote).length;
+  const totalWorkPages = Math.max(1, Math.ceil(filteredWorks.length / workPageSize));
+  const currentWorkPage = Math.min(workPage, totalWorkPages);
+  const pagedWorks = filteredWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
+
+  useEffect(() => {
+    setWorkPage(1);
+  }, [availabilityFilter, externalId, workPageSize, workQuery]);
 
   const refresh = async () => {
     setIsRefreshing(true);
@@ -616,7 +627,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
           </div>
 
           <div className={circleWorkGridClassName(mobileColumns, desktopColumns)}>
-            {filteredWorks.length > 0 ? filteredWorks.map((work) => (
+            {filteredWorks.length > 0 ? pagedWorks.map((work) => (
               <CatalogWorkCard
                 key={work.primaryCode}
                 work={work}
@@ -629,6 +640,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               </Card>
             )}
           </div>
+          {totalWorkPages > 1 && (
+            <CatalogWorkPagination
+              page={currentWorkPage}
+              pageSize={workPageSize}
+              totalItems={filteredWorks.length}
+              totalPages={totalWorkPages}
+              onPageChange={setWorkPage}
+              onPageSizeChange={setWorkPageSize}
+            />
+          )}
         </div>
 
         <Card>
@@ -967,6 +988,87 @@ function ColumnPicker({
         ))}
       </div>
     </>
+  );
+}
+
+function CatalogWorkPagination({
+  page,
+  pageSize,
+  totalItems,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: CatalogWorkPageSize;
+  totalItems: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: CatalogWorkPageSize) => void;
+}) {
+  const [jumpPage, setJumpPage] = useState(String(page));
+
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
+
+  const goToJumpPage = () => {
+    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
+    onPageChange(next);
+    setJumpPage(String(next));
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-xs text-muted-foreground">
+        Page {page} / {totalPages} · {totalItems} works
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value) as CatalogWorkPageSize)}
+          aria-label="Catalog works per page"
+        >
+          {catalogWorkPageSizeOptions.map((value) => (
+            <option key={value} value={value}>
+              {value} / page
+            </option>
+          ))}
+        </select>
+        <button
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
+          disabled={page <= 1}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground disabled:opacity-50"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <input
+          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          type="number"
+          min={1}
+          max={totalPages}
+          value={jumpPage}
+          onChange={(event) => setJumpPage(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") goToJumpPage();
+          }}
+          aria-label="Jump to page"
+        />
+        <Button variant="outline" size="sm" onClick={goToJumpPage}>
+          Go
+        </Button>
+      </div>
+    </div>
   );
 }
 

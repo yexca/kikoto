@@ -61,6 +61,8 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "relisten", label: "Relisten" },
   { value: "paused", label: "Paused" },
 ];
+const localWorkPageSizeOptions = [24, 48] as const;
+type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
@@ -79,6 +81,8 @@ export function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [workPage, setWorkPage] = useState(1);
+  const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
 
   useEffect(() => {
     api
@@ -155,6 +159,10 @@ export function LibraryPage() {
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
   }, [sources]);
+
+  useEffect(() => {
+    setWorkPage(1);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", statusFilter, workPageSize]);
 
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
@@ -260,6 +268,9 @@ export function LibraryPage() {
         ? works.filter(hasRemoteAvailability)
         : works;
   const visibleWorks = statusFilter === "all" ? scopedWorks : scopedWorks.filter((work) => work.listeningStatus === statusFilter);
+  const totalWorkPages = Math.max(1, Math.ceil(visibleWorks.length / workPageSize));
+  const currentWorkPage = Math.min(workPage, totalWorkPages);
+  const pagedWorks = visibleWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
 
   return (
     <div className="space-y-5">
@@ -316,20 +327,32 @@ export function LibraryPage() {
           }}
         />
       ) : (
-        <section className={workGridClassName(mobileColumns, desktopColumns)}>
-          {visibleWorks.map((work) => (
-            <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
-          ))}
-          {visibleWorks.length === 0 && (
-            <Card className="sm:col-span-2 xl:col-span-3">
-              <CardContent className="p-5 text-sm text-muted-foreground">
-                {activeTab.kind === "remote"
-                  ? "No imported remote or cached works yet."
-                  : "No local works match this view."}
-              </CardContent>
-            </Card>
+        <div className="space-y-3">
+          <section className={workGridClassName(mobileColumns, desktopColumns)}>
+            {pagedWorks.map((work) => (
+              <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
+            ))}
+            {visibleWorks.length === 0 && (
+              <Card className="sm:col-span-2 xl:col-span-3">
+                <CardContent className="p-5 text-sm text-muted-foreground">
+                  {activeTab.kind === "remote"
+                    ? "No imported remote or cached works yet."
+                    : "No local works match this view."}
+                </CardContent>
+              </Card>
+            )}
+          </section>
+          {totalWorkPages > 1 && (
+            <WorkPagination
+              page={currentWorkPage}
+              pageSize={workPageSize}
+              totalItems={visibleWorks.length}
+              totalPages={totalWorkPages}
+              onPageChange={setWorkPage}
+              onPageSizeChange={setWorkPageSize}
+            />
           )}
-        </section>
+        </div>
       )}
     </div>
   );
@@ -826,6 +849,77 @@ function ColumnPicker({
         ))}
       </div>
     </>
+  );
+}
+
+function WorkPagination({
+  page,
+  pageSize,
+  totalItems,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: LocalWorkPageSize;
+  totalItems: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: LocalWorkPageSize) => void;
+}) {
+  const [jumpPage, setJumpPage] = useState(String(page));
+
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
+
+  const goToJumpPage = () => {
+    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
+    onPageChange(next);
+    setJumpPage(String(next));
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-xs text-muted-foreground">
+        Page {page} / {totalPages} · {totalItems} works
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value) as LocalWorkPageSize)}
+          aria-label="Works per page"
+        >
+          {localWorkPageSizeOptions.map((value) => (
+            <option key={value} value={value}>
+              {value} / page
+            </option>
+          ))}
+        </select>
+        <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
+          <ChevronLeft className="h-4 w-4" />
+        </IconButton>
+        <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
+          <ChevronRight className="h-4 w-4" />
+        </IconButton>
+        <input
+          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          type="number"
+          min={1}
+          max={totalPages}
+          value={jumpPage}
+          onChange={(event) => setJumpPage(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") goToJumpPage();
+          }}
+          aria-label="Jump to page"
+        />
+        <Button variant="outline" size="sm" onClick={goToJumpPage}>
+          Go
+        </Button>
+      </div>
+    </div>
   );
 }
 
