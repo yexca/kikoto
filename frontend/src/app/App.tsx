@@ -12,6 +12,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { UsersPage } from "@/pages/UsersPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
 import { CreatorWorksPage } from "@/pages/CreatorWorksPage";
+import { CirclesPage } from "@/pages/CirclesPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
@@ -118,7 +119,7 @@ function AuthenticatedApp() {
           <div className="px-4 py-5 lg:px-6">
             {page === "library" && <LibraryPage />}
             {page === "favorites" && <FavoritesPage />}
-            {page === "circles" && <CreatorWorksPage kind="circle" />}
+            {page === "circles" && <CirclesPage />}
             {page === "voice-actors" && <CreatorWorksPage kind="voice" />}
             {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
             {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
@@ -167,6 +168,9 @@ function pageFromPath(path: string): PageID {
   const item = navItems.find((navItem) => navItem.path === path);
   if (item) {
     return item.id;
+  }
+  if (path.startsWith("/circles/")) {
+    return "circles";
   }
   if (path === "/remote" || path === "/library" || path.startsWith("/library/")) {
     return "library";

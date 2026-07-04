@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { openCircleRoute } from "@/pages/CirclesPage";
 import {
   api,
   assetURL,
@@ -723,7 +724,15 @@ function WorkCardBody({ title, circle, badges, meta }: { title: string; circle: 
     <div className="space-y-3 p-4">
       <div className="space-y-1">
         <h2 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{title}</h2>
-        <p className="truncate text-sm text-muted-foreground">{circle}</p>
+        <button
+          className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
+          onClick={(event) => {
+            event.stopPropagation();
+            openCircleRoute();
+          }}
+        >
+          {circle}
+        </button>
       </div>
       <div className="flex min-h-6 flex-wrap gap-1.5">
         {badges.map((badge) => (
@@ -1362,7 +1371,9 @@ function DetailHero({
         <div>
           <div className="text-sm font-semibold text-primary">{code}</div>
           <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{circle || "Unknown circle"}</p>
+          <button className="mt-2 block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary" onClick={() => openCircleRoute()}>
+            {circle || "Unknown circle"}
+          </button>
         </div>
 
         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
