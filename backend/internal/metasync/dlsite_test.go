@@ -24,11 +24,11 @@ func (f fakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ s
 
 func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	db := openTestDB(t)
-	raw := json.RawMessage(`{"workno":"RJ01569979","product_name":"DLsite title"}`)
+	raw := json.RawMessage(`{"workno":"RJ0123456","product_name":"DLsite title"}`)
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		products: map[string]dlsite.Product{
-			"RJ01569979": {
-				WorkNo:            "RJ01569979",
+			"RJ0123456": {
+				WorkNo:            "RJ0123456",
 				SiteID:            "maniax",
 				ProductName:       "DLsite title",
 				WorkNameKana:      "ディーエルサイト",
@@ -50,7 +50,7 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 
 	var title string
 	var snapshotCount int
-	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ01569979'").Scan(&title); err != nil {
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123456'").Scan(&title); err != nil {
 		t.Fatal(err)
 	}
 	if title != "DLsite title" {
@@ -85,7 +85,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE workflow_node_run (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, node_id TEXT NOT NULL, node_type TEXT NOT NULL, display_name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, input_json TEXT NOT NULL DEFAULT '{}', output_json TEXT NOT NULL DEFAULT '{}', error_message TEXT NOT NULL DEFAULT '', started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_job (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, worker_type TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', retry_count INTEGER NOT NULL DEFAULT 0, error_message TEXT NOT NULL DEFAULT '', progress_current INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_candidate (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, candidate_type TEXT NOT NULL, external_key TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', decision_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`INSERT INTO work (primary_code, title) VALUES ('RJ01569979', 'Local title')`,
+		`INSERT INTO work (primary_code, title) VALUES ('RJ0123456', 'Local title')`,
 	}
 	for _, statement := range schema {
 		if _, err := db.Exec(statement); err != nil {

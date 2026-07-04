@@ -84,6 +84,17 @@ CREATE TABLE party_catalog_item (
   UNIQUE(party_id, provider_id, primary_code)
 );
 
+CREATE TABLE work_party (
+  work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+  party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'circle',
+  provider_id INTEGER REFERENCES metadata_provider(id),
+  source TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(work_id, party_id, role)
+);
+
 CREATE TABLE user_party_state (
   user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
   party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
@@ -101,6 +112,9 @@ CREATE INDEX idx_party_external_id_lookup
 
 CREATE INDEX idx_party_catalog_party
   ON party_catalog_item(party_id, last_seen_at DESC);
+
+CREATE INDEX idx_work_party_party
+  ON work_party(party_id, role);
 
 CREATE TABLE file_source (
   id INTEGER PRIMARY KEY,

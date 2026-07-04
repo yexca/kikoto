@@ -12,15 +12,15 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/maniax/api/=/product.json":
-			if r.URL.Query().Get("workno") != "RJ01569979" {
+			if r.URL.Query().Get("workno") != "RJ0123456" {
 				t.Fatalf("workno = %s", r.URL.Query().Get("workno"))
 			}
-			_, _ = w.Write([]byte(`[{"workno":"RJ01569979","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult"}]`))
+			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult"}]`))
 		case "/maniax-touch/product/info/ajax":
-			if r.URL.Query().Get("product_id") != "RJ01569979" {
+			if r.URL.Query().Get("product_id") != "RJ0123456" {
 				t.Fatalf("product_id = %s", r.URL.Query().Get("product_id"))
 			}
-			_, _ = w.Write([]byte(`{"RJ01569979":{"rate_average_2dp":4.89}}`))
+			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.89}}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -30,11 +30,11 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	product, err := client.FetchProduct(context.Background(), "rj01569979")
+	product, err := client.FetchProduct(context.Background(), "rj0123456")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if product.WorkNo != "RJ01569979" {
+	if product.WorkNo != "RJ0123456" {
 		t.Fatalf("WorkNo = %s", product.WorkNo)
 	}
 	if product.ProductName != "Example" {

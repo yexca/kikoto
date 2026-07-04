@@ -184,6 +184,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := s.ensureCircleSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			work.id,
@@ -220,6 +224,17 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
 				LIMIT 1
 			) AS snapshot_json,
+			(
+				SELECT party.display_name || '|' || external.external_id
+				FROM work_party AS relation
+				INNER JOIN party ON party.id = relation.party_id
+				LEFT JOIN party_external_id AS external ON external.party_id = party.id
+					AND external.is_primary = 1
+				WHERE relation.work_id = work.id
+					AND relation.role = 'circle'
+				ORDER BY relation.updated_at DESC
+				LIMIT 1
+			) AS party_link,
 			COALESCE(user_work_state.listening_status, 'none') AS listening_status
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
@@ -256,6 +271,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		var item work
 		var snapshot sql.NullString
 		var availableLocationTypes sql.NullString
+		var partyLink sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.PrimaryCode,
@@ -265,6 +281,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			&item.AvailableLocations,
 			&availableLocationTypes,
 			&snapshot,
+			&partyLink,
 			&item.ListeningStatus,
 		); err != nil {
 			writeError(w, err)
@@ -275,6 +292,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
 		item.CircleExternalID = metadata.CircleExternalID
+		if name, externalID := parsePartyLink(partyLink.String); name != "" {
+			item.Circle = name
+			item.CircleExternalID = externalID
+		}
 		item.Rating = metadata.Rating
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
@@ -1246,6 +1267,9 @@ func cacheMediaRelPath(sourceCode string, workCode string, remotePath string) st
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
+	if err := s.ensureCircleSchema(ctx); err != nil {
+		return workDetail{}, err
+	}
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -1304,6 +1328,24 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	metadata := parseDLsiteSnapshot(snapshot.String)
 	work.Circle = metadata.Circle
 	work.CircleExternalID = metadata.CircleExternalID
+	var partyLink sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT party.display_name || '|' || external.external_id
+		FROM work_party AS relation
+		INNER JOIN party ON party.id = relation.party_id
+		LEFT JOIN party_external_id AS external ON external.party_id = party.id
+			AND external.is_primary = 1
+		WHERE relation.work_id = ?
+			AND relation.role = 'circle'
+		ORDER BY relation.updated_at DESC
+		LIMIT 1
+	`, id).Scan(&partyLink); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return workDetail{}, err
+	}
+	if name, externalID := parsePartyLink(partyLink.String); name != "" {
+		work.Circle = name
+		work.CircleExternalID = externalID
+	}
 	work.Rating = metadata.Rating
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
@@ -2212,6 +2254,20 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 
 	return metadata
+}
+
+func parsePartyLink(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(value, "|", 2)
+	name := strings.TrimSpace(parts[0])
+	externalID := ""
+	if len(parts) > 1 {
+		externalID = strings.ToUpper(strings.TrimSpace(parts[1]))
+	}
+	return name, externalID
 }
 
 func availabilityBadges(rawTypes string) []string {
