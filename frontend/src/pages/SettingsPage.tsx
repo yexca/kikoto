@@ -403,7 +403,7 @@ function RemoteSourceSettings({
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Auto pull</span>
+              <span className="font-medium">Auto sync</span>
               <input type="checkbox" checked={autoSyncRemote || cacheEnabled} disabled={cacheEnabled} onChange={(event) => onAutoSyncChange(event.target.checked)} />
             </label>
             <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
@@ -621,7 +621,7 @@ function SourceModal({
               <input type="checkbox" checked={source.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
             </label>
             <label className="flex items-center justify-between gap-3">
-              <span className="font-medium">Auto pull on interest</span>
+              <span className="font-medium">Auto sync on interest</span>
               <input
                 type="checkbox"
                 checked={source.config.autoSyncOnInterest ?? false}

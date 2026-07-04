@@ -17,7 +17,6 @@ import {
   Headphones,
   ImageIcon,
   ExternalLink,
-  DownloadCloud,
   Cloud,
   ListChecks,
   MoreHorizontal,
@@ -446,6 +445,8 @@ function RemoteSourcePanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
+  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [markTarget, setMarkTarget] = useState<{ work: RemoteWork; status: ListeningStatus } | null>(null);
   const [message, setMessage] = useState("");
   const { page, pageSize, query } = viewState;
 
@@ -456,7 +457,7 @@ function RemoteSourcePanel({
     }
     if (!autoSyncRemote && reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.",
+        "This work needs to be synced before Kikoto can mark it. You can enable Auto sync in Settings.",
       );
       if (!confirmed) return;
     }
@@ -464,10 +465,12 @@ function RemoteSourcePanel({
     setMessage("");
     try {
       const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, reason);
-      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
+      return result.workId;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      return null;
     } finally {
       setIsSyncingCode(null);
     }
@@ -542,33 +545,70 @@ function RemoteSourcePanel({
         saved++;
         await onSynced(result.workId);
       }
-      setMessage(parent ? `Bulk workflow #${parent.runId}: saved ${saved} selected works.` : `Saved ${saved} selected works.`);
+      setMessage(parent ? `Bulk workflow #${parent.runId}: fetched ${saved} selected works.` : `Fetched ${saved} selected works.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+      setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
     }
   };
 
-  const saveSingle = (work: RemoteWork) => {
-    setSaveConfirm({
-      codes: [work.primaryCode],
-      run: async () => {
-        setIsSyncingCode(work.primaryCode);
-        setMessage("");
-        try {
-          const result = await api.saveRemoteSourceWork(source.id, work.primaryCode, []);
-          setMessage(`Saved ${result.primaryCode} through workflow run #${result.runId}.`);
-          await onSynced(result.workId);
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Save failed.");
-        } finally {
-          setIsSyncingCode(null);
-          setSaveConfirm(null);
-        }
-      },
-    });
+  const openSaveSelection = async (work: RemoteWork) => {
+    if (!work.primaryCode) return;
+    setIsSyncingCode(work.primaryCode);
+    setMessage("");
+    try {
+      const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
+      const root = buildRemoteTree(detail.tracks);
+      setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)) });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
+  };
+
+  const fetchSingleSelection = async () => {
+    if (!saveSelection) return;
+    const paths = Array.from(saveSelection.selectedPaths);
+    setIsSyncingCode(saveSelection.work.primaryCode);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths);
+      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
+      await onSynced(result.workId);
+      setSaveSelection(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
+  };
+
+  const markRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
+    if (!work.primaryCode) return;
+    if (!autoSyncRemote) {
+      setMarkTarget({ work, status });
+      return;
+    }
+    await syncAndMarkRemoteWork(work, status);
+  };
+
+  const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
+    setIsSyncingCode(work.primaryCode);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
+      await api.updateWorkUserState(result.workId, { listeningStatus: status });
+      setMessage(`Synced and marked ${result.primaryCode}.`);
+      await onSynced(result.workId);
+      setMarkTarget(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
   };
 
   return (
@@ -579,13 +619,14 @@ function RemoteSourcePanel({
           <p className="text-sm text-muted-foreground">Browse source results without importing until a user action needs local state.</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground">
-            <input type="checkbox" checked={selectionMode} onChange={(event) => {
-              setSelectionMode(event.target.checked);
-              if (!event.target.checked) setBulkCodes(new Set());
-            }} />
+          <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
+            setSelectionMode((value) => {
+              if (value) setBulkCodes(new Set());
+              return !value;
+            });
+          }}>
             Select
-          </label>
+          </Button>
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
           <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
         </div>
@@ -637,12 +678,12 @@ function RemoteSourcePanel({
             setSelectionMode(false);
           }}>Cancel selection</Button>
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
-            <DownloadCloud className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" />
             Sync {selectedSyncable.length}
           </Button>
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSaveSelected()}>
             <HardDriveDownload className="h-4 w-4" />
-            Save {selectedSaveable.length}
+            Fetch {selectedSaveable.length}
           </Button>
         </div>
       </div>}
@@ -668,8 +709,8 @@ function RemoteSourcePanel({
               onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
-              onFetchAndMark={() => void syncWork(work, "mark_interest")}
-              onSave={() => saveSingle(work)}
+              onMark={(status) => void markRemoteWork(work, status)}
+              onSave={() => void openSaveSelection(work)}
             />
           ))}
         </section>
@@ -679,6 +720,23 @@ function RemoteSourcePanel({
           count={saveConfirm.codes.length}
           onClose={() => setSaveConfirm(null)}
           onConfirm={() => void saveConfirm.run()}
+        />
+      )}
+      {saveSelection && (
+        <RemoteSaveSelectionPanel
+          root={buildRemoteTree(saveSelection.detail.tracks)}
+          selectedPaths={saveSelection.selectedPaths}
+          onChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          disabled={isSyncingCode === saveSelection.work.primaryCode}
+          onClose={() => setSaveSelection(null)}
+          onSave={() => void fetchSingleSelection()}
+        />
+      )}
+      {markTarget && (
+        <RemoteMarkConfirmModal
+          workCode={markTarget.work.primaryCode}
+          onClose={() => setMarkTarget(null)}
+          onConfirm={() => void syncAndMarkRemoteWork(markTarget.work, markTarget.status)}
         />
       )}
     </section>
@@ -773,7 +831,7 @@ function RemoteWorkCard({
   onSelectedChange,
   onOpen,
   onFetch,
-  onFetchAndMark,
+  onMark,
   onSave,
 }: {
   work: RemoteWork;
@@ -784,9 +842,30 @@ function RemoteWorkCard({
   onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
   onFetch: () => void;
-  onFetchAndMark: () => void;
+  onMark: (status: ListeningStatus) => void;
   onSave: () => void;
 }) {
+  const [isMarkOpen, setIsMarkOpen] = useState(false);
+  const markMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isMarkOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (markMenuRef.current?.contains(target)) return;
+      setIsMarkOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMarkOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMarkOpen]);
+
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
@@ -817,17 +896,17 @@ function RemoteWorkCard({
           </Button>
           <div className="flex items-center gap-1">
             <IconButton
-              title="Fetch remote info"
+              title="Sync"
               disabled={isBusy || !work.primaryCode}
               onClick={(event) => {
                 event.stopPropagation();
                 onFetch();
               }}
             >
-              <DownloadCloud className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
             </IconButton>
             <IconButton
-              title="Save to library"
+              title="Fetch"
               disabled={isBusy || !work.primaryCode}
               onClick={(event) => {
                 event.stopPropagation();
@@ -836,16 +915,27 @@ function RemoteWorkCard({
             >
               <HardDriveDownload className="h-4 w-4" />
             </IconButton>
-            <IconButton
-              title="Fetch and mark"
-              disabled={isBusy || !work.primaryCode}
-              onClick={(event) => {
-                event.stopPropagation();
-                onFetchAndMark();
-              }}
-            >
-              <ListChecks className="h-4 w-4" />
-            </IconButton>
+            <div className="relative" ref={markMenuRef}>
+              <IconButton
+                title="Mark"
+                disabled={isBusy || !work.primaryCode}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsMarkOpen((value) => !value);
+                }}
+              >
+                <ListChecks className="h-4 w-4" />
+              </IconButton>
+              {isMarkOpen && (
+                <MarkMenu
+                  value="none"
+                  onChange={(status) => {
+                    setIsMarkOpen(false);
+                    onMark(status);
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </CardContent>
@@ -857,11 +947,28 @@ function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClos
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Save remote directory</h3>
+        <h3 className="text-base font-semibold">Fetch remote directory</h3>
         <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Save</Button>
+          <Button size="sm" onClick={onConfirm}>Fetch</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: string; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Sync before mark</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {workCode} will be synced into Remote metadata before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>Sync and mark</Button>
         </div>
       </div>
     </div>
@@ -1168,7 +1275,7 @@ function RemoteWorkDetailView({
     if (!detail?.primaryCode) return;
     if (!autoSyncRemote && reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be fetched into Remote before Kikoto can mark it. You can enable automatic pull on interest in Settings.",
+        "This work needs to be synced before Kikoto can mark it. You can enable Auto sync in Settings.",
       );
       if (!confirmed) return;
     }
