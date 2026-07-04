@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { openCircleRoute } from "@/pages/CirclesPage";
+import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
   api,
   assetURL,
@@ -46,6 +47,7 @@ import {
   type RemoteWork,
   type RemoteWorkDetail,
   type SourceAvailabilitySource,
+  type VoiceCredit,
   type Work,
   type WorkDetail,
 } from "@/lib/api";
@@ -1357,17 +1359,37 @@ function RemoteWorkDetailView({
         circleExternalId=""
         ratingLabel="Rating"
         rating={detail.rating}
+        sales={null}
         releaseDate={detail.releaseDate || "Unknown"}
+        durationSeconds={detail.durationSeconds}
         fileLabel={source.displayName}
         fileValue={`${trackCount} files`}
         voiceActors={detail.voiceActors}
+        voiceCredits={[]}
         tags={detail.tags}
         actions={
-          <Button variant="outline" size="sm" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
-            <RefreshCw className="h-4 w-4" />
-            Sync DLsite
-          </Button>
+          <>
+            {remotePlayableTracks.length > 0 && (
+              <Button size="sm" onClick={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}>
+                <Play className="h-4 w-4" />
+                Play
+              </Button>
+            )}
+            <Button variant="outline" size="sm" disabled={isFetching || !detail.primaryCode} onClick={() => void fetchWork("manual_fetch")}>
+              <RefreshCw className="h-4 w-4" />
+              Sync
+            </Button>
+            {detail.sourceUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={detail.sourceUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Source
+                </a>
+              </Button>
+            )}
+          </>
         }
+        availability={<Badge variant="outline">{detail.sourceName}</Badge>}
       />
 
       <SourceDirectoryPanel
@@ -1642,13 +1664,22 @@ function WorkDetailView({
         circleExternalId={work.circleExternalId}
         ratingLabel="DL rating"
         rating={work.rating}
+        sales={work.sales}
         releaseDate={work.releaseDate ?? "Unknown"}
+        durationSeconds={work.durationSeconds}
         fileLabel="Known files"
         fileValue={`${work.mediaItems.length} items`}
         voiceActors={work.voiceActors}
+        voiceCredits={work.voiceCredits ?? []}
         tags={work.tags}
         actions={
           <>
+            {allTracks.length > 0 && (
+              <Button size="sm" onClick={playAll}>
+                <Play className="h-4 w-4" />
+                Play
+              </Button>
+            )}
             <Button variant="outline" size="sm" asChild>
               <a href={work.dlsiteUrl} target="_blank" rel="noreferrer">
                 <ExternalLink className="h-4 w-4" />
@@ -1657,7 +1688,7 @@ function WorkDetailView({
             </Button>
             <Button variant="outline" size="sm" disabled={isSyncingDetail} onClick={() => void syncDetailMetadata()}>
               <RefreshCw className="h-4 w-4" />
-              Sync DLsite
+              Sync
             </Button>
             <select
               className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
@@ -1753,10 +1784,13 @@ function DetailHero({
   circleExternalId,
   ratingLabel,
   rating,
+  sales,
   releaseDate,
+  durationSeconds,
   fileLabel,
   fileValue,
   voiceActors,
+  voiceCredits,
   tags,
   actions,
   availability,
@@ -1769,18 +1803,26 @@ function DetailHero({
   circleExternalId: string;
   ratingLabel: string;
   rating: number | null;
+  sales: number | null;
   releaseDate: string;
+  durationSeconds: number | null;
   fileLabel: string;
   fileValue: string;
   voiceActors: string[];
+  voiceCredits: VoiceCredit[];
   tags: string[];
   actions?: ReactNode;
   availability?: ReactNode;
 }) {
+  const codeLabel = code || fallbackCode || "Remote";
+  const displayVoiceCredits = voiceCredits.length > 0
+    ? voiceCredits
+    : voiceActors.map((name) => ({ personId: 0, displayName: name }));
+
   return (
-    <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+    <section className="grid gap-5 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
       <div className="self-start overflow-hidden rounded-lg border bg-muted">
-        <div className="aspect-[4/3]">
+        <div className="aspect-[4/3] lg:aspect-square">
           {coverUrl ? (
             <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
           ) : (
@@ -1789,26 +1831,56 @@ function DetailHero({
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <div className="text-sm font-semibold text-primary">{code}</div>
-          <h2 className="mt-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
-          <button className="mt-2 block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary" onClick={() => openCircleRoute(circleExternalId || undefined)}>
-            {circle || "Unknown circle"}
-          </button>
+      <div className="min-w-0 space-y-4">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <Badge variant="secondary" className="mt-1 shrink-0">{codeLabel}</Badge>
+            <h2 className="min-w-0 flex-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            {circleExternalId ? (
+              <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => openCircleRoute(circleExternalId)}>
+                <CircleUserRound className="h-4 w-4 shrink-0" />
+                <span className="truncate">{circle || "Unknown circle"}</span>
+              </button>
+            ) : (
+              <span className="inline-flex max-w-full items-center gap-1 truncate">
+                <CircleUserRound className="h-4 w-4 shrink-0" />
+                <span className="truncate">{circle || "Unknown circle"}</span>
+              </span>
+            )}
+            {availability}
+          </div>
         </div>
 
-        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
-        {availability}
-
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetaTile icon={<Star className="h-4 w-4 fill-current" />} label={ratingLabel} value={rating === null ? "No rating" : rating.toFixed(2)} />
+          <MetaTile icon={<HardDriveDownload className="h-4 w-4" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
           <MetaTile icon={<Clock3 className="h-4 w-4" />} label="Released" value={releaseDate} />
           <MetaTile icon={<FileAudio className="h-4 w-4" />} label={fileLabel} value={fileValue} />
         </div>
 
-        <InfoRow icon={<CircleUserRound className="h-4 w-4" />} label="Voice" value={voiceActors.join(", ") || "No voice actor metadata"} />
-        <InfoRow icon={<Tags className="h-4 w-4" />} label="Tags" value={tags.join(", ") || "No tag metadata"} />
+        <div className="space-y-3 rounded-lg border bg-card p-3">
+          <DetailChipRow
+            icon={<UserRound className="h-4 w-4" />}
+            label="Voice"
+            emptyLabel="No voice actor metadata"
+            items={displayVoiceCredits.map((credit) => ({
+              key: `${credit.personId}:${credit.displayName}`,
+              label: credit.displayName,
+              onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : undefined,
+            }))}
+          />
+          <DetailChipRow
+            icon={<Tags className="h-4 w-4" />}
+            label="Tags"
+            emptyLabel="No tag metadata"
+            items={tags.map((tag) => ({ key: tag, label: tag }))}
+          />
+          <InfoRow icon={<Clock3 className="h-4 w-4" />} label="Duration" value={formatDuration(durationSeconds)} />
+        </div>
+
+        {actions && <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
       </div>
     </section>
   );
@@ -2025,6 +2097,42 @@ function MetaTile({ icon, label, value }: { icon: ReactNode; label: string; valu
         {label}
       </div>
       <div className="mt-1 truncate text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function DetailChipRow({
+  icon,
+  label,
+  emptyLabel,
+  items,
+}: {
+  icon: ReactNode;
+  label: string;
+  emptyLabel: string;
+  items: { key: string; label: string; onClick?: () => void }[];
+}) {
+  return (
+    <div className="flex gap-2 text-sm">
+      <div className="mt-1 text-muted-foreground">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{label}</div>
+        {items.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {items.map((item) => item.onClick ? (
+              <button key={item.key} className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary" onClick={item.onClick}>
+                {item.label}
+              </button>
+            ) : (
+              <span key={item.key} className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground">
+                {item.label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-1 text-muted-foreground">{emptyLabel}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3026,6 +3134,14 @@ function formatBytes(value: number | null) {
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${value} B`;
+}
+
+function formatDuration(value: number | null) {
+  if (!value || value <= 0) return "Unknown";
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+  return `${minutes}m`;
 }
 
 function listeningStatusLabel(status: ListeningStatus) {

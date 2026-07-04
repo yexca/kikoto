@@ -1283,7 +1283,7 @@ function voicePersonIdFromPath(path: string) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function openVoiceRoute(personId: number) {
+export function openVoiceRoute(personId: number) {
   window.history.pushState({}, "", `/voices/${personId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }

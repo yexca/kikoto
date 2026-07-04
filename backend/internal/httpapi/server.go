@@ -340,10 +340,17 @@ type workDetail struct {
 	Circle           string            `json:"circle"`
 	CircleExternalID string            `json:"circleExternalId"`
 	Rating           *float64          `json:"rating"`
+	Sales            *int64            `json:"sales"`
 	Tags             []string          `json:"tags"`
 	VoiceActors      []string          `json:"voiceActors"`
+	VoiceCredits     []voiceCredit     `json:"voiceCredits"`
 	ListeningStatus  string            `json:"listeningStatus"`
 	MediaItems       []mediaItemDetail `json:"mediaItems"`
+}
+
+type voiceCredit struct {
+	PersonID    int64  `json:"personId"`
+	DisplayName string `json:"displayName"`
 }
 
 type mediaItemDetail struct {
@@ -1364,8 +1371,32 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		work.CircleExternalID = externalID
 	}
 	work.Rating = metadata.Rating
+	work.Sales = metadata.Sales
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
+	work.VoiceCredits = []voiceCredit{}
+	creditRows, err := s.db.QueryContext(ctx, `
+		SELECT person.id, person.display_name
+		FROM work_credit AS credit
+		INNER JOIN person ON person.id = credit.person_id
+		WHERE credit.work_id = ?
+			AND credit.role = 'voice_actor'
+		ORDER BY person.display_name ASC, person.id ASC
+	`, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	defer creditRows.Close()
+	for creditRows.Next() {
+		var credit voiceCredit
+		if err := creditRows.Scan(&credit.PersonID, &credit.DisplayName); err != nil {
+			return workDetail{}, err
+		}
+		work.VoiceCredits = append(work.VoiceCredits, credit)
+	}
+	if err := creditRows.Err(); err != nil {
+		return workDetail{}, err
+	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
