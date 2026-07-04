@@ -56,6 +56,7 @@ type circleCatalogWork struct {
 	ReleaseDate     *string            `json:"releaseDate"`
 	CoverURL        string             `json:"coverUrl"`
 	DLsiteURL       string             `json:"dlsiteUrl"`
+	Tags            []string           `json:"tags"`
 	CatalogStatus   string             `json:"catalogStatus"`
 	DLsiteAvailable bool               `json:"dlsiteAvailable"`
 	ListeningMark   string             `json:"listeningMark"`
@@ -808,6 +809,13 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			COALESCE(dlsite_catalog.catalog_status, remote_catalog.catalog_status, 'catalog'),
 			COALESCE(dlsite_catalog.dlsite_available, 1),
 			work.id,
+			COALESCE((
+				SELECT snapshot_json
+				FROM metadata_snapshot
+				WHERE metadata_snapshot.work_id = work.id
+				ORDER BY fetched_at DESC, id DESC
+				LIMIT 1
+			), '') AS snapshot_json,
 			COALESCE(user_work_state.listening_status, 'none')
 		FROM (
 			SELECT DISTINCT primary_code
@@ -845,9 +853,11 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var release sql.NullString
 		var workID sql.NullInt64
 		var dlsiteAvailable int
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.ListeningMark); err != nil {
+		var snapshot string
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark); err != nil {
 			return nil, err
 		}
+		item.Tags = parseDLsiteSnapshot(snapshot).Tags
 		item.ReleaseDate = nullableString(release)
 		item.WorkID = nullableInt64(workID)
 		item.DLsiteAvailable = dlsiteAvailable != 0

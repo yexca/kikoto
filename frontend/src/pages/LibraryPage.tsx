@@ -442,6 +442,8 @@ function RemoteSourcePanel({
 }) {
   const isLoading = result === null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
+  const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [message, setMessage] = useState("");
   const { page, pageSize, query } = viewState;
 
@@ -477,8 +479,67 @@ function RemoteSourcePanel({
       [work.primaryCode, work.title, work.circle, ...work.tags].some((value) => value.toLowerCase().includes(needle)),
     );
   }, [query, result]);
+  const selectableWorks = visibleWorks.filter((work) => work.primaryCode);
+  const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
+  const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
+  const selectedSaveable = selectedWorks;
   const canGoNext = result !== null && result.works.length >= pageSize;
   const canGoPrevious = page > 1;
+
+  useEffect(() => {
+    setBulkCodes((current) => new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))));
+  }, [visibleWorks]);
+
+  const toggleBulkCode = (code: string, checked: boolean) => {
+    setBulkCodes((current) => {
+      const next = new Set(current);
+      if (checked) next.add(code);
+      else next.delete(code);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    setBulkCodes(() => checked ? new Set(selectableWorks.map((work) => work.primaryCode)) : new Set());
+  };
+
+  const bulkSyncSelected = async () => {
+    if (selectedSyncable.length === 0) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    let synced = 0;
+    try {
+      for (const work of selectedSyncable) {
+        const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "bulk_manual_fetch");
+        synced++;
+        await onSynced(result.workId);
+      }
+      setMessage(`Synced ${synced} remote-only works.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk sync failed.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  };
+
+  const bulkSaveSelected = async () => {
+    if (selectedSaveable.length === 0) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    let saved = 0;
+    try {
+      for (const work of selectedSaveable) {
+        const result = await api.saveRemoteSourceWork(source.id, work.primaryCode, []);
+        saved++;
+        await onSynced(result.workId);
+      }
+      setMessage(`Saved ${saved} selected works.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  };
 
   return (
     <section className="space-y-3">
@@ -530,6 +591,22 @@ function RemoteSourcePanel({
           </IconButton>
         </div>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+        <label className="flex items-center gap-2 text-muted-foreground">
+          <input type="checkbox" checked={selectableWorks.length > 0 && selectedWorks.length === selectableWorks.length} onChange={(event) => toggleAllVisible(event.target.checked)} />
+          {selectedWorks.length} selected
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
+            <DownloadCloud className="h-4 w-4" />
+            Sync {selectedSyncable.length}
+          </Button>
+          <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSaveSelected()}>
+            <HardDriveDownload className="h-4 w-4" />
+            Save {selectedSaveable.length}
+          </Button>
+        </div>
+      </div>
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
       {isLoading ? (
         <Card>
@@ -545,7 +622,10 @@ function RemoteSourcePanel({
             <RemoteWorkCard
               key={work.remoteId}
               work={work}
+              selected={bulkCodes.has(work.primaryCode)}
+              selectable={Boolean(work.primaryCode)}
               isBusy={isSyncingCode === work.primaryCode}
+              onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
               onFetchAndMark={() => void syncWork(work, "mark_interest")}
@@ -590,7 +670,7 @@ function WorkCard({
   return (
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
-        <div className="block w-full cursor-pointer text-left" onClick={onOpen}>
+        <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
           <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} externalUrl={work.dlsiteUrl} />
           <WorkCardBody
             title={work.title}
@@ -641,13 +721,19 @@ function WorkCard({
 
 function RemoteWorkCard({
   work,
+  selected,
+  selectable,
   isBusy,
+  onSelectedChange,
   onOpen,
   onFetch,
   onFetchAndMark,
 }: {
   work: RemoteWork;
+  selected: boolean;
+  selectable: boolean;
   isBusy: boolean;
+  onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
   onFetch: () => void;
   onFetchAndMark: () => void;
@@ -656,6 +742,9 @@ function RemoteWorkCard({
     <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <div className="block w-full cursor-pointer text-left" onClick={onOpen}>
+          <label className="absolute z-10 m-2 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+            <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
+          </label>
           <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
           <WorkCardBody
             title={work.title}

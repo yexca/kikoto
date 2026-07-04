@@ -415,6 +415,7 @@ export type CircleCatalogWork = {
   releaseDate: string | null;
   coverUrl: string;
   dlsiteUrl: string;
+  tags: string[];
   catalogStatus: string;
   dlsiteAvailable: boolean;
   listeningMark: string;
