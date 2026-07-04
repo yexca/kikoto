@@ -40,6 +40,22 @@ type voiceUserTag struct {
 	Color string `json:"color"`
 }
 
+type voiceAlias struct {
+	ID        int64  `json:"id"`
+	Alias     string `json:"alias"`
+	Source    string `json:"source"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type voiceAliasCandidate struct {
+	PersonID    int64        `json:"personId"`
+	DisplayName string       `json:"displayName"`
+	Aliases     []voiceAlias `json:"aliases"`
+	KnownWorks  int          `json:"knownWorks"`
+	LocalWorks  int          `json:"localWorks"`
+	RemoteWorks int          `json:"remoteWorks"`
+}
+
 type voiceDetail struct {
 	voiceSummary
 	Works         []voiceKnownWork       `json:"works"`
@@ -152,7 +168,162 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: matches})
+	aliases, err := s.loadVoiceAliases(r.Context(), personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	summary.Aliases = aliasNames(aliases)
+	writeJSON(w, http.StatusOK, struct {
+		voiceDetail
+		AliasRecords []voiceAlias `json:"aliasRecords"`
+	}{voiceDetail: voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: matches}, AliasRecords: aliases})
+}
+
+func (s *Server) listVoiceAliasCandidates(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	candidates, err := s.loadVoiceAliasCandidates(r.Context(), personID, query)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, candidates)
+}
+
+func (s *Server) createVoiceAlias(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	var payload struct {
+		Alias string `json:"alias"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	alias := strings.TrimSpace(payload.Alias)
+	if alias == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "alias is required"})
+		return
+	}
+	if len(alias) > 120 {
+		alias = alias[:120]
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if _, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO person_alias (person_id, alias, source)
+		VALUES (?, ?, 'manual_review')
+		ON CONFLICT(person_id, alias) DO NOTHING
+	`, personID, alias); err != nil {
+		writeError(w, err)
+		return
+	}
+	aliases, err := s.loadVoiceAliases(r.Context(), personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, aliases)
+}
+
+func (s *Server) deleteVoiceAlias(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	aliasID, err := parseInt64PathValue(r, "aliasId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid alias id"})
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM person_alias WHERE id = ? AND person_id = ? AND source <> 'primary_name'", aliasID, personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	deleted, _ := result.RowsAffected()
+	aliases, err := s.loadVoiceAliases(r.Context(), personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "aliases": aliases})
+}
+
+func (s *Server) mergeVoiceAliasCandidate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	targetID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	var payload struct {
+		SourcePersonID int64 `json:"sourcePersonId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if payload.SourcePersonID <= 0 || payload.SourcePersonID == targetID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source person must be different"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	result, err := s.mergeVoicePeople(r.Context(), targetID, payload.SourcePersonID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
@@ -765,6 +936,188 @@ func (s *Server) loadPersonName(ctx context.Context, personID int64) (string, er
 	var name string
 	err := s.db.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", personID).Scan(&name)
 	return name, err
+}
+
+func (s *Server) loadVoiceAliases(ctx context.Context, personID int64) ([]voiceAlias, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, alias, source, created_at
+		FROM person_alias
+		WHERE person_id = ?
+		ORDER BY CASE WHEN source = 'primary_name' THEN 0 ELSE 1 END, alias ASC
+	`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	aliases := []voiceAlias{}
+	for rows.Next() {
+		var item voiceAlias
+		if err := rows.Scan(&item.ID, &item.Alias, &item.Source, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		aliases = append(aliases, item)
+	}
+	return aliases, rows.Err()
+}
+
+func (s *Server) loadVoiceAliasCandidates(ctx context.Context, personID int64, query string) ([]voiceAliasCandidate, error) {
+	pattern := "%" + strings.ToLower(query) + "%"
+	args := []any{personID}
+	filter := ""
+	if query != "" {
+		filter = `AND (
+			LOWER(person.display_name) LIKE ?
+			OR EXISTS (
+				SELECT 1 FROM person_alias AS candidate_alias
+				WHERE candidate_alias.person_id = person.id
+					AND LOWER(candidate_alias.alias) LIKE ?
+			)
+		)`
+		args = append(args, pattern, pattern)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			person.id,
+			person.display_name,
+			COUNT(DISTINCT credit.work_id) AS known_works,
+			COUNT(DISTINCT CASE WHEN EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = credit.work_id AND location.location_type = 'local' AND location.availability = 'available'
+			) THEN credit.work_id END) AS local_works,
+			COUNT(DISTINCT CASE WHEN EXISTS (
+				SELECT 1 FROM media_file_location AS location
+				INNER JOIN media_item AS item ON item.id = location.media_item_id
+				WHERE item.work_id = credit.work_id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
+			) THEN credit.work_id END) AS remote_works
+		FROM person
+		LEFT JOIN work_credit AS credit ON credit.person_id = person.id AND credit.role = 'voice_actor'
+		WHERE person.id <> ?
+		`+filter+`
+		GROUP BY person.id, person.display_name
+		ORDER BY
+			CASE WHEN ? = '' THEN 0 ELSE 1 END,
+			known_works DESC,
+			person.display_name ASC
+		LIMIT 30
+	`, append(args, query)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	candidates := []voiceAliasCandidate{}
+	for rows.Next() {
+		var item voiceAliasCandidate
+		if err := rows.Scan(&item.PersonID, &item.DisplayName, &item.KnownWorks, &item.LocalWorks, &item.RemoteWorks); err != nil {
+			return nil, err
+		}
+		aliases, err := s.loadVoiceAliases(ctx, item.PersonID)
+		if err != nil {
+			return nil, err
+		}
+		item.Aliases = aliases
+		candidates = append(candidates, item)
+	}
+	return candidates, rows.Err()
+}
+
+func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID int64) (map[string]any, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var targetName, sourceName string
+	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", targetID).Scan(&targetName); err != nil {
+		return nil, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", sourceID).Scan(&sourceName); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person_alias (person_id, alias, source)
+		VALUES (?, ?, 'merged_name')
+		ON CONFLICT(person_id, alias) DO NOTHING
+	`, targetID, sourceName); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person_alias (person_id, alias, source)
+		SELECT ?, alias, CASE WHEN source = 'primary_name' THEN 'merged_primary_name' ELSE source END
+		FROM person_alias
+		WHERE person_id = ?
+		ON CONFLICT(person_id, alias) DO NOTHING
+	`, targetID, sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work_credit (work_id, person_id, role, provider_id, source, created_at, updated_at)
+		SELECT work_id, ?, role, provider_id, source, created_at, CURRENT_TIMESTAMP
+		FROM work_credit
+		WHERE person_id = ?
+		ON CONFLICT(work_id, person_id, role) DO UPDATE SET
+			provider_id = COALESCE(excluded.provider_id, work_credit.provider_id),
+			source = CASE WHEN work_credit.source = '' THEN excluded.source ELSE work_credit.source END,
+			updated_at = CURRENT_TIMESTAMP
+	`, targetID, sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, last_viewed_at, created_at, updated_at)
+		SELECT user_id, ?, rating, note, favorite, last_viewed_at, created_at, CURRENT_TIMESTAMP
+		FROM user_person_state
+		WHERE person_id = ?
+		ON CONFLICT(user_id, person_id) DO UPDATE SET
+			rating = COALESCE(user_person_state.rating, excluded.rating),
+			note = CASE WHEN user_person_state.note = '' THEN excluded.note ELSE user_person_state.note END,
+			favorite = CASE WHEN excluded.favorite = 1 THEN 1 ELSE user_person_state.favorite END,
+			last_viewed_at = COALESCE(user_person_state.last_viewed_at, excluded.last_viewed_at),
+			updated_at = CURRENT_TIMESTAMP
+	`, targetID, sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id, created_at)
+		SELECT user_id, ?, user_person_tag_id, created_at
+		FROM user_person_tag_assignment
+		WHERE person_id = ?
+		ON CONFLICT(user_id, person_id, user_person_tag_id) DO NOTHING
+	`, targetID, sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE person_id = ?", sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_state WHERE person_id = ?", sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_tag_assignment WHERE person_id = ?", sourceID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM person_alias WHERE person_id = ?", sourceID); err != nil {
+		return nil, err
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM person WHERE id = ?", sourceID)
+	if err != nil {
+		return nil, err
+	}
+	deleted, _ := result.RowsAffected()
+	if deleted == 0 {
+		return nil, sql.ErrNoRows
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+}
+
+func aliasNames(aliases []voiceAlias) []string {
+	names := []string{}
+	for _, alias := range aliases {
+		names = append(names, alias.Alias)
+	}
+	return names
 }
 
 func (s *Server) replaceVoiceUserTags(ctx context.Context, userID int64, personID int64, rawTags []string) ([]voiceUserTag, error) {

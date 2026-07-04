@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,6 +33,9 @@ func main() {
 	}
 	if cfg.DevMode {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
+	}
+	if err := server.RunStartupWorkflows(context.Background()); err != nil {
+		slog.Error("run startup workflows", "error", err)
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
 

@@ -561,7 +561,7 @@ SELECT
   id,
   'startup',
   'Startup local library scan',
-  0,
+  1,
   '{"type":"startup"}',
   '{"reason":"system_startup"}'
 FROM workflow_definition
