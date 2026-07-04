@@ -56,6 +56,68 @@ type voiceAliasCandidate struct {
 	RemoteWorks int          `json:"remoteWorks"`
 }
 
+type voiceMergeReview struct {
+	ID             int64  `json:"id"`
+	TargetPersonID int64  `json:"targetPersonId"`
+	SourcePersonID int64  `json:"sourcePersonId"`
+	TargetName     string `json:"targetName"`
+	SourceName     string `json:"sourceName"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"createdAt"`
+	UndoneAt       string `json:"undoneAt"`
+}
+
+type personMergeSnapshot struct {
+	SourcePerson   personSnapshot              `json:"sourcePerson"`
+	Aliases        []personAliasSnapshot       `json:"aliases"`
+	Credits        []workCreditSnapshot        `json:"credits"`
+	States         []userPersonStateSnapshot   `json:"states"`
+	TagLinks       []userPersonTagLinkSnapshot `json:"tagLinks"`
+	TargetCredits  []workCreditSnapshot        `json:"targetCredits"`
+	TargetStates   []userPersonStateSnapshot   `json:"targetStates"`
+	TargetTagLinks []userPersonTagLinkSnapshot `json:"targetTagLinks"`
+	AddedAliases   []string                    `json:"addedAliases"`
+}
+
+type personSnapshot struct {
+	ID          int64  `json:"id"`
+	DisplayName string `json:"displayName"`
+	SortName    string `json:"sortName"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
+type personAliasSnapshot struct {
+	Alias     string `json:"alias"`
+	Source    string `json:"source"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type workCreditSnapshot struct {
+	WorkID     int64  `json:"workId"`
+	Role       string `json:"role"`
+	ProviderID *int64 `json:"providerId"`
+	Source     string `json:"source"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
+}
+
+type userPersonStateSnapshot struct {
+	UserID       int64   `json:"userId"`
+	Rating       *int    `json:"rating"`
+	Note         string  `json:"note"`
+	Favorite     bool    `json:"favorite"`
+	LastViewedAt *string `json:"lastViewedAt"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+}
+
+type userPersonTagLinkSnapshot struct {
+	UserID          int64  `json:"userId"`
+	UserPersonTagID int64  `json:"userPersonTagId"`
+	CreatedAt       string `json:"createdAt"`
+}
+
 type voiceDetail struct {
 	voiceSummary
 	Works         []voiceKnownWork       `json:"works"`
@@ -318,6 +380,57 @@ func (s *Server) mergeVoiceAliasCandidate(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) listVoiceMergeReviews(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	items, err := s.loadVoiceMergeReviews(r.Context(), personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) undoVoiceMergeReview(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	mergeID, err := parseInt64PathValue(r, "mergeId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid merge id"})
+		return
+	}
+	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	result, err := s.undoVoiceMerge(r.Context(), personID, mergeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "merge review not found"})
 			return
 		}
 		writeError(w, err)
@@ -922,7 +1035,19 @@ func (s *Server) ensureVoiceSchema(ctx context.Context) error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY(user_id, person_id, user_person_tag_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS person_merge_review (
+			id INTEGER PRIMARY KEY,
+			target_person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+			source_person_id INTEGER NOT NULL,
+			target_name TEXT NOT NULL,
+			source_name TEXT NOT NULL,
+			snapshot_json TEXT NOT NULL DEFAULT '{}',
+			status TEXT NOT NULL DEFAULT 'merged',
+			undone_at TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_credit_person ON work_credit(person_id, role)`,
+		`CREATE INDEX IF NOT EXISTS idx_person_merge_review_target ON person_merge_review(target_person_id, status, created_at)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -1021,6 +1146,29 @@ func (s *Server) loadVoiceAliasCandidates(ctx context.Context, personID int64, q
 	return candidates, rows.Err()
 }
 
+func (s *Server) loadVoiceMergeReviews(ctx context.Context, personID int64) ([]voiceMergeReview, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, target_person_id, source_person_id, target_name, source_name, status, created_at, COALESCE(undone_at, '')
+		FROM person_merge_review
+		WHERE target_person_id = ?
+		ORDER BY created_at DESC, id DESC
+		LIMIT 20
+	`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []voiceMergeReview{}
+	for rows.Next() {
+		var item voiceMergeReview
+		if err := rows.Scan(&item.ID, &item.TargetPersonID, &item.SourcePersonID, &item.TargetName, &item.SourceName, &item.Status, &item.CreatedAt, &item.UndoneAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID int64) (map[string]any, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1035,6 +1183,26 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	if err := tx.QueryRowContext(ctx, "SELECT display_name FROM person WHERE id = ?", sourceID).Scan(&sourceName); err != nil {
 		return nil, err
 	}
+	snapshot, err := loadPersonMergeSnapshot(ctx, tx, targetID, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	addedAliasSet := map[string]bool{}
+	addedAliasSet[sourceName] = true
+	for _, alias := range snapshot.Aliases {
+		addedAliasSet[alias.Alias] = true
+	}
+	for alias := range addedAliasSet {
+		snapshot.AddedAliases = append(snapshot.AddedAliases, alias)
+	}
+	snapshotJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	mergeReviewID, err := insertPersonMergeReview(ctx, tx, targetID, sourceID, targetName, sourceName, string(snapshotJSON))
+	if err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
 		VALUES (?, ?, 'merged_name')
@@ -1044,7 +1212,7 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
-		SELECT ?, alias, CASE WHEN source = 'primary_name' THEN 'merged_primary_name' ELSE source END
+		SELECT ?, alias, CASE WHEN source = 'primary_name' THEN 'merged_primary_name' ELSE 'merged_alias' END
 		FROM person_alias
 		WHERE person_id = ?
 		ON CONFLICT(person_id, alias) DO NOTHING
@@ -1109,7 +1277,382 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return map[string]any{"targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+	return map[string]any{"mergeId": mergeReviewID, "targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+}
+
+func (s *Server) undoVoiceMerge(ctx context.Context, targetID int64, mergeID int64) (map[string]any, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var snapshotRaw string
+	var status string
+	var sourceName string
+	err = tx.QueryRowContext(ctx, `
+		SELECT snapshot_json, status, source_name
+		FROM person_merge_review
+		WHERE id = ? AND target_person_id = ?
+	`, mergeID, targetID).Scan(&snapshotRaw, &status, &sourceName)
+	if err != nil {
+		return nil, err
+	}
+	if status != "merged" {
+		return nil, fmt.Errorf("merge review is already %s", status)
+	}
+	var snapshot personMergeSnapshot
+	if err := json.Unmarshal([]byte(snapshotRaw), &snapshot); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person (id, display_name, sort_name, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			display_name = excluded.display_name,
+			sort_name = excluded.sort_name,
+			updated_at = CURRENT_TIMESTAMP
+	`, snapshot.SourcePerson.ID, snapshot.SourcePerson.DisplayName, snapshot.SourcePerson.SortName, snapshot.SourcePerson.CreatedAt, snapshot.SourcePerson.UpdatedAt); err != nil {
+		return nil, err
+	}
+	for _, alias := range snapshot.Aliases {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO person_alias (person_id, alias, source, created_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(person_id, alias) DO NOTHING
+		`, snapshot.SourcePerson.ID, alias.Alias, alias.Source, alias.CreatedAt); err != nil {
+			return nil, err
+		}
+	}
+	for _, credit := range snapshot.Credits {
+		var provider any
+		if credit.ProviderID != nil {
+			provider = *credit.ProviderID
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_credit (work_id, person_id, role, provider_id, source, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(work_id, person_id, role) DO UPDATE SET
+				provider_id = excluded.provider_id,
+				source = excluded.source,
+				updated_at = CURRENT_TIMESTAMP
+		`, credit.WorkID, snapshot.SourcePerson.ID, credit.Role, provider, credit.Source, credit.CreatedAt, credit.UpdatedAt); err != nil {
+			return nil, err
+		}
+	}
+	targetCreditKeys := map[string]bool{}
+	for _, credit := range snapshot.TargetCredits {
+		targetCreditKeys[workCreditKey(credit.WorkID, credit.Role)] = true
+	}
+	for _, credit := range snapshot.Credits {
+		if targetCreditKeys[workCreditKey(credit.WorkID, credit.Role)] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND person_id = ? AND role = ?", credit.WorkID, targetID, credit.Role); err != nil {
+			return nil, err
+		}
+	}
+	for _, state := range snapshot.States {
+		var rating any
+		if state.Rating != nil {
+			rating = *state.Rating
+		}
+		var lastViewed any
+		if state.LastViewedAt != nil {
+			lastViewed = *state.LastViewedAt
+		}
+		favorite := 0
+		if state.Favorite {
+			favorite = 1
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, last_viewed_at, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, person_id) DO UPDATE SET
+				rating = excluded.rating,
+				note = excluded.note,
+				favorite = excluded.favorite,
+				last_viewed_at = excluded.last_viewed_at,
+				updated_at = CURRENT_TIMESTAMP
+		`, state.UserID, snapshot.SourcePerson.ID, rating, state.Note, favorite, lastViewed, state.CreatedAt, state.UpdatedAt); err != nil {
+			return nil, err
+		}
+	}
+	targetStateUsers := map[int64]bool{}
+	for _, state := range snapshot.TargetStates {
+		targetStateUsers[state.UserID] = true
+		if err := restoreUserPersonState(ctx, tx, targetID, state); err != nil {
+			return nil, err
+		}
+	}
+	for _, state := range snapshot.States {
+		if targetStateUsers[state.UserID] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_state WHERE user_id = ? AND person_id = ?", state.UserID, targetID); err != nil {
+			return nil, err
+		}
+	}
+	for _, link := range snapshot.TagLinks {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id, created_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(user_id, person_id, user_person_tag_id) DO NOTHING
+		`, link.UserID, snapshot.SourcePerson.ID, link.UserPersonTagID, link.CreatedAt); err != nil {
+			return nil, err
+		}
+	}
+	targetTagKeys := map[string]bool{}
+	for _, link := range snapshot.TargetTagLinks {
+		targetTagKeys[userTagLinkKey(link.UserID, link.UserPersonTagID)] = true
+	}
+	for _, link := range snapshot.TagLinks {
+		if targetTagKeys[userTagLinkKey(link.UserID, link.UserPersonTagID)] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_person_tag_assignment WHERE user_id = ? AND person_id = ? AND user_person_tag_id = ?", link.UserID, targetID, link.UserPersonTagID); err != nil {
+			return nil, err
+		}
+	}
+	for _, alias := range snapshot.AddedAliases {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM person_alias
+			WHERE person_id = ?
+				AND alias = ?
+				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias')
+		`, targetID, alias); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE person_merge_review
+		SET status = 'undone',
+			undone_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND target_person_id = ? AND status = 'merged'
+	`, mergeID, targetID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"mergeId": mergeID, "targetPersonId": targetID, "restoredPersonId": snapshot.SourcePerson.ID, "restoredName": sourceName}, nil
+}
+
+func insertPersonMergeReview(ctx context.Context, tx *sql.Tx, targetID int64, sourceID int64, targetName string, sourceName string, snapshotJSON string) (int64, error) {
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO person_merge_review (target_person_id, source_person_id, target_name, source_name, snapshot_json)
+		VALUES (?, ?, ?, ?, ?)
+	`, targetID, sourceID, targetName, sourceName, snapshotJSON)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, personID int64) (personMergeSnapshot, error) {
+	var snapshot personMergeSnapshot
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id, display_name, sort_name, created_at, updated_at
+		FROM person
+		WHERE id = ?
+	`, personID).Scan(&snapshot.SourcePerson.ID, &snapshot.SourcePerson.DisplayName, &snapshot.SourcePerson.SortName, &snapshot.SourcePerson.CreatedAt, &snapshot.SourcePerson.UpdatedAt); err != nil {
+		return snapshot, err
+	}
+	aliases, err := tx.QueryContext(ctx, "SELECT alias, source, created_at FROM person_alias WHERE person_id = ? ORDER BY id ASC", personID)
+	if err != nil {
+		return snapshot, err
+	}
+	for aliases.Next() {
+		var item personAliasSnapshot
+		if err := aliases.Scan(&item.Alias, &item.Source, &item.CreatedAt); err != nil {
+			_ = aliases.Close()
+			return snapshot, err
+		}
+		snapshot.Aliases = append(snapshot.Aliases, item)
+	}
+	if err := aliases.Close(); err != nil {
+		return snapshot, err
+	}
+	credits, err := tx.QueryContext(ctx, "SELECT work_id, role, provider_id, source, created_at, updated_at FROM work_credit WHERE person_id = ? ORDER BY work_id ASC", personID)
+	if err != nil {
+		return snapshot, err
+	}
+	for credits.Next() {
+		var item workCreditSnapshot
+		var provider sql.NullInt64
+		if err := credits.Scan(&item.WorkID, &item.Role, &provider, &item.Source, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			_ = credits.Close()
+			return snapshot, err
+		}
+		if provider.Valid {
+			value := provider.Int64
+			item.ProviderID = &value
+		}
+		snapshot.Credits = append(snapshot.Credits, item)
+	}
+	if err := credits.Close(); err != nil {
+		return snapshot, err
+	}
+	states, err := tx.QueryContext(ctx, "SELECT user_id, rating, note, favorite, last_viewed_at, created_at, updated_at FROM user_person_state WHERE person_id = ? ORDER BY user_id ASC", personID)
+	if err != nil {
+		return snapshot, err
+	}
+	for states.Next() {
+		var item userPersonStateSnapshot
+		var rating sql.NullInt64
+		var favorite int
+		var lastViewed sql.NullString
+		if err := states.Scan(&item.UserID, &rating, &item.Note, &favorite, &lastViewed, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			_ = states.Close()
+			return snapshot, err
+		}
+		if rating.Valid {
+			value := int(rating.Int64)
+			item.Rating = &value
+		}
+		item.Favorite = favorite != 0
+		if lastViewed.Valid {
+			value := lastViewed.String
+			item.LastViewedAt = &value
+		}
+		snapshot.States = append(snapshot.States, item)
+	}
+	if err := states.Close(); err != nil {
+		return snapshot, err
+	}
+	links, err := tx.QueryContext(ctx, "SELECT user_id, user_person_tag_id, created_at FROM user_person_tag_assignment WHERE person_id = ? ORDER BY user_id ASC, user_person_tag_id ASC", personID)
+	if err != nil {
+		return snapshot, err
+	}
+	for links.Next() {
+		var item userPersonTagLinkSnapshot
+		if err := links.Scan(&item.UserID, &item.UserPersonTagID, &item.CreatedAt); err != nil {
+			_ = links.Close()
+			return snapshot, err
+		}
+		snapshot.TagLinks = append(snapshot.TagLinks, item)
+	}
+	if err := links.Close(); err != nil {
+		return snapshot, err
+	}
+	targetCredits, err := loadWorkCreditSnapshots(ctx, tx, targetID)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.TargetCredits = targetCredits
+	targetStates, err := loadUserPersonStateSnapshots(ctx, tx, targetID)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.TargetStates = targetStates
+	targetLinks, err := loadUserPersonTagLinkSnapshots(ctx, tx, targetID)
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.TargetTagLinks = targetLinks
+	return snapshot, nil
+}
+
+func loadWorkCreditSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]workCreditSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT work_id, role, provider_id, source, created_at, updated_at FROM work_credit WHERE person_id = ? ORDER BY work_id ASC", personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []workCreditSnapshot{}
+	for rows.Next() {
+		var item workCreditSnapshot
+		var provider sql.NullInt64
+		if err := rows.Scan(&item.WorkID, &item.Role, &provider, &item.Source, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if provider.Valid {
+			value := provider.Int64
+			item.ProviderID = &value
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func loadUserPersonStateSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]userPersonStateSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT user_id, rating, note, favorite, last_viewed_at, created_at, updated_at FROM user_person_state WHERE person_id = ? ORDER BY user_id ASC", personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []userPersonStateSnapshot{}
+	for rows.Next() {
+		var item userPersonStateSnapshot
+		var rating sql.NullInt64
+		var favorite int
+		var lastViewed sql.NullString
+		if err := rows.Scan(&item.UserID, &rating, &item.Note, &favorite, &lastViewed, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if rating.Valid {
+			value := int(rating.Int64)
+			item.Rating = &value
+		}
+		item.Favorite = favorite != 0
+		if lastViewed.Valid {
+			value := lastViewed.String
+			item.LastViewedAt = &value
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func loadUserPersonTagLinkSnapshots(ctx context.Context, tx *sql.Tx, personID int64) ([]userPersonTagLinkSnapshot, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT user_id, user_person_tag_id, created_at FROM user_person_tag_assignment WHERE person_id = ? ORDER BY user_id ASC, user_person_tag_id ASC", personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []userPersonTagLinkSnapshot{}
+	for rows.Next() {
+		var item userPersonTagLinkSnapshot
+		if err := rows.Scan(&item.UserID, &item.UserPersonTagID, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func restoreUserPersonState(ctx context.Context, tx *sql.Tx, personID int64, state userPersonStateSnapshot) error {
+	var rating any
+	if state.Rating != nil {
+		rating = *state.Rating
+	}
+	var lastViewed any
+	if state.LastViewedAt != nil {
+		lastViewed = *state.LastViewedAt
+	}
+	favorite := 0
+	if state.Favorite {
+		favorite = 1
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, last_viewed_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, person_id) DO UPDATE SET
+			rating = excluded.rating,
+			note = excluded.note,
+			favorite = excluded.favorite,
+			last_viewed_at = excluded.last_viewed_at,
+			updated_at = CURRENT_TIMESTAMP
+	`, state.UserID, personID, rating, state.Note, favorite, lastViewed, state.CreatedAt, state.UpdatedAt)
+	return err
+}
+
+func workCreditKey(workID int64, role string) string {
+	return fmt.Sprintf("%d:%s", workID, role)
+}
+
+func userTagLinkKey(userID int64, tagID int64) string {
+	return fmt.Sprintf("%d:%d", userID, tagID)
 }
 
 func aliasNames(aliases []voiceAlias) []string {
