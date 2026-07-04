@@ -1,7 +1,6 @@
 import {
   ChevronLeft,
   ChevronRight,
-  DownloadCloud,
   ExternalLink,
   FileAudio,
   HardDriveDownload,
@@ -354,6 +353,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
+  const [markConfirm, setMarkConfirm] = useState<{ work: CircleCatalogWork; status: ListeningStatus } | null>(null);
+  const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -374,6 +375,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholder.");
     }).finally(() => setIsLoading(false));
   }, [externalId]);
+
+  useEffect(() => {
+    api.getRuntimeSettings().then((settings) => setAutoSyncRemote(settings.autoSyncRemote || settings.cacheEnabled)).catch(() => setAutoSyncRemote(false));
+  }, []);
 
   const circle = detail ?? fakeDetail(externalId);
   const filteredWorks = useMemo(() => {
@@ -455,7 +460,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   };
 
   const updateCatalogWorkStatus = async (work: CircleCatalogWork, status: ListeningStatus) => {
-    if (work.workId === null || (!work.local && !work.remote)) return;
+    if (work.workId === null) {
+      if (!circleWorkRemoteTarget(work)) return;
+      if (!autoSyncRemote) {
+        setMarkConfirm({ work, status });
+        return;
+      }
+      await syncAndMarkCatalogWork(work, status);
+      return;
+    }
+    if (!work.local && !work.remote) return;
     try {
       const result = await api.updateWorkUserState(work.workId, { listeningStatus: status });
       setDetail((current) => current ? {
@@ -464,6 +478,28 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       } : current);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    }
+  };
+
+  const syncAndMarkCatalogWork = async (work: CircleCatalogWork, status: ListeningStatus) => {
+    const target = circleWorkRemoteTarget(work);
+    if (!target) return;
+    setIsBulkSaving(true);
+    setMessage("");
+    try {
+      const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
+      const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
+      setMessage(`Synced and marked ${syncResult.primaryCode}.`);
+      const next = await api.getCircle(externalId);
+      setDetail({
+        ...next,
+        works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item),
+      });
+      setMarkConfirm(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    } finally {
+      setIsBulkSaving(false);
     }
   };
 
@@ -504,11 +540,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
         saved++;
       }
-      setMessage(`Saved ${saved} selected works.`);
+      setMessage(`Fetched ${saved} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk save failed.");
+      setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
     } finally {
       setIsBulkSaving(false);
       setSaveConfirm(null);
@@ -529,11 +565,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
         saved++;
       }
-      setMessage(`Synced and saved ${saved} selected works.`);
+      setMessage(`Synced and fetched ${saved} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk sync/save failed.");
+      setMessage(error instanceof Error ? error.message : "Bulk sync/fetch failed.");
     } finally {
       setIsBulkSaving(false);
     }
@@ -548,10 +584,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         setIsBulkSaving(true);
         try {
           await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
-          setMessage(`Saved ${work.primaryCode}.`);
+          setMessage(`Fetched ${work.primaryCode}.`);
           setDetail(await api.getCircle(externalId));
         } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Save failed.");
+          setMessage(error instanceof Error ? error.message : "Fetch failed.");
         } finally {
           setIsBulkSaving(false);
           setSaveConfirm(null);
@@ -758,13 +794,14 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <SlidersHorizontal className="h-4 w-4" />
                 More
               </Button>
-              <label className="flex items-center gap-2 rounded-md border bg-background px-2 text-sm text-muted-foreground">
-                <input type="checkbox" checked={selectionMode} onChange={(event) => {
-                  setSelectionMode(event.target.checked);
-                  if (!event.target.checked) setSelectedWorkCodes(new Set());
-                }} />
+              <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
+                setSelectionMode((value) => {
+                  if (value) setSelectedWorkCodes(new Set());
+                  return !value;
+                });
+              }}>
                 Select
-              </label>
+              </Button>
             </div>
           </div>
 
@@ -785,11 +822,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               }}>Cancel selection</Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
                 <RefreshCw className="h-4 w-4" />
-                Sync + Save {selectedSyncableWorks.length}
+                Sync + Fetch {selectedSyncableWorks.length}
               </Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedWorks.length === 0} onClick={() => void bulkSaveSelected()}>
                 <HardDriveDownload className="h-4 w-4" />
-                Save {selectedWorks.length}
+                Fetch {selectedWorks.length}
               </Button>
             </div>
           </div>}
@@ -854,6 +891,13 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       )}
       {saveConfirm && (
         <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />
+      )}
+      {markConfirm && (
+        <RemoteMarkConfirmModal
+          workCode={markConfirm.work.primaryCode}
+          onClose={() => setMarkConfirm(null)}
+          onConfirm={() => void syncAndMarkCatalogWork(markConfirm.work, markConfirm.status)}
+        />
       )}
     </div>
   );
@@ -965,13 +1009,13 @@ function CatalogWorkCard({
             </a>
           </Button>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" title="Fetch remote info" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+            <Button variant="ghost" size="icon" title="Sync" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSync();
             }}>
-              <DownloadCloud className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" title="Save to library" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+            <Button variant="ghost" size="icon" title="Fetch" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSave();
             }}>
@@ -982,7 +1026,7 @@ function CatalogWorkCard({
               variant="ghost"
               size="icon"
               title={`Mark: ${listeningStatusLabel(work.listeningMark)}`}
-              disabled={isUnavailable || work.workId === null}
+              disabled={isUnavailable && !circleWorkRemoteTarget(work)}
               onClick={(event) => {
                 event.stopPropagation();
                 setIsMarkOpen((value) => !value);
@@ -1024,11 +1068,28 @@ function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClos
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Save remote directory</h3>
+        <h3 className="text-base font-semibold">Fetch remote directory</h3>
         <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Save</Button>
+          <Button size="sm" onClick={onConfirm}>Fetch</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: string; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Sync before mark</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {workCode} will be synced into Remote metadata before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>Sync and mark</Button>
         </div>
       </div>
     </div>
