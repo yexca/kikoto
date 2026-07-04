@@ -506,12 +506,14 @@ func parseWorkCodes(rawHTML string) []string {
 func makerProfileURLs(baseURL string, site string, makerID string, page int) []string {
 	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID))
 	if page <= 1 {
-		return []string{endpoint}
+		return []string{
+			fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/per_page/100/show_type/3/page/1/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID)),
+			endpoint,
+		}
 	}
 	return []string{
-		fmt.Sprintf("%s?per_page=100&page=%d", endpoint, page),
-		fmt.Sprintf("%s?page=%d", endpoint, page),
-		fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s/page/%d.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID), page),
+		fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/per_page/100/show_type/3/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
+		fmt.Sprintf("%s/%s/circle/profile/=/order%%5B0%%5D/release_d/options%%5B0%%5D/JPN/options%%5B1%%5D/NM/per_page/100/show_type/3/hd/1/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
 	}
 }
 

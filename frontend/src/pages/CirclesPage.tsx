@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FileAudio,
   FolderTree,
   ListChecks,
   NotebookPen,
@@ -251,6 +252,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [refreshMode, setRefreshMode] = useState<"incremental" | "full">("incremental");
   const [productMode, setProductMode] = useState<"available" | "all">("available");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [cardLayout, setCardLayout] = useState<"single" | "adaptive">("adaptive");
 
   useEffect(() => {
     setIsLoading(true);
@@ -455,6 +457,20 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               <span>Search circle catalog works</span>
             </div>
             <div className="flex gap-2">
+              <div className="flex rounded-md border bg-background p-1 sm:hidden" aria-label="Catalog card layout">
+                <button
+                  className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "single" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                  onClick={() => setCardLayout("single")}
+                >
+                  1
+                </button>
+                <button
+                  className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "adaptive" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                  onClick={() => setCardLayout("adaptive")}
+                >
+                  2
+                </button>
+              </div>
               <Button variant="outline" size="sm">
                 <SlidersHorizontal className="h-4 w-4" />
                 Availability
@@ -466,7 +482,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className={circleWorkGridClassName(cardLayout)}>
             {circle.works.length > 0 ? circle.works.map((work) => (
               <CatalogWorkCard key={work.primaryCode} work={work} />
             )) : (
@@ -502,36 +518,43 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
 function CatalogWorkCard({ work }: { work: CircleCatalogWork }) {
   const directoryTarget = preferredDirectoryTarget(work);
+  const tags = sourceTags(work.sourceTags);
   return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div className="aspect-[4/3] overflow-hidden rounded-md border bg-muted">
+    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+      <CardContent className="p-0">
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
           {work.coverUrl ? <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" /> : null}
+          <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode}</div>
         </div>
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{work.primaryCode}</Badge>
-            <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
-            {work.listeningMark !== "none" && <Badge>{work.listeningMark}</Badge>}
+        <div className="flex min-h-52 flex-col gap-3 p-4">
+          <div className="space-y-1">
+            <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
+            <div className="truncate text-xs text-muted-foreground">{work.releaseDate ?? "Unknown release"}</div>
           </div>
-          <h3 className="line-clamp-2 min-h-10 text-sm font-semibold">{work.title}</h3>
-          <div className="truncate text-xs text-muted-foreground">{work.releaseDate ?? "Unknown release"}</div>
+          <div className="flex min-h-6 flex-wrap gap-1.5">
+            <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
+            {work.listeningMark !== "none" && <Badge variant="warning">{work.listeningMark}</Badge>}
+          </div>
+          <div className="grid gap-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <FileAudio className="h-3.5 w-3.5" />
+              <span>{work.local || work.remote ? "Matched file source" : "No playable source"}</span>
+            </div>
+          </div>
+          <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
+            {tags.length > 0 ? tags.map((tag) => (
+              <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
+                {tag.displayName}
+              </Badge>
+            )) : <Badge variant="warning">Unavailable</Badge>}
+          </div>
         </div>
-        <div className="flex min-h-6 flex-wrap gap-1">
-          {sourceTags(work.sourceTags).length > 0 ? sourceTags(work.sourceTags).map((tag) => (
-            <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
-              {tag.displayName}
-            </Badge>
-          )) : (
-            <span className="text-xs text-muted-foreground">Unavailable</span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" disabled={!directoryTarget} onClick={() => directoryTarget && openWorkDirectoryRoute(directoryTarget)}>
+        <div className="flex h-11 items-center justify-between border-t px-3">
+          <Button variant="ghost" size="sm" disabled={!directoryTarget} onClick={() => directoryTarget && openWorkDirectoryRoute(directoryTarget)}>
             <FolderTree className="h-4 w-4" />
             Open files
           </Button>
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="ghost" size="sm" asChild>
             <a href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer">
               <ExternalLink className="h-4 w-4" />
               DLsite
@@ -652,4 +675,10 @@ function safeDecodePathSegment(value: string) {
   } catch {
     return value;
   }
+}
+
+function circleWorkGridClassName(mode: "single" | "adaptive") {
+  return mode === "single"
+    ? "grid grid-cols-1 gap-4"
+    : "grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,600px),1fr))]";
 }

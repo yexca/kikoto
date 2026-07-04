@@ -776,7 +776,7 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 		result.Status = "failed"
 		result.Error = fetchErr.Error()
 	} else {
-		if err := s.applyMakerProfile(ctx, partyID, profile); err != nil {
+		if err := s.applyMakerProfile(ctx, partyID, profile, request.Mode == "full"); err != nil {
 			result.Status = "failed"
 			result.Error = err.Error()
 		} else {
@@ -803,7 +803,7 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 	return result, nil
 }
 
-func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile dlsite.MakerProfile) error {
+func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile dlsite.MakerProfile, pruneMissing bool) error {
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
 		return err
@@ -842,6 +842,24 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 	`, partyID, providerID, profile.MakerID, string(raw)); err != nil {
 		return err
 	}
+	if pruneMissing {
+		if len(profile.WorkCodes) == 0 {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM party_catalog_item WHERE party_id = ? AND provider_id = ?", partyID, providerID); err != nil {
+				return err
+			}
+		} else {
+			placeholders := make([]string, 0, len(profile.WorkCodes))
+			args := []any{partyID, providerID}
+			for _, code := range profile.WorkCodes {
+				placeholders = append(placeholders, "?")
+				args = append(args, strings.ToUpper(strings.TrimSpace(code)))
+			}
+			query := fmt.Sprintf("DELETE FROM party_catalog_item WHERE party_id = ? AND provider_id = ? AND UPPER(primary_code) NOT IN (%s)", strings.Join(placeholders, ","))
+			if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+				return err
+			}
+		}
+	}
 	for _, code := range profile.WorkCodes {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, url, catalog_status, raw_json, last_seen_at)
@@ -867,7 +885,7 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 	}
 	candidates := workCodes
 	if productMode != "all" {
-		available, err := s.availableCircleCatalogCodes(ctx, partyID)
+		available, err := s.availableCircleCatalogCodes(ctx, partyID, workCodes)
 		if err != nil {
 			return 0, err
 		}
@@ -928,7 +946,7 @@ func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (ma
 	return result, rows.Err()
 }
 
-func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
+func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64, workCodes []string) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT catalog.primary_code
 		FROM party_catalog_item AS catalog
@@ -953,7 +971,44 @@ func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64)
 			result[code] = true
 		}
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, code := range workCodes {
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code == "" || result[code] {
+			continue
+		}
+		if s.circleWorkAvailableInAnyRemoteSource(ctx, sources, code) {
+			result[code] = true
+		}
+	}
+	return result, nil
+}
+
+func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sources []remoteSourceForUse, code string) bool {
+	for _, source := range sources {
+		if source.SourceType != "kikoeru_compatible" || !source.Enabled {
+			continue
+		}
+		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
+			return false
+		}
+		remoteWork, err := s.checkRemoteWorkAvailability(ctx, source, code)
+		if err != nil {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			continue
+		}
+		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		if normalizedRemoteWorkCode(remoteWork) != "" || remoteWork.ID > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeCircleRefreshRequest(request circleRefreshRequest) circleRefreshRequest {

@@ -77,6 +77,7 @@ export function LibraryPage() {
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
+  const [cardLayout, setCardLayout] = useState<"single" | "adaptive">("adaptive");
 
   useEffect(() => {
     api
@@ -267,6 +268,20 @@ export function LibraryPage() {
           <span>Search title, code, circle, tag, or creator</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className="flex rounded-md border bg-card p-1 sm:hidden" aria-label="Card layout">
+            <button
+              className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "single" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              onClick={() => setCardLayout("single")}
+            >
+              1
+            </button>
+            <button
+              className={`h-7 rounded px-2 text-xs font-medium ${cardLayout === "adaptive" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              onClick={() => setCardLayout("adaptive")}
+            >
+              2
+            </button>
+          </div>
           <select
             className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
             value={statusFilter}
@@ -313,7 +328,7 @@ export function LibraryPage() {
           }}
         />
       ) : (
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <section className={workGridClassName(cardLayout)}>
           {visibleWorks.map((work) => (
             <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
           ))}
@@ -514,7 +529,7 @@ function RemoteSourcePanel({
           <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
         </Card>
       ) : (
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <section className={workGridClassName("adaptive")}>
           {visibleWorks.map((work) => (
             <RemoteWorkCard
               key={work.remoteId}
@@ -570,11 +585,11 @@ function WorkCard({
             title={work.title}
             circle={work.circle || "Unknown circle"}
             circleExternalId={work.circleExternalId}
-            badges={[
+            statusBadges={[
               ...(work.listeningStatus !== "none" ? [{ value: listeningStatusLabel(work.listeningStatus), variant: "warning" as const }] : []),
-              ...work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) })),
-              ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
             ]}
+            tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
+            sourceBadges={work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) }))}
             meta={[
               { icon: <UserRound className="h-3.5 w-3.5" />, value: work.voiceActors.join(", ") || "No voice actor metadata" },
               { icon: <FileAudio className="h-3.5 w-3.5" />, value: `${work.trackCount} tracks, ${work.availableLocations} files` },
@@ -635,11 +650,11 @@ function RemoteWorkCard({
             title={work.title}
             circle={work.circle || "Unknown circle"}
             circleExternalId=""
-            badges={[
+            statusBadges={[
               { value: work.importStatus, variant: work.importStatus === "synced" ? ("secondary" as const) : ("outline" as const) },
-              ...(work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []),
-              ...work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const })),
             ]}
+            tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
+            sourceBadges={work.remotePlayable ? [{ value: "remote", variant: "outline" as const }] : []}
             meta={[
               { icon: <Cloud className="h-3.5 w-3.5" />, value: "Browse source result" },
               { icon: <FileAudio className="h-3.5 w-3.5" />, value: work.primaryCode || work.remoteId },
@@ -727,17 +742,21 @@ function WorkCardBody({
   title,
   circle,
   circleExternalId,
-  badges,
+  statusBadges,
+  tagBadges,
+  sourceBadges,
   meta,
 }: {
   title: string;
   circle: string;
   circleExternalId: string;
-  badges: CardBadge[];
+  statusBadges: CardBadge[];
+  tagBadges: CardBadge[];
+  sourceBadges: CardBadge[];
   meta: CardMeta[];
 }) {
   return (
-    <div className="space-y-3 p-4">
+    <div className="flex min-h-52 flex-col gap-3 p-4">
       <div className="space-y-1">
         <h2 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{title}</h2>
         <button
@@ -751,11 +770,18 @@ function WorkCardBody({
         </button>
       </div>
       <div className="flex min-h-6 flex-wrap gap-1.5">
-        {badges.map((badge) => (
+        {statusBadges.map((badge) => (
           <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
             {badge.value}
           </Badge>
         ))}
+      </div>
+      <div className="flex min-h-6 flex-wrap gap-1.5">
+        {tagBadges.length > 0 ? tagBadges.map((badge) => (
+          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
+            {badge.value}
+          </Badge>
+        )) : <span className="text-xs text-muted-foreground">No tags</span>}
       </div>
       <div className="grid gap-1 text-xs text-muted-foreground">
         {meta.map((item, index) => (
@@ -765,8 +791,21 @@ function WorkCardBody({
           </div>
         ))}
       </div>
+      <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
+        {sourceBadges.length > 0 ? sourceBadges.map((badge) => (
+          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
+            {badge.value}
+          </Badge>
+        )) : <Badge variant="warning">missing</Badge>}
+      </div>
     </div>
   );
+}
+
+function workGridClassName(mode: "single" | "adaptive") {
+  return mode === "single"
+    ? "grid grid-cols-1 gap-4"
+    : "grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,600px),1fr))]";
 }
 
 function IconButton({
