@@ -14,8 +14,12 @@
 - Circle list and circle detail routes.
 - Library and circle work pagination.
 - Local audio streaming with range support.
-- Compatible remote source browsing, sync, cache, and save actions.
+- Compatible remote source browsing, sync, cache, and fetch actions.
+- Remote Fetch naming and directory-tree file selection.
+- Bulk remote sync/fetch parent workflow runs.
 - Source availability checks from work detail.
+- Voice actor list and detail pages.
+- Voice favorite, user tags, alias review, merge, and merge undo.
 - Global custom player dock.
 - Per-user quick listening marks for works.
 - Per-user playback progress persisted by logical media item.
@@ -27,7 +31,6 @@
 - Restore queue state.
 - Add real search and filters.
 - Add favorite list and custom user tag UI.
-- Implement voice actor detail pages.
 - Add file change detection for local folders.
 - Add review/maintenance triage for stale, duplicate, or ambiguous scan results.
 - Add workflow retry actions.
@@ -35,7 +38,7 @@
 
 ## Later
 
-- Asynchronous worker execution for remote save/cache jobs.
+- Asynchronous worker execution for remote fetch/cache and large bulk jobs.
 - Download queue progress and restart recovery.
 - Playback fallback tuning between local, cached, and remote locations.
 - Lyrics source support.

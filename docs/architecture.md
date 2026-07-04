@@ -29,8 +29,11 @@ Current backend implementation:
 - DLsite metadata client in `backend/internal/dlsite`.
 - Metadata sync workflow in `backend/internal/metasync`.
 - Circle catalog and source matching handlers in `backend/internal/httpapi`.
-- Compatible remote source browsing, sync, cache, and save handlers in
+- Voice actor persistence, user state, alias review, and remote match handlers
+  in `backend/internal/httpapi`.
+- Compatible remote source browsing, sync, cache, and fetch handlers in
   `backend/internal/httpapi`.
+- Parent bulk remote action workflow handling in `backend/internal/httpapi`.
 - HTTP API in `backend/internal/httpapi`.
 
 ## Frontend
@@ -57,14 +60,15 @@ SQLite stores:
 - Workflow definitions, triggers, runs, node runs, jobs, and candidates.
 - Users, sessions, quick work marks, favorite/tag foundations, and media progress.
 - Party, party catalog, and per-user party state for circle or maker pages.
+- Person, alias, credit, and per-user person state for voice actor pages.
 
 Runtime files live under mounted `config/` and `data/` directories.
 
 ## Current Limitations
 
 - Workflow execution is still synchronous-first.
-- Remote file source sync, cache, and save actions are synchronous-first rather
-  than queued worker jobs.
+- Remote file source sync, cache, fetch, and bulk actions are synchronous-first
+  rather than queued worker jobs.
 - Retry and restart recovery are not implemented.
 - Queue restore is not implemented.
 - Favorite-list and custom-tag UI is not implemented yet.
