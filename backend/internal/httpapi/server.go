@@ -246,7 +246,8 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				ORDER BY relation.updated_at DESC
 				LIMIT 1
 			) AS party_link,
-			COALESCE(user_work_state.listening_status, 'none') AS listening_status
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+			COALESCE(user_work_state.favorite, 0) AS favorite
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
 			AND user_work_state.user_id = ?
@@ -278,6 +279,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		AvailableLocations int64    `json:"availableLocations"`
 		Availability       []string `json:"availability"`
 		ListeningStatus    string   `json:"listeningStatus"`
+		Favorite           bool     `json:"favorite"`
 	}
 
 	works := []work{}
@@ -286,6 +288,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		var snapshot sql.NullString
 		var availableLocationTypes sql.NullString
 		var partyLink sql.NullString
+		var favorite int
 		if err := rows.Scan(
 			&item.ID,
 			&item.PrimaryCode,
@@ -297,10 +300,12 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			&snapshot,
 			&partyLink,
 			&item.ListeningStatus,
+			&favorite,
 		); err != nil {
 			writeError(w, err)
 			return
 		}
+		item.Favorite = favorite != 0
 		metadata := parseDLsiteSnapshot(snapshot.String)
 		item.ReleaseDate = metadata.ReleaseDate
 		item.UpdatedAt = item.CreatedAt
@@ -340,11 +345,15 @@ type workDetail struct {
 	Circle           string            `json:"circle"`
 	CircleExternalID string            `json:"circleExternalId"`
 	Rating           *float64          `json:"rating"`
+	RatingCount      *int64            `json:"ratingCount"`
 	Sales            *int64            `json:"sales"`
+	Series           string            `json:"series"`
+	DLsiteFetchedAt  string            `json:"dlsiteFetchedAt"`
 	Tags             []string          `json:"tags"`
 	VoiceActors      []string          `json:"voiceActors"`
 	VoiceCredits     []voiceCredit     `json:"voiceCredits"`
 	ListeningStatus  string            `json:"listeningStatus"`
+	Favorite         bool              `json:"favorite"`
 	MediaItems       []mediaItemDetail `json:"mediaItems"`
 }
 
@@ -1297,6 +1306,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
+	var favorite int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
 			work.id,
@@ -1310,7 +1320,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			work.duration_seconds,
 			work.created_at,
 			work.updated_at,
-			COALESCE(user_work_state.listening_status, 'none') AS listening_status
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+			COALESCE(user_work_state.favorite, 0) AS favorite
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
 			AND user_work_state.user_id = ?
@@ -1328,9 +1339,11 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		&work.CreatedAt,
 		&work.UpdatedAt,
 		&work.ListeningStatus,
+		&favorite,
 	); err != nil {
 		return workDetail{}, err
 	}
+	work.Favorite = favorite != 0
 	work.ReleaseDate = nullableString(releaseDate)
 	work.DurationSeconds = nullableInt64(durationSeconds)
 	work.CoverURL = s.coverURL(work.PrimaryCode)
@@ -1338,18 +1351,25 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.MediaItems = []mediaItemDetail{}
 
 	var snapshot sql.NullString
+	var snapshotFetchedAt sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT metadata_snapshot.snapshot_json
+		SELECT metadata_snapshot.snapshot_json, metadata_snapshot.fetched_at
 		FROM metadata_snapshot
 		INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
 		WHERE metadata_snapshot.work_id = ?
 			AND metadata_provider.code = 'dlsite'
 		ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
 		LIMIT 1
-	`, id).Scan(&snapshot); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	`, id).Scan(&snapshot, &snapshotFetchedAt); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return workDetail{}, err
 	}
 	metadata := parseDLsiteSnapshot(snapshot.String)
+	if snapshotFetchedAt.Valid {
+		work.DLsiteFetchedAt = snapshotFetchedAt.String
+	}
+	if metadata.DLsiteUpdatedAt != nil {
+		work.DLsiteFetchedAt = *metadata.DLsiteUpdatedAt
+	}
 	work.Circle = metadata.Circle
 	work.CircleExternalID = metadata.CircleExternalID
 	var partyLink sql.NullString
@@ -1371,7 +1391,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		work.CircleExternalID = externalID
 	}
 	work.Rating = metadata.Rating
+	work.RatingCount = metadata.RatingCount
 	work.Sales = metadata.Sales
+	work.Series = metadata.Series
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
 	work.VoiceCredits = []voiceCredit{}
@@ -2204,8 +2226,10 @@ func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFold
 		INSERT INTO work (primary_code, work_type, title, description)
 		VALUES (?, 'audio', ?, ?)
 		ON CONFLICT(primary_code) DO UPDATE SET
-			title = excluded.title,
-			description = excluded.description,
+			description = CASE
+				WHEN work.description = '' OR work.description LIKE 'Detected from local folder %' THEN excluded.description
+				ELSE work.description
+			END,
 			updated_at = CURRENT_TIMESTAMP
 	`, folder.Code, folder.Title, fmt.Sprintf("Detected from local folder %s.", filepath.ToSlash(folder.RelPath))); err != nil {
 		return 0, err
@@ -2372,7 +2396,10 @@ type dlsiteSnapshotMetadata struct {
 	CircleExternalID string
 	ReleaseDate      *string
 	Rating           *float64
+	RatingCount      *int64
 	Sales            *int64
+	Series           string
+	DLsiteUpdatedAt  *string
 	Tags             []string
 	VoiceActors      []string
 }
@@ -2402,15 +2429,25 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		BrandID        string   `json:"brand_id"`
 		LabelID        string   `json:"label_id"`
 		ReleaseDate    string   `json:"release_date"`
+		UpdateDate     string   `json:"update_date"`
+		ModifyDate     string   `json:"modify_date"`
 		Sales          *int64   `json:"dl_count"`
 		DLCount        *int64   `json:"download_count"`
 		SalesCount     *int64   `json:"sales_count"`
 		RateAverage2DP *float64 `json:"rate_average_2dp"`
 		RateAverage    *float64 `json:"rate_average"`
+		RateCount      *int64   `json:"rate_count"`
+		ReviewCount    *int64   `json:"review_count"`
+		SeriesName     string   `json:"series_name"`
+		Series         string   `json:"series"`
 		Genres         []struct {
 			Name     string `json:"name"`
 			NameBase string `json:"name_base"`
 		} `json:"genres"`
+		SeriesWork []struct {
+			Title string `json:"title"`
+			Name  string `json:"name"`
+		} `json:"series_work"`
 		Creators map[string][]struct {
 			Name string `json:"name"`
 		} `json:"creaters"`
@@ -2422,6 +2459,8 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		var dynamic struct {
 			RateAverage2DP *float64 `json:"rate_average_2dp"`
 			RateAverage    *float64 `json:"rate_average"`
+			RateCount      *int64   `json:"rate_count"`
+			ReviewCount    *int64   `json:"review_count"`
 			Sales          *int64   `json:"dl_count"`
 			DLCount        *int64   `json:"download_count"`
 			SalesCount     *int64   `json:"sales_count"`
@@ -2431,6 +2470,11 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 				payload.RateAverage2DP = dynamic.RateAverage2DP
 			} else if dynamic.RateAverage != nil {
 				payload.RateAverage = dynamic.RateAverage
+			}
+			if dynamic.RateCount != nil {
+				payload.RateCount = dynamic.RateCount
+			} else if dynamic.ReviewCount != nil {
+				payload.ReviewCount = dynamic.ReviewCount
 			}
 			if dynamic.Sales != nil {
 				payload.Sales = dynamic.Sales
@@ -2447,10 +2491,18 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
 		metadata.ReleaseDate = &release
 	}
+	if updated := strings.TrimSpace(firstNonEmpty(payload.UpdateDate, payload.ModifyDate)); updated != "" {
+		metadata.DLsiteUpdatedAt = &updated
+	}
 	if payload.RateAverage2DP != nil {
 		metadata.Rating = payload.RateAverage2DP
 	} else if payload.RateAverage != nil {
 		metadata.Rating = payload.RateAverage
+	}
+	if payload.RateCount != nil {
+		metadata.RatingCount = payload.RateCount
+	} else if payload.ReviewCount != nil {
+		metadata.RatingCount = payload.ReviewCount
 	}
 	if payload.Sales != nil {
 		metadata.Sales = payload.Sales
@@ -2458,6 +2510,15 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		metadata.Sales = payload.DLCount
 	} else if payload.SalesCount != nil {
 		metadata.Sales = payload.SalesCount
+	}
+	metadata.Series = strings.TrimSpace(firstNonEmpty(payload.SeriesName, payload.Series))
+	if metadata.Series == "" {
+		for _, item := range payload.SeriesWork {
+			if name := strings.TrimSpace(firstNonEmpty(item.Title, item.Name)); name != "" {
+				metadata.Series = name
+				break
+			}
+		}
 	}
 
 	seenTags := map[string]bool{}

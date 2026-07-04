@@ -17,6 +17,7 @@ export type Work = {
   availableLocations: number;
   availability: string[];
   listeningStatus: ListeningStatus;
+  favorite: boolean;
 };
 
 export type WorkDetail = {
@@ -36,11 +37,15 @@ export type WorkDetail = {
   circle: string;
   circleExternalId: string;
   rating: number | null;
+  ratingCount: number | null;
   sales: number | null;
+  series: string;
+  dlsiteFetchedAt: string;
   tags: string[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   listeningStatus: ListeningStatus;
+  favorite: boolean;
   mediaItems: MediaItem[];
 };
 
@@ -195,6 +200,7 @@ export type RemoteWorkDetail = {
   sourceUrl: string;
   circle: string;
   rating: number | null;
+  sales: number | null;
   releaseDate: string;
   durationSeconds: number | null;
   tags: string[];
@@ -710,8 +716,8 @@ export const api = {
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
   deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCacheDeleteResult>(`/api/media/${locationId}/cache`),
   deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
-  updateWorkUserState: (id: number, payload: { listeningStatus: ListeningStatus }) =>
-    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus }>(`/api/works/${id}/user-state`, payload),
+  updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; favorite?: boolean }) =>
+    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(`/api/works/${id}/user-state`, payload),
   listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),

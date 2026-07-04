@@ -109,6 +109,7 @@ type remoteWorkDetail struct {
 	SourceURL       string              `json:"sourceUrl"`
 	Circle          string              `json:"circle"`
 	Rating          *float64            `json:"rating"`
+	Sales           *int64              `json:"sales"`
 	ReleaseDate     string              `json:"releaseDate"`
 	DurationSeconds *int64              `json:"durationSeconds"`
 	Tags            []string            `json:"tags"`
@@ -1848,6 +1849,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		SourceURL:       work.SourceURL,
 		Circle:          circle,
 		Rating:          work.RateAverage2DP,
+		Sales:           work.DLCount,
 		ReleaseDate:     releaseDate,
 		DurationSeconds: duration,
 		Tags:            tags,
