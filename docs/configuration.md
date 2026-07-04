@@ -45,7 +45,7 @@ The Settings page currently manages:
 - Remote auto cache on play.
 - Cache size limit.
 - Remote save path template.
-- Local and Kikoeru-compatible file sources.
+- Local and compatible remote file sources.
 
 When automatic remote cache is enabled, automatic remote pull is also enabled
 because caching requires stable local work and media item records first.

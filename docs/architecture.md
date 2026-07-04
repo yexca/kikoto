@@ -28,6 +28,9 @@ Current backend implementation:
 - Local folder scanner in `backend/internal/localfs`.
 - DLsite metadata client in `backend/internal/dlsite`.
 - Metadata sync workflow in `backend/internal/metasync`.
+- Circle catalog and source matching handlers in `backend/internal/httpapi`.
+- Compatible remote source browsing, sync, cache, and save handlers in
+  `backend/internal/httpapi`.
 - HTTP API in `backend/internal/httpapi`.
 
 ## Frontend
@@ -53,14 +56,17 @@ SQLite stores:
 - Media file locations.
 - Workflow definitions, triggers, runs, node runs, jobs, and candidates.
 - Users, sessions, quick work marks, favorite/tag foundations, and media progress.
+- Party, party catalog, and per-user party state for circle or maker pages.
 
 Runtime files live under mounted `config/` and `data/` directories.
 
 ## Current Limitations
 
 - Workflow execution is still synchronous-first.
-- Remote file source sync is not implemented.
-- Download/cache workflows are not implemented.
+- Remote file source sync, cache, and save actions are synchronous-first rather
+  than queued worker jobs.
 - Retry and restart recovery are not implemented.
 - Queue restore is not implemented.
 - Favorite-list and custom-tag UI is not implemented yet.
+- Review/maintenance triage for stale catalog rows and ambiguous scan results is
+  not implemented yet.

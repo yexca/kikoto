@@ -61,6 +61,15 @@ Returns the current library work list with metadata, availability counts, cover 
 Requires `library:read`.
 
 ```http
+GET /api/works/{code}/source-availability
+```
+
+Checks local, cache, remote aggregate, and configured compatible source
+availability for a product code through a backend workflow.
+
+Requires `library:read`.
+
+```http
 GET /api/works/{id}
 ```
 
@@ -81,6 +90,60 @@ Updates the current user's work state. Supported `listeningStatus` values are `n
 ```
 
 Requires `library:read`.
+
+## Circles
+
+```http
+GET /api/circles
+```
+
+Returns known circle or maker summaries with catalog, playable, local, remote,
+missing, stale, rating, note, sync state, and source counts.
+
+Requires `library:read`.
+
+```http
+GET /api/circles/{externalId}
+```
+
+Returns one circle or maker detail by external id, including catalog works and
+source tags.
+
+Requires `library:read`.
+
+```http
+PATCH /api/circles/{externalId}/user-state
+```
+
+Updates the current user's rating, note, or favorite state for the circle.
+
+Requires `library:write`.
+
+```http
+POST /api/circles/{externalId}/refresh
+```
+
+Runs a circle metadata and catalog refresh workflow.
+
+```json
+{
+  "mode": "incremental",
+  "productMode": "available"
+}
+```
+
+`mode` may be `incremental` or `full`. `productMode` may be `available` or
+`all`.
+
+Requires `metadata:sync`.
+
+```http
+DELETE /api/circles/{externalId}/catalog/{code}
+```
+
+Removes a stale catalog row from a circle after user confirmation.
+
+Requires `metadata:sync`.
 
 ## Assets
 
@@ -133,17 +196,23 @@ Requires `sources:write`.
 GET /api/library-sources
 ```
 
-Returns enabled and disabled Kikoeru-compatible sources visible from Library.
+Returns enabled and disabled compatible remote sources visible from Library.
 
 Requires `library:read`.
 
 ```http
 GET /api/remote-sources/{id}/works
+GET /api/remote-sources/{id}/works/{code}
+POST /api/remote-sources/{id}/works/{code}/save-plan
+POST /api/remote-sources/{id}/works/{code}/save
 POST /api/remote-sources/{id}/works/{code}/sync
+POST /api/remote-sources/{id}/works/{code}/cache
 ```
 
-Browses a configured Kikoeru-compatible source and pulls a selected remote work
-into the unified local database through the remote source sync workflow.
+Browses a configured compatible remote source and pulls a selected remote work
+into the unified local database through the remote source sync workflow. Detail,
+save planning, save, and cache endpoints operate on selected works without
+creating duplicate work identities.
 
 Requires `library:read`.
 

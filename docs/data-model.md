@@ -21,8 +21,15 @@ Important tables:
 - `work_external_id`
 - `metadata_provider`
 - `metadata_snapshot`
+- `party`
+- `party_external_id`
+- `party_catalog_item`
+- `work_party`
 
 DLsite metadata sync stores snapshots for traceability and updates normalized work fields used by the library and detail views.
+
+Circle and maker browsing use the party tables. Catalog rows can exist before a
+work has been imported into the unified work table.
 
 ## File Sources
 
@@ -33,7 +40,7 @@ Important tables:
 - `media_item`
 - `media_file_location`
 
-The current implementation creates a local file source and local file locations during scan. Administrators can configure local and Kikoeru-compatible file sources from Settings.
+The current implementation creates a local file source and local file locations during scan. Administrators can configure local and compatible remote file sources from Settings.
 
 ## Workflows
 
@@ -46,11 +53,14 @@ Important tables:
 - `workflow_job`
 - `workflow_candidate`
 
-Current workflows:
+Current workflows include:
 
 - Local scan.
 - DLsite metadata sync.
-- Built-in remote sync, media cache, and media save definitions as scaffolding.
+- Compatible remote source sync.
+- Source availability checks.
+- Media cache and remote save actions.
+- Circle metadata and catalog refresh.
 
 Workflow definitions are either `system` or `user` scoped. System definitions are
 read-only. User definitions can be created and edited from the Workflows page.
@@ -68,10 +78,13 @@ Important tables:
 - `favorite_list_item`
 - `user_tag`
 - `user_work_tag`
+- `user_party_state`
 
 Quick listening marks live on `user_work_state`. Playback progress lives on
 `user_media_progress` and is attached to logical `media_item` records rather than
 raw file locations.
+
+Circle ratings and notes live on `user_party_state`.
 
 ## Planned Tables
 
@@ -80,3 +93,4 @@ Future features are expected to add tables for:
 - Queue or listening history.
 - Download tasks.
 - Cache entries.
+- Review or maintenance records for stale, duplicate, or ambiguous scan results.
