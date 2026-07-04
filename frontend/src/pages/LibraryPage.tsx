@@ -513,15 +513,10 @@ function RemoteSourcePanel({
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     setMessage("");
-    let synced = 0;
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "sync", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) }).catch(() => null);
-      for (const work of selectedSyncable) {
-        const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "bulk_manual_fetch");
-        synced++;
-        await onSynced(result.workId);
-      }
-      setMessage(parent ? `Bulk workflow #${parent.runId}: synced ${synced} remote-only works.` : `Synced ${synced} remote-only works.`);
+      const parent = await api.recordRemoteBulkRun({ action: "sync", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) });
+      setMessage(`Bulk workflow #${parent.runId}: synced ${parent.synced} remote-only works.`);
+      await onSynced(0);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk sync failed.");
     } finally {
@@ -537,15 +532,10 @@ function RemoteSourcePanel({
   const runBulkSaveSelected = async () => {
     setIsBulkBusy(true);
     setMessage("");
-    let saved = 0;
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "save", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) }).catch(() => null);
-      for (const work of selectedSaveable) {
-        const result = await api.saveRemoteSourceWork(source.id, work.primaryCode, []);
-        saved++;
-        await onSynced(result.workId);
-      }
-      setMessage(parent ? `Bulk workflow #${parent.runId}: fetched ${saved} selected works.` : `Fetched ${saved} selected works.`);
+      const parent = await api.recordRemoteBulkRun({ action: "save", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) });
+      setMessage(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
+      await onSynced(0);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
     } finally {

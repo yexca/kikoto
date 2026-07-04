@@ -16,7 +16,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSourceStat, type CircleSummary, type ListeningStatus } from "@/lib/api";
+import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const circlePageSizeOptions = [10, 20, 40];
@@ -354,6 +355,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [markConfirm, setMarkConfirm] = useState<{ work: CircleCatalogWork; status: ListeningStatus } | null>(null);
+  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
   const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
@@ -531,16 +533,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const runBulkSaveSelected = async () => {
     setIsBulkSaving(true);
     setMessage("");
-    let saved = 0;
     try {
-      await api.recordRemoteBulkRun({ action: "save", sourceId: circleWorkRemoteTarget(selectedWorks[0])?.sourceId ?? 0, codes: selectedWorks.map((work) => work.primaryCode) }).catch(() => null);
-      for (const work of selectedWorks) {
-        const target = circleWorkRemoteTarget(work);
-        if (!target) continue;
-        await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
-        saved++;
-      }
-      setMessage(`Fetched ${saved} selected works.`);
+      const results = await runCircleBulkBySource(selectedWorks, "save");
+      const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const runIds = results.map((result) => `#${result.runId}`).join(", ");
+      setMessage(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
@@ -555,17 +552,12 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     if (selectedSyncableWorks.length === 0) return;
     setIsBulkSaving(true);
     setMessage("");
-    let saved = 0;
     try {
-      await api.recordRemoteBulkRun({ action: "sync_save", sourceId: circleWorkRemoteTarget(selectedSyncableWorks[0])?.sourceId ?? 0, codes: selectedSyncableWorks.map((work) => work.primaryCode) }).catch(() => null);
-      for (const work of selectedSyncableWorks) {
-        const target = circleWorkRemoteTarget(work);
-        if (!target) continue;
-        await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_bulk_sync_save");
-        await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
-        saved++;
-      }
-      setMessage(`Synced and fetched ${saved} selected works.`);
+      const results = await runCircleBulkBySource(selectedSyncableWorks, "sync_save");
+      const synced = results.reduce((total, result) => total + result.synced, 0);
+      const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const runIds = results.map((result) => `#${result.runId}`).join(", ");
+      setMessage(`Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
@@ -575,25 +567,45 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     }
   };
 
-  const saveSingleWork = (work: CircleCatalogWork) => {
-    setSaveConfirm({
-      count: 1,
-      run: async () => {
-        const target = circleWorkRemoteTarget(work);
-        if (!target) return;
-        setIsBulkSaving(true);
-        try {
-          await api.saveRemoteSourceWork(target.sourceId, work.primaryCode, []);
-          setMessage(`Fetched ${work.primaryCode}.`);
-          setDetail(await api.getCircle(externalId));
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Fetch failed.");
-        } finally {
-          setIsBulkSaving(false);
-          setSaveConfirm(null);
-        }
-      },
+  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "save" | "sync_save") => {
+    const groups = new Map<number, string[]>();
+    works.forEach((work) => {
+      const target = circleWorkRemoteTarget(work);
+      if (!target) return;
+      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), work.primaryCode]);
     });
+    return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
+  };
+
+  const saveSingleWork = async (work: CircleCatalogWork) => {
+    const target = circleWorkRemoteTarget(work);
+    if (!target) return;
+    setIsBulkSaving(true);
+    setMessage("");
+    try {
+      const detail = await api.getRemoteSourceWork(target.sourceId, work.primaryCode);
+      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)) });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+    } finally {
+      setIsBulkSaving(false);
+    }
+  };
+
+  const fetchSingleSelection = async () => {
+    if (!fetchSelection) return;
+    setIsBulkSaving(true);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
+      setFetchSelection(null);
+      setDetail(await api.getCircle(externalId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+    } finally {
+      setIsBulkSaving(false);
+    }
   };
 
   const syncSingleWork = async (work: CircleCatalogWork) => {
@@ -841,7 +853,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 selectionActive={selectionMode}
                 onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
                 onSync={() => void syncSingleWork(work)}
-                onSave={() => saveSingleWork(work)}
+                onSave={() => void saveSingleWork(work)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
               />
@@ -897,6 +909,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
           workCode={markConfirm.work.primaryCode}
           onClose={() => setMarkConfirm(null)}
           onConfirm={() => void syncAndMarkCatalogWork(markConfirm.work, markConfirm.status)}
+        />
+      )}
+      {fetchSelection && (
+        <RemoteFetchDialog
+          title={`${fetchSelection.work.primaryCode} · ${fetchSelection.work.title}`}
+          tracks={fetchSelection.detail.tracks}
+          selectedPaths={fetchSelection.selectedPaths}
+          disabled={isBulkSaving}
+          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          onClose={() => setFetchSelection(null)}
+          onFetch={() => void fetchSingleSelection()}
         />
       )}
     </div>

@@ -26,7 +26,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, assetURL, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteWorkDetail, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 import { openCircleRoute } from "@/pages/CirclesPage";
 
 type CreatorKind = "circle" | "voice";
@@ -230,6 +231,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [markConfirm, setMarkConfirm] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; status: ListeningStatus } | null>(null);
+  const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
   const [autoSyncRemote, setAutoSyncRemote] = useState(false);
 
   useEffect(() => {
@@ -400,20 +402,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     setMessage("");
-    let completed = 0;
     try {
-      const firstTarget = voiceWorkRemoteTarget(selectedSyncable[0]);
-      if (firstTarget) {
-        await api.recordRemoteBulkRun({ action: "sync_save", sourceId: firstTarget.sourceId, codes: selectedSyncable.map((work) => work.primaryCode) }).catch(() => null);
-      }
-      for (const work of selectedSyncable) {
-        const target = voiceWorkRemoteTarget(work);
-        if (!target) continue;
-        await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_bulk_sync_save");
-        await api.saveRemoteSourceWork(target.sourceId, target.code, []);
-        completed++;
-      }
-      setMessage(`Synced and fetched ${completed} selected works.`);
+      const results = await runVoiceBulkBySource(selectedSyncable, "sync_save");
+      const synced = results.reduce((total, result) => total + result.synced, 0);
+      const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const runIds = results.map((result) => `#${result.runId}`).join(", ");
+      setMessage(`Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.`);
       await refreshDetail();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk sync/fetch failed.");
@@ -430,19 +424,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const runBulkSave = async () => {
     setIsBulkBusy(true);
     setMessage("");
-    let completed = 0;
     try {
-      const firstTarget = voiceWorkRemoteTarget(selectedSaveable[0]);
-      if (firstTarget) {
-        await api.recordRemoteBulkRun({ action: "save", sourceId: firstTarget.sourceId, codes: selectedSaveable.map((work) => work.primaryCode) }).catch(() => null);
-      }
-      for (const work of selectedSaveable) {
-        const target = voiceWorkRemoteTarget(work);
-        if (!target) continue;
-        await api.saveRemoteSourceWork(target.sourceId, target.code, []);
-        completed++;
-      }
-      setMessage(`Fetched ${completed} selected works.`);
+      const results = await runVoiceBulkBySource(selectedSaveable, "save");
+      const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const runIds = results.map((result) => `#${result.runId}`).join(", ");
+      setMessage(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
       await refreshDetail();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
@@ -452,25 +438,45 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const saveSingleWork = (work: VoiceKnownWork | VoiceRemoteWork) => {
-    setSaveConfirm({
-      count: 1,
-      run: async () => {
-        const target = voiceWorkRemoteTarget(work);
-        if (!target) return;
-        setIsBulkBusy(true);
-        try {
-          await api.saveRemoteSourceWork(target.sourceId, target.code, []);
-          setMessage(`Fetched ${target.code}.`);
-          await refreshDetail();
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Fetch failed.");
-        } finally {
-          setIsBulkBusy(false);
-          setSaveConfirm(null);
-        }
-      },
+  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "save" | "sync_save") => {
+    const groups = new Map<number, string[]>();
+    works.forEach((work) => {
+      const target = voiceWorkRemoteTarget(work);
+      if (!target) return;
+      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), target.code]);
     });
+    return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
+  };
+
+  const saveSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+    const target = voiceWorkRemoteTarget(work);
+    if (!target) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    try {
+      const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
+      setFetchSelection({ work, sourceId: target.sourceId, code: target.code, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)) });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  };
+
+  const fetchSingleSelection = async () => {
+    if (!fetchSelection) return;
+    setIsBulkBusy(true);
+    setMessage("");
+    try {
+      const result = await api.saveRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
+      setFetchSelection(null);
+      await refreshDetail();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+    } finally {
+      setIsBulkBusy(false);
+    }
   };
 
   const syncSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
@@ -672,7 +678,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               selectionActive={selectionMode}
               onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
               onSync={() => void syncSingleWork(work)}
-              onSave={() => saveSingleWork(work)}
+              onSave={() => void saveSingleWork(work)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
             />
           ))}
@@ -686,6 +692,17 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           workCode={markConfirm.work.primaryCode}
           onClose={() => setMarkConfirm(null)}
           onConfirm={() => void syncAndMarkVoiceWork(markConfirm.work, markConfirm.status)}
+        />
+      )}
+      {fetchSelection && (
+        <RemoteFetchDialog
+          title={`${fetchSelection.code} · ${fetchSelection.work.title}`}
+          tracks={fetchSelection.detail.tracks}
+          selectedPaths={fetchSelection.selectedPaths}
+          disabled={isBulkBusy}
+          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          onClose={() => setFetchSelection(null)}
+          onFetch={() => void fetchSingleSelection()}
         />
       )}
     </div>
