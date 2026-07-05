@@ -1,0 +1,8 @@
+sources:
+  - display_name: Example Source
+    source_type: kikoeru_compatible
+    enabled: true
+    priority: 30
+    api_url: https://example.invalid/api
+    base_url: https://example.invalid
+    fallback_url: ""

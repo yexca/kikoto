@@ -102,21 +102,27 @@ export function LibraryPage() {
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
+  const [workTotal, setWorkTotal] = useState(0);
   const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
   const remoteSearchQuery = useMemo(() => compileRemoteSearchQuery(searchTokens), [searchTokens]);
+  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(searchTokens), [searchTokens]);
+  const workScope = activeTab.kind === "local" ? "local" : activeTab.kind === "tracked" ? "tracked" : "all";
 
   useEffect(() => {
+    if (activeTab.kind === "source") return;
     api
-      .listWorks()
-      .then((items) => {
-        setWorks(items);
+      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter)
+      .then((page) => {
+        setWorks(page.works);
+        setWorkTotal(page.total);
         setIsAPIAvailable(true);
       })
       .catch(() => {
         setWorks([]);
+        setWorkTotal(0);
         setIsAPIAvailable(false);
       });
-  }, []);
+  }, [activeTab.kind, librarySearchQuery, statusFilter, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
@@ -258,6 +264,14 @@ export function LibraryPage() {
     }));
   };
 
+  const refreshCurrentWorksPage = async () => {
+    if (activeTab.kind === "source") return;
+    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter);
+    setWorks(page.works);
+    setWorkTotal(page.total);
+    setIsAPIAvailable(true);
+  };
+
   if (selectedRemoteTarget !== null) {
     return (
       <RemoteWorkDetailView
@@ -269,7 +283,7 @@ export function LibraryPage() {
           const work = works.find((item) => item.id === workID);
           if (work) openWork(work);
         }}
-        onWorksChanged={async () => setWorks(await api.listWorks())}
+        onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
     );
   }
@@ -284,22 +298,15 @@ export function LibraryPage() {
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onFavoriteChange={updateWorkFavorite}
-        onWorksChanged={async () => setWorks(await api.listWorks())}
+        onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
     );
   }
 
-  const scopedWorks =
-    activeTab.kind === "local"
-      ? works.filter(hasLocalAvailability)
-      : activeTab.kind === "shelf"
-        ? works.filter(hasShelfPresence)
-        : works;
-  const searchedWorks = scopedWorks.filter((work) => workMatchesSearch(work, searchTokens));
-  const visibleWorks = statusFilter === "all" ? searchedWorks : searchedWorks.filter((work) => work.listeningStatus === statusFilter);
-  const totalWorkPages = Math.max(1, Math.ceil(visibleWorks.length / workPageSize));
+  const visibleWorks = works;
+  const totalWorkPages = Math.max(1, Math.ceil(workTotal / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
-  const pagedWorks = visibleWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
+  const pagedWorks = visibleWorks;
 
   return (
     <div className="space-y-5">
@@ -339,15 +346,22 @@ export function LibraryPage() {
           </Button>
           <Button size="sm">
             <Headphones className="h-4 w-4" />
-            {isAPIAvailable ? `${visibleWorks.length} works` : "Preview data"}
+            {isAPIAvailable ? `${activeTab.kind === "source" ? visibleWorks.length : workTotal} works` : "Preview data"}
           </Button>
         </div>
       </section>
       {searchTokens.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {searchTokens.map((token, index) => (
-            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"}>
+            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1">
               {searchTokenLabel(token)}
+              <button
+                className="rounded-sm text-muted-foreground hover:text-foreground"
+                aria-label={`Remove ${searchTokenLabel(token)}`}
+                onClick={() => setSearchQuery(searchQueryWithoutToken(searchTokens, index))}
+              >
+                <X className="h-3 w-3" />
+              </button>
             </Badge>
           ))}
         </div>
@@ -368,10 +382,8 @@ export function LibraryPage() {
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
           onSynced={async (workId) => {
-            const nextWorks = await api.listWorks();
-            setWorks(nextWorks);
-            const synced = nextWorks.find((item) => item.id === workId);
-            if (synced) openWork(synced);
+            const detail = await api.getWork(workId);
+            openWorkCodeRoute(detail.primaryCode);
           }}
         />
       ) : (
@@ -383,8 +395,8 @@ export function LibraryPage() {
             {visibleWorks.length === 0 && (
               <Card className="sm:col-span-2 xl:col-span-3">
                 <CardContent className="p-5 text-sm text-muted-foreground">
-                  {activeTab.kind === "shelf"
-                    ? "No tracked shelf works match this view."
+                  {activeTab.kind === "tracked"
+                    ? "No tracked works match this view."
                     : "No local works match this view."}
                 </CardContent>
               </Card>
@@ -394,7 +406,7 @@ export function LibraryPage() {
             <WorkPagination
               page={currentWorkPage}
               pageSize={workPageSize}
-              totalItems={visibleWorks.length}
+              totalItems={workTotal}
               totalPages={totalWorkPages}
               onPageChange={setWorkPage}
               onPageSizeChange={setWorkPageSize}
@@ -406,7 +418,7 @@ export function LibraryPage() {
   );
 }
 
-type LibraryTab = { kind: "local" } | { kind: "shelf" } | { kind: "source"; source: LibrarySource };
+type LibraryTab = { kind: "local" } | { kind: "tracked" } | { kind: "source"; source: LibrarySource };
 
 function LibraryTabs({
   activeTab,
@@ -422,7 +434,7 @@ function LibraryTabs({
       <TabButton active={activeTab.kind === "local"} onClick={() => onChange({ kind: "local" })} icon={<HardDrive className="h-4 w-4" />}>
         Local
       </TabButton>
-      <TabButton active={activeTab.kind === "shelf"} onClick={() => onChange({ kind: "shelf" })} icon={<Database className="h-4 w-4" />}>
+      <TabButton active={activeTab.kind === "tracked"} onClick={() => onChange({ kind: "tracked" })} icon={<Database className="h-4 w-4" />}>
         Tracked
       </TabButton>
       {sources.map((source) => (
@@ -3757,7 +3769,7 @@ function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
-function hasShelfPresence(work: Work) {
+function hasTrackedPresence(work: Work) {
   return (
     hasRemoteAvailability(work) ||
     work.favorite ||
@@ -3885,6 +3897,34 @@ function compileRemoteSearchQuery(tokens: SearchToken[]) {
     default:
       return primary.value;
   }
+}
+
+function compileLibrarySearchQuery(tokens: SearchToken[]) {
+  return tokens.map((token) => {
+    switch (token.kind) {
+      case "code":
+      case "text":
+        return token.value;
+      case "circle":
+        return `$circle:${token.value}$`;
+      case "voice_actor":
+        return `$va:${token.value}$`;
+      case "tag":
+        return `$tag:${token.value}$`;
+      case "exclude_tag":
+        return `$-tag:${token.value}$`;
+      case "rating_min":
+        return `rating:${token.value}`;
+      case "sales_min":
+        return `sales:${token.value}`;
+      case "age":
+        return `$age:${token.value}$`;
+      case "language":
+        return `$lang:${token.value}$`;
+      default:
+        return token.value;
+    }
+  }).join(" ");
 }
 
 function remoteSourceSupportsToken(token: SearchToken) {
@@ -4017,6 +4057,45 @@ function searchTokenLabel(token: SearchToken) {
   }
 }
 
+function searchQueryWithoutToken(tokens: SearchToken[], removeIndex: number) {
+  return tokens.filter((_token, index) => index !== removeIndex).map(formatSearchToken).join(" ");
+}
+
+function formatSearchToken(token: SearchToken) {
+  const value = formatSearchValue(token.value);
+  switch (token.kind) {
+    case "code":
+    case "text":
+      return value;
+    case "circle":
+      return `circle:${value}`;
+    case "voice_actor":
+      return `va:${value}`;
+    case "tag":
+      return `tag:${value}`;
+    case "exclude_tag":
+      return `-tag:${value}`;
+    case "rating_min":
+      return `rating:${token.value}`;
+    case "sales_min":
+      return `sales:${token.value}`;
+    case "duration_min":
+      return `duration:${token.value}`;
+    case "duration_max":
+      return `-duration:${token.value}`;
+    case "age":
+      return `age:${value}`;
+    case "language":
+      return `lang:${value}`;
+    default:
+      return value;
+  }
+}
+
+function formatSearchValue(value: string) {
+  return /\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value;
+}
+
 function codeFromPath(path: string) {
   const match = path.match(WORK_CODE_PATTERN);
   return match ? match[1].toUpperCase() : null;
@@ -4044,7 +4123,7 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
 
 function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {
   if (path === "/tracked" || path === "/library/tracked") {
-    return { kind: "shelf" };
+    return { kind: "tracked" };
   }
   if (path === "/" || path === "/library") {
     return { kind: "local" };
@@ -4069,7 +4148,7 @@ function resolveTabFromPath(path: string, sources: LibrarySource[], fallback: Li
 
 function pathForLibraryTab(tab: LibraryTab) {
   switch (tab.kind) {
-    case "shelf":
+    case "tracked":
       return "/tracked";
     case "source":
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;

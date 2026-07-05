@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -230,6 +231,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			work.id,
@@ -283,7 +285,6 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
 			AND user_work_state.user_id = ?
 		ORDER BY work.created_at DESC
-		LIMIT 100
 	`, user.ID)
 	if err != nil {
 		writeError(w, err)
@@ -291,32 +292,9 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	type work struct {
-		ID                 int64               `json:"id"`
-		PrimaryCode        string              `json:"primaryCode"`
-		Title              string              `json:"title"`
-		CreatedAt          string              `json:"createdAt"`
-		UpdatedAt          string              `json:"updatedAt"`
-		ReleaseDate        *string             `json:"releaseDate"`
-		CoverURL           string              `json:"coverUrl"`
-		DLsiteURL          string              `json:"dlsiteUrl"`
-		Circle             string              `json:"circle"`
-		CircleExternalID   string              `json:"circleExternalId"`
-		Rating             *float64            `json:"rating"`
-		Sales              *int64              `json:"sales"`
-		Tags               []string            `json:"tags"`
-		VoiceActors        []string            `json:"voiceActors"`
-		TrackCount         int64               `json:"trackCount"`
-		AvailableLocations int64               `json:"availableLocations"`
-		Availability       []string            `json:"availability"`
-		Progress           workProgressSummary `json:"progress"`
-		ListeningStatus    string              `json:"listeningStatus"`
-		Favorite           bool                `json:"favorite"`
-	}
-
-	works := []work{}
+	works := []libraryWorkSummary{}
 	for rows.Next() {
-		var item work
+		var item libraryWorkSummary
 		var snapshot sql.NullString
 		var availableLocationTypes sql.NullString
 		var partyLink sql.NullString
@@ -404,7 +382,68 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		works = append(works, item)
 	}
 
+	if pagedRequest {
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+		status := strings.TrimSpace(r.URL.Query().Get("status"))
+		filtered := make([]libraryWorkSummary, 0, len(works))
+		for _, item := range works {
+			if !workMatchesListScope(item, scope) {
+				continue
+			}
+			if status != "" && status != "all" && item.ListeningStatus != status {
+				continue
+			}
+			if query != "" && !workMatchesListQuery(item, query) {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		page := queryInt(r, "page", 1)
+		pageSize := queryInt(r, "pageSize", 24)
+		if pageSize < 1 || pageSize > 100 {
+			pageSize = 24
+		}
+		start := (page - 1) * pageSize
+		if start > len(filtered) {
+			start = len(filtered)
+		}
+		end := start + pageSize
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"works":    filtered[start:end],
+			"page":     page,
+			"pageSize": pageSize,
+			"total":    len(filtered),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, works)
+}
+
+type libraryWorkSummary struct {
+	ID                 int64               `json:"id"`
+	PrimaryCode        string              `json:"primaryCode"`
+	Title              string              `json:"title"`
+	CreatedAt          string              `json:"createdAt"`
+	UpdatedAt          string              `json:"updatedAt"`
+	ReleaseDate        *string             `json:"releaseDate"`
+	CoverURL           string              `json:"coverUrl"`
+	DLsiteURL          string              `json:"dlsiteUrl"`
+	Circle             string              `json:"circle"`
+	CircleExternalID   string              `json:"circleExternalId"`
+	Rating             *float64            `json:"rating"`
+	Sales              *int64              `json:"sales"`
+	Tags               []string            `json:"tags"`
+	VoiceActors        []string            `json:"voiceActors"`
+	TrackCount         int64               `json:"trackCount"`
+	AvailableLocations int64               `json:"availableLocations"`
+	Availability       []string            `json:"availability"`
+	Progress           workProgressSummary `json:"progress"`
+	ListeningStatus    string              `json:"listeningStatus"`
+	Favorite           bool                `json:"favorite"`
 }
 
 type workDetail struct {
@@ -518,6 +557,172 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 func (s *Server) workCodeExists(ctx context.Context, code string) bool {
 	_, ok := s.workIDForCode(ctx, code)
 	return ok
+}
+
+func workMatchesListScope(work libraryWorkSummary, scope string) bool {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "", "all":
+		return true
+	case "local":
+		return stringSliceContainsFold(work.Availability, "local")
+	case "tracked":
+		return hasRemoteAvailabilityValue(work.Availability) || work.Favorite || work.ListeningStatus != "none" || work.Progress.MediaItemID != nil
+	default:
+		return true
+	}
+}
+
+func workMatchesListQuery(work libraryWorkSummary, query string) bool {
+	tokens := parseListSearchTokens(query)
+	if len(tokens) == 0 {
+		return true
+	}
+	for _, token := range tokens {
+		if !workMatchesListToken(work, token) {
+			return false
+		}
+	}
+	return true
+}
+
+type listSearchToken struct {
+	Kind  string
+	Value string
+}
+
+func parseListSearchTokens(query string) []listSearchToken {
+	tokens := []listSearchToken{}
+	rest := strings.TrimSpace(query)
+	wrappedPattern := regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|rate|sell|age|lang):([^$]+)\$`)
+	rest = wrappedPattern.ReplaceAllStringFunc(rest, func(match string) string {
+		parts := wrappedPattern.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			if token, ok := listSearchTokenFromKey(parts[1], parts[2]); ok {
+				tokens = append(tokens, token)
+			}
+		}
+		return " "
+	})
+	for _, part := range splitListSearchParts(rest) {
+		if key, value, ok := strings.Cut(part, ":"); ok {
+			if token, matched := listSearchTokenFromKey(key, value); matched {
+				tokens = append(tokens, token)
+				continue
+			}
+		}
+		kind := "text"
+		if isListWorkCode(part) {
+			kind = "code"
+		}
+		tokens = append(tokens, listSearchToken{Kind: kind, Value: part})
+	}
+	return tokens
+}
+
+func splitListSearchParts(value string) []string {
+	parts := []string{}
+	pattern := regexp.MustCompile(`"([^"]+)"|'([^']+)'|(\S+)`)
+	for _, match := range pattern.FindAllStringSubmatch(value, -1) {
+		for i := 1; i < len(match); i++ {
+			if match[i] != "" {
+				parts = append(parts, match[i])
+				break
+			}
+		}
+	}
+	return parts
+}
+
+func isListWorkCode(value string) bool {
+	return regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`).MatchString(strings.TrimSpace(value))
+}
+
+func listSearchTokenFromKey(key string, value string) (listSearchToken, bool) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return listSearchToken{}, false
+	}
+	switch key {
+	case "circle":
+		return listSearchToken{Kind: "circle", Value: value}, true
+	case "va", "voice", "creator":
+		return listSearchToken{Kind: "voice_actor", Value: value}, true
+	case "tag", "tagw":
+		return listSearchToken{Kind: "tag", Value: value}, true
+	case "-tag", "-tagw":
+		return listSearchToken{Kind: "exclude_tag", Value: value}, true
+	case "rate", "rating":
+		return listSearchToken{Kind: "rating_min", Value: value}, true
+	case "sell", "sales":
+		return listSearchToken{Kind: "sales_min", Value: value}, true
+	case "age", "lang", "language":
+		return listSearchToken{Kind: "text", Value: value}, true
+	default:
+		return listSearchToken{}, false
+	}
+}
+
+func workMatchesListToken(work libraryWorkSummary, token listSearchToken) bool {
+	needle := strings.ToLower(strings.TrimSpace(token.Value))
+	if needle == "" {
+		return true
+	}
+	switch token.Kind {
+	case "code":
+		return strings.Contains(strings.ToLower(work.PrimaryCode), needle)
+	case "circle":
+		return strings.Contains(strings.ToLower(work.Circle), needle) || strings.Contains(strings.ToLower(work.CircleExternalID), needle)
+	case "voice_actor":
+		return stringSliceContainsSubstringFold(work.VoiceActors, needle)
+	case "tag":
+		return stringSliceContainsSubstringFold(work.Tags, needle)
+	case "exclude_tag":
+		return !stringSliceContainsSubstringFold(work.Tags, needle)
+	case "rating_min":
+		return work.Rating != nil && *work.Rating >= numericListTokenValue(needle)
+	case "sales_min":
+		return work.Sales != nil && float64(*work.Sales) >= numericListTokenValue(needle)
+	default:
+		values := []string{work.PrimaryCode, work.Title, work.Circle, work.CircleExternalID}
+		if work.ReleaseDate != nil {
+			values = append(values, *work.ReleaseDate)
+		}
+		values = append(values, work.Tags...)
+		values = append(values, work.VoiceActors...)
+		return stringSliceContainsSubstringFold(values, needle)
+	}
+}
+
+func stringSliceContainsFold(values []string, target string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContainsSubstringFold(values []string, needle string) bool {
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(value), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRemoteAvailabilityValue(values []string) bool {
+	return stringSliceContainsFold(values, "remote") || stringSliceContainsFold(values, "cache") || stringSliceContainsFold(values, "cached")
+}
+
+func numericListTokenValue(value string) float64 {
+	cleaned := regexp.MustCompile(`[^0-9.]`).ReplaceAllString(value, "")
+	parsed, err := strconv.ParseFloat(cleaned, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func (s *Server) workIDForCode(ctx context.Context, code string) (int64, bool) {
