@@ -50,24 +50,25 @@ type circleDetail struct {
 }
 
 type circleCatalogWork struct {
-	WorkID           *int64             `json:"workId"`
-	PrimaryCode      string             `json:"primaryCode"`
-	Title            string             `json:"title"`
-	ReleaseDate      *string            `json:"releaseDate"`
-	UpdatedAt        string             `json:"updatedAt"`
-	CoverURL         string             `json:"coverUrl"`
-	DLsiteURL        string             `json:"dlsiteUrl"`
-	Circle           string             `json:"circle"`
-	CircleExternalID string             `json:"circleExternalId"`
-	Tags             []string           `json:"tags"`
-	Rating           *float64           `json:"rating"`
-	Sales            *int64             `json:"sales"`
-	CatalogStatus    string             `json:"catalogStatus"`
-	DLsiteAvailable  bool               `json:"dlsiteAvailable"`
-	ListeningMark    string             `json:"listeningMark"`
-	Local            bool               `json:"local"`
-	Remote           bool               `json:"remote"`
-	SourceTags       []circleSourceStat `json:"sourceTags"`
+	WorkID           *int64              `json:"workId"`
+	PrimaryCode      string              `json:"primaryCode"`
+	Title            string              `json:"title"`
+	ReleaseDate      *string             `json:"releaseDate"`
+	UpdatedAt        string              `json:"updatedAt"`
+	CoverURL         string              `json:"coverUrl"`
+	DLsiteURL        string              `json:"dlsiteUrl"`
+	Circle           string              `json:"circle"`
+	CircleExternalID string              `json:"circleExternalId"`
+	Tags             []string            `json:"tags"`
+	Rating           *float64            `json:"rating"`
+	Sales            *int64              `json:"sales"`
+	CatalogStatus    string              `json:"catalogStatus"`
+	DLsiteAvailable  bool                `json:"dlsiteAvailable"`
+	ListeningMark    string              `json:"listeningMark"`
+	Local            bool                `json:"local"`
+	Remote           bool                `json:"remote"`
+	SourceTags       []circleSourceStat  `json:"sourceTags"`
+	Progress         workProgressSummary `json:"progress"`
 }
 
 type circleRefreshRequest struct {
@@ -880,6 +881,13 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			return nil, err
 		}
 		item.SourceTags = tags
+		if item.WorkID != nil {
+			progress, err := s.workProgressSummary(ctx, userID, *item.WorkID)
+			if err != nil {
+				return nil, err
+			}
+			item.Progress = progress
+		}
 		for _, tag := range tags {
 			if tag.Key == "local" {
 				item.Local = true

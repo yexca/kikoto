@@ -491,6 +491,7 @@ export type CircleCatalogWork = {
   local: boolean;
   remote: boolean;
   sourceTags: CircleSourceStat[];
+  progress?: WorkProgressSummary;
 };
 
 export type CircleDetail = CircleSummary & {
@@ -565,6 +566,7 @@ export type VoiceKnownWork = {
   remote: boolean;
   cache: boolean;
   sourceTags: CircleSourceStat[];
+  progress: WorkProgressSummary;
 };
 
 export type VoiceRemoteWork = {

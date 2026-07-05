@@ -125,23 +125,24 @@ type voiceDetail struct {
 }
 
 type voiceKnownWork struct {
-	WorkID           int64              `json:"workId"`
-	PrimaryCode      string             `json:"primaryCode"`
-	Title            string             `json:"title"`
-	ReleaseDate      *string            `json:"releaseDate"`
-	UpdatedAt        string             `json:"updatedAt"`
-	CoverURL         string             `json:"coverUrl"`
-	DLsiteURL        string             `json:"dlsiteUrl"`
-	Circle           string             `json:"circle"`
-	CircleExternalID string             `json:"circleExternalId"`
-	Rating           *float64           `json:"rating"`
-	Sales            *int64             `json:"sales"`
-	Tags             []string           `json:"tags"`
-	ListeningMark    string             `json:"listeningMark"`
-	Local            bool               `json:"local"`
-	Remote           bool               `json:"remote"`
-	Cache            bool               `json:"cache"`
-	SourceTags       []circleSourceStat `json:"sourceTags"`
+	WorkID           int64               `json:"workId"`
+	PrimaryCode      string              `json:"primaryCode"`
+	Title            string              `json:"title"`
+	ReleaseDate      *string             `json:"releaseDate"`
+	UpdatedAt        string              `json:"updatedAt"`
+	CoverURL         string              `json:"coverUrl"`
+	DLsiteURL        string              `json:"dlsiteUrl"`
+	Circle           string              `json:"circle"`
+	CircleExternalID string              `json:"circleExternalId"`
+	Rating           *float64            `json:"rating"`
+	Sales            *int64              `json:"sales"`
+	Tags             []string            `json:"tags"`
+	ListeningMark    string              `json:"listeningMark"`
+	Local            bool                `json:"local"`
+	Remote           bool                `json:"remote"`
+	Cache            bool                `json:"cache"`
+	SourceTags       []circleSourceStat  `json:"sourceTags"`
+	Progress         workProgressSummary `json:"progress"`
 }
 
 type voiceRemoteSourceSet struct {
@@ -721,6 +722,10 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				metadata.CircleExternalID = externalID
 			}
 		}
+		progress, err := s.workProgressSummary(ctx, userID, row.ID)
+		if err != nil {
+			return nil, err
+		}
 		releaseDate := nullableString(row.ReleaseDate)
 		updatedAt := ""
 		if releaseDate != nil {
@@ -744,6 +749,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			Remote:           row.HasRemote,
 			Cache:            row.HasCache,
 			SourceTags:       sourceTags,
+			Progress:         progress,
 		})
 	}
 	return works, rows.Err()

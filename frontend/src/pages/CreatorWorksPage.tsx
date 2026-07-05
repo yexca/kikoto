@@ -777,6 +777,9 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               <div className="truncate">Release {voiceWorkReleaseDate(work) || "unknown"} · Updated {voiceWorkUpdatedAt(work) || "unknown"}</div>
               <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {voiceWorkSales(work) === null ? "unknown" : voiceWorkSales(work)?.toLocaleString()}</div>
             </div>
+            {"progress" in work && work.progress?.mediaItemId && (
+              <WorkProgressLine progress={work.progress} />
+            )}
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
               <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
               {cache && <Badge variant="secondary">Cache</Badge>}
@@ -1119,6 +1122,19 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
   );
 }
 
+function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["progress"]> }) {
+  return (
+    <div className="space-y-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
+      </div>
+      <div className="truncate text-xs text-muted-foreground">
+        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+      </div>
+    </div>
+  );
+}
+
 function RemoteSourcePanel({ sources }: { sources: VoiceRemoteSourceSet[] }) {
   return (
     <Card>
@@ -1283,6 +1299,18 @@ function voicePersonIdFromPath(path: string) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) {
+  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
+  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
+}
+
 export function openVoiceRoute(personId: number) {
   window.history.pushState({}, "", `/voices/${personId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
@@ -1300,7 +1328,7 @@ function openWorkRoute(work: VoiceKnownWork | VoiceRemoteWork) {
     return;
   }
   if ("sourceId" in work && work.primaryCode) {
-    window.history.pushState({}, "", `/${encodeURIComponent(work.primaryCode)}?source=${work.sourceId}`);
+    window.history.pushState({}, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   }
 }
