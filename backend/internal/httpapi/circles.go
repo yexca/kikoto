@@ -763,7 +763,7 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		WHERE catalog.party_id = ?
-			AND source.source_type = 'kikoeru_compatible'
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
 	`, partyID)
@@ -939,7 +939,7 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		WHERE catalog.party_id = ?
 			AND UPPER(catalog.primary_code) = UPPER(?)
-			AND source.source_type = 'kikoeru_compatible'
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
 	`, partyID, code)
@@ -1172,7 +1172,7 @@ func (s *Server) syncCircleRemoteSourceCatalogs(ctx context.Context, partyID int
 	}
 	totalSynced := 0
 	for _, source := range sources {
-		if source.SourceType != "kikoeru_compatible" || !source.Enabled || strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		if !isKikoeruSourceType(source.SourceType) || !source.Enabled || strings.TrimSpace(source.Endpoint.APIURL) == "" {
 			continue
 		}
 		synced, err := s.syncCircleRemoteSourceCatalog(ctx, partyID, circleName, source, mode)
@@ -1197,7 +1197,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	if err != nil {
 		return 0, err
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	client := kikoeruClientForSource(source)
 	keyword := "$circle:" + circleName + "$"
 	pageSize := 20
 	maxPages := 10
@@ -1248,9 +1248,6 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 			}
 			synced++
 		}
-		if len(worksPage.Works) == 0 || len(worksPage.Works) < pageSize {
-			break
-		}
 		total := worksPage.Pagination.TotalCount
 		if total == 0 {
 			total = worksPage.Pagination.Total
@@ -1259,6 +1256,9 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 			total = worksPage.Pagination.Count
 		}
 		if pages := pagesFromTotal(total, pageSize); pages > 0 && page >= pages {
+			break
+		}
+		if total == 0 && (len(worksPage.Works) == 0 || len(worksPage.Works) < pageSize) {
 			break
 		}
 	}
@@ -1381,7 +1381,7 @@ func (s *Server) availableCircleCatalogCodes(ctx context.Context, partyID int64,
 
 func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sources []remoteSourceForUse, code string) bool {
 	for _, source := range sources {
-		if source.SourceType != "kikoeru_compatible" || !source.Enabled {
+		if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 			continue
 		}
 		if err := s.waitRemoteDownloadDelay(ctx); err != nil {

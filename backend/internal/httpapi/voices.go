@@ -770,7 +770,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			Status:      "ok",
 			Works:       []voiceRemoteWork{},
 		}
-		if source.SourceType != "kikoeru_compatible" {
+		if !isKikoeruSourceType(source.SourceType) {
 			result.Status = "unsupported"
 			results = append(results, result)
 			continue
@@ -787,7 +787,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			continue
 		}
 		started := time.Now()
-		client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+		client := kikoeruClientForSource(source)
 		page, err := client.ListWorks(ctx, 1, voiceRemotePageSize, keyword)
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
@@ -798,7 +798,10 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			continue
 		}
 		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-		result.Total = page.Pagination.Total
+		result.Total = page.Pagination.TotalCount
+		if result.Total == 0 {
+			result.Total = page.Pagination.Total
+		}
 		if result.Total == 0 {
 			result.Total = page.Pagination.Count
 		}

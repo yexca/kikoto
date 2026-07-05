@@ -8,6 +8,7 @@ import { api, type AppSettings, type FileSource } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_name>/<work_code>";
+const REMOTE_SOURCE_TYPES = new Set(["kikoeru_compatible", "kikoeru_compilable_number178"]);
 
 const emptyRemoteSource = {
   id: 0,
@@ -45,7 +46,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [message, setMessage] = useState("");
 
   const remoteSources = useMemo(
-    () => settings?.fileSources.filter((source) => source.sourceType === "kikoeru_compatible") ?? [],
+    () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
     [settings],
   );
   const localSource = settings?.fileSources.find((source) => source.sourceType === "local_folder") ?? null;
@@ -123,7 +124,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const saveSource = async () => {
     const payload = {
       displayName: draftSource.displayName,
-      sourceType: "kikoeru_compatible",
+      sourceType: draftSource.sourceType,
       priority: draftSource.priority,
       enabled: draftSource.enabled,
       config: draftSource.config,
@@ -615,6 +616,17 @@ function SourceModal({
         </CardHeader>
         <CardContent className="space-y-3">
           <TextInput label="Name" value={source.displayName} onChange={(value) => patch({ displayName: value })} />
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Source type</span>
+            <select
+              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={source.sourceType}
+              onChange={(event) => patch({ sourceType: event.target.value })}
+            >
+              <option value="kikoeru_compatible">kikoeru_compatible</option>
+              <option value="kikoeru_compilable_number178">kikoeru_compilable_number178</option>
+            </select>
+          </label>
           <TextInput label="Base URL" value={source.endpoint.baseUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })} />
           <TextInput label="API URL" value={source.endpoint.apiUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })} />
           <TextInput

@@ -20,6 +20,23 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
+const (
+	sourceTypeKikoeruCompatible    = "kikoeru_compatible"
+	sourceTypeKikoeruCompilable178 = "kikoeru_compilable_number178"
+	sourceTypeLocalFolder          = "local_folder"
+)
+
+func isKikoeruSourceType(sourceType string) bool {
+	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompilable178
+}
+
+func kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
+	if source.SourceType == sourceTypeKikoeruCompilable178 {
+		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, nil)
+	}
+	return kikoeru.NewClient(source.Endpoint.APIURL, nil)
+}
+
 type appSettingsResponse struct {
 	LocalScanDepth         int                 `json:"localScanDepth"`
 	AutoSyncRemote         bool                `json:"autoSyncRemote"`
@@ -405,7 +422,7 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, code, display_name, source_type, enabled, config_json
 		FROM file_source
-		WHERE source_type = 'kikoeru_compatible'
+		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 		ORDER BY priority ASC, id ASC
 	`)
 	if err != nil {
@@ -499,7 +516,7 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if existingSourceType == "local_folder" || payload.SourceType == "local_folder" {
+	if existingSourceType == sourceTypeLocalFolder || payload.SourceType == sourceTypeLocalFolder {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "local folder source is managed by local scan settings"})
 		return
 	}
@@ -561,7 +578,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), "DELETE FROM file_source WHERE id = ? AND source_type <> 'local_folder'", id)
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM file_source WHERE id = ? AND source_type <> ?", id, sourceTypeLocalFolder)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -592,8 +609,8 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if source.SourceType != "kikoeru_compatible" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not kikoeru_compatible"})
+	if !isKikoeruSourceType(source.SourceType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not a supported kikoeru source"})
 		return
 	}
 	if !source.Enabled {
@@ -612,7 +629,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 24
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	client := kikoeruClientForSource(source)
 	remotePage, err := client.ListWorks(r.Context(), page, pageSize, r.URL.Query().Get("q"))
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
@@ -625,7 +642,10 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	total := remotePage.Pagination.Total
+	total := remotePage.Pagination.TotalCount
+	if total == 0 {
+		total = remotePage.Pagination.Total
+	}
 	if total == 0 {
 		total = remotePage.Pagination.Count
 	}
@@ -662,16 +682,16 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if source.SourceType != "kikoeru_compatible" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not kikoeru_compatible"})
+	if !isKikoeruSourceType(source.SourceType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not a supported kikoeru source"})
 		return
 	}
 	if !source.Enabled {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is disabled"})
 		return
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
-	remoteWork, _, err := client.WorkInfo(r.Context(), code)
+	client := kikoeruClientForSource(source)
+	remoteWork, _, err := s.resolveKikoeruWork(r.Context(), client, code)
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
@@ -713,9 +733,9 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled",
 		}
 		started := time.Now()
-		if source.SourceType != "kikoeru_compatible" {
+		if !isKikoeruSourceType(source.SourceType) {
 			result.Status = "unavailable"
-			result.Error = "source is not kikoeru-compatible"
+			result.Error = "source is not a supported kikoeru source"
 			results = append(results, result)
 			continue
 		}
@@ -939,7 +959,7 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, '')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.source_type = 'kikoeru_compatible'
+		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 		ORDER BY source.priority ASC, source.id ASC
 	`)
 	if err != nil {
@@ -978,8 +998,8 @@ func (s *Server) checkRemoteWorkAvailability(ctx context.Context, source remoteS
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
-	remoteWork, _, err := client.WorkInfo(ctx, code)
+	client := kikoeruClientForSource(source)
+	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	return remoteWork, err
 }
 
@@ -1162,11 +1182,11 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		}
 		return remoteWorkSyncResult{}, err
 	}
-	if source.SourceType != "kikoeru_compatible" || !source.Enabled {
+	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return remoteWorkSyncResult{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
-	remoteWork, rawWork, err := client.WorkInfo(ctx, code)
+	client := kikoeruClientForSource(source)
+	remoteWork, rawWork, err := s.resolveKikoeruWork(ctx, client, code)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
 		return remoteWorkSyncResult{}, err
@@ -1538,11 +1558,11 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 		}
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
-	if source.SourceType != "kikoeru_compatible" || !source.Enabled {
+	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := kikoeru.NewClient(source.Endpoint.APIURL, nil)
-	remoteWork, _, err := client.WorkInfo(ctx, code)
+	client := kikoeruClientForSource(source)
+	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
@@ -1554,6 +1574,18 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
 	return source, remoteWork, tracks, nil
+}
+
+func (s *Server) resolveKikoeruWork(ctx context.Context, client *kikoeru.Client, code string) (kikoeru.Work, json.RawMessage, error) {
+	remoteWork, rawWork, err := client.WorkInfo(ctx, code)
+	if err == nil {
+		return remoteWork, rawWork, nil
+	}
+	fallbackWork, fallbackRaw, fallbackErr := client.FindWorkByCode(ctx, code)
+	if fallbackErr == nil {
+		return fallbackWork, fallbackRaw, nil
+	}
+	return kikoeru.Work{}, nil, err
 }
 
 func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) string {
@@ -2250,13 +2282,7 @@ func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status 
 }
 
 func normalizedRemoteWorkCode(work kikoeru.Work) string {
-	for _, candidate := range []string{work.SourceID, work.OriginalWorkNumber} {
-		code := strings.ToUpper(strings.TrimSpace(candidate))
-		if code != "" {
-			return code
-		}
-	}
-	return ""
+	return kikoeru.WorkCode(work)
 }
 
 func isNotFoundLikeError(err error) bool {
@@ -2497,16 +2523,16 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 		return fileSourcePayload{}, false
 	}
 	if payload.SourceType == "" {
-		payload.SourceType = "kikoeru_compatible"
+		payload.SourceType = sourceTypeKikoeruCompatible
 	}
-	if payload.SourceType != "kikoeru_compatible" && !(allowLocal && payload.SourceType == "local_folder") {
+	if !isKikoeruSourceType(payload.SourceType) && !(allowLocal && payload.SourceType == sourceTypeLocalFolder) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported sourceType"})
 		return fileSourcePayload{}, false
 	}
 	if payload.Priority <= 0 {
 		payload.Priority = 30
 	}
-	if payload.SourceType == "kikoeru_compatible" {
+	if isKikoeruSourceType(payload.SourceType) {
 		for _, candidate := range []string{payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL} {
 			if candidate == "" {
 				continue
