@@ -43,11 +43,18 @@ type Product struct {
 	ImageThumbMini    Image                `json:"image_thum_mini"`
 	Genres            []Genre              `json:"genres"`
 	Creators          map[string][]Creator `json:"creaters"`
+	TranslationInfo   TranslationInfo      `json:"translation_info"`
 	Raw               json.RawMessage      `json:"-"`
 	ProductRaw        json.RawMessage      `json:"-"`
 	DynamicRaw        json.RawMessage      `json:"-"`
 	RateAverage2DP    *float64             `json:"-"`
 	Language          string               `json:"-"`
+}
+
+type TranslationInfo struct {
+	OriginalWorkNo string `json:"original_workno"`
+	ParentWorkNo   string `json:"parent_workno"`
+	Lang           string `json:"lang"`
 }
 
 type ProductOptions struct {

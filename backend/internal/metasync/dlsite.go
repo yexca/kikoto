@@ -82,6 +82,25 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
 			continue
 		}
+		if baseCode := baseProductCode(product); baseCode != "" && !strings.EqualFold(baseCode, product.WorkNo) {
+			baseProduct, err := s.fetchProduct(ctx, baseCode)
+			if err != nil {
+				result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
+			} else {
+				baseWorkID, err := s.ensureWorkForProduct(ctx, baseProduct)
+				if err != nil {
+					result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
+				} else {
+					if err := s.applyProduct(ctx, baseWorkID, baseProduct); err != nil {
+						result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
+					} else if s.cacheRoot != "" {
+						if _, err := s.client.DownloadCover(ctx, baseProduct, s.cacheRoot); err != nil {
+							result.Failures = append(result.Failures, fmt.Sprintf("%s base cover: %s", baseCode, err.Error()))
+						}
+					}
+				}
+			}
+		}
 		if s.cacheRoot != "" {
 			if _, err := s.client.DownloadCover(ctx, product, s.cacheRoot); err != nil {
 				result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", target.PrimaryCode, err.Error()))
@@ -191,6 +210,44 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	}
 
 	return tx.Commit()
+}
+
+func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.Product) (int64, error) {
+	code := strings.ToUpper(strings.TrimSpace(product.WorkNo))
+	if code == "" {
+		code = strings.ToUpper(strings.TrimSpace(product.ProductID))
+	}
+	if code == "" {
+		return 0, fmt.Errorf("empty product code")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work (primary_code, work_type, title, title_kana, description, release_date, age_rating)
+		VALUES (?, 'audio', ?, ?, ?, ?, ?)
+		ON CONFLICT(primary_code) DO UPDATE SET
+			title = excluded.title,
+			title_kana = excluded.title_kana,
+			description = excluded.description,
+			release_date = COALESCE(excluded.release_date, work.release_date),
+			age_rating = excluded.age_rating,
+			updated_at = CURRENT_TIMESTAMP
+	`, code, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString); err != nil {
+		return 0, err
+	}
+	workID, err := selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return workID, nil
 }
 
 func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResult) (int64, int64, error) {
@@ -336,6 +393,16 @@ func nullableText(value string) any {
 		return nil
 	}
 	return value
+}
+
+func baseProductCode(product dlsite.Product) string {
+	for _, value := range []string{product.TranslationInfo.OriginalWorkNo, product.TranslationInfo.ParentWorkNo} {
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if dlsiteWorkNoPattern.MatchString(value) {
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizeLanguages(values []string) []string {
