@@ -32,6 +32,8 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Paused" },
 ];
 type CircleFilter = "all" | "available" | "local" | "remote" | "missing" | "stale" | "rated";
+type CircleRefreshScope = "all" | "catalog" | "work" | "source";
+type CircleRefreshMode = "incremental" | "full";
 
 const fallbackCircles: CircleSummary[] = [
   {
@@ -345,9 +347,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [isEditingState, setIsEditingState] = useState(false);
   const [ratingDraft, setRatingDraft] = useState(0);
   const [noteDraft, setNoteDraft] = useState("");
-  const [refreshMode, setRefreshMode] = useState<"incremental" | "full">("incremental");
-  const [productMode, setProductMode] = useState<"available" | "all">("available");
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
@@ -425,17 +425,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     setSelectedWorkCodes((current) => new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))));
   }, [filteredWorks]);
 
-  const refresh = async () => {
-    setIsRefreshing(true);
+  const refresh = async (scope: CircleRefreshScope, mode: CircleRefreshMode) => {
+    setRefreshingScope(scope);
     try {
-      const result = await api.refreshCircle(externalId, { mode: refreshMode, productMode });
-      setMessage(`Refresh workflow #${result.runId}: ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON.`);
+      const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
+      setMessage(refreshMessage(result));
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
     } finally {
-      setIsRefreshing(false);
+      setRefreshingScope(null);
     }
   };
 
@@ -658,7 +658,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     DLsite
                   </a>
                 </Button>
-                <Button size="sm" disabled={isLoading || isRefreshing} onClick={() => void refresh()}>
+                <Button size="sm" disabled={isLoading || refreshingScope !== null} onClick={() => void refresh("all", "incremental")}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
@@ -738,38 +738,35 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <CardTitle>Workflow Shortcuts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-2">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="circle-refresh-mode">Catalog crawl</label>
-              <select
-                id="circle-refresh-mode"
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={refreshMode}
-                onChange={(event) => setRefreshMode(event.target.value as "incremental" | "full")}
-              >
-                <option value="incremental">Incremental pages</option>
-                <option value="full">Full catalog pages</option>
-              </select>
-            </div>
-            <div className="grid gap-2">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="circle-product-mode">Product JSON</label>
-              <select
-                id="circle-product-mode"
-                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={productMode}
-                onChange={(event) => setProductMode(event.target.value as "available" | "all")}
-              >
-                <option value="available">Available source only</option>
-                <option value="all">All catalog works</option>
-              </select>
-            </div>
             <Shortcut
-              title={refreshMode === "full" ? "Run full catalog crawl" : "Run incremental crawl"}
-              description={productMode === "all" ? "Fetch paged catalog and product JSON for every catalog work." : "Fetch paged catalog and JSON only for works with sources."}
-              disabled={isRefreshing}
-              onClick={() => void refresh()}
+              title="Run recommended workflow"
+              description="Catalog, work metadata, then source matching."
+              disabled={refreshingScope !== null}
+              onClick={() => void refresh("all", "incremental")}
+            />
+            <RefreshActionRow
+              title="Catalog"
+              description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
+              disabled={refreshingScope !== null}
+              active={refreshingScope === "catalog" || refreshingScope === "all"}
+              onRun={(mode) => void refresh("catalog", mode)}
+            />
+            <RefreshActionRow
+              title="Work metadata"
+              description={`${importedCount} imported · ${playableCount} playable in current filter`}
+              disabled={refreshingScope !== null}
+              active={refreshingScope === "work" || refreshingScope === "all"}
+              onRun={(mode) => void refresh("work", mode)}
+            />
+            <RefreshActionRow
+              title="Sources"
+              description={`${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
+              disabled={refreshingScope !== null}
+              active={refreshingScope === "source" || refreshingScope === "all"}
+              onRun={(mode) => void refresh("source", mode)}
             />
             <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
-              Auto refresh policy: use incremental crawl when the last circle sync is older than the configured threshold.
+              Auto refresh follows the catalog threshold. Full runs keep catalog rows and user state intact.
             </div>
           </CardContent>
         </Card>
@@ -1172,6 +1169,52 @@ function Shortcut({ title, description, disabled, onClick }: { title: string; de
       <RefreshCw className="h-4 w-4 shrink-0 text-primary" />
     </button>
   );
+}
+
+function RefreshActionRow({
+  title,
+  description,
+  disabled,
+  active,
+  onRun,
+}: {
+  title: string;
+  description: string;
+  disabled?: boolean;
+  active?: boolean;
+  onRun: (mode: CircleRefreshMode) => void;
+}) {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{title}</div>
+          <div className="truncate text-xs text-muted-foreground">{description}</div>
+        </div>
+        {active && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-primary" />}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRun("incremental")}>
+          Incremental
+        </Button>
+        <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRun("full")}>
+          Full
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "available" | "all" {
+  if (scope === "work" && mode === "full") {
+    return "all";
+  }
+  return "available";
+}
+
+function refreshMessage(result: { runId: number; scope: CircleRefreshScope; pagesFetched: number; catalogWorks: number; productSynced: number; sourceSynced: number }) {
+  const scopeLabel = result.scope === "all" ? "recommended" : result.scope;
+  return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON, ${result.sourceSynced} source matches.`;
 }
 
 function SyncBadge({ state }: { state: string }) {

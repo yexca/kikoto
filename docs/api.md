@@ -168,13 +168,15 @@ Runs a circle metadata and catalog refresh workflow.
 
 ```json
 {
+  "scope": "all",
   "mode": "incremental",
   "productMode": "available"
 }
 ```
 
-`mode` may be `incremental` or `full`. `productMode` may be `available` or
-`all`.
+`scope` may be `all`, `catalog`, `work`, or `source`. `all` runs catalog
+refresh, work metadata sync, then source matching. `mode` may be `incremental`
+or `full`. `productMode` may be `available` or `all`.
 
 Requires `metadata:sync`.
 
