@@ -2499,7 +2499,10 @@ function displayPathParts(path: string, locationType: string, workCode: string) 
   const parts = path.split("/").filter(Boolean);
   if (locationType !== "local" || !workCode) return parts;
   const code = workCode.toUpperCase();
-  const workRootIndex = parts.findIndex((part) => part.toUpperCase().includes(code));
+  const workRootIndex = parts.findIndex((part) => {
+    const normalized = part.toUpperCase();
+    return normalized.includes(code) || /\b(RJ|BJ|VJ)[0-9]{5,8}\b/i.test(part);
+  });
   if (workRootIndex < 0 || workRootIndex >= parts.length - 1) return parts;
   return parts.slice(workRootIndex + 1);
 }

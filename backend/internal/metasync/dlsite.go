@@ -173,6 +173,9 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err != nil {
 		return err
 	}
+	if err := ensureLogicalWorkSchema(ctx, tx); err != nil {
+		return err
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_external_id (work_id, provider_id, id_type, external_id, url, is_primary)
@@ -206,6 +209,9 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString, workID); err != nil {
+		return err
+	}
+	if err := upsertDLsiteWorkEdition(ctx, tx, providerID, workID, product); err != nil {
 		return err
 	}
 
@@ -399,6 +405,166 @@ func baseProductCode(product dlsite.Product) string {
 	for _, value := range []string{product.TranslationInfo.OriginalWorkNo, product.TranslationInfo.ParentWorkNo} {
 		value = strings.ToUpper(strings.TrimSpace(value))
 		if dlsiteWorkNoPattern.MatchString(value) {
+			return value
+		}
+	}
+	return ""
+}
+
+func ensureLogicalWorkSchema(ctx context.Context, tx *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS logical_work (
+			id INTEGER PRIMARY KEY,
+			canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL,
+			canonical_code TEXT NOT NULL UNIQUE,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS work_edition (
+			work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+			logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE,
+			provider_id INTEGER REFERENCES metadata_provider(id),
+			primary_code TEXT NOT NULL,
+			base_code TEXT NOT NULL DEFAULT '',
+			metadata_language TEXT NOT NULL DEFAULT '',
+			edition_label TEXT NOT NULL DEFAULT '',
+			is_canonical INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_edition_provider_code
+			ON work_edition(provider_id, primary_code)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_edition_logical_work
+			ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, workID int64, product dlsite.Product) error {
+	currentCode := strings.ToUpper(strings.TrimSpace(product.WorkNo))
+	if currentCode == "" {
+		currentCode = strings.ToUpper(strings.TrimSpace(product.ProductID))
+	}
+	if currentCode == "" {
+		return nil
+	}
+	baseCode := baseProductCode(product)
+	canonicalCode := currentCode
+	if baseCode != "" {
+		canonicalCode = baseCode
+	}
+	canonicalWorkID, _ := selectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", canonicalCode)
+	var canonical any
+	if canonicalWorkID > 0 {
+		canonical = canonicalWorkID
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO logical_work (canonical_work_id, canonical_code, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(canonical_code) DO UPDATE SET
+			canonical_work_id = COALESCE(excluded.canonical_work_id, logical_work.canonical_work_id),
+			updated_at = CURRENT_TIMESTAMP
+	`, canonical, canonicalCode); err != nil {
+		return err
+	}
+	logicalWorkID, err := selectID(ctx, tx, "SELECT id FROM logical_work WHERE canonical_code = ?", canonicalCode)
+	if err != nil {
+		return err
+	}
+	language := strings.TrimSpace(product.Language)
+	if language == "" {
+		language = strings.TrimSpace(product.TranslationInfo.Lang)
+	}
+	isCanonical := 0
+	if strings.EqualFold(currentCode, canonicalCode) {
+		isCanonical = 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, is_canonical, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id) DO UPDATE SET
+			logical_work_id = excluded.logical_work_id,
+			provider_id = excluded.provider_id,
+			primary_code = excluded.primary_code,
+			base_code = excluded.base_code,
+			metadata_language = excluded.metadata_language,
+			is_canonical = excluded.is_canonical,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, isCanonical); err != nil {
+		return err
+	}
+	if isCanonical == 1 {
+		if _, err = tx.ExecContext(ctx, "UPDATE logical_work SET canonical_work_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", workID, logicalWorkID); err != nil {
+			return err
+		}
+	}
+	return syncKnownProductLanguageEditions(ctx, tx, providerID, logicalWorkID, canonicalCode, product.Raw)
+}
+
+func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerID int64, logicalWorkID int64, canonicalCode string, raw json.RawMessage) error {
+	var payload struct {
+		LanguageEditions []struct {
+			WorkNo string `json:"workno"`
+			Label  string `json:"label"`
+			Lang   string `json:"lang"`
+		} `json:"language_editions"`
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	for _, edition := range payload.LanguageEditions {
+		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+		if !dlsiteWorkNoPattern.MatchString(code) {
+			continue
+		}
+		editionWorkID, err := selectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+		isCanonical := 0
+		if strings.EqualFold(code, canonicalCode) {
+			isCanonical = 1
+		}
+		language := strings.TrimSpace(firstNonEmptyText(edition.Label, edition.Lang))
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(work_id) DO UPDATE SET
+				logical_work_id = excluded.logical_work_id,
+				provider_id = excluded.provider_id,
+				primary_code = excluded.primary_code,
+				base_code = excluded.base_code,
+				metadata_language = CASE
+					WHEN excluded.metadata_language <> '' THEN excluded.metadata_language
+					ELSE work_edition.metadata_language
+				END,
+				edition_label = CASE
+					WHEN excluded.edition_label <> '' THEN excluded.edition_label
+					ELSE work_edition.edition_label
+				END,
+				is_canonical = excluded.is_canonical,
+				updated_at = CURRENT_TIMESTAMP
+		`, editionWorkID, logicalWorkID, providerID, code, canonicalCode, language, language, isCanonical); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func firstNonEmptyText(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
 			return value
 		}
 	}
