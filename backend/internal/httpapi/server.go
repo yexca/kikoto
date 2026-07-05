@@ -200,6 +200,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			work.id,
@@ -308,18 +312,31 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Favorite = favorite != 0
 		metadata := parseDLsiteSnapshot(snapshot.String)
-		if metadata.BaseCode != "" && s.workCodeExists(r.Context(), metadata.BaseCode) {
+		familyMediaCode := item.PrimaryCode
+		if visible, err := s.workEditionVisibleInLibrary(r.Context(), item.ID); err != nil {
+			writeError(w, err)
+			return
+		} else if !visible {
 			continue
 		}
-		familyMediaCode := item.PrimaryCode
-		for _, translation := range metadata.LanguageEditions {
-			if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
+		if mediaCode, ok, err := s.logicalWorkMediaCode(r.Context(), item.ID); err != nil {
+			writeError(w, err)
+			return
+		} else if ok {
+			familyMediaCode = mediaCode
+		} else {
+			if metadata.BaseCode != "" && s.workCodeExists(r.Context(), metadata.BaseCode) {
 				continue
 			}
-			if workID, ok := s.workIDForCode(r.Context(), translation.PrimaryCode); ok {
-				if hasMedia, err := s.workHasMedia(r.Context(), workID); err == nil && hasMedia {
-					familyMediaCode = translation.PrimaryCode
-					break
+			for _, translation := range metadata.LanguageEditions {
+				if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
+					continue
+				}
+				if workID, ok := s.workIDForCode(r.Context(), translation.PrimaryCode); ok {
+					if hasMedia, err := s.workHasMedia(r.Context(), workID); err == nil && hasMedia {
+						familyMediaCode = translation.PrimaryCode
+						break
+					}
 				}
 			}
 		}
@@ -506,6 +523,231 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 		return 0, 0, nil, false
 	}
 	return trackCount, availableLocations, availabilityBadges(locationTypes.String), true
+}
+
+func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS logical_work (
+			id INTEGER PRIMARY KEY,
+			canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL,
+			canonical_code TEXT NOT NULL UNIQUE,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS work_edition (
+			work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
+			logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE,
+			provider_id INTEGER REFERENCES metadata_provider(id),
+			primary_code TEXT NOT NULL,
+			base_code TEXT NOT NULL DEFAULT '',
+			metadata_language TEXT NOT NULL DEFAULT '',
+			edition_label TEXT NOT NULL DEFAULT '',
+			is_canonical INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_edition_provider_code
+			ON work_edition(provider_id, primary_code)`,
+		`CREATE INDEX IF NOT EXISTS idx_work_edition_logical_work
+			ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
+	}
+	for _, statement := range statements {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) syncWorkEditionForWorkFromSnapshot(ctx context.Context, workID int64, primaryCode string, metadata dlsiteSnapshotMetadata) error {
+	primaryCode = normalizeDLsiteCode(primaryCode)
+	if primaryCode == "" {
+		return nil
+	}
+	canonicalCode := normalizeDLsiteCode(metadata.BaseCode)
+	if canonicalCode == "" {
+		canonicalCode = primaryCode
+	}
+	var provider any
+	if providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite"); err != nil {
+		return err
+	} else {
+		provider = providerID
+	}
+	canonicalWorkID, _ := s.workIDForCode(ctx, canonicalCode)
+	var canonical any
+	if canonicalWorkID > 0 {
+		canonical = canonicalWorkID
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO logical_work (canonical_work_id, canonical_code, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(canonical_code) DO UPDATE SET
+			canonical_work_id = COALESCE(excluded.canonical_work_id, logical_work.canonical_work_id),
+			updated_at = CURRENT_TIMESTAMP
+	`, canonical, canonicalCode); err != nil {
+		return err
+	}
+	var logicalWorkID int64
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM logical_work WHERE canonical_code = ?", canonicalCode).Scan(&logicalWorkID); err != nil {
+		return err
+	}
+	isCanonical := 0
+	if strings.EqualFold(primaryCode, canonicalCode) {
+		isCanonical = 1
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, is_canonical, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id) DO UPDATE SET
+			logical_work_id = excluded.logical_work_id,
+			provider_id = excluded.provider_id,
+			primary_code = excluded.primary_code,
+			base_code = excluded.base_code,
+			metadata_language = excluded.metadata_language,
+			is_canonical = excluded.is_canonical,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, logicalWorkID, provider, primaryCode, metadata.BaseCode, metadata.MetadataLanguage, isCanonical); err != nil {
+		return err
+	}
+	if isCanonical == 1 {
+		_, err := s.db.ExecContext(ctx, "UPDATE logical_work SET canonical_work_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", workID, logicalWorkID)
+		if err != nil {
+			return err
+		}
+	}
+	return s.syncKnownLanguageEditions(ctx, logicalWorkID, provider, canonicalCode, metadata.LanguageEditions)
+}
+
+func (s *Server) syncKnownLanguageEditions(ctx context.Context, logicalWorkID int64, provider any, canonicalCode string, editions []workTranslation) error {
+	for _, edition := range editions {
+		code := normalizeDLsiteCode(edition.PrimaryCode)
+		if code == "" {
+			continue
+		}
+		editionWorkID, ok := s.workIDForCode(ctx, code)
+		if !ok {
+			continue
+		}
+		isCanonical := 0
+		if strings.EqualFold(code, canonicalCode) {
+			isCanonical = 1
+		}
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(work_id) DO UPDATE SET
+				logical_work_id = excluded.logical_work_id,
+				provider_id = excluded.provider_id,
+				primary_code = excluded.primary_code,
+				base_code = excluded.base_code,
+				metadata_language = CASE
+					WHEN excluded.metadata_language <> '' THEN excluded.metadata_language
+					ELSE work_edition.metadata_language
+				END,
+				edition_label = CASE
+					WHEN excluded.edition_label <> '' THEN excluded.edition_label
+					ELSE work_edition.edition_label
+				END,
+				is_canonical = excluded.is_canonical,
+				updated_at = CURRENT_TIMESTAMP
+		`, editionWorkID, logicalWorkID, provider, code, canonicalCode, edition.MetadataLanguage, edition.MetadataLanguage, isCanonical); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) loadWorkEditionMetadata(ctx context.Context, workID int64) (string, string, error) {
+	var canonicalCode string
+	var language string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT logical.canonical_code, edition.metadata_language
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE edition.work_id = ?
+	`, workID).Scan(&canonicalCode, &language); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	return canonicalCode, language, nil
+}
+
+func (s *Server) loadCanonicalWorkForCode(ctx context.Context, code string) (int64, string, error) {
+	var workID sql.NullInt64
+	var codeValue string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT logical.canonical_work_id, logical.canonical_code
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE UPPER(edition.primary_code) = UPPER(?)
+	`, code).Scan(&workID, &codeValue); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, "", nil
+		}
+		return 0, "", err
+	}
+	if workID.Valid {
+		return workID.Int64, codeValue, nil
+	}
+	if fallbackID, ok := s.workIDForCode(ctx, codeValue); ok {
+		return fallbackID, codeValue, nil
+	}
+	return 0, codeValue, nil
+}
+
+func (s *Server) workEditionVisibleInLibrary(ctx context.Context, workID int64) (bool, error) {
+	var canonicalID sql.NullInt64
+	var isCanonical int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT logical.canonical_work_id, edition.is_canonical
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE edition.work_id = ?
+	`, workID).Scan(&canonicalID, &isCanonical); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	if !canonicalID.Valid || canonicalID.Int64 == workID {
+		return true, nil
+	}
+	return isCanonical != 0, nil
+}
+
+func (s *Server) logicalWorkMediaCode(ctx context.Context, workID int64) (string, bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT edition.work_id, edition.primary_code
+		FROM work_edition AS current
+		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
+		WHERE current.work_id = ?
+		ORDER BY edition.is_canonical DESC, edition.primary_code ASC
+	`, workID)
+	if err != nil {
+		return "", false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var editionWorkID int64
+		var code string
+		if err := rows.Scan(&editionWorkID, &code); err != nil {
+			return "", false, err
+		}
+		hasMedia, err := s.workHasMedia(ctx, editionWorkID)
+		if err != nil {
+			return "", false, err
+		}
+		if hasMedia {
+			return code, true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, err
+	}
+	return "", false, nil
 }
 
 func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
@@ -1419,6 +1661,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	if err := s.ensureVoiceSchema(ctx); err != nil {
 		return workDetail{}, err
 	}
+	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
+		return workDetail{}, err
+	}
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -1490,6 +1735,19 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.CircleExternalID = metadata.CircleExternalID
 	work.BaseCode = metadata.BaseCode
 	work.MetadataLanguage = metadata.MetadataLanguage
+	if err := s.syncWorkEditionForWorkFromSnapshot(ctx, id, work.PrimaryCode, metadata); err != nil {
+		return workDetail{}, err
+	}
+	if canonicalCode, metadataLanguage, err := s.loadWorkEditionMetadata(ctx, id); err != nil {
+		return workDetail{}, err
+	} else {
+		if canonicalCode != "" && !strings.EqualFold(canonicalCode, work.PrimaryCode) {
+			work.BaseCode = canonicalCode
+		}
+		if metadataLanguage != "" {
+			work.MetadataLanguage = metadataLanguage
+		}
+	}
 	var partyLink sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT party.display_name || '|' || external.external_id
@@ -1700,18 +1958,26 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	if code == "" {
 		return workResolveResponse{}, sql.ErrNoRows
 	}
+	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
+		return workResolveResponse{}, err
+	}
 
-	workID, primaryCode, baseCode, err := s.loadWorkCodeMetadata(ctx, code)
+	workID, primaryCode, metadata, err := s.loadWorkCodeMetadata(ctx, code)
 	if err != nil {
 		return workResolveResponse{}, err
 	}
+	if err := s.syncWorkEditionForWorkFromSnapshot(ctx, workID, primaryCode, metadata); err != nil {
+		return workResolveResponse{}, err
+	}
+	baseCode := metadata.BaseCode
 	resolvedCode := primaryCode
 	resolvedID := workID
-	if baseCode != "" && !strings.EqualFold(baseCode, primaryCode) {
-		if baseID, _, _, err := s.loadWorkCodeMetadata(ctx, baseCode); err == nil {
-			resolvedID = baseID
-			resolvedCode = baseCode
-		}
+	if canonicalID, canonicalCode, err := s.loadCanonicalWorkForCode(ctx, primaryCode); err != nil {
+		return workResolveResponse{}, err
+	} else if canonicalID > 0 && canonicalCode != "" {
+		resolvedID = canonicalID
+		resolvedCode = canonicalCode
+		baseCode = canonicalCode
 	}
 	return workResolveResponse{
 		RequestedCode: code,
@@ -1722,7 +1988,7 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	}, nil
 }
 
-func (s *Server) loadWorkCodeMetadata(ctx context.Context, code string) (int64, string, string, error) {
+func (s *Server) loadWorkCodeMetadata(ctx context.Context, code string) (int64, string, dlsiteSnapshotMetadata, error) {
 	var workID int64
 	var primaryCode string
 	var snapshot sql.NullString
@@ -1739,10 +2005,10 @@ func (s *Server) loadWorkCodeMetadata(ctx context.Context, code string) (int64, 
 		FROM work
 		WHERE UPPER(work.primary_code) = UPPER(?)
 	`, code).Scan(&workID, &primaryCode, &snapshot); err != nil {
-		return 0, "", "", err
+		return 0, "", dlsiteSnapshotMetadata{}, err
 	}
 	metadata := parseDLsiteSnapshot(snapshot.String)
-	return workID, primaryCode, metadata.BaseCode, nil
+	return workID, primaryCode, metadata, nil
 }
 
 func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, baseCode string, editions []workTranslation) ([]workTranslation, error) {
@@ -1767,6 +2033,28 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 	}
 	for _, edition := range editions {
 		addTranslation(edition)
+	}
+
+	if logicalTranslations, err := s.loadLogicalWorkTranslations(ctx, primaryCode); err != nil {
+		return nil, err
+	} else if len(logicalTranslations) > 0 {
+		for _, item := range logicalTranslations {
+			if seen[strings.ToUpper(strings.TrimSpace(item.PrimaryCode))] {
+				for index := range translations {
+					if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
+						translations[index].WorkID = item.WorkID
+						translations[index].Title = item.Title
+						if translations[index].MetadataLanguage == "" {
+							translations[index].MetadataLanguage = item.MetadataLanguage
+						}
+						translations[index].Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+						break
+					}
+				}
+				continue
+			}
+			addTranslation(item)
+		}
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -1837,6 +2125,39 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 	}
 	if len(translations) <= 1 {
 		return []workTranslation{}, nil
+	}
+	return translations, nil
+}
+
+func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode string) ([]workTranslation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT edition.work_id, edition.primary_code, work.title, edition.metadata_language
+		FROM work_edition AS current
+		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
+		INNER JOIN work ON work.id = edition.work_id
+		WHERE UPPER(current.primary_code) = UPPER(?)
+		ORDER BY edition.is_canonical DESC, edition.primary_code ASC
+	`, primaryCode)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return []workTranslation{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	translations := []workTranslation{}
+	for rows.Next() {
+		var item workTranslation
+		var workID int64
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage); err != nil {
+			return nil, err
+		}
+		item.WorkID = &workID
+		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+		translations = append(translations, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return translations, nil
 }
