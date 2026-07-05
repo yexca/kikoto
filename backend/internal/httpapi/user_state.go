@@ -115,6 +115,53 @@ func (s *Server) listFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, lists)
 }
 
+func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	listID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		return
+	}
+	var exists int
+	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM favorite_list WHERE id = ? AND user_id = ?", listID, user.ID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT item.work_id
+		FROM favorite_list_item AS item
+		INNER JOIN favorite_list AS list ON list.id = item.list_id
+		WHERE item.list_id = ? AND list.user_id = ?
+		ORDER BY item.added_at DESC, item.work_id DESC
+	`, listID, user.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+	workIDs := []int64{}
+	for rows.Next() {
+		var workID int64
+		if err := rows.Scan(&workID); err != nil {
+			writeError(w, err)
+			return
+		}
+		workIDs = append(workIDs, workID)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"listId": listID, "workIds": workIDs})
+}
+
 func (s *Server) getWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "library:read")
 	if !ok {
