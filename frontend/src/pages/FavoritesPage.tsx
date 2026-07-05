@@ -62,6 +62,8 @@ export function FavoritesPage() {
   const [listWorkIDs, setListWorkIDs] = useState<Record<number, number[]>>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(24);
+  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
+  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
@@ -321,7 +323,13 @@ export function FavoritesPage() {
           <Filter className="h-4 w-4" />
           Showing {filteredWorks.length} of {shelfWorks.length} shelf works
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ColumnPicker
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+            onMobileChange={setMobileColumns}
+            onDesktopChange={setDesktopColumns}
+          />
           <span className="text-xs text-muted-foreground">Page size</span>
           <select
             className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
@@ -341,7 +349,7 @@ export function FavoritesPage() {
         <div className="grid min-h-60 place-items-center rounded-lg border bg-card text-sm text-muted-foreground">Loading favorites...</div>
       ) : pagedWorks.length > 0 ? (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className={workGridClassName(mobileColumns, desktopColumns)}>
             {pagedWorks.map((work) => (
               <FavoriteWorkCard
                 key={work.id}
@@ -394,6 +402,51 @@ function MetricCard({ label, value, icon: Icon }: { label: string; value: number
       </CardContent>
     </Card>
   );
+}
+
+function ColumnPicker({
+  mobileColumns,
+  desktopColumns,
+  onMobileChange,
+  onDesktopChange,
+}: {
+  mobileColumns: 1 | 2;
+  desktopColumns: 4 | 6 | 8;
+  onMobileChange: (value: 1 | 2) => void;
+  onDesktopChange: (value: 4 | 6 | 8) => void;
+}) {
+  return (
+    <>
+      <div className="flex rounded-md border bg-background p-1 sm:hidden" aria-label="Mobile card columns">
+        {[1, 2].map((value) => (
+          <button
+            key={value}
+            className={`h-7 rounded px-2 text-xs font-medium ${mobileColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            onClick={() => onMobileChange(value as 1 | 2)}
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+      <div className="hidden rounded-md border bg-background p-1 sm:flex" aria-label="Desktop card columns">
+        {[4, 6, 8].map((value) => (
+          <button
+            key={value}
+            className={`h-7 rounded px-2 text-xs font-medium ${desktopColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            onClick={() => onDesktopChange(value as 4 | 6 | 8)}
+          >
+            {value}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
+  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
+  const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
+  return `grid gap-4 ${mobileClass} ${desktopClass}`;
 }
 
 function FavoriteWorkCard({
