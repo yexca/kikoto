@@ -1010,6 +1010,86 @@ type sourceAvailabilityState struct {
 	HasLocal  bool
 }
 
+type workSourcePresence struct {
+	WorkID       int64
+	FileSourceID int64
+	PresenceType string
+	RemoteID     string
+	SourceURL    string
+	Availability string
+	RawJSON      string
+}
+
+func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS work_source_presence (
+			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+			file_source_id INTEGER NOT NULL REFERENCES file_source(id) ON DELETE CASCADE,
+			presence_type TEXT NOT NULL DEFAULT 'location',
+			remote_id TEXT NOT NULL DEFAULT '',
+			source_url TEXT NOT NULL DEFAULT '',
+			availability TEXT NOT NULL DEFAULT 'unknown',
+			raw_json TEXT NOT NULL DEFAULT '{}',
+			last_seen_at TEXT,
+			last_checked_at TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(work_id, file_source_id, presence_type)
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_work_source_presence_source
+		ON work_source_presence(file_source_id, availability, updated_at)
+	`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSourcePresence) error {
+	presence.PresenceType = strings.TrimSpace(presence.PresenceType)
+	if presence.PresenceType == "" {
+		presence.PresenceType = "location"
+	}
+	presence.Availability = strings.TrimSpace(presence.Availability)
+	if presence.Availability == "" {
+		presence.Availability = "unknown"
+	}
+	presence.RawJSON = strings.TrimSpace(presence.RawJSON)
+	if presence.RawJSON == "" {
+		presence.RawJSON = "{}"
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO work_source_presence (
+			work_id,
+			file_source_id,
+			presence_type,
+			remote_id,
+			source_url,
+			availability,
+			raw_json,
+			last_seen_at,
+			last_checked_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, file_source_id, presence_type) DO UPDATE SET
+			remote_id = excluded.remote_id,
+			source_url = excluded.source_url,
+			availability = excluded.availability,
+			raw_json = excluded.raw_json,
+			last_seen_at = CASE
+				WHEN excluded.availability = 'available' THEN excluded.last_seen_at
+				ELSE work_source_presence.last_seen_at
+			END,
+			last_checked_at = excluded.last_checked_at,
+			updated_at = CURRENT_TIMESTAMP
+	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.SourceURL, presence.Availability, presence.RawJSON)
+	return err
+}
+
 func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, workCode string) (sourceAvailabilityState, error) {
 	var flags sourceAvailabilityState
 	var workID sql.NullInt64
@@ -1046,6 +1126,9 @@ func (s *Server) workHasLocationType(ctx context.Context, workID int64, sourceID
 }
 
 func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code string, checkedAt string, results []sourceAvailabilitySummary) (int64, error) {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return 0, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -1079,6 +1162,9 @@ func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code stri
 	summary := map[string]any{
 		"checked_at": checkedAt, "sources": len(results), "available": available, "not_found": notFound, "errors": errorsCount,
 	}
+	if err := s.recordAvailabilityPresence(ctx, tx, code, results); err != nil {
+		return 0, err
+	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "source_availability_check", "Check source availability", "succeeded", "detail_view", "work_detail_source_tabs", input, summary)
 	if err != nil {
 		return 0, err
@@ -1108,6 +1194,54 @@ func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code stri
 		return 0, err
 	}
 	return runID, tx.Commit()
+}
+
+func (s *Server) recordAvailabilityPresence(ctx context.Context, tx *sql.Tx, code string, results []sourceAvailabilitySummary) error {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return nil
+	}
+	var workID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	for _, result := range results {
+		if result.SourceID <= 0 {
+			continue
+		}
+		availability := "unknown"
+		switch result.Status {
+		case "available":
+			availability = "available"
+		case "not_found":
+			availability = "missing"
+		case "disabled":
+			availability = "disabled"
+		case "error", "unavailable":
+			availability = "unavailable"
+		}
+		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+			WorkID:       workID,
+			FileSourceID: result.SourceID,
+			PresenceType: "remote",
+			RemoteID:     result.RemoteID,
+			Availability: availability,
+			RawJSON: mustJSON(map[string]any{
+				"status":       result.Status,
+				"primary_code": result.PrimaryCode,
+				"title":        result.Title,
+				"cover_url":    result.CoverURL,
+				"error":        result.Error,
+				"elapsed_ms":   result.ElapsedMS,
+			}),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func sourceAvailabilityMatchSummary(results []sourceAvailabilitySummary) map[string]any {
@@ -1175,6 +1309,9 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) 
 }
 
 func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code string, triggerReason string) (remoteWorkSyncResult, error) {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return remoteWorkSyncResult{}, err
+	}
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1242,6 +1379,17 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}
 	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
 	if err != nil {
+		return remoteWorkSyncResult{}, err
+	}
+	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+		WorkID:       workID,
+		FileSourceID: source.ID,
+		PresenceType: "remote",
+		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
+		SourceURL:    remoteWork.SourceURL,
+		Availability: "available",
+		RawJSON:      string(rawWork),
+	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
 	if err := s.downloadRemoteCover(ctx, workCode, firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)); err != nil {

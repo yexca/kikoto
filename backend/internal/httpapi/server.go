@@ -2695,6 +2695,9 @@ type localScanResult struct {
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return localScanResult{}, err
+	}
 	scanDepth := s.configuredLocalScanDepth(ctx)
 
 	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
@@ -2751,11 +2754,36 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 	`, fileSourceID); err != nil {
 		return localScanResult{}, err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE work_source_presence
+		SET availability = 'missing',
+			last_checked_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ?
+			AND presence_type = 'local'
+	`, fileSourceID); err != nil {
+		return localScanResult{}, err
+	}
 
 	updatedLocations := 0
 	for _, folder := range workFolders {
 		workID, err := upsertDetectedWork(ctx, tx, folder)
 		if err != nil {
+			return localScanResult{}, err
+		}
+		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+			WorkID:       workID,
+			FileSourceID: fileSourceID,
+			PresenceType: "local",
+			SourceURL:    filepath.ToSlash(folder.RelPath),
+			Availability: "available",
+			RawJSON: mustJSON(map[string]any{
+				"code":     folder.Code,
+				"title":    folder.Title,
+				"rel_path": filepath.ToSlash(folder.RelPath),
+				"files":    len(folder.Files),
+			}),
+		}); err != nil {
 			return localScanResult{}, err
 		}
 
