@@ -617,9 +617,11 @@ export type CircleRefreshResult = {
   runId: number;
   externalId: string;
   status: string;
+  scope: "all" | "catalog" | "work" | "source";
   catalogWorks: number;
   pagesFetched: number;
   productSynced: number;
+  sourceSynced: number;
   mode: "incremental" | "full";
   productMode: "available" | "all";
 };
@@ -808,7 +810,10 @@ export const api = {
     putJSONBody<{ personId: number; userTags: VoiceUserTag[] }>(`/api/voices/${personId}/tags`, { tags }),
   updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
-  refreshCircle: (externalId: string, payload: { mode: "incremental" | "full"; productMode: "available" | "all" }) =>
+  refreshCircle: (
+    externalId: string,
+    payload: { scope: "all" | "catalog" | "work" | "source"; mode: "incremental" | "full"; productMode: "available" | "all" },
+  ) =>
     postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
   deleteCircleCatalogWork: (externalId: string, code: string) =>
     deleteJSON<{ ok: boolean; deleted: number }>(`/api/circles/${encodeURIComponent(externalId)}/catalog/${encodeURIComponent(code)}`),
