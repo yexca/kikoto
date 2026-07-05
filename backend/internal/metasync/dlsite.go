@@ -34,13 +34,14 @@ type DLsiteSyncer struct {
 }
 
 type DLsiteSyncResult struct {
-	RunID       int64    `json:"runId"`
-	JobID       int64    `json:"jobId"`
-	Status      string   `json:"status"`
-	TargetWorks int      `json:"targetWorks"`
-	SyncedWorks int      `json:"syncedWorks"`
-	FailedWorks int      `json:"failedWorks"`
-	Failures    []string `json:"failures"`
+	RunID        int64    `json:"runId"`
+	JobID        int64    `json:"jobId"`
+	Status       string   `json:"status"`
+	TargetWorks  int      `json:"targetWorks"`
+	SyncedWorks  int      `json:"syncedWorks"`
+	SkippedWorks int      `json:"skippedWorks"`
+	FailedWorks  int      `json:"failedWorks"`
+	Failures     []string `json:"failures"`
 }
 
 type workTarget struct {
@@ -81,11 +82,16 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	if err != nil {
 		return DLsiteSyncResult{}, err
 	}
+	totalWorks, err := s.countSyncableWorks(ctx)
+	if err != nil {
+		return DLsiteSyncResult{}, err
+	}
 
 	result := DLsiteSyncResult{
-		Status:      "succeeded",
-		TargetWorks: len(targets),
-		Failures:    []string{},
+		Status:       "succeeded",
+		TargetWorks:  len(targets),
+		SkippedWorks: maxInt(0, totalWorks-len(targets)),
+		Failures:     []string{},
 	}
 
 	for _, target := range targets {
@@ -150,9 +156,16 @@ func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.
 
 func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, primary_code
+		SELECT work.id, work.primary_code
 		FROM work
-		ORDER BY id ASC
+		LEFT JOIN metadata_provider AS provider ON provider.code = 'dlsite'
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM metadata_snapshot AS snapshot
+			WHERE snapshot.work_id = work.id
+				AND snapshot.provider_id = provider.id
+		)
+		ORDER BY work.id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -174,6 +187,25 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 		return nil, err
 	}
 	return targets, nil
+}
+
+func (s *DLsiteSyncer) countSyncableWorks(ctx context.Context) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT primary_code FROM work`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	total := 0
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return 0, err
+		}
+		if dlsiteWorkNoPattern.MatchString(strings.ToUpper(strings.TrimSpace(code))) {
+			total++
+		}
+	}
+	return total, rows.Err()
 }
 
 func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product dlsite.Product) error {
@@ -282,10 +314,11 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 	}()
 
 	summary := map[string]any{
-		"target_works": result.TargetWorks,
-		"synced_works": result.SyncedWorks,
-		"failed_works": result.FailedWorks,
-		"failures":     result.Failures,
+		"target_works":  result.TargetWorks,
+		"synced_works":  result.SyncedWorks,
+		"skipped_works": result.SkippedWorks,
+		"failed_works":  result.FailedWorks,
+		"failures":      result.Failures,
 	}
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "metadata_sync", "Sync work metadata", "Select works and sync normalized metadata snapshots.", map[string]any{
 		"nodes": []map[string]string{
@@ -325,9 +358,10 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 			"target_works": result.TargetWorks,
 		},
 		Output: map[string]any{
-			"synced_works": result.SyncedWorks,
-			"failed_works": result.FailedWorks,
-			"failures":     result.Failures,
+			"synced_works":  result.SyncedWorks,
+			"skipped_works": result.SkippedWorks,
+			"failed_works":  result.FailedWorks,
+			"failures":      result.Failures,
 		},
 		Error: strings.Join(result.Failures, "\n"),
 	})
@@ -599,6 +633,13 @@ func normalizeLanguages(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func snapshotWithKikotoMeta(raw json.RawMessage, metadata map[string]any) json.RawMessage {

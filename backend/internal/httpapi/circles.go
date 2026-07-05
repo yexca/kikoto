@@ -276,6 +276,22 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 	}
 	payload = normalizeCircleRefreshRequest(payload)
+	if isTranslationUmbrellaCircle(externalID) && (circleRefreshIncludesCatalog(payload.Scope) || circleRefreshIncludesSource(payload.Scope)) {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"runId":         0,
+			"externalId":    externalID,
+			"status":        "skipped",
+			"scope":         payload.Scope,
+			"catalogWorks":  0,
+			"pagesFetched":  0,
+			"productSynced": 0,
+			"sourceSynced":  0,
+			"mode":          payload.Mode,
+			"productMode":   payload.ProductMode,
+			"reason":        "translation umbrella circle",
+		})
+		return
+	}
 	result, err := s.runCircleRefresh(r.Context(), partyID, externalID, payload)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
@@ -698,6 +714,9 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
+	if isTranslationUmbrellaCircle(item.ExternalID) {
+		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
+	}
 	if item.AutoRefresh.Status == "" {
 		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "not evaluated"}
 	}
@@ -1132,6 +1151,9 @@ func (s *Server) loadCircleProfileForRefresh(ctx context.Context, partyID int64,
 }
 
 func (s *Server) maybeStartCircleAutoRefresh(partyID int64, externalID string, lastSyncedAt *string) circleAutoRefresh {
+	if isTranslationUmbrellaCircle(externalID) {
+		return circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
+	}
 	days := s.settingIntContext(context.Background(), "circle_auto_refresh_days", 30)
 	if days <= 0 {
 		return circleAutoRefresh{Status: "disabled", Reason: "auto refresh disabled"}
@@ -1825,6 +1847,10 @@ func lastInsertID(tx *sql.Tx) (int64, error) {
 
 func normalizeMakerID(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func isTranslationUmbrellaCircle(externalID string) bool {
+	return normalizeMakerID(externalID) == "RG60289"
 }
 
 func nullableIntPointer(value sql.NullInt64) *int {

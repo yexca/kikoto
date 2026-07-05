@@ -2569,6 +2569,7 @@ type startupLibraryRefreshResult struct {
 	MetadataRunID  int64    `json:"metadataRunId"`
 	DetectedWorks  int      `json:"detectedWorks"`
 	SyncedWorks    int      `json:"syncedWorks"`
+	SkippedWorks   int      `json:"skippedWorks"`
 	FailedWorks    int      `json:"failedWorks"`
 	Failures       []string `json:"failures"`
 }
@@ -2713,6 +2714,7 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 		"detected_works":    scanResult.DetectedWorks,
 		"scanned_files":     scanResult.ScannedFiles,
 		"updated_locations": scanResult.UpdatedLocations,
+		"skipped_locations": scanResult.SkippedLocations,
 	}, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
 	}
@@ -2726,6 +2728,7 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}
 	result.MetadataRunID = metadataResult.RunID
 	result.SyncedWorks = metadataResult.SyncedWorks
+	result.SkippedWorks = metadataResult.SkippedWorks
 	result.FailedWorks = metadataResult.FailedWorks
 	result.Failures = metadataResult.Failures
 	status := "succeeded"
@@ -2734,11 +2737,12 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}
 	result.Status = status
 	if err := s.updateStartupChildNode(ctx, metadataNodeID, status, map[string]any{
-		"child_run_id": metadataResult.RunID,
-		"target_works": metadataResult.TargetWorks,
-		"synced_works": metadataResult.SyncedWorks,
-		"failed_works": metadataResult.FailedWorks,
-		"failures":     metadataResult.Failures,
+		"child_run_id":  metadataResult.RunID,
+		"target_works":  metadataResult.TargetWorks,
+		"synced_works":  metadataResult.SyncedWorks,
+		"skipped_works": metadataResult.SkippedWorks,
+		"failed_works":  metadataResult.FailedWorks,
+		"failures":      metadataResult.Failures,
 	}, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
 	}
@@ -2765,6 +2769,7 @@ func (s *Server) finishStartupLibraryRefresh(ctx context.Context, runID int64, s
 		"metadata_run_id":   result.MetadataRunID,
 		"detected_works":    result.DetectedWorks,
 		"synced_works":      result.SyncedWorks,
+		"skipped_works":     result.SkippedWorks,
 		"failed_works":      result.FailedWorks,
 		"failures":          result.Failures,
 	}
@@ -2897,6 +2902,7 @@ type localScanResult struct {
 	DetectedWorks    int    `json:"detectedWorks"`
 	ScannedFiles     int    `json:"scannedFiles"`
 	UpdatedLocations int    `json:"updatedLocations"`
+	SkippedLocations int    `json:"skippedLocations"`
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
@@ -2950,32 +2956,16 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 		return localScanResult{}, err
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE media_file_location
-		SET availability = 'missing',
-			last_checked_at = CURRENT_TIMESTAMP
-		WHERE file_source_id = ?
-			AND location_type = 'local'
-	`, fileSourceID); err != nil {
-		return localScanResult{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE work_source_presence
-		SET availability = 'missing',
-			last_checked_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE file_source_id = ?
-			AND presence_type = 'local'
-	`, fileSourceID); err != nil {
-		return localScanResult{}, err
-	}
-
 	updatedLocations := 0
+	skippedLocations := 0
+	seenLocationPaths := map[string]bool{}
+	seenWorkIDs := map[int64]bool{}
 	for _, folder := range workFolders {
 		workID, err := upsertDetectedWork(ctx, tx, folder)
 		if err != nil {
 			return localScanResult{}, err
 		}
+		seenWorkIDs[workID] = true
 		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 			WorkID:       workID,
 			FileSourceID: fileSourceID,
@@ -2994,6 +2984,15 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 
 		audioTrackNo := 1
 		for _, file := range folder.Files {
+			seenLocationPaths[file.RelPath] = true
+			exists, err := localLocationExists(ctx, tx, fileSourceID, file)
+			if err != nil {
+				return localScanResult{}, err
+			}
+			if exists {
+				skippedLocations++
+				continue
+			}
 			kind := localFileKind(file.WorkRelPath)
 			trackNo := 0
 			if kind == "audio" {
@@ -3009,6 +3008,13 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 			}
 			updatedLocations++
 		}
+	}
+	missingLocations, err := markMissingLocalLocations(ctx, tx, fileSourceID, seenLocationPaths)
+	if err != nil {
+		return localScanResult{}, err
+	}
+	if err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs); err != nil {
+		return localScanResult{}, err
 	}
 
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
@@ -3037,6 +3043,8 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 			"detected_works":    scanSummary.DetectedWorks,
 			"scanned_files":     scanSummary.ScannedFiles,
 			"ambiguous_folders": scanSummary.AmbiguousFolders,
+			"skipped_locations": skippedLocations,
+			"missing_locations": missingLocations,
 		},
 	})
 	if err != nil {
@@ -3079,8 +3087,16 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 		},
 		Output: map[string]any{
 			"updated_locations": updatedLocations,
+			"skipped_locations": skippedLocations,
+			"missing_locations": missingLocations,
 		},
 	}); err != nil {
+		return localScanResult{}, err
+	}
+	runSummary["updated_locations"] = updatedLocations
+	runSummary["skipped_locations"] = skippedLocations
+	runSummary["missing_locations"] = missingLocations
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), runID); err != nil {
 		return localScanResult{}, err
 	}
 
@@ -3096,6 +3112,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 		DetectedWorks:    scanSummary.DetectedWorks,
 		ScannedFiles:     scanSummary.ScannedFiles,
 		UpdatedLocations: updatedLocations,
+		SkippedLocations: skippedLocations,
 	}, nil
 }
 
@@ -3236,6 +3253,102 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND location_type = 'local'
 			AND path = ?
 	`, mediaItemID, fileSourceID, file.RelPath)
+}
+
+func localLocationExists(ctx context.Context, tx *sql.Tx, fileSourceID int64, file localfs.LocalFile) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM media_file_location
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+			AND path = ?
+			AND size_bytes = ?
+			AND availability = 'available'
+	`, fileSourceID, file.RelPath, file.SizeBytes).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func markMissingLocalLocations(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenPaths map[string]bool) (int, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, path
+		FROM media_file_location
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+			AND availability = 'available'
+	`, fileSourceID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	missingIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			return 0, err
+		}
+		if !seenPaths[path] {
+			missingIDs = append(missingIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, id := range missingIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE media_file_location
+			SET availability = 'missing',
+				last_checked_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, id); err != nil {
+			return 0, err
+		}
+	}
+	return len(missingIDs), nil
+}
+
+func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenWorkIDs map[int64]bool) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT work_id
+		FROM work_source_presence
+		WHERE file_source_id = ?
+			AND presence_type = 'local'
+			AND availability = 'available'
+	`, fileSourceID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	missingWorkIDs := []int64{}
+	for rows.Next() {
+		var workID int64
+		if err := rows.Scan(&workID); err != nil {
+			return err
+		}
+		if !seenWorkIDs[workID] {
+			missingWorkIDs = append(missingWorkIDs, workID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, workID := range missingWorkIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE work_source_presence
+			SET availability = 'missing',
+				last_checked_at = CURRENT_TIMESTAMP,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE file_source_id = ?
+				AND presence_type = 'local'
+				AND work_id = ?
+		`, fileSourceID, workID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func localFileKind(path string) string {
@@ -3645,7 +3758,7 @@ func safeDataPath(root string, relPath string) (string, error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
