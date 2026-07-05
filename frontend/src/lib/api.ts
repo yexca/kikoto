@@ -469,6 +469,11 @@ export type CircleSummary = {
   catalogWorks: number;
   lastSyncedAt: string | null;
   syncState: string;
+  autoRefresh: {
+    status: string;
+    reason: string;
+    mode: string;
+  };
   sourceSummaries: CircleSourceStat[];
 };
 

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -23,12 +24,14 @@ import (
 )
 
 type Server struct {
-	db  *sql.DB
-	cfg config.Config
+	db                   *sql.DB
+	cfg                  config.Config
+	circleAutoRefreshMu  sync.Mutex
+	circleAutoRefreshing map[int64]bool
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
-	return &Server{db: db, cfg: cfg}
+	return &Server{db: db, cfg: cfg, circleAutoRefreshing: map[int64]bool{}}
 }
 
 func (s *Server) Routes() http.Handler {

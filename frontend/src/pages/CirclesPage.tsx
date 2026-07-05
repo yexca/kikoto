@@ -49,6 +49,7 @@ const fallbackCircles: CircleSummary[] = [
     catalogWorks: 39,
     lastSyncedAt: "2099-01-01",
     syncState: "stale",
+    autoRefresh: { status: "skipped", reason: "placeholder", mode: "" },
     sourceSummaries: [
       { key: "local", displayName: "Local", status: "available", count: 12 },
       { key: "remote", displayName: "Remote", status: "available", count: 22 },
@@ -369,6 +370,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       setDetail(next);
       setRatingDraft(next.rating ?? 0);
       setNoteDraft(next.note);
+      if (next.autoRefresh.status === "queued") {
+        setMessage(`Auto refresh queued: ${next.autoRefresh.mode} crawl for ${next.autoRefresh.reason}.`);
+      } else if (next.autoRefresh.status === "running") {
+        setMessage(`Auto refresh is already running: ${next.autoRefresh.mode} crawl.`);
+      }
     }).catch((error) => {
       const fallback = fakeDetail(externalId);
       setDetail(fallback);

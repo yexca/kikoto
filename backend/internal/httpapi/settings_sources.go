@@ -2573,6 +2573,18 @@ func (s *Server) settingInt(r *http.Request, key string, fallback int) int {
 	return value
 }
 
+func (s *Server) settingIntContext(ctx context.Context, key string, fallback int) int {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var value int
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return fallback
+	}
+	return value
+}
+
 func (s *Server) settingBool(r *http.Request, key string, fallback bool) bool {
 	var raw string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
