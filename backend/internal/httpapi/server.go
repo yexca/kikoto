@@ -2562,6 +2562,17 @@ type remoteBulkWorkflowResult struct {
 	ChildRuns []int64  `json:"childRuns"`
 }
 
+type startupLibraryRefreshResult struct {
+	RunID          int64    `json:"runId"`
+	Status         string   `json:"status"`
+	LocalScanRunID int64    `json:"localScanRunId"`
+	MetadataRunID  int64    `json:"metadataRunId"`
+	DetectedWorks  int      `json:"detectedWorks"`
+	SyncedWorks    int      `json:"syncedWorks"`
+	FailedWorks    int      `json:"failedWorks"`
+	Failures       []string `json:"failures"`
+}
+
 func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -2651,13 +2662,144 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 	return nil
 }
 
+func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType string, triggerReason string) (startupLibraryRefreshResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "startup_library_refresh", "Startup library refresh", "Run startup library maintenance by scanning local files and then syncing metadata.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "scan", "type": "dispatch_child_workflows"},
+			{"id": "metadata", "type": "dispatch_child_workflows"},
+		},
+	})
+	if err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	input := map[string]any{"trigger_reason": triggerReason}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "startup_library_refresh", "Startup library refresh", "running", triggerType, triggerReason, input, map[string]any{})
+	if err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	scanNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "scan", NodeType: "dispatch_child_workflows", DisplayName: "Run local library scan", Position: 1, Status: "running",
+		Input: map[string]any{"workflow_code": "local_library_scan"}, Output: map[string]any{},
+	})
+	if err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	metadataNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "metadata", NodeType: "dispatch_child_workflows", DisplayName: "Run metadata sync", Position: 2, Status: "queued",
+		Input: map[string]any{"workflow_code": "metadata_sync"}, Output: map[string]any{},
+	})
+	if err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+
+	result := startupLibraryRefreshResult{RunID: runID, Status: "succeeded", Failures: []string{}}
+	scanResult, err := s.runLocalScan(ctx, triggerType, "startup_library_refresh")
+	if err != nil {
+		_ = s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, "failed", err)
+		return startupLibraryRefreshResult{}, err
+	}
+	result.LocalScanRunID = scanResult.RunID
+	result.DetectedWorks = scanResult.DetectedWorks
+	if err := s.updateStartupChildNode(ctx, scanNodeID, "succeeded", map[string]any{
+		"child_run_id":      scanResult.RunID,
+		"detected_works":    scanResult.DetectedWorks,
+		"scanned_files":     scanResult.ScannedFiles,
+		"updated_locations": scanResult.UpdatedLocations,
+	}, nil); err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	metadataResult, err := s.runDLsiteMetadataSync(ctx, triggerType, "startup_library_refresh")
+	if err != nil {
+		_ = s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, "failed", err)
+		return startupLibraryRefreshResult{}, err
+	}
+	result.MetadataRunID = metadataResult.RunID
+	result.SyncedWorks = metadataResult.SyncedWorks
+	result.FailedWorks = metadataResult.FailedWorks
+	result.Failures = metadataResult.Failures
+	status := "succeeded"
+	if metadataResult.Status == "failed" || metadataResult.Status == "partial" {
+		status = metadataResult.Status
+	}
+	result.Status = status
+	if err := s.updateStartupChildNode(ctx, metadataNodeID, status, map[string]any{
+		"child_run_id": metadataResult.RunID,
+		"target_works": metadataResult.TargetWorks,
+		"synced_works": metadataResult.SyncedWorks,
+		"failed_works": metadataResult.FailedWorks,
+		"failures":     metadataResult.Failures,
+	}, nil); err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	if err := s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, status, nil); err != nil {
+		return startupLibraryRefreshResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Server) updateStartupChildNode(ctx context.Context, nodeID int64, status string, output map[string]any, runErr error) error {
+	errorMessage := ""
+	if runErr != nil {
+		errorMessage = runErr.Error()
+		output["error"] = errorMessage
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), errorMessage, nodeID)
+	return err
+}
+
+func (s *Server) finishStartupLibraryRefresh(ctx context.Context, runID int64, scanNodeID int64, metadataNodeID int64, result startupLibraryRefreshResult, status string, runErr error) error {
+	result.Status = status
+	output := map[string]any{
+		"local_scan_run_id": result.LocalScanRunID,
+		"metadata_run_id":   result.MetadataRunID,
+		"detected_works":    result.DetectedWorks,
+		"synced_works":      result.SyncedWorks,
+		"failed_works":      result.FailedWorks,
+		"failures":          result.Failures,
+	}
+	if runErr != nil {
+		output["error"] = runErr.Error()
+	}
+	if runErr != nil && result.LocalScanRunID == 0 {
+		if err := s.updateStartupChildNode(ctx, scanNodeID, "failed", output, runErr); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'skipped', finished_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
+			return err
+		}
+	} else if runErr != nil {
+		if err := s.updateStartupChildNode(ctx, metadataNodeID, "failed", output, runErr); err != nil {
+			return err
+		}
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), runID)
+	return err
+}
+
 func (s *Server) RunStartupWorkflows(ctx context.Context) error {
+	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureStartupLibraryRefreshTrigger(ctx); err != nil {
+		return err
+	}
 	var enabled int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(trigger.enabled), 0)
 		FROM workflow_trigger AS trigger
 		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		WHERE definition.code = 'local_library_scan'
+		WHERE definition.code = 'startup_library_refresh'
 			AND trigger.trigger_type = 'startup'
 	`).Scan(&enabled)
 	if err != nil {
@@ -2666,25 +2808,77 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if enabled == 0 {
 		return nil
 	}
-	_, err = s.runLocalScan(ctx, "startup", "system_startup")
+	_, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup")
 	return err
+}
+
+func (s *Server) ensureStartupLibraryRefreshTrigger(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_trigger
+		SET enabled = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE trigger_type = 'startup'
+			AND workflow_definition_id IN (
+				SELECT id FROM workflow_definition WHERE code = 'local_library_scan'
+			)
+	`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO workflow_trigger (
+			workflow_definition_id,
+			trigger_type,
+			display_name,
+			enabled,
+			schedule_json,
+			config_json
+		)
+		SELECT
+			id,
+			'startup',
+			'Startup library refresh',
+			1,
+			'{"type":"startup"}',
+			'{"reason":"system_startup","children":["local_library_scan","metadata_sync"]}'
+		FROM workflow_definition
+		WHERE code = 'startup_library_refresh'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM workflow_trigger AS trigger
+				WHERE trigger.workflow_definition_id = workflow_definition.id
+					AND trigger.trigger_type = 'startup'
+			)
+	`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
-		WithCacheRoot(s.cfg.CacheRoot).
-		WithLanguages(dlsiteLanguageFallbacks(language))
-	result, err := syncer.SyncAll(r.Context())
+	result, err := s.runDLsiteMetadataSync(r.Context(), "manual", "manual")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string) (metasync.DLsiteSyncResult, error) {
+	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
+	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
+		WithCacheRoot(s.cfg.CacheRoot).
+		WithLanguages(dlsiteLanguageFallbacks(language)).
+		WithTrigger(triggerType, triggerReason)
+	return syncer.SyncAll(ctx)
 }
 
 func dlsiteLanguageFallbacks(language string) []string {

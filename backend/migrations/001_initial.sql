@@ -583,6 +583,14 @@ VALUES ('manual', 'Manual'), ('dlsite', 'DLsite');
 INSERT INTO workflow_definition (code, display_name, description, definition_json, scope, editable)
 VALUES
   (
+    'startup_library_refresh',
+    'Startup library refresh',
+    'Run startup library maintenance by scanning local files and then syncing metadata.',
+    '{"nodes":[{"id":"scan","type":"dispatch_child_workflows"},{"id":"metadata","type":"dispatch_child_workflows"}]}',
+    'system',
+    0
+  ),
+  (
     'local_library_scan',
     'Scan local library',
     'Discover local files, match works, and sync local file locations.',
@@ -634,9 +642,9 @@ INSERT INTO workflow_trigger (
 SELECT
   id,
   'startup',
-  'Startup local library scan',
+  'Startup library refresh',
   1,
   '{"type":"startup"}',
-  '{"reason":"system_startup"}'
+  '{"reason":"system_startup","children":["local_library_scan","metadata_sync"]}'
 FROM workflow_definition
-WHERE code = 'local_library_scan';
+WHERE code = 'startup_library_refresh';
