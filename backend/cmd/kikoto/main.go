@@ -31,6 +31,10 @@ func main() {
 		slog.Error("bootstrap root user", "error", err)
 		os.Exit(1)
 	}
+	if err := server.SeedRemoteSourcesFromConfig(context.Background()); err != nil {
+		slog.Error("seed remote sources", "error", err)
+		os.Exit(1)
+	}
 	if cfg.DevMode {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
 	}

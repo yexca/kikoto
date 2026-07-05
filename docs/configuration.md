@@ -16,6 +16,7 @@ depth, cache options, and file source configuration in the UI.
 | `KIKOTO_DEV_MODE` | `false` | When enabled, every request is authenticated as the configured root super administrator. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root super administrator username created or updated at startup. |
 | `KIKOTO_ROOT_PASSWORD` | `change-me` | Root super administrator password created or updated at startup. |
+| `KIKOTO_REMOTE_SOURCES` | empty | Optional first-run seed for compatible remote sources. Ignored after any remote source exists in the database. |
 
 ## Docker Defaults
 
@@ -30,6 +31,8 @@ KIKOTO_LOCAL_SCAN_DEPTH=2
 KIKOTO_DEV_MODE=true
 KIKOTO_ROOT_USERNAME=root
 KIKOTO_ROOT_PASSWORD=change-me
+# Display Name|API URL|source type|priority|enabled|base URL|fallback URL
+# KIKOTO_REMOTE_SOURCES=Example Source|https://example.invalid/api|kikoeru_compatible|30|true|https://example.invalid|
 ```
 
 Copy `.env.example` to `.env` for local overrides. `.env` is intentionally ignored by git.
@@ -49,6 +52,17 @@ The Settings page currently manages:
 
 When automatic remote cache is enabled, automatic remote sync is also enabled
 because caching requires stable local work and media item records first.
+
+`KIKOTO_REMOTE_SOURCES` is a first-run seed for container deployments. It uses
+semicolon-separated source entries, and each entry uses pipe-separated fields:
+
+```text
+Display Name|API URL|source type|priority|enabled|base URL|fallback URL
+```
+
+Only display name and API URL are required. The seed is skipped when the
+database already has at least one compatible remote source, so Settings remains
+the authority after first startup.
 
 ## Source Control Boundary
 

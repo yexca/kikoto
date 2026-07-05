@@ -37,6 +37,62 @@ func kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
 	return kikoeru.NewClient(source.Endpoint.APIURL, nil)
 }
 
+func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
+	if len(s.cfg.RemoteSourceSeeds) == 0 {
+		return nil
+	}
+	var existing int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM file_source
+		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+	`).Scan(&existing); err != nil {
+		return err
+	}
+	if existing > 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, seed := range s.cfg.RemoteSourceSeeds {
+		sourceType := strings.TrimSpace(seed.SourceType)
+		if !isKikoeruSourceType(sourceType) {
+			sourceType = sourceTypeKikoeruCompatible
+		}
+		displayName := strings.TrimSpace(seed.DisplayName)
+		apiURL := strings.TrimSpace(seed.APIURL)
+		if displayName == "" || apiURL == "" {
+			continue
+		}
+		code := stableSourceCode(displayName)
+		if code == "" {
+			code = slugSourceCode(displayName)
+		}
+		configJSON := mustJSON(fileSourceConfig{})
+		sourceID, err := insertAndID(ctx, tx, `
+			INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, code, displayName, sourceType, sourcePriority(seed.Priority), seed.Enabled, configJSON)
+		if err != nil {
+			return err
+		}
+		baseURL := strings.TrimSpace(seed.BaseURL)
+		if baseURL == "" {
+			baseURL = apiURL
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url)
+			VALUES (?, ?, ?, ?)
+		`, sourceID, baseURL, apiURL, strings.TrimSpace(seed.FallbackURL)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 type appSettingsResponse struct {
 	LocalScanDepth         int                 `json:"localScanDepth"`
 	AutoSyncRemote         bool                `json:"autoSyncRemote"`
@@ -2862,6 +2918,26 @@ func slugSourceCode(displayName string) string {
 		base = "remote_" + base
 	}
 	return fmt.Sprintf("%s_%d", base, time.Now().Unix())
+}
+
+func stableSourceCode(displayName string) string {
+	base := strings.ToLower(strings.TrimSpace(displayName))
+	base = sourceCodePattern.ReplaceAllString(base, "_")
+	base = strings.Trim(base, "_")
+	if base == "" {
+		return ""
+	}
+	if !strings.HasPrefix(base, "remote_") {
+		base = "remote_" + base
+	}
+	return base
+}
+
+func sourcePriority(value int) int {
+	if value <= 0 {
+		return 30
+	}
+	return value
 }
 
 func queryInt(r *http.Request, key string, fallback int) int {
