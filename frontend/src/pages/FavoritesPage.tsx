@@ -1,4 +1,6 @@
 import {
+  ArrowLeft,
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -159,6 +161,7 @@ export function FavoritesPage() {
   const pagedWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = query.trim() || statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all";
   const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
+  const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
 
   const openWork = (work: Work) => {
     window.history.pushState({}, "", `/${work.primaryCode}`);
@@ -215,6 +218,20 @@ export function FavoritesPage() {
     setActiveList("all");
     setWorks(await api.listWorks());
     await reloadFavoriteLists();
+    setMessage("");
+  };
+
+  const moveFavoriteList = async (direction: -1 | 1) => {
+    if (!selectedList || selectedListIndex < 0) return;
+    const nextIndex = selectedListIndex + direction;
+    if (nextIndex < 0 || nextIndex >= favoriteLists.length) return;
+    const reordered = [...favoriteLists];
+    const [moving] = reordered.splice(selectedListIndex, 1);
+    reordered.splice(nextIndex, 0, moving);
+    setFavoriteLists(reordered.map((list, index) => ({ ...list, sortOrder: index })));
+    await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
+    await reloadFavoriteLists();
+    setActiveList(selectedList.id);
     setMessage("");
   };
 
@@ -296,6 +313,19 @@ export function FavoritesPage() {
             <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor(selectedList)}>
               <Pencil className="h-4 w-4" />
               Rename
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" disabled={selectedListIndex <= 0} onClick={() => void moveFavoriteList(-1)} aria-label="Move list left">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1}
+              onClick={() => void moveFavoriteList(1)}
+              aria-label="Move list right"
+            >
+              <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" className="shrink-0" onClick={() => setDeleteListTarget(selectedList)}>
               <Trash2 className="h-4 w-4" />
@@ -610,7 +640,14 @@ function FavoriteListEditor({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <form
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!isSaving && name.trim()) void save();
+        }}
+      >
         <h3 className="text-base font-semibold">{list ? "Rename list" : "New list"}</h3>
         <div className="mt-4 space-y-3">
           <label className="grid gap-1 text-sm">
@@ -634,11 +671,11 @@ function FavoriteListEditor({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={isSaving || !name.trim()} onClick={() => void save()}>
+          <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
             {isSaving ? "Saving" : "Save"}
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
