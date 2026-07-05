@@ -46,6 +46,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
+	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
+	mux.HandleFunc("GET /api/works/{id}/favorite-lists", s.getWorkFavoriteLists)
+	mux.HandleFunc("PUT /api/works/{id}/favorite-lists", s.setWorkFavoriteLists)
 	mux.HandleFunc("GET /api/circles", s.listCircles)
 	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
@@ -408,6 +411,7 @@ type workTranslation struct {
 	Title            string `json:"title"`
 	MetadataLanguage string `json:"metadataLanguage"`
 	Current          bool   `json:"current"`
+	HasMedia         bool   `json:"hasMedia"`
 }
 
 type workResolveResponse struct {
@@ -2044,6 +2048,7 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 					if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
 						translations[index].WorkID = item.WorkID
 						translations[index].Title = item.Title
+						translations[index].HasMedia = item.HasMedia
 						if translations[index].MetadataLanguage == "" {
 							translations[index].MetadataLanguage = item.MetadataLanguage
 						}
@@ -2109,6 +2114,11 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 				if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
 					translations[index].WorkID = item.WorkID
 					translations[index].Title = item.Title
+					hasMedia, err := s.workHasMedia(ctx, workID)
+					if err != nil {
+						return nil, err
+					}
+					translations[index].HasMedia = hasMedia
 					if translations[index].MetadataLanguage == "" {
 						translations[index].MetadataLanguage = item.MetadataLanguage
 					}
@@ -2118,6 +2128,11 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 			}
 			continue
 		}
+		hasMedia, err := s.workHasMedia(ctx, workID)
+		if err != nil {
+			return nil, err
+		}
+		item.HasMedia = hasMedia
 		addTranslation(item)
 	}
 	if err := rows.Err(); err != nil {
@@ -2131,7 +2146,12 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 
 func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode string) ([]workTranslation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT edition.work_id, edition.primary_code, work.title, edition.metadata_language
+		SELECT
+			edition.work_id,
+			edition.primary_code,
+			work.title,
+			edition.metadata_language,
+			EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = edition.work_id)
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
 		INNER JOIN work ON work.id = edition.work_id
@@ -2149,7 +2169,7 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 	for rows.Next() {
 		var item workTranslation
 		var workID int64
-		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage); err != nil {
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.HasMedia); err != nil {
 			return nil, err
 		}
 		item.WorkID = &workID
