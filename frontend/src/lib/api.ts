@@ -58,6 +58,15 @@ export type WorkTranslation = {
   title: string;
   metadataLanguage: string;
   current: boolean;
+  hasMedia: boolean;
+};
+
+export type FavoriteList = {
+  id: number;
+  name: string;
+  description: string;
+  sortOrder: number;
+  selected?: boolean;
 };
 
 export type WorkResolveResponse = {
@@ -732,6 +741,10 @@ export const api = {
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
+  listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
+  getWorkFavoriteLists: (id: number) => getJSON<FavoriteList[]>(`/api/works/${id}/favorite-lists`),
+  setWorkFavoriteLists: (id: number, listIds: number[]) =>
+    putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, { listIds }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>

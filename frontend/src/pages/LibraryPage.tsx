@@ -41,6 +41,7 @@ import {
   api,
   assetURL,
   type LibrarySource,
+  type FavoriteList,
   type ListeningStatus,
   type MediaItem,
   type RemoteTrack,
@@ -1561,17 +1562,22 @@ function WorkDetailView({
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingDetail, setIsSyncingDetail] = useState(false);
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
+  const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
+  const [favoriteMenuOpen, setFavoriteMenuOpen] = useState(false);
+  const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
+  const [activeEditionCode, setActiveEditionCode] = useState("");
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource?.summary.primaryCode || work?.primaryCode || code;
+  const localDirectoryWork = activeEdition ?? work;
   const tree = useMemo(
     () => {
       if (selectedRemoteSource && !selectedRemoteDetail) return emptyTree();
-      return selectedRemoteDetail ? buildRemoteTree(selectedRemoteDetail.tracks) : buildTree(work?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, work?.primaryCode ?? "");
+      return selectedRemoteDetail ? buildRemoteTree(selectedRemoteDetail.tracks) : buildTree(localDirectoryWork?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "");
     },
-    [work, selectedSource, selectedRemoteDetail],
+    [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail],
   );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
@@ -1581,6 +1587,7 @@ function WorkDetailView({
   const directoryDescription = selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : "File locations are grouped by local, cache, and remote source.";
+  const favoriteSelected = favoriteLists.some((list) => list.selected);
 
   useEffect(() => {
     if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
@@ -1629,6 +1636,37 @@ function WorkDetailView({
   useEffect(() => {
     setSelectedSavePaths(new Set(remoteFilePaths));
   }, [remoteFilePaths]);
+
+  useEffect(() => {
+    setActiveEdition(null);
+    setActiveEditionCode("");
+  }, [work?.id]);
+
+  useEffect(() => {
+    if (!work || activeEditionCode) return;
+    const translations = work.translations ?? [];
+    const currentVersion = translations.find((translation) => translation.primaryCode.toUpperCase() === work.primaryCode.toUpperCase());
+    if (currentVersion?.hasMedia) return;
+    const firstPlayableVersion = translations.find((translation) => translation.hasMedia && translation.workId);
+    if (firstPlayableVersion) {
+      void selectEdition(firstPlayableVersion);
+    }
+  }, [activeEditionCode, work]);
+
+  useEffect(() => {
+    if (!work?.id) return;
+    let cancelled = false;
+    api.getWorkFavoriteLists(work.id)
+      .then((lists) => {
+        if (!cancelled) setFavoriteLists(lists);
+      })
+      .catch(() => {
+        if (!cancelled) setFavoriteLists([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [work?.id, work?.favorite]);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -1719,6 +1757,32 @@ function WorkDetailView({
     }
   };
 
+  const updateFavoriteLists = async (listID: number, selected: boolean) => {
+    if (!work) return;
+    const nextIDs = new Set(favoriteLists.filter((list) => list.selected).map((list) => list.id));
+    if (selected) {
+      nextIDs.add(listID);
+    } else {
+      nextIDs.delete(listID);
+    }
+    const result = await api.setWorkFavoriteLists(work.id, Array.from(nextIDs));
+    setFavoriteLists(result.lists);
+    await onWorksChanged();
+  };
+
+  const selectEdition = async (translation: WorkDetail["translations"][number]) => {
+    if (!translation.workId || !work) return;
+    setActiveEditionCode(translation.primaryCode);
+    if (translation.workId === work.id) {
+      setActiveEdition(null);
+      setActiveSourceKey("local");
+      return;
+    }
+    const detail = await api.getWork(translation.workId);
+    setActiveEdition(detail);
+    setActiveSourceKey("local");
+  };
+
   const openRemoteLocal = (workID: number) => {
     if (!work || work.id === workID) {
       setActiveSourceKey("local");
@@ -1761,6 +1825,8 @@ function WorkDetailView({
         baseCode={work.baseCode}
         metadataLanguage={work.metadataLanguage}
         translations={work.translations ?? []}
+        activeVersionCode={activeEditionCode || work.primaryCode}
+        onVersionSelect={(translation) => void selectEdition(translation)}
         dlsiteFetchedAt={work.dlsiteFetchedAt}
         releaseDate={work.releaseDate ?? "Unknown"}
         ageRating={work.ageRating}
@@ -1773,10 +1839,14 @@ function WorkDetailView({
             canPlay={allTracks.length > 0}
             busy={isSyncingDetail || isSaving}
             listeningStatus={work.listeningStatus}
-            favorite={work.favorite}
+            favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
+            favoriteLists={favoriteLists}
+            favoriteMenuOpen={favoriteMenuOpen}
+            onFavoriteMenuOpenChange={setFavoriteMenuOpen}
             onPlay={playAll}
             onMark={(status) => void onStatusChange(work.id, status)}
             onFavorite={() => void onFavoriteChange(work.id, !work.favorite)}
+            onFavoriteListChange={(listID, selected) => void updateFavoriteLists(listID, selected)}
             onSync={() => void syncDetailMetadata()}
             onFetch={selectedRemoteDetail ? () => setIsSaveSelectionOpen(true) : undefined}
             dlsiteUrl={work.dlsiteUrl}
@@ -1789,7 +1859,7 @@ function WorkDetailView({
 
       <SourceDirectoryPanel
         title={directoryTitle}
-        description={directoryDescription}
+        description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
         tabs={sourceTabs}
         activeKey={activeSourceKey}
         onActiveKeyChange={setActiveSourceKey}
@@ -1844,6 +1914,8 @@ function DetailHero({
   baseCode,
   metadataLanguage,
   translations,
+  activeVersionCode,
+  onVersionSelect,
   dlsiteFetchedAt,
   releaseDate,
   ageRating,
@@ -1867,6 +1939,8 @@ function DetailHero({
   baseCode?: string;
   metadataLanguage?: string;
   translations?: WorkDetail["translations"];
+  activeVersionCode?: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -1927,34 +2001,14 @@ function DetailHero({
         />
 
         {(metadataLanguage || baseCode || (translations && translations.length > 0)) && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-            <Languages className="h-3.5 w-3.5" />
-            {metadataLanguage && <span>DLsite metadata: <span className="font-semibold text-foreground">{languageLabel(metadataLanguage)}</span></span>}
-            {baseCode && baseTranslation?.workId ? (
-              <button className="inline-flex items-center gap-1 font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
-                Base work {baseCode}
-              </button>
-            ) : baseCode ? (
-              <span className="font-semibold text-foreground">Base work {baseCode}</span>
-            ) : null}
-            {translations && translations.length > 0 && (
-              <span className="flex flex-wrap items-center gap-1">
-                <span>Versions:</span>
-                {translations.map((translation) => (
-                  <button
-                    key={translation.primaryCode}
-                    className={`rounded border px-1.5 py-0.5 ${
-                      translation.current || !translation.workId ? "border-muted bg-muted text-muted-foreground" : "border-primary/30 text-primary hover:bg-primary/10"
-                    }`}
-                    disabled={translation.current || !translation.workId}
-                    onClick={() => translation.workId && !translation.current && openWorkCodeRoute(translation.primaryCode)}
-                  >
-                    {translation.primaryCode}{translation.metadataLanguage ? ` ${languageLabel(translation.metadataLanguage)}` : ""}
-                  </button>
-                ))}
-              </span>
-            )}
-          </div>
+          <WorkVersionSelector
+            metadataLanguage={metadataLanguage ?? ""}
+            baseCode={baseCode ?? ""}
+            baseAvailable={Boolean(baseTranslation?.workId)}
+            translations={translations ?? []}
+            activeVersionCode={activeVersionCode ?? code}
+            onVersionSelect={onVersionSelect}
+          />
         )}
 
         <div className="space-y-3 rounded-lg border bg-card p-3">
@@ -2191,9 +2245,13 @@ function DetailActionBar({
   busy,
   listeningStatus,
   favorite,
+  favoriteLists = [],
+  favoriteMenuOpen = false,
   onPlay,
   onMark,
   onFavorite,
+  onFavoriteListChange,
+  onFavoriteMenuOpenChange,
   onSync,
   onFetch,
   dlsiteUrl,
@@ -2205,9 +2263,13 @@ function DetailActionBar({
   busy: boolean;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  favoriteLists?: FavoriteList[];
+  favoriteMenuOpen?: boolean;
   onPlay: () => void;
   onMark: (status: ListeningStatus) => void;
   onFavorite: () => void;
+  onFavoriteListChange?: (listID: number, selected: boolean) => void;
+  onFavoriteMenuOpenChange?: (open: boolean) => void;
   onSync?: () => void;
   onFetch?: () => void;
   dlsiteUrl: string;
@@ -2215,6 +2277,18 @@ function DetailActionBar({
   showSync?: boolean;
   showFetch?: boolean;
 }) {
+  const favoriteMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!favoriteMenuOpen) return;
+    const close = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && favoriteMenuRef.current?.contains(target)) return;
+      onFavoriteMenuOpenChange?.(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [favoriteMenuOpen, onFavoriteMenuOpenChange]);
+
   return (
     <>
       <Button size="sm" disabled={!canPlay || busy} onClick={onPlay}>
@@ -2234,10 +2308,32 @@ function DetailActionBar({
           </option>
         ))}
       </select>
-      <Button variant={favorite ? "default" : "outline"} size="sm" disabled={busy} onClick={onFavorite}>
-        <Star className={`h-4 w-4 ${favorite ? "fill-current" : ""}`} />
-        Favorite
-      </Button>
+      <div className="relative" ref={favoriteMenuRef}>
+        <Button
+          variant={favorite ? "default" : "outline"}
+          size="sm"
+          disabled={busy}
+          onClick={() => favoriteLists.length > 0 && onFavoriteListChange ? onFavoriteMenuOpenChange?.(!favoriteMenuOpen) : onFavorite()}
+        >
+          <Star className={`h-4 w-4 ${favorite ? "fill-current" : ""}`} />
+          Favorite
+          {favoriteLists.length > 0 && <ChevronDown className="h-3.5 w-3.5" />}
+        </Button>
+        {favoriteMenuOpen && favoriteLists.length > 0 && onFavoriteListChange && (
+          <div className="absolute right-0 z-30 mt-2 w-56 rounded-md border bg-popover p-1 text-sm shadow-lg">
+            {favoriteLists.map((list) => (
+              <label key={list.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+                <input
+                  type="checkbox"
+                  checked={Boolean(list.selected)}
+                  onChange={(event) => onFavoriteListChange(list.id, event.target.checked)}
+                />
+                <span className="min-w-0 flex-1 truncate">{list.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
       {showSync && onSync && (
         <Button variant="outline" size="sm" disabled={busy} onClick={onSync}>
           <RefreshCw className="h-4 w-4" />
@@ -2264,6 +2360,75 @@ function DetailActionBar({
 
 function DirectoryMessage({ message }: { message: string }) {
   return <div className="mb-4 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">{message}</div>;
+}
+
+function WorkVersionSelector({
+  metadataLanguage,
+  baseCode,
+  baseAvailable,
+  translations,
+  activeVersionCode,
+  onVersionSelect,
+}: {
+  metadataLanguage: string;
+  baseCode: string;
+  baseAvailable: boolean;
+  translations: WorkDetail["translations"];
+  activeVersionCode: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border bg-card px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+        <Languages className="h-3.5 w-3.5" />
+        <span className="font-medium text-foreground">Versions</span>
+        {metadataLanguage && <span>Metadata <span className="font-semibold text-foreground">{languageLabel(metadataLanguage)}</span></span>}
+        {baseCode && (
+          baseAvailable ? (
+            <button className="font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
+              Base {baseCode}
+            </button>
+          ) : (
+            <span className="font-semibold text-foreground">Base {baseCode}</span>
+          )
+        )}
+      </div>
+      {translations.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {translations.map((translation) => {
+            const available = Boolean(translation.workId && translation.hasMedia);
+            const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
+            const label = translation.metadataLanguage ? languageLabel(translation.metadataLanguage) : "Unknown";
+            return (
+              <button
+                key={translation.primaryCode}
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : available
+                      ? "border-primary/30 text-primary hover:bg-primary/10"
+                      : "border-muted bg-muted text-muted-foreground"
+                }`}
+                disabled={active || !available}
+                onClick={() => {
+                  if (!translation.workId || active) return;
+                  if (onVersionSelect) {
+                    onVersionSelect(translation);
+                  } else {
+                    openWorkCodeRoute(translation.primaryCode);
+                  }
+                }}
+              >
+                <span className="font-semibold">{translation.primaryCode}</span>
+                <span>{label}</span>
+                {!available && <span>not local</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DlsiteMetrics({
