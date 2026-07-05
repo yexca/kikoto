@@ -3854,8 +3854,13 @@ function searchTokenFromKeyValue(key: string, rawValue: string): SearchToken | n
 }
 
 function compileRemoteSearchQuery(tokens: SearchToken[]) {
-  const primary = tokens.find((token) => token.kind !== "exclude_tag");
-  if (!primary) return "";
+  const primary = tokens.find((token) => remoteSourceSupportsToken(token));
+  if (!primary) {
+    return tokens
+      .filter((token) => token.kind === "text" || token.kind === "code")
+      .map((token) => token.value)
+      .join(" ");
+  }
   switch (primary.kind) {
     case "circle":
       return `$circle:${primary.value}$`;
@@ -3879,6 +3884,25 @@ function compileRemoteSearchQuery(tokens: SearchToken[]) {
     case "text":
     default:
       return primary.value;
+  }
+}
+
+function remoteSourceSupportsToken(token: SearchToken) {
+  switch (token.kind) {
+    case "text":
+    case "code":
+    case "circle":
+    case "voice_actor":
+    case "tag":
+    case "duration_min":
+    case "duration_max":
+    case "rating_min":
+    case "sales_min":
+    case "age":
+    case "language":
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -4019,7 +4043,7 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
 }
 
 function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {
-  if (path === "/shelf" || path === "/library/shelf" || path === "/remote" || path === "/library/remote") {
+  if (path === "/tracked" || path === "/library/tracked") {
     return { kind: "shelf" };
   }
   if (path === "/" || path === "/library") {
@@ -4046,7 +4070,7 @@ function resolveTabFromPath(path: string, sources: LibrarySource[], fallback: Li
 function pathForLibraryTab(tab: LibraryTab) {
   switch (tab.kind) {
     case "shelf":
-      return "/shelf";
+      return "/tracked";
     case "source":
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
     default:

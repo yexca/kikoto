@@ -175,7 +175,7 @@ function pageFromPath(path: string): PageID {
   if (path === "/voices" || path.startsWith("/voices/")) {
     return "voice-actors";
   }
-  if (path === "/shelf" || path === "/remote" || path === "/library" || path.startsWith("/library/")) {
+  if (path === "/tracked" || path === "/library" || path.startsWith("/library/")) {
     return "library";
   }
   return "library";
