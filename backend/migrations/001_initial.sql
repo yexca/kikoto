@@ -281,6 +281,24 @@ CREATE TABLE media_file_location (
   last_checked_at TEXT
 );
 
+CREATE TABLE work_source_presence (
+  work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+  file_source_id INTEGER NOT NULL REFERENCES file_source(id) ON DELETE CASCADE,
+  presence_type TEXT NOT NULL DEFAULT 'location',
+  remote_id TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  availability TEXT NOT NULL DEFAULT 'unknown',
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  last_seen_at TEXT,
+  last_checked_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(work_id, file_source_id, presence_type)
+);
+
+CREATE INDEX idx_work_source_presence_source
+  ON work_source_presence(file_source_id, availability, updated_at);
+
 CREATE TABLE user_account (
   id INTEGER PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
