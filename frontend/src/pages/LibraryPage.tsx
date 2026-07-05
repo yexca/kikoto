@@ -1896,9 +1896,9 @@ function DetailHero({
 
       <div className="min-w-0 space-y-4">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-start gap-2">
-            <Badge variant="secondary" className="mt-1 shrink-0">{codeLabel}</Badge>
-            <h2 className="min-w-0 flex-1 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+          <div className="space-y-1.5">
+            <Badge variant="secondary" className="w-fit">{codeLabel}</Badge>
+            <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {circleExternalId ? (
@@ -2290,8 +2290,8 @@ function DlsiteMetrics({
   const age = ageRatingView(ageRating);
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
-    <div className="rounded-lg border bg-card p-3 text-sm">
-      <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+    <div className="max-w-2xl rounded-lg border bg-card p-3 text-sm">
+      <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
         <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
         <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
         <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.className} />
