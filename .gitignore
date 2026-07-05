@@ -5,6 +5,8 @@ sample/
 
 data/*
 !data/.gitkeep
+cache/*
+!cache/.gitkeep
 config/*
 !config/.gitkeep
 !config/app.example.yaml

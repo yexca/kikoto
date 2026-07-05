@@ -621,6 +621,9 @@ export type CircleRefreshResult = {
   catalogWorks: number;
   pagesFetched: number;
   productSynced: number;
+  productSkipped: number;
+  productFailed: number;
+  productFailures: string[];
   sourceSynced: number;
   mode: "incremental" | "full";
   productMode: "available" | "all";
@@ -810,6 +813,8 @@ export const api = {
     putJSONBody<{ personId: number; userTags: VoiceUserTag[] }>(`/api/voices/${personId}/tags`, { tags }),
   updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
+  autoRefreshCircle: (externalId: string) =>
+    postJSON<CircleSummary["autoRefresh"]>(`/api/circles/${encodeURIComponent(externalId)}/auto-refresh`),
   refreshCircle: (
     externalId: string,
     payload: { scope: "all" | "catalog" | "work" | "source"; mode: "incremental" | "full"; productMode: "available" | "all" },

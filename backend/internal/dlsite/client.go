@@ -170,10 +170,6 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 		return "", nil
 	}
 
-	if err := os.MkdirAll(filepath.Join(cacheRoot, "cover"), 0o755); err != nil {
-		return "", err
-	}
-
 	parsedURL, err := url.Parse(coverURL)
 	if err != nil {
 		return "", err
@@ -182,8 +178,11 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 	if extension == "" || len(extension) > 6 {
 		extension = ".jpg"
 	}
-	relativePath := filepath.ToSlash(filepath.Join("cover", strings.ToUpper(product.WorkNo)+extension))
+	relativePath := coverCacheRelativePath(product.WorkNo, extension)
 	targetPath := filepath.Join(cacheRoot, filepath.FromSlash(relativePath))
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return "", err
+	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, coverURL, nil)
 	if err != nil {
@@ -211,6 +210,31 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 		return "", err
 	}
 	return relativePath, nil
+}
+
+func coverCacheRelativePath(workNo string, extension string) string {
+	code := strings.ToUpper(strings.TrimSpace(workNo))
+	if code == "" {
+		code = "UNKNOWN"
+	}
+	if extension == "" {
+		extension = ".jpg"
+	}
+	prefix := code
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	group := "misc"
+	digits := ""
+	for _, char := range code {
+		if char >= '0' && char <= '9' {
+			digits += string(char)
+		}
+	}
+	if len(digits) >= 3 {
+		group = digits[:3]
+	}
+	return filepath.ToSlash(filepath.Join("cover", prefix, group, code+extension))
 }
 
 func (p Product) CoverURL() string {

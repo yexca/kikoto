@@ -155,6 +155,9 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	if err := s.applyProduct(ctx, workID, product); err != nil {
 		return 0, err
 	}
+	if s.cacheRoot != "" {
+		_, _ = s.client.DownloadCover(ctx, product, s.cacheRoot)
+	}
 	return workID, nil
 }
 

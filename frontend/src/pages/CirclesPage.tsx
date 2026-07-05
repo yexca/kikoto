@@ -297,14 +297,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     const pollAutoRefresh = async (attempt = 0) => {
       const next = await loadCircleDetail(attempt === 0);
       if (cancelled || !next) return;
-      if (next.autoRefresh.status === "queued") {
-        setToast({ kind: "info", message: `Auto refresh queued: ${next.autoRefresh.mode} crawl for ${next.autoRefresh.reason}.` });
-      } else if (next.autoRefresh.status === "running") {
-        setToast({ kind: "info", message: `Auto refresh is already running: ${next.autoRefresh.mode} crawl.` });
-      } else if (attempt > 0 && next.autoRefresh.status === "skipped" && next.autoRefresh.reason === "fresh") {
+      const autoRefresh = attempt === 0 ? await api.autoRefreshCircle(externalId).catch(() => next.autoRefresh) : next.autoRefresh;
+      if (cancelled) return;
+      if (autoRefresh.status === "queued") {
+        setToast({ kind: "info", message: `Auto refresh queued: ${autoRefresh.mode} crawl for ${autoRefresh.reason}.` });
+      } else if (autoRefresh.status === "running") {
+        setToast({ kind: "info", message: `Auto refresh is already running: ${autoRefresh.mode} crawl.` });
+      } else if (attempt > 0 && autoRefresh.status === "skipped" && autoRefresh.reason === "fresh") {
         setToast({ kind: "success", message: "Auto refresh completed." });
       }
-      if ((next.autoRefresh.status === "queued" || next.autoRefresh.status === "running") && attempt < 30) {
+      if ((autoRefresh.status === "queued" || autoRefresh.status === "running") && attempt < 30) {
         timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
       }
     };
@@ -315,7 +317,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         window.clearTimeout(timeoutID);
       }
     };
-  }, [loadCircleDetail]);
+  }, [externalId, loadCircleDetail]);
 
   useEffect(() => {
     api.getRuntimeSettings().then((settings) => setAutoSyncRemote(settings.autoSyncRemote || settings.cacheEnabled)).catch(() => setAutoSyncRemote(false));
@@ -341,7 +343,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       }
     });
   }, [availabilityFilter, circle.works, workQuery]);
-  const importedCount = filteredWorks.filter((work) => work.catalogStatus === "imported").length;
+  const catalogOnlyCount = filteredWorks.filter((work) => work.catalogStatus !== "imported").length;
   const playableCount = filteredWorks.filter((work) => work.local || work.remote).length;
   const totalWorkPages = Math.max(1, Math.ceil(filteredWorks.length / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
@@ -590,6 +592,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     DLsite
                   </a>
                 </Button>
+                <Button variant="outline" size="sm" disabled={isLoading || refreshingScope !== null} onClick={() => void refresh("work", "full")}>
+                  <RefreshCw className="h-4 w-4" />
+                  Retry metadata
+                </Button>
                 <Button size="sm" disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)} onClick={() => void refresh("all", "incremental")}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
@@ -599,7 +605,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
             <div className="grid gap-3 sm:grid-cols-4">
               <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
-              <Stat label="Imported" value={String(importedCount)} />
+              <Stat label="Catalog only" value={String(catalogOnlyCount)} />
               <Stat label="Playable" value={String(playableCount)} />
               <Stat label="Unavailable" value={String(circle.works.filter((work) => !work.local && !work.remote).length)} />
             </div>
@@ -679,14 +685,14 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             />
             <RefreshActionRow
               title="Work metadata"
-              description={`${importedCount} imported · ${playableCount} playable in current filter`}
+              description={`${catalogOnlyCount} catalog only · ${playableCount} playable in current filter`}
               disabled={refreshingScope !== null}
               active={refreshingScope === "work" || refreshingScope === "all"}
               onRun={(mode) => void refresh("work", mode)}
             />
             <RefreshActionRow
               title="Sources"
-              description={`${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
+              description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
               disabled={refreshingScope !== null || isTranslationCircle(circle.externalId)}
               active={refreshingScope === "source" || refreshingScope === "all"}
               onRun={(mode) => void refresh("source", mode)}
@@ -924,7 +930,7 @@ function CatalogWorkCard({
               <WorkProgressLine progress={work.progress} />
             )}
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
-              <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
+              {work.catalogStatus !== "imported" && <Badge variant="outline">{work.catalogStatus}</Badge>}
               {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
               {tags.length > 0 ? tags.map((tag) => (
                 <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
@@ -1087,9 +1093,11 @@ function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "a
   return "available";
 }
 
-function refreshMessage(result: { runId: number; scope: CircleRefreshScope; pagesFetched: number; catalogWorks: number; productSynced: number; sourceSynced: number }) {
+function refreshMessage(result: { runId: number; scope: CircleRefreshScope; pagesFetched: number; catalogWorks: number; productSynced: number; productSkipped?: number; productFailed?: number; sourceSynced: number }) {
   const scopeLabel = result.scope === "all" ? "recommended" : result.scope;
-  return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON, ${result.sourceSynced} source matches.`;
+  const failed = result.productFailed ? `, ${result.productFailed} failed` : "";
+  const skipped = result.productSkipped ? `, ${result.productSkipped} skipped` : "";
+  return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON${skipped}${failed}, ${result.sourceSynced} source matches.`;
 }
 
 function SyncBadge({ state }: { state: string }) {

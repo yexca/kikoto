@@ -21,7 +21,7 @@ func Load() Config {
 		HTTPAddr:       env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:   env("KIKOTO_DB_PATH", "../config/kikoto.db"),
 		DataRoot:       env("KIKOTO_DATA_ROOT", "../data"),
-		CacheRoot:      env("KIKOTO_CACHE_ROOT", "../config/cached"),
+		CacheRoot:      env("KIKOTO_CACHE_ROOT", "../cache"),
 		LocalScanDepth: envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
 		DevMode:        envBool("KIKOTO_DEV_MODE", false),
 		RootUsername:   env("KIKOTO_ROOT_USERNAME", "root"),
