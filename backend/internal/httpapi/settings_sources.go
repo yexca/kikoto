@@ -21,19 +21,20 @@ import (
 )
 
 type appSettingsResponse struct {
-	LocalScanDepth        int                 `json:"localScanDepth"`
-	AutoSyncRemote        bool                `json:"autoSyncRemote"`
-	CacheEnabled          bool                `json:"cacheEnabled"`
-	CacheLimitGB          int                 `json:"cacheLimitGb"`
-	RemoteSaveTemplate    string              `json:"remoteSaveTemplate"`
-	RemoteDelayBase       float64             `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom     float64             `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff         float64             `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff      float64             `json:"remoteMaxBackoffSeconds"`
-	CircleAutoRefreshDays int                 `json:"circleAutoRefreshDays"`
-	DataRoot              string              `json:"dataRoot"`
-	CacheRoot             string              `json:"cacheRoot"`
-	FileSources           []fileSourceSummary `json:"fileSources"`
+	LocalScanDepth         int                 `json:"localScanDepth"`
+	AutoSyncRemote         bool                `json:"autoSyncRemote"`
+	CacheEnabled           bool                `json:"cacheEnabled"`
+	CacheLimitGB           int                 `json:"cacheLimitGb"`
+	RemoteSaveTemplate     string              `json:"remoteSaveTemplate"`
+	RemoteDelayBase        float64             `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom      float64             `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff          float64             `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff       float64             `json:"remoteMaxBackoffSeconds"`
+	CircleAutoRefreshDays  int                 `json:"circleAutoRefreshDays"`
+	DLsiteMetadataLanguage string              `json:"dlsiteMetadataLanguage"`
+	DataRoot               string              `json:"dataRoot"`
+	CacheRoot              string              `json:"cacheRoot"`
+	FileSources            []fileSourceSummary `json:"fileSources"`
 }
 
 type fileSourceSummary struct {
@@ -245,16 +246,17 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth        *int     `json:"localScanDepth"`
-		AutoSyncRemote        *bool    `json:"autoSyncRemote"`
-		CacheEnabled          *bool    `json:"cacheEnabled"`
-		CacheLimitGB          *int     `json:"cacheLimitGb"`
-		RemoteSaveTemplate    *string  `json:"remoteSaveTemplate"`
-		RemoteDelayBase       *float64 `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom     *float64 `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff         *float64 `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff      *float64 `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays *int     `json:"circleAutoRefreshDays"`
+		LocalScanDepth         *int     `json:"localScanDepth"`
+		AutoSyncRemote         *bool    `json:"autoSyncRemote"`
+		CacheEnabled           *bool    `json:"cacheEnabled"`
+		CacheLimitGB           *int     `json:"cacheLimitGb"`
+		RemoteSaveTemplate     *string  `json:"remoteSaveTemplate"`
+		RemoteDelayBase        *float64 `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom      *float64 `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff          *float64 `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff       *float64 `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays  *int     `json:"circleAutoRefreshDays"`
+		DLsiteMetadataLanguage *string  `json:"dlsiteMetadataLanguage"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -369,6 +371,17 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := upsertSetting(r, tx, "circle_auto_refresh_days", *payload.CircleAutoRefreshDays); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.DLsiteMetadataLanguage != nil {
+		value := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
+		if value == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported dlsiteMetadataLanguage"})
+			return
+		}
+		if err := upsertSetting(r, tx, "dlsite_metadata_language", value); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -2317,20 +2330,38 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		return appSettingsResponse{}, err
 	}
 	return appSettingsResponse{
-		LocalScanDepth:        s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		AutoSyncRemote:        s.settingBool(r, "remote_auto_sync_enabled", false) || s.settingBool(r, "remote_cache_enabled", false),
-		CacheEnabled:          s.settingBool(r, "remote_cache_enabled", false),
-		CacheLimitGB:          s.settingInt(r, "remote_cache_limit_gb", 20),
-		RemoteSaveTemplate:    s.settingString(r, "remote_save_root_template", "/data/<source_name>/<work_code>"),
-		RemoteDelayBase:       s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
-		RemoteDelayRandom:     s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
-		RemoteBackoff:         s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
-		RemoteMaxBackoff:      s.settingFloat(r, "remote_max_backoff_seconds", 300),
-		CircleAutoRefreshDays: s.settingInt(r, "circle_auto_refresh_days", 30),
-		DataRoot:              s.cfg.DataRoot,
-		CacheRoot:             s.cfg.CacheRoot,
-		FileSources:           sources,
+		LocalScanDepth:         s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		AutoSyncRemote:         s.settingBool(r, "remote_auto_sync_enabled", false) || s.settingBool(r, "remote_cache_enabled", false),
+		CacheEnabled:           s.settingBool(r, "remote_cache_enabled", false),
+		CacheLimitGB:           s.settingInt(r, "remote_cache_limit_gb", 20),
+		RemoteSaveTemplate:     s.settingString(r, "remote_save_root_template", "/data/<source_name>/<work_code>"),
+		RemoteDelayBase:        s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:      s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:          s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:       s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		CircleAutoRefreshDays:  s.settingInt(r, "circle_auto_refresh_days", 30),
+		DLsiteMetadataLanguage: normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
+		DataRoot:               s.cfg.DataRoot,
+		CacheRoot:              s.cfg.CacheRoot,
+		FileSources:            sources,
 	}, nil
+}
+
+func normalizeDLsiteLanguage(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "ja", "jp", "ja-jp":
+		return "ja-jp"
+	case "en", "en-us":
+		return "en-us"
+	case "zh", "zh-cn", "cn":
+		return "zh-cn"
+	case "zh-tw", "tw":
+		return "zh-tw"
+	case "ko", "ko-kr":
+		return "ko-kr"
+	default:
+		return ""
+	}
 }
 
 func (s *Server) ensureLocalSourceForSettings(r *http.Request) (int64, error) {

@@ -331,6 +331,8 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 type workDetail struct {
 	ID               int64             `json:"id"`
 	PrimaryCode      string            `json:"primaryCode"`
+	BaseCode         string            `json:"baseCode"`
+	MetadataLanguage string            `json:"metadataLanguage"`
 	WorkType         string            `json:"workType"`
 	Title            string            `json:"title"`
 	TitleKana        string            `json:"titleKana"`
@@ -1372,6 +1374,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	}
 	work.Circle = metadata.Circle
 	work.CircleExternalID = metadata.CircleExternalID
+	work.BaseCode = metadata.BaseCode
+	work.MetadataLanguage = metadata.MetadataLanguage
 	var partyLink sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT party.display_name || '|' || external.external_id
@@ -1993,7 +1997,10 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).WithCacheRoot(s.cfg.CacheRoot)
+	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
+		WithCacheRoot(s.cfg.CacheRoot).
+		WithLanguages(dlsiteLanguageFallbacks(language))
 	result, err := syncer.SyncAll(r.Context())
 	if err != nil {
 		writeError(w, err)
@@ -2001,6 +2008,14 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func dlsiteLanguageFallbacks(language string) []string {
+	language = normalizeDLsiteLanguage(language)
+	if language == "" || language == "ja-jp" {
+		return []string{"ja-jp", ""}
+	}
+	return []string{language, "ja-jp", ""}
 }
 
 type localScanResult struct {
@@ -2394,6 +2409,8 @@ func nullableInt64(value sql.NullInt64) *int64 {
 type dlsiteSnapshotMetadata struct {
 	Circle           string
 	CircleExternalID string
+	BaseCode         string
+	MetadataLanguage string
 	ReleaseDate      *string
 	Rating           *float64
 	RatingCount      *int64
@@ -2423,24 +2440,32 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 
 	var payload struct {
-		MakerName      string   `json:"maker_name"`
-		MakerID        string   `json:"maker_id"`
-		CircleID       string   `json:"circle_id"`
-		BrandID        string   `json:"brand_id"`
-		LabelID        string   `json:"label_id"`
-		ReleaseDate    string   `json:"release_date"`
-		UpdateDate     string   `json:"update_date"`
-		ModifyDate     string   `json:"modify_date"`
-		Sales          *int64   `json:"dl_count"`
-		DLCount        *int64   `json:"download_count"`
-		SalesCount     *int64   `json:"sales_count"`
-		RateAverage2DP *float64 `json:"rate_average_2dp"`
-		RateAverage    *float64 `json:"rate_average"`
-		RateCount      *int64   `json:"rate_count"`
-		ReviewCount    *int64   `json:"review_count"`
-		SeriesName     string   `json:"series_name"`
-		Series         string   `json:"series"`
-		Genres         []struct {
+		MakerName          string   `json:"maker_name"`
+		MakerID            string   `json:"maker_id"`
+		CircleID           string   `json:"circle_id"`
+		BrandID            string   `json:"brand_id"`
+		LabelID            string   `json:"label_id"`
+		WorkNo             string   `json:"workno"`
+		ProductID          string   `json:"product_id"`
+		OriginalWorkNo     string   `json:"original_workno"`
+		OriginalWorkNumber string   `json:"original_work_number"`
+		BaseWorkNo         string   `json:"base_workno"`
+		BaseCode           string   `json:"base_code"`
+		Language           string   `json:"language"`
+		Locale             string   `json:"locale"`
+		ReleaseDate        string   `json:"release_date"`
+		UpdateDate         string   `json:"update_date"`
+		ModifyDate         string   `json:"modify_date"`
+		Sales              *int64   `json:"dl_count"`
+		DLCount            *int64   `json:"download_count"`
+		SalesCount         *int64   `json:"sales_count"`
+		RateAverage2DP     *float64 `json:"rate_average_2dp"`
+		RateAverage        *float64 `json:"rate_average"`
+		RateCount          *int64   `json:"rate_count"`
+		ReviewCount        *int64   `json:"review_count"`
+		SeriesName         string   `json:"series_name"`
+		Series             string   `json:"series"`
+		Genres             []struct {
 			Name     string `json:"name"`
 			NameBase string `json:"name_base"`
 		} `json:"genres"`
@@ -2451,6 +2476,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		Creators map[string][]struct {
 			Name string `json:"name"`
 		} `json:"creaters"`
+		Kikoto struct {
+			Language string `json:"language"`
+		} `json:"_kikoto"`
 	}
 	if err := json.Unmarshal(rawBytes, &payload); err != nil {
 		return metadata
@@ -2488,6 +2516,12 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
 	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
+	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(payload.Kikoto.Language, payload.Language, payload.Locale))
+	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
+	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
+	if metadata.BaseCode == currentCode {
+		metadata.BaseCode = ""
+	}
 	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
 		metadata.ReleaseDate = &release
 	}
@@ -2562,6 +2596,19 @@ func parsePartyLink(value string) (string, string) {
 		externalID = strings.ToUpper(strings.TrimSpace(parts[1]))
 	}
 	return name, externalID
+}
+
+func normalizeDLsiteCode(value string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if len(value) >= 7 && len(value) <= 10 && (strings.HasPrefix(value, "RJ") || strings.HasPrefix(value, "BJ") || strings.HasPrefix(value, "VJ")) {
+		for _, char := range value[2:] {
+			if char < '0' || char > '9' {
+				return ""
+			}
+		}
+		return value
+	}
+	return ""
 }
 
 func availabilityBadges(rawTypes string) []string {

@@ -36,6 +36,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [remoteBackoff, setRemoteBackoff] = useState(30);
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [circleAutoRefreshDays, setCircleAutoRefreshDays] = useState(30);
+  const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -65,6 +66,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setRemoteBackoff(next.remoteBackoffSeconds);
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setCircleAutoRefreshDays(next.circleAutoRefreshDays);
+        setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch(() => setMessage("Settings API is unavailable."));
@@ -89,6 +91,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       remoteBackoffSeconds: remoteBackoff,
       remoteMaxBackoffSeconds: remoteMaxBackoff,
       circleAutoRefreshDays,
+      dlsiteMetadataLanguage,
     });
     setSettings(next);
     setAutoSyncRemote(next.autoSyncRemote);
@@ -210,7 +213,9 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       ) : (
         <MetadataSettings
           circleAutoRefreshDays={circleAutoRefreshDays}
+          dlsiteMetadataLanguage={dlsiteMetadataLanguage}
           onCircleAutoRefreshDaysChange={setCircleAutoRefreshDays}
+          onDlsiteMetadataLanguageChange={setDlsiteMetadataLanguage}
           onSave={saveRuntimeSettings}
         />
       )}
@@ -230,11 +235,15 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
 
 function MetadataSettings({
   circleAutoRefreshDays,
+  dlsiteMetadataLanguage,
   onCircleAutoRefreshDaysChange,
+  onDlsiteMetadataLanguageChange,
   onSave,
 }: {
   circleAutoRefreshDays: number;
+  dlsiteMetadataLanguage: string;
   onCircleAutoRefreshDaysChange: (value: number) => void;
+  onDlsiteMetadataLanguageChange: (value: string) => void;
   onSave: () => Promise<void>;
 }) {
   return (
@@ -246,6 +255,26 @@ function MetadataSettings({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">DLsite title/tag language</span>
+            <select
+              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={dlsiteMetadataLanguage}
+              onChange={(event) => onDlsiteMetadataLanguageChange(event.target.value)}
+            >
+              <option value="ja-jp">Japanese</option>
+              <option value="en-us">English</option>
+              <option value="zh-cn">Simplified Chinese</option>
+              <option value="zh-tw">Traditional Chinese</option>
+              <option value="ko-kr">Korean</option>
+            </select>
+          </label>
+          <div className="self-end rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            DLsite metadata sync uses this language first, then falls back to Japanese when the localized product data is unavailable.
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Auto refresh days</span>

@@ -23,6 +23,8 @@ export type Work = {
 export type WorkDetail = {
   id: number;
   primaryCode: string;
+  baseCode: string;
+  metadataLanguage: string;
   workType: string;
   title: string;
   titleKana: string;
@@ -142,6 +144,7 @@ export type AppSettings = {
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
   circleAutoRefreshDays: number;
+  dlsiteMetadataLanguage: string;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -771,6 +774,7 @@ export const api = {
     remoteBackoffSeconds?: number;
     remoteMaxBackoffSeconds?: number;
     circleAutoRefreshDays?: number;
+    dlsiteMetadataLanguage?: string;
   }) =>
     patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {

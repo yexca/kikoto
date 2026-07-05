@@ -3,6 +3,7 @@ package metasync
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -19,10 +20,15 @@ type DLsiteClient interface {
 	DownloadCover(ctx context.Context, product dlsite.Product, cacheRoot string) (string, error)
 }
 
+type DLsiteClientWithOptions interface {
+	FetchProductWithOptions(ctx context.Context, workno string, options dlsite.ProductOptions) (dlsite.Product, error)
+}
+
 type DLsiteSyncer struct {
 	db        *sql.DB
 	client    DLsiteClient
 	cacheRoot string
+	languages []string
 }
 
 type DLsiteSyncResult struct {
@@ -49,6 +55,11 @@ func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
 	return s
 }
 
+func (s *DLsiteSyncer) WithLanguages(languages []string) *DLsiteSyncer {
+	s.languages = normalizeLanguages(languages)
+	return s
+}
+
 func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	targets, err := s.loadTargets(ctx)
 	if err != nil {
@@ -62,7 +73,7 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	}
 
 	for _, target := range targets {
-		product, err := s.client.FetchProduct(ctx, target.PrimaryCode)
+		product, err := s.fetchProduct(ctx, target.PrimaryCode)
 		if err != nil {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
 			continue
@@ -93,6 +104,13 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	result.RunID = runID
 	result.JobID = jobID
 	return result, nil
+}
+
+func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
+	if client, ok := s.client.(DLsiteClientWithOptions); ok {
+		return client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: s.languages})
+	}
+	return s.client.FetchProduct(ctx, workno)
 }
 
 func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
@@ -148,10 +166,14 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 		return err
 	}
 
+	raw := product.Raw
+	if strings.TrimSpace(product.Language) != "" {
+		raw = snapshotWithKikotoMeta(raw, map[string]any{"language": product.Language})
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
 		VALUES (?, ?, ?, ?)
-	`, workID, providerID, product.WorkNo, string(product.Raw)); err != nil {
+	`, workID, providerID, product.WorkNo, string(raw)); err != nil {
 		return err
 	}
 
@@ -314,6 +336,37 @@ func nullableText(value string) any {
 		return nil
 	}
 	return value
+}
+
+func normalizeLanguages(values []string) []string {
+	seen := map[string]bool{}
+	result := []string{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
+func snapshotWithKikotoMeta(raw json.RawMessage, metadata map[string]any) json.RawMessage {
+	if len(raw) == 0 {
+		raw = json.RawMessage(`{}`)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err == nil {
+		encoded, err := json.Marshal(metadata)
+		if err == nil {
+			object["_kikoto"] = encoded
+			if next, err := json.Marshal(object); err == nil {
+				return next
+			}
+		}
+	}
+	return raw
 }
 
 func productURL(product dlsite.Product) string {
