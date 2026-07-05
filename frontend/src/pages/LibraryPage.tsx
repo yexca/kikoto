@@ -783,7 +783,7 @@ function WorkCard({
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
           <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} />
@@ -876,7 +876,7 @@ function RemoteWorkCard({
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
           {selectionActive && (

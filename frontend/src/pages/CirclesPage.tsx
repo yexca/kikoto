@@ -976,7 +976,7 @@ function CatalogWorkCard({
   };
 
   return (
-    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <button
           className={`block w-full text-left ${directoryTarget ? "cursor-pointer" : "cursor-default"}`}

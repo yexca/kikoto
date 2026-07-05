@@ -747,6 +747,10 @@ export const api = {
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
+  createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
+  updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>
+    patchJSONBody<FavoriteList>(`/api/favorite-lists/${id}`, payload),
+  deleteFavoriteList: (id: number) => deleteJSON<{ ok: boolean; deleted: number }>(`/api/favorite-lists/${id}`),
   listFavoriteListWorkIDs: (id: number) => getJSON<FavoriteListWorkIDs>(`/api/favorite-lists/${id}/work-ids`),
   getWorkFavoriteLists: (id: number) => getJSON<FavoriteList[]>(`/api/works/${id}/favorite-lists`),
   setWorkFavoriteLists: (id: number, listIds: number[]) =>

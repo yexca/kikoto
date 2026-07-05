@@ -745,7 +745,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <button className={`block w-full text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`} disabled={!canOpen} onClick={() => openWorkRoute(work)}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
