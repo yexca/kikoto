@@ -70,10 +70,21 @@ availability for a product code through a backend workflow.
 Requires `library:read`.
 
 ```http
+GET /api/works/{code}/resolve
+```
+
+Resolves a product code to the canonical work route when the code is part of a
+translated product-code family.
+
+Requires `library:read`.
+
+```http
 GET /api/works/{id}
 ```
 
-Returns work detail, including metadata and media items with file locations.
+Returns work detail, including metadata, known translated editions, media items,
+and file locations. Translated editions include local-media availability so the
+frontend can show playable and unavailable editions separately.
 
 Requires `library:read`.
 
@@ -90,6 +101,36 @@ Updates the current user's work state. Supported `listeningStatus` values are `n
 ```
 
 Requires `library:read`.
+
+```http
+GET /api/favorite-lists
+```
+
+Returns the current user's favorite lists.
+
+Requires `library:read`.
+
+```http
+GET /api/works/{id}/favorite-lists
+```
+
+Returns favorite-list membership for one work.
+
+Requires `library:read`.
+
+```http
+PUT /api/works/{id}/favorite-lists
+```
+
+Replaces favorite-list membership for one work.
+
+```json
+{
+  "listIds": [1, 2]
+}
+```
+
+Requires `library:write`.
 
 ## Circles
 
