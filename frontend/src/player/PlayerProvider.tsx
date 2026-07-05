@@ -33,6 +33,7 @@ export type PlayerTrack = {
   coverUrl: string;
   circle: string;
   progress: MediaProgress | null;
+  progressRecordable: boolean;
   lyricsLocationId: number | null;
   lyricsTitle: string;
   remoteSourceId?: number;
@@ -73,7 +74,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<PlayMode>("order");
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
-  const cacheRequestedRef = useRef<Set<number>>(new Set());
+  const cacheRequestedRef = useRef<Set<string>>(new Set());
   const currentTrack = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -96,8 +97,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!currentTrack || currentTrack.locationType !== "remote_stream") return;
-    if (cacheRequestedRef.current.has(currentTrack.locationId)) return;
-    cacheRequestedRef.current.add(currentTrack.locationId);
+    const cacheKey = remoteCacheKey(currentTrack);
+    if (cacheRequestedRef.current.has(cacheKey)) return;
+    cacheRequestedRef.current.add(cacheKey);
     api.getRuntimeSettings()
       .then((settings) => {
         if (settings.cacheEnabled) {
@@ -109,7 +111,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {});
-  }, [currentTrack?.locationId, currentTrack?.locationType]);
+  }, [currentTrack?.locationId, currentTrack?.locationType, currentTrack?.remoteSourceId, currentTrack?.remoteWorkCode, currentTrack?.remotePath]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -192,6 +194,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
+    if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
     const position = completed ? audio.duration || audio.currentTime : audio.currentTime;
     if (!Number.isFinite(position) || position < 0) return;
@@ -286,6 +289,13 @@ export function usePlayer() {
     throw new Error("usePlayer must be used inside PlayerProvider");
   }
   return value;
+}
+
+function remoteCacheKey(track: PlayerTrack) {
+  if (track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
+    return `source:${track.remoteSourceId}:${track.remoteWorkCode}:${track.remotePath}`;
+  }
+  return `location:${track.locationId}`;
 }
 
 export function PlayerDock() {

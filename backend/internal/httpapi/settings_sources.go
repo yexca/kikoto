@@ -648,7 +648,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	code := remoteWorkCodeFromPath(r)
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
@@ -807,7 +807,7 @@ func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	code := remoteWorkCodeFromPath(r)
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
@@ -837,7 +837,7 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	code := remoteWorkCodeFromPath(r)
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
@@ -1516,7 +1516,7 @@ func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return 0, "", remoteWorkSaveRequest{}, false
 	}
-	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	code := remoteWorkCodeFromPath(r)
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return 0, "", remoteWorkSaveRequest{}, false
@@ -1524,6 +1524,10 @@ func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, 
 	var payload remoteWorkSaveRequest
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 	return id, code, payload, true
+}
+
+func remoteWorkCodeFromPath(r *http.Request) string {
+	return strings.TrimSpace(r.PathValue("code"))
 }
 
 func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {

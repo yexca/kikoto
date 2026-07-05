@@ -1014,6 +1014,9 @@ function CatalogWorkCard({
               <div className="truncate">Release {work.releaseDate ?? "unknown"} · Updated {work.updatedAt || "unknown"}</div>
               <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {work.sales === null ? "unknown" : work.sales.toLocaleString()}</div>
             </div>
+            {work.progress?.mediaItemId && (
+              <WorkProgressLine progress={work.progress} />
+            )}
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
               <Badge variant={work.catalogStatus === "imported" ? "secondary" : "outline"}>{work.catalogStatus}</Badge>
               {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
@@ -1131,6 +1134,19 @@ function CatalogDeleteConfirmModal({ work, onClose, onConfirm }: { work: CircleC
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" onClick={onConfirm}>Delete</Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {
+  return (
+    <div className="space-y-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
+      </div>
+      <div className="truncate text-xs text-muted-foreground">
+        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -1258,6 +1274,18 @@ function dlsiteMakerURL(externalId: string) {
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("VJ") ? "pro" : "maniax";
   return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
+}
+
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function workProgressPercent(progress: NonNullable<CircleCatalogWork["progress"]>) {
+  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
+  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function circleExternalIdFromPath(path: string) {

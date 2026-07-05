@@ -56,6 +56,7 @@ import {
 import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
+const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
@@ -77,7 +78,7 @@ export function LibraryPage() {
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
-  const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromPath(window.location.pathname));
+  const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
@@ -155,7 +156,7 @@ export function LibraryPage() {
 
   useEffect(() => {
     const syncFromPath = () => {
-      setSelectedCode(codeFromPath(window.location.pathname));
+      setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
       setActiveTab((tab) => resolveTabFromPath(window.location.pathname, sources, tab));
     };
@@ -181,10 +182,12 @@ export function LibraryPage() {
   };
 
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
-    if (!work.primaryCode) return;
-    setSelectedRemoteTarget({ source, code: work.primaryCode });
-    window.history.pushState({}, "", `/${work.primaryCode}?source=${source.id}`);
-    setSelectedCode(work.primaryCode);
+    const code = remoteWorkRouteCode(work);
+    if (!code) return;
+    setSelectedRemoteTarget({ source, code });
+    window.history.pushState({}, "", `/${encodeURIComponent(code)}?source=${source.id}`);
+    window.dispatchEvent(new Event("kikoto:navigation"));
+    setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
   const backToLibrary = () => {
@@ -233,22 +236,23 @@ export function LibraryPage() {
     }));
   };
 
+  if (selectedRemoteTarget !== null) {
+    return (
+      <RemoteWorkDetailView
+        source={selectedRemoteTarget.source}
+        code={selectedRemoteTarget.code}
+        autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
+        onBack={backToLibrary}
+        onOpenLocal={(workID) => {
+          const work = works.find((item) => item.id === workID);
+          if (work) openWork(work);
+        }}
+        onWorksChanged={async () => setWorks(await api.listWorks())}
+      />
+    );
+  }
+
   if (selectedCode !== null) {
-    if (selectedRemoteTarget !== null && selectedRemoteTarget.code.toUpperCase() === selectedCode.toUpperCase()) {
-      return (
-        <RemoteWorkDetailView
-          source={selectedRemoteTarget.source}
-          code={selectedRemoteTarget.code}
-          autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
-          onBack={backToLibrary}
-          onOpenLocal={(workID) => {
-            const work = works.find((item) => item.id === workID);
-            if (work) openWork(work);
-          }}
-          onWorksChanged={async () => setWorks(await api.listWorks())}
-        />
-      );
-    }
     return (
       <WorkDetailView
         code={selectedCode}
@@ -258,22 +262,6 @@ export function LibraryPage() {
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onFavoriteChange={updateWorkFavorite}
-        onWorksChanged={async () => setWorks(await api.listWorks())}
-      />
-    );
-  }
-
-  if (selectedRemoteTarget !== null) {
-    return (
-        <RemoteWorkDetailView
-          source={selectedRemoteTarget.source}
-          code={selectedRemoteTarget.code}
-          autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
-          onBack={backToLibrary}
-        onOpenLocal={(workID) => {
-          const work = works.find((item) => item.id === workID);
-          if (work) openWork(work);
-        }}
         onWorksChanged={async () => setWorks(await api.listWorks())}
       />
     );
@@ -1602,7 +1590,7 @@ function WorkDetailView({
   const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
-  const selectedRemoteWorkCode = selectedRemoteSource?.summary.primaryCode || work?.primaryCode || code;
+  const selectedRemoteWorkCode = selectedRemoteSource ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code) : work?.primaryCode || code;
   const localDirectoryWork = activeEdition ?? work;
   const tree = useMemo(
     () => {
@@ -1825,6 +1813,14 @@ function WorkDetailView({
     }
   };
 
+  const changeSourceKey = (key: string) => {
+    setActiveSourceKey(key);
+    if (!key.startsWith("remote-source:")) return;
+    setRemoteSources((items) =>
+      items.map((item) => (remoteSourceTabKey(item.source.id) === key && item.error ? { ...item, error: "" } : item)),
+    );
+  };
+
   if (!work) {
     return (
       <div className="space-y-4">
@@ -1899,7 +1895,7 @@ function WorkDetailView({
         description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
         tabs={sourceTabs}
         activeKey={activeSourceKey}
-        onActiveKeyChange={setActiveSourceKey}
+        onActiveKeyChange={changeSourceKey}
         checkingLabel={isCheckingSources ? "Checking sources..." : ""}
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
@@ -3489,6 +3485,7 @@ function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     coverUrl: work.coverUrl,
     circle: work.circle,
     progress: track.progress,
+    progressRecordable: true,
     lyricsLocationId: lyrics?.locationId ?? null,
     lyricsTitle: lyrics?.title ?? "",
   };
@@ -3503,6 +3500,7 @@ function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail):
     coverUrl: detail.coverUrl,
     circle: detail.circle,
     progress: null,
+    progressRecordable: false,
     lyricsLocationId: null,
     lyricsTitle: "",
     remoteSourceId: detail.sourceId,
@@ -3665,8 +3663,18 @@ function codeFromPath(path: string) {
   return match ? match[1].toUpperCase() : null;
 }
 
+function codeFromLocation(path: string, search: string) {
+  const standardCode = codeFromPath(path);
+  if (standardCode) return standardCode;
+  const params = new URLSearchParams(search);
+  const sourceID = Number(params.get("source"));
+  if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
+  const match = path.match(REMOTE_SOURCE_WORK_PATTERN);
+  return match ? safeDecodePathSegment(match[1]) : null;
+}
+
 function remoteTargetFromLocation(path: string, search: string, sources: LibrarySource[]) {
-  const code = codeFromPath(path);
+  const code = codeFromLocation(path, search);
   if (!code) return null;
   const params = new URLSearchParams(search);
   const sourceID = Number(params.get("source"));
@@ -3713,6 +3721,14 @@ function pathForLibraryTab(tab: LibraryTab) {
 
 function sourceRouteKey(source: LibrarySource) {
   return source.code || source.displayName;
+}
+
+function remoteWorkRouteCode(work: RemoteWork) {
+  return work.primaryCode || work.remoteId;
+}
+
+function remoteAvailabilityRouteCode(summary: SourceAvailabilitySource, fallbackCode: string) {
+  return fallbackCode || summary.primaryCode || summary.remoteId;
 }
 
 function safeDecodePathSegment(value: string) {
