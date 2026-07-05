@@ -178,6 +178,21 @@ CREATE TABLE user_person_tag_assignment (
   PRIMARY KEY(user_id, person_id, user_person_tag_id)
 );
 
+CREATE TABLE person_merge_review (
+  id INTEGER PRIMARY KEY,
+  target_person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+  source_person_id INTEGER NOT NULL,
+  target_name TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'merged',
+  undone_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_person_merge_review_target
+  ON person_merge_review(target_person_id, status, created_at);
+
 CREATE TABLE file_source (
   id INTEGER PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
