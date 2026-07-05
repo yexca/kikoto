@@ -6,10 +6,13 @@ import {
   Heart,
   ListChecks,
   ListMusic,
+  Pencil,
   Pause,
   Play,
+  Plus,
   Search,
   Star,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -61,6 +64,8 @@ export function FavoritesPage() {
   const [pageSize, setPageSize] = useState<PageSize>(24);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
+  const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,14 +128,15 @@ export function FavoritesPage() {
     };
   }, [favoriteLists, listWorkIDs]);
 
+  const shelfWorks = useMemo(() => works.filter((work) => work.favorite || work.listeningStatus !== "none"), [works]);
   const favoriteWorks = useMemo(() => works.filter((work) => work.favorite), [works]);
-  const statusCounts = useMemo(() => countByStatus(favoriteWorks), [favoriteWorks]);
+  const statusCounts = useMemo(() => countByStatus(shelfWorks), [shelfWorks]);
   const listCounts = useMemo(() => estimateListCounts(favoriteLists, favoriteWorks.length, listWorkIDs), [favoriteLists, favoriteWorks.length, listWorkIDs]);
 
   const filteredWorks = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const activeListIDs = activeList === "all" ? null : new Set(listWorkIDs[activeList] ?? []);
-    return favoriteWorks.filter((work) => {
+    return shelfWorks.filter((work) => {
       if (activeListIDs && !activeListIDs.has(work.id)) return false;
       if (statusFilter !== "all" && work.listeningStatus !== statusFilter) return false;
       if (availabilityFilter !== "all" && !hasAvailability(work, availabilityFilter)) return false;
@@ -144,12 +150,13 @@ export function FavoritesPage() {
       ].join(" ").toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [activeList, availabilityFilter, favoriteWorks, listWorkIDs, query, statusFilter]);
+  }, [activeList, availabilityFilter, listWorkIDs, query, shelfWorks, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredWorks.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = query.trim() || statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all";
+  const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
 
   const openWork = (work: Work) => {
     window.history.pushState({}, "", `/${work.primaryCode}`);
@@ -176,12 +183,45 @@ export function FavoritesPage() {
     setActiveList("all");
   };
 
+  const reloadFavoriteLists = async () => {
+    const lists = await api.listFavoriteLists();
+    setFavoriteLists(lists);
+    const results = await Promise.all(lists.map((list) => api.listFavoriteListWorkIDs(list.id)));
+    setListWorkIDs(Object.fromEntries(results.map((result) => [result.listId, result.workIds])));
+    return lists;
+  };
+
+  const saveFavoriteList = async (payload: { name: string; description: string }) => {
+    if (listEditor === null) return;
+    if (listEditor === "new") {
+      const list = await api.createFavoriteList(payload);
+      const lists = await reloadFavoriteLists();
+      setActiveList(lists.some((item) => item.id === list.id) ? list.id : "all");
+    } else {
+      const list = await api.updateFavoriteList(listEditor.id, payload);
+      await reloadFavoriteLists();
+      setActiveList(list.id);
+    }
+    setListEditor(null);
+    setMessage("");
+  };
+
+  const deleteFavoriteList = async () => {
+    if (!deleteListTarget) return;
+    await api.deleteFavoriteList(deleteListTarget.id);
+    setDeleteListTarget(null);
+    setActiveList("all");
+    setWorks(await api.listWorks());
+    await reloadFavoriteLists();
+    setMessage("");
+  };
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">Personal lists and listening marks across the unified library</p>
-          <h2 className="text-xl font-semibold">Favorites</h2>
+          <p className="text-sm text-muted-foreground">Favorite lists and quick marks across the unified library</p>
+          <h2 className="text-xl font-semibold">Personal Shelf</h2>
         </div>
         <div className="grid gap-2 sm:grid-cols-[minmax(220px,360px)_auto] sm:items-center">
           <label className="relative block">
@@ -218,7 +258,7 @@ export function FavoritesPage() {
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Favorites" value={favoriteWorks.length} icon={Heart} />
+        <MetricCard label="Shelf Works" value={shelfWorks.length} icon={Heart} />
         {statusTabs.slice(1).map((tab) => (
           <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value as ListeningStatus] ?? 0} icon={tab.icon} />
         ))}
@@ -230,8 +270,8 @@ export function FavoritesPage() {
           onClick={() => setActiveList("all")}
         >
           <ListMusic className="h-4 w-4" />
-          All Favorites
-          <span className="text-xs opacity-80">{favoriteWorks.length}</span>
+          All Shelf
+          <span className="text-xs opacity-80">{shelfWorks.length}</span>
         </button>
         {favoriteLists.map((list) => (
           <button
@@ -245,6 +285,22 @@ export function FavoritesPage() {
             <span className="text-xs opacity-80">{listCounts.get(list.id) ?? 0}</span>
           </button>
         ))}
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")}>
+          <Plus className="h-4 w-4" />
+          New list
+        </Button>
+        {selectedList && (
+          <>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor(selectedList)}>
+              <Pencil className="h-4 w-4" />
+              Rename
+            </Button>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setDeleteListTarget(selectedList)}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          </>
+        )}
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -263,7 +319,7 @@ export function FavoritesPage() {
       <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Filter className="h-4 w-4" />
-          Showing {filteredWorks.length} of {favoriteWorks.length} favorite works
+          Showing {filteredWorks.length} of {shelfWorks.length} shelf works
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Page size</span>
@@ -308,6 +364,20 @@ export function FavoritesPage() {
       ) : (
         <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
       )}
+      {listEditor && (
+        <FavoriteListEditor
+          list={listEditor === "new" ? null : listEditor}
+          onClose={() => setListEditor(null)}
+          onSave={saveFavoriteList}
+        />
+      )}
+      {deleteListTarget && (
+        <ConfirmDeleteList
+          list={deleteListTarget}
+          onClose={() => setDeleteListTarget(null)}
+          onConfirm={() => void deleteFavoriteList()}
+        />
+      )}
     </section>
   );
 }
@@ -340,7 +410,7 @@ function FavoriteWorkCard({
   const sourceBadges = work.availability.length > 0 ? work.availability : ["missing"];
 
   return (
-    <Card className="group h-full overflow-hidden transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <button className="block w-full text-left" onClick={onOpen}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
@@ -445,15 +515,101 @@ function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; o
     <div className="grid min-h-72 place-items-center rounded-lg border bg-card p-6 text-center">
       <div className="max-w-sm space-y-3">
         <Heart className="mx-auto h-8 w-8 text-primary" />
-        <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No favorite works yet"}</h3>
+        <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No shelf works yet"}</h3>
         <p className="text-sm text-muted-foreground">
-          {hasFilters ? "The current filters do not match any favorite works." : "Mark works from Library or Work Detail to build this shelf."}
+          {hasFilters ? "The current filters do not match any shelf works." : "Favorite or quick mark works from Library or Work Detail to build this shelf."}
         </p>
         {hasFilters && (
           <Button variant="outline" size="sm" onClick={onClearFilters}>
             Clear filters
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function FavoriteListEditor({
+  list,
+  onClose,
+  onSave,
+}: {
+  list: FavoriteList | null;
+  onClose: () => void;
+  onSave: (payload: { name: string; description: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState(list?.name ?? "");
+  const [description, setDescription] = useState(list?.description ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setIsSaving(true);
+    setError("");
+    try {
+      await onSave({ name, description });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Favorite list could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">{list ? "Rename list" : "New list"}</h3>
+        <div className="mt-4 space-y-3">
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Name</span>
+            <input
+              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">Description</span>
+            <input
+              className="h-9 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+          {error && <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={isSaving || !name.trim()} onClick={() => void save()}>
+            {isSaving ? "Saving" : "Save"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteList({
+  list,
+  onClose,
+  onConfirm,
+}: {
+  list: FavoriteList;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Delete list</h3>
+        <p className="mt-2 text-sm text-muted-foreground">Delete "{list.name}"? Works stay in the library, but this list membership is removed.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={onConfirm}>
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
   );

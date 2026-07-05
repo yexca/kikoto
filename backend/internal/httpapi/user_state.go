@@ -115,6 +115,159 @@ func (s *Server) listFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, lists)
 }
 
+func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "favorites:write")
+	if !ok {
+		return
+	}
+	var payload struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	name := strings.TrimSpace(payload.Name)
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	description := strings.TrimSpace(payload.Description)
+	var sortOrder int64
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM favorite_list WHERE user_id = ?", user.ID).Scan(&sortOrder); err != nil {
+		writeError(w, err)
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO favorite_list (user_id, name, description, sort_order)
+		VALUES (?, ?, ?, ?)
+	`, user.ID, name, description, sortOrder)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	listID, err := result.LastInsertId()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	item, err := s.loadFavoriteList(r.Context(), user.ID, listID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "favorites:write")
+	if !ok {
+		return
+	}
+	listID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		return
+	}
+	var payload struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		SortOrder   *int64  `json:"sortOrder"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	current, err := s.loadFavoriteList(r.Context(), user.ID, listID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	name := current.Name
+	if payload.Name != nil {
+		name = strings.TrimSpace(*payload.Name)
+	}
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	description := current.Description
+	if payload.Description != nil {
+		description = strings.TrimSpace(*payload.Description)
+	}
+	sortOrder := current.SortOrder
+	if payload.SortOrder != nil {
+		sortOrder = *payload.SortOrder
+	}
+	if _, err := s.db.ExecContext(r.Context(), `
+		UPDATE favorite_list
+		SET name = ?, description = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND user_id = ?
+	`, name, description, sortOrder, listID, user.ID); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	item, err := s.loadFavoriteList(r.Context(), user.ID, listID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) deleteFavoriteList(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "favorites:write")
+	if !ok {
+		return
+	}
+	listID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+		return
+	}
+	var listCount int
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM favorite_list WHERE user_id = ?", user.ID).Scan(&listCount); err != nil {
+		writeError(w, err)
+		return
+	}
+	if listCount <= 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at least one favorite list is required"})
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM favorite_list WHERE id = ? AND user_id = ?", listID, user.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if deleted == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "favorite list not found"})
+		return
+	}
+	if err := s.reconcileFavoriteSummariesForUser(r.Context(), user.ID); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
+}
+
 func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "library:read")
 	if !ok {
@@ -139,7 +292,7 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 		FROM favorite_list_item AS item
 		INNER JOIN favorite_list AS list ON list.id = item.list_id
 		WHERE item.list_id = ? AND list.user_id = ?
-		ORDER BY item.added_at DESC, item.work_id DESC
+		ORDER BY item.created_at DESC, item.work_id DESC
 	`, listID, user.ID)
 	if err != nil {
 		writeError(w, err)
@@ -350,6 +503,65 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 		return nil, err
 	}
 	return lists, nil
+}
+
+func (s *Server) loadFavoriteList(ctx context.Context, userID int64, listID int64) (favoriteListResponse, error) {
+	var item favoriteListResponse
+	var selected int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, name, description, sort_order, 0
+		FROM favorite_list
+		WHERE id = ? AND user_id = ?
+	`, listID, userID).Scan(&item.ID, &item.Name, &item.Description, &item.SortOrder, &selected)
+	item.Selected = selected != 0
+	return item, err
+}
+
+func (s *Server) reconcileFavoriteSummariesForUser(ctx context.Context, userID int64) error {
+	rows, err := s.db.QueryContext(ctx, "SELECT work_id FROM user_work_state WHERE user_id = ? AND favorite = 1", userID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	workIDs := []int64{}
+	for rows.Next() {
+		var workID int64
+		if err := rows.Scan(&workID); err != nil {
+			return err
+		}
+		workIDs = append(workIDs, workID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, workID := range workIDs {
+		if err := s.reconcileFavoriteSummary(ctx, userID, workID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) reconcileFavoriteSummary(ctx context.Context, userID int64, workID int64) error {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM favorite_list_item AS item
+		INNER JOIN favorite_list AS list ON list.id = item.list_id
+		WHERE list.user_id = ? AND item.work_id = ?
+	`, userID, workID).Scan(&count); err != nil {
+		return err
+	}
+	favoriteValue := 0
+	if count > 0 {
+		favoriteValue = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE user_work_state
+		SET favorite = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND work_id = ?
+	`, favoriteValue, userID, workID)
+	return err
 }
 
 func (s *Server) setDefaultFavoriteListMembership(ctx context.Context, userID int64, workID int64, favorite bool) error {
