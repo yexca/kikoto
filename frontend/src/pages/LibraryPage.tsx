@@ -784,7 +784,7 @@ function WorkCard({
             rating={work.rating}
             sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) }))}
+            sourceBadges={sourceBadgesForAvailability(work.availability)}
             progress={work.progress}
           />
         </div>
@@ -883,7 +883,7 @@ function RemoteWorkCard({
             rating={work.rating}
             sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={work.remotePlayable ? [{ value: "remote source", variant: "outline" as const }] : []}
+            sourceBadges={work.remotePlayable ? [{ value: "remote available", variant: "outline" as const }] : []}
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
@@ -1027,6 +1027,20 @@ function WorkCardMedia({
 }
 
 type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
+
+function sourceBadgesForAvailability(availability: string[]): CardBadge[] {
+  const order = ["local", "cache", "cached", "remote", "missing"];
+  return [...availability]
+    .sort((a, b) => {
+      const left = order.indexOf(a);
+      const right = order.indexOf(b);
+      return (left === -1 ? order.length : left) - (right === -1 ? order.length : right);
+    })
+    .map((item) => {
+      const label = item === "remote" ? "remote known" : item === "cache" || item === "cached" ? "cache" : item;
+      return { value: label, variant: item === "missing" ? "warning" : item === "remote" ? "outline" : "secondary" };
+    });
+}
 
 function WorkCardBody({
   title,
@@ -1626,7 +1640,7 @@ function WorkDetailView({
         if (cancelled) return;
         const availableSources = result.sources.flatMap((summary) => {
           const source = sources.find((candidate) => candidate.id === summary.sourceId);
-          return source && summary.status === "available" ? [{ source, summary }] : [];
+          return source ? [{ source, summary }] : [];
         });
         setRemoteSources(availableSources);
       })
@@ -1897,6 +1911,13 @@ function WorkDetailView({
         activeKey={activeSourceKey}
         onActiveKeyChange={changeSourceKey}
         checkingLabel={isCheckingSources ? "Checking sources..." : ""}
+        sourceSummary={(
+          <SourceAvailabilitySummary
+            tabs={sourceTabs}
+            remoteSources={remoteSources}
+            checking={isCheckingSources}
+          />
+        )}
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
@@ -2079,20 +2100,72 @@ function SourceAvailabilitySummary({
   remoteSources: RemoteSourceAvailability[];
   checking: boolean;
 }) {
-  if (tabs.length === 0 && !checking) return null;
+  const localTabs = tabs.filter((tab) => !tab.key.startsWith("remote-source:"));
+  if (localTabs.length === 0 && remoteSources.length === 0 && !checking) return null;
   return (
-    <div className="flex flex-wrap gap-2">
-      {tabs.map((tab) => {
-        const remote = remoteSources.find((item) => remoteSourceTabKey(item.source.id) === tab.key);
-        return (
-          <Badge key={tab.key} variant={remote?.summary.hasCache ? "secondary" : "outline"}>
-            {tab.label}{remote?.summary.hasCache ? " cached" : ""}
+    <div className="mb-4 rounded-md border bg-background p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {localTabs.map((tab) => (
+          <Badge key={tab.key} variant="secondary">
+            {tab.label}
           </Badge>
-        );
-      })}
-      {checking && <Badge variant="secondary">Checking sources</Badge>}
+        ))}
+        {remoteSources.map((remote) => (
+          <SourceStatusBadge key={remote.source.id} remote={remote} />
+        ))}
+        {checking && <Badge variant="secondary">Checking sources</Badge>}
+      </div>
     </div>
   );
+}
+
+function SourceStatusBadge({ remote }: { remote: RemoteSourceAvailability }) {
+  const meta = sourceStatusMeta(remote.summary);
+  const known = sourceKnownStates(remote.summary);
+  return (
+    <div
+      className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
+      title={sourceStatusTitle(remote.summary, known)}
+    >
+      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dotClass}`} />
+      <span className="truncate font-medium">{remote.source.displayName}</span>
+      <span className="text-muted-foreground">{meta.label}</span>
+      {known.map((item) => (
+        <span key={item} className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function sourceStatusMeta(summary: SourceAvailabilitySource) {
+  if (summary.status === "available") {
+    return { label: summary.hasCache ? "available + cache" : "available", dotClass: "bg-emerald-500" };
+  }
+  if (summary.status === "not_found") {
+    return { label: "not found", dotClass: "bg-muted-foreground" };
+  }
+  if (summary.status === "disabled") {
+    return { label: "disabled", dotClass: "bg-muted-foreground" };
+  }
+  if (summary.status === "unavailable") {
+    return { label: "unsupported", dotClass: "bg-amber-500" };
+  }
+  return { label: "error", dotClass: "bg-destructive" };
+}
+
+function sourceKnownStates(summary: SourceAvailabilitySource) {
+  const states: string[] = [];
+  if (summary.hasLocal) states.push("local");
+  if (summary.hasCache) states.push("cache");
+  if (summary.hasRemote && summary.status !== "available") states.push("remote known");
+  return states;
+}
+
+function sourceStatusTitle(summary: SourceAvailabilitySource, known: string[]) {
+  const details = [summary.title || summary.primaryCode || summary.remoteId, known.length > 0 ? `Known: ${known.join(", ")}` : "", summary.error].filter(Boolean);
+  return details.join("\n");
 }
 
 function SourceDirectoryPanel({
@@ -2102,6 +2175,7 @@ function SourceDirectoryPanel({
   activeKey,
   onActiveKeyChange,
   checkingLabel,
+  sourceSummary,
   directoryMode,
   onDirectoryModeChange,
   root,
@@ -2122,6 +2196,7 @@ function SourceDirectoryPanel({
   activeKey: string;
   onActiveKeyChange: (key: string) => void;
   checkingLabel?: string;
+  sourceSummary?: ReactNode;
   directoryMode: "browse" | "tree";
   onDirectoryModeChange: (mode: "browse" | "tree") => void;
   root: TreeNode;
@@ -2164,6 +2239,7 @@ function SourceDirectoryPanel({
       <Card>
         <CardContent className="p-4">
           {toolbar}
+          {sourceSummary}
           {loadingMessage && <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">{loadingMessage}</div>}
           {selectionPanel}
           {directoryMode === "browse" ? (
@@ -2645,6 +2721,7 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
   const tabs = Array.from(sources.values());
   const baseTabs = tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null, kind: "local" as const }];
   for (const remote of remoteSources) {
+    if (!remoteSourceCanBrowse(remote.summary)) continue;
     baseTabs.push({
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
@@ -2652,6 +2729,10 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
     });
   }
   return baseTabs;
+}
+
+function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {
+  return summary.status === "available";
 }
 
 function remoteSourceTabKey(sourceID: number) {

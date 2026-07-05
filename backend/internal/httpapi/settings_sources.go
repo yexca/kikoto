@@ -736,10 +736,18 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		if !isKikoeruSourceType(source.SourceType) {
 			result.Status = "unavailable"
 			result.Error = "source is not a supported kikoeru source"
+			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
+				writeError(w, err)
+				return
+			}
 			results = append(results, result)
 			continue
 		}
 		if !source.Enabled {
+			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
+				writeError(w, err)
+				return
+			}
 			results = append(results, result)
 			continue
 		}
@@ -752,6 +760,10 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 				result.Status = "not_found"
 			}
 			_ = s.updateSourceHealth(r.Context(), source.ID, "unavailable")
+			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
+				writeError(w, err)
+				return
+			}
 			results = append(results, result)
 			continue
 		}
@@ -765,15 +777,10 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		result.PrimaryCode = workCode
 		result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
 		result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
-		flags, err := s.sourceAvailabilityFlags(r.Context(), source.ID, workCode)
-		if err != nil {
+		if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, workCode); err != nil {
 			writeError(w, err)
 			return
 		}
-		result.WorkID = flags.WorkID
-		result.HasRemote = flags.HasRemote
-		result.HasCache = flags.HasCache
-		result.HasLocal = flags.HasLocal
 		results = append(results, result)
 	}
 	runID, err := s.recordSourceAvailabilityWorkflow(r.Context(), code, checkedAt, results)
@@ -784,6 +791,18 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, sourceAvailabilityResponse{
 		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
 	})
+}
+
+func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
+	flags, err := s.sourceAvailabilityFlags(ctx, sourceID, workCode)
+	if err != nil {
+		return err
+	}
+	result.WorkID = flags.WorkID
+	result.HasRemote = flags.HasRemote
+	result.HasCache = flags.HasCache
+	result.HasLocal = flags.HasLocal
+	return nil
 }
 
 func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
