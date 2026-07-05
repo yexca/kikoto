@@ -898,6 +898,12 @@ func voiceRemoteSearchOutput(results []voiceRemoteSourceSet) map[string]any {
 	return output
 }
 
+type voiceCreditSnapshotRow struct {
+	WorkID     int64
+	ProviderID sql.NullInt64
+	Raw        string
+}
+
 func (s *Server) syncVoiceCreditsFromSnapshots(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT work.id, snapshot.provider_id, snapshot.snapshot_json
@@ -909,15 +915,10 @@ func (s *Server) syncVoiceCreditsFromSnapshots(ctx context.Context) error {
 		return err
 	}
 	defer rows.Close()
-	type snapshotRow struct {
-		WorkID     int64
-		ProviderID sql.NullInt64
-		Raw        string
-	}
-	snapshots := []snapshotRow{}
+	snapshots := []voiceCreditSnapshotRow{}
 	seen := map[int64]bool{}
 	for rows.Next() {
-		var item snapshotRow
+		var item voiceCreditSnapshotRow
 		if err := rows.Scan(&item.WorkID, &item.ProviderID, &item.Raw); err != nil {
 			return err
 		}
@@ -936,39 +937,72 @@ func (s *Server) syncVoiceCreditsFromSnapshots(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, snapshot := range snapshots {
-		metadata := parseDLsiteSnapshot(snapshot.Raw)
-		actors := metadata.VoiceActors
-		if len(actors) == 0 {
-			actors = parseKikoeruVoiceActors(snapshot.Raw)
-		}
-		seenActor := map[string]bool{}
-		for _, actor := range actors {
-			name := strings.TrimSpace(actor)
-			if name == "" || seenActor[voiceNameKey(name)] {
-				continue
-			}
-			seenActor[voiceNameKey(name)] = true
-			personID, err := upsertPerson(ctx, tx, name)
-			if err != nil {
-				return err
-			}
-			var provider any
-			if snapshot.ProviderID.Valid {
-				provider = snapshot.ProviderID.Int64
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO work_credit (work_id, person_id, role, provider_id, source, updated_at)
-				VALUES (?, ?, 'voice_actor', ?, 'metadata_snapshot', CURRENT_TIMESTAMP)
-				ON CONFLICT(work_id, person_id, role) DO UPDATE SET
-					provider_id = excluded.provider_id,
-					source = excluded.source,
-					updated_at = CURRENT_TIMESTAMP
-			`, snapshot.WorkID, personID, provider); err != nil {
-				return err
-			}
+		if err := syncVoiceCreditSnapshot(ctx, tx, snapshot); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *Server) syncVoiceCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
+	var snapshot voiceCreditSnapshotRow
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT work.id, snapshot.provider_id, snapshot.snapshot_json
+		FROM work
+		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
+		WHERE work.id = ?
+		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
+		LIMIT 1
+	`, workID).Scan(&snapshot.WorkID, &snapshot.ProviderID, &snapshot.Raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := syncVoiceCreditSnapshot(ctx, tx, snapshot); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCreditSnapshotRow) error {
+	metadata := parseDLsiteSnapshot(snapshot.Raw)
+	actors := metadata.VoiceActors
+	if len(actors) == 0 {
+		actors = parseKikoeruVoiceActors(snapshot.Raw)
+	}
+	seenActor := map[string]bool{}
+	for _, actor := range actors {
+		name := strings.TrimSpace(actor)
+		if name == "" || seenActor[voiceNameKey(name)] {
+			continue
+		}
+		seenActor[voiceNameKey(name)] = true
+		personID, err := upsertPerson(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		var provider any
+		if snapshot.ProviderID.Valid {
+			provider = snapshot.ProviderID.Int64
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_credit (work_id, person_id, role, provider_id, source, updated_at)
+			VALUES (?, ?, 'voice_actor', ?, 'metadata_snapshot', CURRENT_TIMESTAMP)
+			ON CONFLICT(work_id, person_id, role) DO UPDATE SET
+				provider_id = excluded.provider_id,
+				source = excluded.source,
+				updated_at = CURRENT_TIMESTAMP
+		`, snapshot.WorkID, personID, provider); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
