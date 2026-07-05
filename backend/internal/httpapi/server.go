@@ -308,6 +308,28 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Favorite = favorite != 0
 		metadata := parseDLsiteSnapshot(snapshot.String)
+		if metadata.BaseCode != "" && s.workCodeExists(r.Context(), metadata.BaseCode) {
+			continue
+		}
+		familyMediaCode := item.PrimaryCode
+		for _, translation := range metadata.LanguageEditions {
+			if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
+				continue
+			}
+			if workID, ok := s.workIDForCode(r.Context(), translation.PrimaryCode); ok {
+				if hasMedia, err := s.workHasMedia(r.Context(), workID); err == nil && hasMedia {
+					familyMediaCode = translation.PrimaryCode
+					break
+				}
+			}
+		}
+		if !strings.EqualFold(familyMediaCode, item.PrimaryCode) {
+			if trackCount, availableLocations, availability, ok := s.workAvailabilityForCode(r.Context(), familyMediaCode); ok {
+				item.TrackCount = trackCount
+				item.AvailableLocations = availableLocations
+				item.Availability = availability
+			}
+		}
 		item.ReleaseDate = metadata.ReleaseDate
 		item.UpdatedAt = item.CreatedAt
 		item.CoverURL = s.coverURL(item.PrimaryCode)
@@ -322,7 +344,9 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		item.Sales = metadata.Sales
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
-		item.Availability = availabilityBadges(availableLocationTypes.String)
+		if len(item.Availability) == 0 {
+			item.Availability = availabilityBadges(availableLocationTypes.String)
+		}
 		works = append(works, item)
 	}
 
@@ -434,6 +458,54 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, work)
+}
+
+func (s *Server) workCodeExists(ctx context.Context, code string) bool {
+	_, ok := s.workIDForCode(ctx, code)
+	return ok
+}
+
+func (s *Server) workIDForCode(ctx context.Context, code string) (int64, bool) {
+	var id int64
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&id); err != nil {
+		return 0, false
+	}
+	return id, true
+}
+
+func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int64, int64, []string, bool) {
+	var trackCount int64
+	var availableLocations int64
+	var locationTypes sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			(
+				SELECT COUNT(*)
+				FROM media_item
+				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
+			),
+			(
+				SELECT COUNT(*)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
+					AND media_file_location.availability = 'available'
+			),
+			(
+				SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_file_location.availability = 'available'
+			)
+		FROM work
+		WHERE UPPER(work.primary_code) = UPPER(?)
+	`, code).Scan(&trackCount, &availableLocations, &locationTypes); err != nil {
+		return 0, 0, nil, false
+	}
+	return trackCount, availableLocations, availabilityBadges(locationTypes.String), true
 }
 
 func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
@@ -1445,6 +1517,10 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		return workDetail{}, err
 	}
 	work.Translations = translations
+	mediaWorkID, err := s.resolveMediaWorkID(ctx, work.ID, work.Translations)
+	if err != nil {
+		return workDetail{}, err
+	}
 	creditRows, err := s.db.QueryContext(ctx, `
 		SELECT person.id, person.display_name
 		FROM work_credit AS credit
@@ -1492,7 +1568,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			COALESCE(media_item.track_no, 0) ASC,
 			media_item.title ASC,
 			media_item.id ASC
-	`, userID, id)
+	`, userID, mediaWorkID)
 	if err != nil {
 		return workDetail{}, err
 	}
@@ -1566,7 +1642,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
 		WHERE item.work_id = ?
 		ORDER BY source.priority ASC, location.id ASC
-	`, id)
+	`, mediaWorkID)
 	if err != nil {
 		return workDetail{}, err
 	}
@@ -1757,6 +1833,41 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 		return []workTranslation{}, nil
 	}
 	return translations, nil
+}
+
+func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, translations []workTranslation) (int64, error) {
+	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
+		return 0, err
+	} else if hasMedia {
+		return currentWorkID, nil
+	}
+	for _, translation := range translations {
+		if translation.WorkID == nil || *translation.WorkID == currentWorkID {
+			continue
+		}
+		hasMedia, err := s.workHasMedia(ctx, *translation.WorkID)
+		if err != nil {
+			return 0, err
+		}
+		if hasMedia {
+			return *translation.WorkID, nil
+		}
+	}
+	return currentWorkID, nil
+}
+
+func (s *Server) workHasMedia(ctx context.Context, workID int64) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM media_item
+			WHERE work_id = ?
+		)
+	`, workID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
