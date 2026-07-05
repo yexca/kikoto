@@ -309,6 +309,20 @@ CREATE TABLE user_account (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE work_manual_override (
+  work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+  field_name TEXT NOT NULL,
+  value_json TEXT NOT NULL DEFAULT 'null',
+  asset_path TEXT NOT NULL DEFAULT '',
+  updated_by_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(work_id, field_name)
+);
+
+CREATE INDEX idx_work_manual_override_field
+  ON work_manual_override(field_name, updated_at);
+
 CREATE TABLE user_password_credential (
   user_id INTEGER PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL,

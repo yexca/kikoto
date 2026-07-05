@@ -72,6 +72,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/voices/{personId}/user-state", s.updateVoiceUserState)
 	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
 	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
+	mux.HandleFunc("GET /api/assets/manual/{file}", s.getManualAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
@@ -198,6 +199,16 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := filepath.Join(s.cfg.CacheRoot, "cover", file)
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
+	file := filepath.Base(r.PathValue("file"))
+	if file == "." || file == string(filepath.Separator) || strings.Contains(file, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid manual asset file"})
+		return
+	}
+	path := filepath.Join(s.cfg.CacheRoot, "manual", file)
 	http.ServeFile(w, r, path)
 }
 
@@ -3366,6 +3377,9 @@ func (s *Server) coverURL(primaryCode string) string {
 	if code == "" {
 		return ""
 	}
+	if manualURL := s.manualCoverURL(code); manualURL != "" {
+		return manualURL
+	}
 	for _, extension := range []string{".jpg", ".jpeg", ".png", ".webp"} {
 		file := code + extension
 		path := filepath.Join(s.cfg.CacheRoot, "cover", file)
@@ -3374,6 +3388,31 @@ func (s *Server) coverURL(primaryCode string) string {
 		}
 	}
 	return ""
+}
+
+func (s *Server) manualCoverURL(primaryCode string) string {
+	if err := s.ensureWorkManualOverrideSchema(context.Background()); err != nil {
+		return ""
+	}
+	var assetPath string
+	if err := s.db.QueryRowContext(context.Background(), `
+		SELECT override.asset_path
+		FROM work_manual_override AS override
+		INNER JOIN work ON work.id = override.work_id
+		WHERE work.primary_code = ?
+			AND override.field_name = 'cover'
+			AND override.asset_path <> ''
+	`, primaryCode).Scan(&assetPath); err != nil {
+		return ""
+	}
+	file := filepath.Base(assetPath)
+	if file == "." || file == string(filepath.Separator) || strings.Contains(file, "..") {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(s.cfg.CacheRoot, "manual", file)); err != nil {
+		return ""
+	}
+	return "/api/assets/manual/" + file
 }
 
 func dlsiteURL(primaryCode string) string {
