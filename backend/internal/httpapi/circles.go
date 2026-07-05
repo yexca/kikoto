@@ -33,7 +33,14 @@ type circleSummary struct {
 	CatalogWorks    int                `json:"catalogWorks"`
 	LastSyncedAt    *string            `json:"lastSyncedAt"`
 	SyncState       string             `json:"syncState"`
+	AutoRefresh     circleAutoRefresh  `json:"autoRefresh"`
 	SourceSummaries []circleSourceStat `json:"sourceSummaries"`
+}
+
+type circleAutoRefresh struct {
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+	Mode   string `json:"mode"`
 }
 
 type circleSourceStat struct {
@@ -99,9 +106,9 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 			COALESCE(state.note, ''),
 			COALESCE(state.favorite, 0),
 			(
-				SELECT MAX(snapshot.fetched_at)
-				FROM party_metadata_snapshot AS snapshot
-				WHERE snapshot.party_id = party.id
+				SELECT refresh.last_success_at
+				FROM party_catalog_refresh_state AS refresh
+				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
 			) AS last_synced_at
 		FROM party
 		INNER JOIN party_external_id AS external ON external.party_id = party.id
@@ -171,6 +178,8 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	autoRefresh := s.maybeStartCircleAutoRefresh(partyID, externalID, summary.LastSyncedAt)
+	summary.AutoRefresh = autoRefresh
 	works, err := s.loadCircleWorks(r.Context(), user.ID, partyID)
 	if err != nil {
 		writeError(w, err)
@@ -365,6 +374,18 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 			raw_json TEXT NOT NULL DEFAULT '{}',
 			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(party_id, provider_id, primary_code)
+		)`,
+		`CREATE TABLE IF NOT EXISTS party_catalog_refresh_state (
+			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+			provider_code TEXT NOT NULL,
+			last_success_at TEXT,
+			last_attempt_at TEXT,
+			last_mode TEXT NOT NULL DEFAULT '',
+			last_status TEXT NOT NULL DEFAULT '',
+			last_run_id INTEGER,
+			last_error TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(party_id, provider_code)
 		)`,
 		`CREATE TABLE IF NOT EXISTS work_party (
 			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
@@ -652,9 +673,9 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 			COALESCE(state.note, ''),
 			COALESCE(state.favorite, 0),
 			(
-				SELECT MAX(snapshot.fetched_at)
-				FROM party_metadata_snapshot AS snapshot
-				WHERE snapshot.party_id = party.id
+				SELECT refresh.last_success_at
+				FROM party_catalog_refresh_state AS refresh
+				WHERE refresh.party_id = party.id AND refresh.provider_code = 'dlsite'
 			) AS last_synced_at
 		FROM party
 		INNER JOIN party_external_id AS external ON external.party_id = party.id
@@ -675,6 +696,9 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
+	if item.AutoRefresh.Status == "" {
+		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "not evaluated"}
+	}
 	var catalogWorks int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT primary_code) FROM party_catalog_item WHERE party_id = ?", item.ID).Scan(&catalogWorks); err != nil {
 		return err
@@ -1009,21 +1033,27 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 			result.Status = "failed"
 			result.Error = err.Error()
 		} else {
-			result.CatalogWorks = len(profile.WorkCodes)
-			result.PagesFetched = profile.PagesFetched
-			sourceSynced, err := s.syncCircleRemoteSourceCatalogs(ctx, partyID, profile.MakerName, request.Mode)
-			if err != nil {
+			if err := s.recordCircleCatalogRefreshSuccess(ctx, partyID, "dlsite", request.Mode); err != nil {
 				result.Status = "failed"
 				result.Error = err.Error()
 			}
-			result.SourceSynced = sourceSynced
+			result.CatalogWorks = len(profile.WorkCodes)
+			result.PagesFetched = profile.PagesFetched
 			if result.Status != "failed" {
-				productSynced, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
+				sourceSynced, err := s.syncCircleRemoteSourceCatalogs(ctx, partyID, profile.MakerName, request.Mode)
 				if err != nil {
 					result.Status = "failed"
 					result.Error = err.Error()
-				} else {
-					result.ProductSynced = productSynced
+				}
+				result.SourceSynced = sourceSynced
+				if result.Status != "failed" {
+					productSynced, err := s.syncCircleProductJSON(ctx, partyID, profile.WorkCodes, request.ProductMode, client)
+					if err != nil {
+						result.Status = "failed"
+						result.Error = err.Error()
+					} else {
+						result.ProductSynced = productSynced
+					}
 				}
 			}
 		}
@@ -1034,10 +1064,113 @@ func (s *Server) runCircleRefresh(ctx context.Context, partyID int64, externalID
 	}
 	result.RunID = runID
 	result.JobID = jobID
+	if err := s.recordCircleCatalogRefreshAttempt(ctx, partyID, "dlsite", result); err != nil {
+		return circleRefreshResult{}, err
+	}
 	if result.Status == "failed" {
 		return result, fmt.Errorf("%s", result.Error)
 	}
 	return result, nil
+}
+
+func (s *Server) maybeStartCircleAutoRefresh(partyID int64, externalID string, lastSyncedAt *string) circleAutoRefresh {
+	days := s.settingIntContext(context.Background(), "circle_auto_refresh_days", 30)
+	if days <= 0 {
+		return circleAutoRefresh{Status: "disabled", Reason: "auto refresh disabled"}
+	}
+	mode := "incremental"
+	reason := "stale"
+	if lastSyncedAt == nil {
+		mode = "full"
+		reason = "first pull"
+	} else if !circleRefreshDue(*lastSyncedAt, days) {
+		return circleAutoRefresh{Status: "skipped", Reason: "fresh", Mode: mode}
+	}
+	if !s.markCircleAutoRefreshRunning(partyID) {
+		return circleAutoRefresh{Status: "running", Reason: reason, Mode: mode}
+	}
+	go func() {
+		defer s.clearCircleAutoRefreshRunning(partyID)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		_, _ = s.runCircleRefresh(ctx, partyID, externalID, circleRefreshRequest{Mode: mode, ProductMode: "available"})
+	}()
+	return circleAutoRefresh{Status: "queued", Reason: reason, Mode: mode}
+}
+
+func (s *Server) markCircleAutoRefreshRunning(partyID int64) bool {
+	s.circleAutoRefreshMu.Lock()
+	defer s.circleAutoRefreshMu.Unlock()
+	if s.circleAutoRefreshing[partyID] {
+		return false
+	}
+	s.circleAutoRefreshing[partyID] = true
+	return true
+}
+
+func (s *Server) clearCircleAutoRefreshRunning(partyID int64) {
+	s.circleAutoRefreshMu.Lock()
+	defer s.circleAutoRefreshMu.Unlock()
+	delete(s.circleAutoRefreshing, partyID)
+}
+
+func circleRefreshDue(lastSyncedAt string, days int) bool {
+	last, err := parseSQLiteTime(lastSyncedAt)
+	if err != nil {
+		return true
+	}
+	return time.Since(last) >= time.Duration(days)*24*time.Hour
+}
+
+func parseSQLiteTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05Z07:00"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid time %q", value)
+}
+
+func (s *Server) recordCircleCatalogRefreshSuccess(ctx context.Context, partyID int64, providerCode string, mode string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO party_catalog_refresh_state (party_id, provider_code, last_success_at, last_attempt_at, last_mode, last_status, last_error, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 'catalog_synced', '', CURRENT_TIMESTAMP)
+		ON CONFLICT(party_id, provider_code) DO UPDATE SET
+			last_success_at = excluded.last_success_at,
+			last_attempt_at = excluded.last_attempt_at,
+			last_mode = excluded.last_mode,
+			last_status = excluded.last_status,
+			last_error = '',
+			updated_at = CURRENT_TIMESTAMP
+	`, partyID, providerCode, time.Now().UTC().Format(time.RFC3339), mode)
+	return err
+}
+
+func (s *Server) recordCircleCatalogRefreshAttempt(ctx context.Context, partyID int64, providerCode string, result circleRefreshResult) error {
+	errorText := result.Error
+	if errorText == "" && result.Status == "failed" {
+		errorText = "refresh failed"
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO party_catalog_refresh_state (party_id, provider_code, last_attempt_at, last_mode, last_status, last_run_id, last_error, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(party_id, provider_code) DO UPDATE SET
+			last_attempt_at = excluded.last_attempt_at,
+			last_mode = excluded.last_mode,
+			last_status = excluded.last_status,
+			last_run_id = excluded.last_run_id,
+			last_error = excluded.last_error,
+			updated_at = CURRENT_TIMESTAMP
+	`, partyID, providerCode, result.Mode, result.Status, nullableRunID(result.RunID), errorText)
+	return err
+}
+
+func nullableRunID(id int64) any {
+	if id <= 0 {
+		return nil
+	}
+	return id
 }
 
 func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile dlsite.MakerProfile, pruneMissing bool) error {
