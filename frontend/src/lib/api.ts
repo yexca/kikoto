@@ -22,12 +22,12 @@ export type Work = {
 };
 
 export type WorkProgressSummary = {
+  mediaItemId: number | null;
+  title: string;
   positionSeconds: number;
   durationSeconds: number | null;
-  percent: number | null;
-  completedTracks: number;
-  trackedTracks: number;
   lastPlayedAt: string | null;
+  completed: boolean;
 };
 
 export type WorkDetail = {

@@ -25,12 +25,12 @@ type mediaProgressResponse struct {
 }
 
 type workProgressSummary struct {
+	MediaItemID     *int64   `json:"mediaItemId"`
+	Title           string   `json:"title"`
 	PositionSeconds float64  `json:"positionSeconds"`
 	DurationSeconds *float64 `json:"durationSeconds"`
-	Percent         *float64 `json:"percent"`
-	CompletedTracks int64    `json:"completedTracks"`
-	TrackedTracks   int64    `json:"trackedTracks"`
 	LastPlayedAt    *string  `json:"lastPlayedAt"`
+	Completed       bool     `json:"completed"`
 }
 
 func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
@@ -94,11 +94,6 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if err := s.markWorkListeningFromMediaItem(r.Context(), user.ID, mediaItemID); err != nil {
-		writeError(w, err)
-		return
-	}
-
 	progress, err := s.loadMediaProgress(r.Context(), user.ID, mediaItemID)
 	if err != nil {
 		writeError(w, err)
@@ -139,41 +134,41 @@ func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemI
 }
 
 func (s *Server) workProgressSummary(ctx context.Context, userID int64, workID int64) (workProgressSummary, error) {
+	var mediaItemID sql.NullInt64
+	var title sql.NullString
 	var position sql.NullFloat64
 	var duration sql.NullFloat64
-	var completedTracks sql.NullInt64
-	var trackedTracks sql.NullInt64
 	var lastPlayedAt sql.NullString
+	var completed sql.NullBool
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
-			SUM(CASE WHEN user_media_progress.completed = 1 THEN COALESCE(user_media_progress.duration_seconds, media_item.duration_seconds, user_media_progress.position_seconds, 0) ELSE COALESCE(user_media_progress.position_seconds, 0) END),
-			SUM(COALESCE(user_media_progress.duration_seconds, media_item.duration_seconds, 0)),
-			SUM(CASE WHEN user_media_progress.completed = 1 THEN 1 ELSE 0 END),
-			COUNT(user_media_progress.media_item_id),
-			MAX(user_media_progress.last_played_at)
+			media_item.id,
+			media_item.title,
+			user_media_progress.position_seconds,
+			user_media_progress.duration_seconds,
+			user_media_progress.last_played_at,
+			user_media_progress.completed
 		FROM media_item
-		LEFT JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
-			AND user_media_progress.user_id = ?
+		INNER JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
 		WHERE media_item.work_id = ?
 			AND media_item.kind = 'audio'
-	`, userID, workID).Scan(&position, &duration, &completedTracks, &trackedTracks, &lastPlayedAt); err != nil {
+			AND user_media_progress.user_id = ?
+		ORDER BY user_media_progress.last_played_at DESC, user_media_progress.updated_at DESC, media_item.id DESC
+		LIMIT 1
+	`, workID, userID).Scan(&mediaItemID, &title, &position, &duration, &lastPlayedAt, &completed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return workProgressSummary{}, nil
+		}
 		return workProgressSummary{}, err
 	}
-	summary := workProgressSummary{
+	return workProgressSummary{
+		MediaItemID:     nullableInt64(mediaItemID),
+		Title:           title.String,
 		PositionSeconds: position.Float64,
 		DurationSeconds: nullableFloat64(duration),
-		CompletedTracks: completedTracks.Int64,
-		TrackedTracks:   trackedTracks.Int64,
 		LastPlayedAt:    nullableString(lastPlayedAt),
-	}
-	if duration.Valid && duration.Float64 > 0 {
-		percent := position.Float64 / duration.Float64 * 100
-		if percent > 100 {
-			percent = 100
-		}
-		summary.Percent = &percent
-	}
-	return summary, nil
+		Completed:       completed.Valid && completed.Bool,
+	}, nil
 }
 
 func nullableMediaProgress(position sql.NullFloat64, duration sql.NullFloat64, completed sql.NullBool, lastPlayedAt sql.NullString) *mediaProgressDetail {
@@ -193,25 +188,4 @@ func nullableFloat64(value sql.NullFloat64) *float64 {
 		return nil
 	}
 	return &value.Float64
-}
-
-func (s *Server) markWorkListeningFromMediaItem(ctx context.Context, userID int64, mediaItemID int64) error {
-	var workID int64
-	if err := s.db.QueryRowContext(ctx, "SELECT work_id FROM media_item WHERE id = ?", mediaItemID).Scan(&workID); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO user_work_state (user_id, work_id, listening_status)
-		VALUES (?, ?, 'listening')
-		ON CONFLICT(user_id, work_id) DO UPDATE SET
-			listening_status = CASE
-				WHEN listening_status IN ('none', 'want_to_listen') THEN 'listening'
-				ELSE listening_status
-			END,
-			updated_at = CASE
-				WHEN listening_status IN ('none', 'want_to_listen') THEN CURRENT_TIMESTAMP
-				ELSE updated_at
-			END
-	`, userID, workID)
-	return err
 }
