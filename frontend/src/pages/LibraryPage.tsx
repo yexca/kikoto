@@ -70,6 +70,20 @@ type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
+type SearchTokenKind =
+  | "text"
+  | "code"
+  | "circle"
+  | "voice_actor"
+  | "tag"
+  | "exclude_tag"
+  | "rating_min"
+  | "sales_min"
+  | "duration_min"
+  | "duration_max"
+  | "age"
+  | "language";
+type SearchToken = { kind: SearchTokenKind; value: string };
 
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
@@ -83,10 +97,13 @@ export function LibraryPage() {
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
+  const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
+  const remoteSearchQuery = useMemo(() => compileRemoteSearchQuery(searchTokens), [searchTokens]);
 
   useEffect(() => {
     api
@@ -121,7 +138,7 @@ export function LibraryPage() {
     }
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
     setRemoteResult(null);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, sourceState.query).then(setRemoteResult).catch(() => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then(setRemoteResult).catch(() => {
       setRemoteResult({
         sourceId: activeTab.source.id,
         works: [],
@@ -131,7 +148,7 @@ export function LibraryPage() {
         status: "unavailable",
       });
     });
-  }, [activeTab, remoteSourceStates]);
+  }, [activeTab, remoteSearchQuery, remoteSourceStates]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -172,7 +189,12 @@ export function LibraryPage() {
 
   useEffect(() => {
     setWorkPage(1);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", statusFilter, workPageSize]);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", searchQuery, statusFilter, workPageSize]);
+
+  useEffect(() => {
+    if (activeTab.kind !== "source") return;
+    updateRemoteSourceState(activeTab.source.id, { page: 1, query: remoteSearchQuery });
+  }, [activeTab, remoteSearchQuery]);
 
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
@@ -270,10 +292,11 @@ export function LibraryPage() {
   const scopedWorks =
     activeTab.kind === "local"
       ? works.filter(hasLocalAvailability)
-      : activeTab.kind === "remote"
-        ? works.filter(hasRemoteAvailability)
+      : activeTab.kind === "shelf"
+        ? works.filter(hasShelfPresence)
         : works;
-  const visibleWorks = statusFilter === "all" ? scopedWorks : scopedWorks.filter((work) => work.listeningStatus === statusFilter);
+  const searchedWorks = scopedWorks.filter((work) => workMatchesSearch(work, searchTokens));
+  const visibleWorks = statusFilter === "all" ? searchedWorks : searchedWorks.filter((work) => work.listeningStatus === statusFilter);
   const totalWorkPages = Math.max(1, Math.ceil(visibleWorks.length / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
@@ -281,9 +304,19 @@ export function LibraryPage() {
   return (
     <div className="space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm text-muted-foreground lg:max-w-xl">
-          <Search className="h-4 w-4" />
-          <span>Search title, code, circle, tag, or creator</span>
+        <div className="flex min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:max-w-xl">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search title, code, circle, tag, or creator"
+          />
+          {searchQuery.trim() && (
+            <button className="text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery("")} aria-label="Clear search">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
@@ -310,6 +343,15 @@ export function LibraryPage() {
           </Button>
         </div>
       </section>
+      {searchTokens.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {searchTokens.map((token, index) => (
+            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"}>
+              {searchTokenLabel(token)}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       <LibraryTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
 
@@ -318,7 +360,7 @@ export function LibraryPage() {
           source={activeTab.source}
           result={remoteResult}
           viewState={activeRemoteSourceState}
-          onQueryChange={(query) => updateRemoteSourceState(activeTab.source.id, { query })}
+          searchTokens={searchTokens}
           onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
           onPageSizeChange={(value) => {
             updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
@@ -341,8 +383,8 @@ export function LibraryPage() {
             {visibleWorks.length === 0 && (
               <Card className="sm:col-span-2 xl:col-span-3">
                 <CardContent className="p-5 text-sm text-muted-foreground">
-                  {activeTab.kind === "remote"
-                    ? "No imported remote or cached works yet."
+                  {activeTab.kind === "shelf"
+                    ? "No tracked shelf works match this view."
                     : "No local works match this view."}
                 </CardContent>
               </Card>
@@ -364,7 +406,7 @@ export function LibraryPage() {
   );
 }
 
-type LibraryTab = { kind: "local" } | { kind: "remote" } | { kind: "source"; source: LibrarySource };
+type LibraryTab = { kind: "local" } | { kind: "shelf" } | { kind: "source"; source: LibrarySource };
 
 function LibraryTabs({
   activeTab,
@@ -380,8 +422,8 @@ function LibraryTabs({
       <TabButton active={activeTab.kind === "local"} onClick={() => onChange({ kind: "local" })} icon={<HardDrive className="h-4 w-4" />}>
         Local
       </TabButton>
-      <TabButton active={activeTab.kind === "remote"} onClick={() => onChange({ kind: "remote" })} icon={<Database className="h-4 w-4" />}>
-        Remote
+      <TabButton active={activeTab.kind === "shelf"} onClick={() => onChange({ kind: "shelf" })} icon={<Database className="h-4 w-4" />}>
+        Tracked
       </TabButton>
       {sources.map((source) => (
         <TabButton
@@ -429,7 +471,7 @@ function RemoteSourcePanel({
   source,
   result,
   viewState,
-  onQueryChange,
+  searchTokens,
   onPageChange,
   onPageSizeChange,
   autoSyncRemote,
@@ -439,7 +481,7 @@ function RemoteSourcePanel({
   source: LibrarySource;
   result: RemoteWorksResponse | null;
   viewState: RemoteSourceViewState;
-  onQueryChange: (query: string) => void;
+  searchTokens: SearchToken[];
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   autoSyncRemote: boolean;
@@ -455,7 +497,7 @@ function RemoteSourcePanel({
   const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
   const [markTarget, setMarkTarget] = useState<{ work: RemoteWork; status: ListeningStatus } | null>(null);
   const [message, setMessage] = useState("");
-  const { page, pageSize, query } = viewState;
+  const { page, pageSize } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
@@ -485,12 +527,8 @@ function RemoteSourcePanel({
 
   const visibleWorks = useMemo(() => {
     const works = result?.works ?? [];
-    const needle = query.trim().toLowerCase();
-    if (!needle) return works;
-    return works.filter((work) =>
-      [work.primaryCode, work.title, work.circle, ...work.tags].some((value) => value.toLowerCase().includes(needle)),
-    );
-  }, [query, result]);
+    return works.filter((work) => remoteWorkMatchesSearch(work, searchTokens));
+  }, [result, searchTokens]);
   const selectableWorks = visibleWorks.filter((work) => work.primaryCode);
   const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
@@ -627,18 +665,6 @@ function RemoteSourcePanel({
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
           <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
         </div>
-      </div>
-      <div className="flex min-h-10 items-center gap-2 rounded-lg border bg-card px-3 text-sm">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <input
-          className="min-w-0 flex-1 bg-transparent outline-none"
-          value={query}
-          onChange={(event) => {
-            onQueryChange(event.target.value);
-            onPageChange(1);
-          }}
-          placeholder="Search remote source"
-        />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
         <div className="text-xs text-muted-foreground">
@@ -3731,12 +3757,240 @@ function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
+function hasShelfPresence(work: Work) {
+  return (
+    hasRemoteAvailability(work) ||
+    work.favorite ||
+    work.listeningStatus !== "none" ||
+    Boolean(work.progress?.mediaItemId)
+  );
+}
+
 function hasRemoteAvailability(work: Work) {
   return work.availability.some((item) => item === "remote" || item === "cache" || item === "cached");
 }
 
 function hasLocalAvailability(work: Work) {
   return work.availability.includes("local");
+}
+
+function parseSearchTokens(query: string): SearchToken[] {
+  const tokens: SearchToken[] = [];
+  let rest = query;
+  const wrappedPattern = /\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$/gi;
+  rest = rest.replace(wrappedPattern, (_match, key: string, value: string) => {
+    const token = searchTokenFromKeyValue(key, value);
+    if (token) tokens.push(token);
+    return " ";
+  });
+  for (const rawPart of splitSearchParts(rest)) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    const prefixed = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
+    if (prefixed) {
+      const token = searchTokenFromKeyValue(prefixed[1], prefixed[2]);
+      if (token) {
+        tokens.push(token);
+        continue;
+      }
+    }
+    if (/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(part)) {
+      tokens.push({ kind: "code", value: part.toUpperCase() });
+    } else {
+      tokens.push({ kind: "text", value: part });
+    }
+  }
+  return tokens.filter((token) => token.value.trim() !== "");
+}
+
+function splitSearchParts(value: string) {
+  const parts: string[] = [];
+  const pattern = /"([^"]+)"|'([^']+)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(value)) !== null) {
+    parts.push(match[1] ?? match[2] ?? match[3] ?? "");
+  }
+  return parts;
+}
+
+function searchTokenFromKeyValue(key: string, rawValue: string): SearchToken | null {
+  const normalizedKey = key.trim().toLowerCase();
+  const value = rawValue.trim();
+  if (!value) return null;
+  switch (normalizedKey) {
+    case "circle":
+      return { kind: "circle", value };
+    case "-circle":
+      return { kind: "text", value: `-${value}` };
+    case "va":
+    case "-va":
+    case "voice":
+    case "creator":
+      return { kind: "voice_actor", value };
+    case "tag":
+    case "tagw":
+      return { kind: "tag", value };
+    case "-tag":
+    case "-tagw":
+      return { kind: "exclude_tag", value };
+    case "rate":
+    case "rating":
+      return { kind: "rating_min", value };
+    case "sell":
+    case "sales":
+      return { kind: "sales_min", value };
+    case "duration":
+      return { kind: "duration_min", value };
+    case "-duration":
+      return { kind: "duration_max", value };
+    case "age":
+      return { kind: "age", value };
+    case "lang":
+    case "language":
+      return { kind: "language", value };
+    default:
+      return null;
+  }
+}
+
+function compileRemoteSearchQuery(tokens: SearchToken[]) {
+  const primary = tokens.find((token) => token.kind !== "exclude_tag");
+  if (!primary) return "";
+  switch (primary.kind) {
+    case "circle":
+      return `$circle:${primary.value}$`;
+    case "voice_actor":
+      return `$va:${primary.value}$`;
+    case "tag":
+      return `$tag:${primary.value}$`;
+    case "duration_min":
+      return `$duration:${primary.value}$`;
+    case "duration_max":
+      return `$-duration:${primary.value}$`;
+    case "rating_min":
+      return `$rate:${primary.value}$`;
+    case "sales_min":
+      return `$sell:${primary.value}$`;
+    case "age":
+      return `$age:${primary.value}$`;
+    case "language":
+      return `$lang:${primary.value}$`;
+    case "code":
+    case "text":
+    default:
+      return primary.value;
+  }
+}
+
+function workMatchesSearch(work: Work, tokens: SearchToken[]) {
+  if (tokens.length === 0) return true;
+  return tokens.every((token) => workMatchesToken(work, token));
+}
+
+function workMatchesToken(work: Work, token: SearchToken) {
+  const value = token.value.trim().toLowerCase();
+  if (!value) return true;
+  switch (token.kind) {
+    case "code":
+      return work.primaryCode.toLowerCase().includes(value);
+    case "circle":
+      return work.circle.toLowerCase().includes(value) || work.circleExternalId.toLowerCase().includes(value);
+    case "voice_actor":
+      return work.voiceActors.some((actor) => actor.toLowerCase().includes(value));
+    case "tag":
+      return work.tags.some((tag) => tag.toLowerCase().includes(value));
+    case "exclude_tag":
+      return !work.tags.some((tag) => tag.toLowerCase().includes(value));
+    case "rating_min":
+      return work.rating !== null && work.rating >= numericTokenValue(value);
+    case "sales_min":
+      return work.sales !== null && work.sales >= numericTokenValue(value);
+    case "age":
+      return workMatchesText([work.primaryCode, work.title, ...work.tags], value);
+    case "language":
+      return workMatchesText([work.title, ...work.tags], value);
+    case "duration_min":
+    case "duration_max":
+      return true;
+    case "text":
+    default:
+      return workMatchesText(
+        [work.primaryCode, work.title, work.circle, work.circleExternalId, work.releaseDate ?? "", ...work.tags, ...work.voiceActors],
+        value,
+      );
+  }
+}
+
+function workMatchesText(values: string[], needle: string) {
+  return values.some((item) => item.toLowerCase().includes(needle));
+}
+
+function remoteWorkMatchesSearch(work: RemoteWork, tokens: SearchToken[]) {
+  if (tokens.length === 0) return true;
+  return tokens.every((token) => remoteWorkMatchesToken(work, token));
+}
+
+function remoteWorkMatchesToken(work: RemoteWork, token: SearchToken) {
+  const value = token.value.trim().toLowerCase();
+  if (!value) return true;
+  switch (token.kind) {
+    case "code":
+      return work.primaryCode.toLowerCase().includes(value) || work.remoteId.toLowerCase().includes(value);
+    case "circle":
+      return work.circle.toLowerCase().includes(value);
+    case "tag":
+      return work.tags.some((tag) => tag.toLowerCase().includes(value));
+    case "exclude_tag":
+      return !work.tags.some((tag) => tag.toLowerCase().includes(value));
+    case "rating_min":
+      return work.rating !== null && work.rating >= numericTokenValue(value);
+    case "sales_min":
+      return work.sales !== null && work.sales >= numericTokenValue(value);
+    case "voice_actor":
+    case "age":
+    case "language":
+    case "duration_min":
+    case "duration_max":
+      return true;
+    case "text":
+    default:
+      return workMatchesText([work.primaryCode, work.remoteId, work.title, work.circle, work.releaseDate, ...work.tags], value);
+  }
+}
+
+function numericTokenValue(value: string) {
+  const number = Number(value.replace(/[^\d.]/g, ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function searchTokenLabel(token: SearchToken) {
+  switch (token.kind) {
+    case "code":
+      return `Code: ${token.value}`;
+    case "circle":
+      return `Circle: ${token.value}`;
+    case "voice_actor":
+      return `VA: ${token.value}`;
+    case "tag":
+      return `Tag: ${token.value}`;
+    case "exclude_tag":
+      return `Exclude tag: ${token.value}`;
+    case "rating_min":
+      return `Rating >= ${token.value}`;
+    case "sales_min":
+      return `Sales >= ${token.value}`;
+    case "duration_min":
+      return `Duration >= ${token.value}`;
+    case "duration_max":
+      return `Duration <= ${token.value}`;
+    case "age":
+      return `Age: ${token.value}`;
+    case "language":
+      return `Language: ${token.value}`;
+    case "text":
+    default:
+      return `Text: ${token.value}`;
+  }
 }
 
 function codeFromPath(path: string) {
@@ -3765,8 +4019,8 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
 }
 
 function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {
-  if (path === "/remote" || path === "/library/remote") {
-    return { kind: "remote" };
+  if (path === "/shelf" || path === "/library/shelf" || path === "/remote" || path === "/library/remote") {
+    return { kind: "shelf" };
   }
   if (path === "/" || path === "/library") {
     return { kind: "local" };
@@ -3791,8 +4045,8 @@ function resolveTabFromPath(path: string, sources: LibrarySource[], fallback: Li
 
 function pathForLibraryTab(tab: LibraryTab) {
   switch (tab.kind) {
-    case "remote":
-      return "/remote";
+    case "shelf":
+      return "/shelf";
     case "source":
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
     default:
