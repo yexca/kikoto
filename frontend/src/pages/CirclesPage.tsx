@@ -1,6 +1,8 @@
 import {
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
+  CircleAlert,
   ExternalLink,
   FileAudio,
   HardDriveDownload,
@@ -20,6 +22,7 @@ import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDia
 import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
+const TRANSLATION_CIRCLE_ID = "RG60289";
 const circlePageSizeOptions = [10, 20, 40];
 const catalogWorkPageSizeOptions = [24, 48] as const;
 type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
@@ -34,101 +37,6 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 type CircleFilter = "all" | "available" | "local" | "remote" | "missing" | "stale" | "rated";
 type CircleRefreshScope = "all" | "catalog" | "work" | "source";
 type CircleRefreshMode = "incremental" | "full";
-
-const fallbackCircles: CircleSummary[] = [
-  {
-    id: 0,
-    externalId: "RG012345",
-    displayName: "Fake Circle 001",
-    aliases: ["Demo Circle Alias 001"],
-    rating: 4,
-    note: "Fake note: review catalog refresh behavior.",
-    favorite: false,
-    localWorks: 12,
-    playableWorks: 9,
-    remoteWorks: 22,
-    missingWorks: 5,
-    catalogWorks: 39,
-    lastSyncedAt: "2099-01-01",
-    syncState: "stale",
-    autoRefresh: { status: "skipped", reason: "placeholder", mode: "" },
-    sourceSummaries: [
-      { key: "local", displayName: "Local", status: "available", count: 12 },
-      { key: "remote", displayName: "Remote", status: "available", count: 22 },
-      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 22 },
-    ],
-  },
-];
-
-const fallbackWorks: CircleCatalogWork[] = [
-  {
-    workId: 0,
-    primaryCode: "RJ0123456",
-    title: "Demo Circle Catalog Work 001",
-    releaseDate: "2099-01-01",
-    updatedAt: "2099-01-02",
-    coverUrl: "",
-    dlsiteUrl: "",
-    circle: "Demo Circle 001",
-    circleExternalId: "RG012345",
-    tags: ["demo-tag-a", "demo-tag-b"],
-    rating: 4.2,
-    sales: 1200,
-    catalogStatus: "imported",
-    dlsiteAvailable: true,
-    listeningMark: "listening",
-    local: true,
-    remote: true,
-    sourceTags: [
-      { key: "local", displayName: "Local", status: "available", count: 1 },
-      { key: "remote", displayName: "Remote", status: "available", count: 1 },
-      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 1 },
-    ],
-  },
-  {
-    workId: null,
-    primaryCode: "RJ0234567",
-    title: "Demo Circle Catalog Work 002",
-    releaseDate: "2099-02-02",
-    updatedAt: "2099-02-03",
-    coverUrl: "",
-    dlsiteUrl: "",
-    circle: "Demo Circle 001",
-    circleExternalId: "RG012345",
-    tags: ["demo-tag-c"],
-    rating: 4.6,
-    sales: 800,
-    catalogStatus: "catalog",
-    dlsiteAvailable: true,
-    listeningMark: "want_to_listen",
-    local: false,
-    remote: true,
-    sourceTags: [
-      { key: "remote", displayName: "Remote", status: "available", count: 1 },
-      { key: "source:fake-001", displayName: "Fake Remote Source 001", status: "available", count: 1 },
-    ],
-  },
-  {
-    workId: null,
-    primaryCode: "RJ0345678",
-    title: "Demo Circle Catalog Work 003",
-    releaseDate: "2099-03-03",
-    updatedAt: "2099-03-04",
-    coverUrl: "",
-    dlsiteUrl: "",
-    circle: "Demo Circle 001",
-    circleExternalId: "RG012345",
-    tags: [],
-    rating: null,
-    sales: null,
-    catalogStatus: "catalog",
-    dlsiteAvailable: false,
-    listeningMark: "none",
-    local: false,
-    remote: false,
-    sourceTags: [],
-  },
-];
 
 export function CirclesPage() {
   const [path, setPath] = useState(window.location.pathname);
@@ -156,7 +64,7 @@ export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
 function CircleListPage() {
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CircleFilter>("all");
   const [page, setPage] = useState(1);
@@ -168,17 +76,15 @@ function CircleListPage() {
     setIsLoading(true);
     api.listCircles().then((items) => {
       setCircles(items);
-      setMessage(items.length === 0 ? "No circles have been derived from local DLsite metadata yet. Showing fake placeholders." : "");
     }).catch((error) => {
       setCircles([]);
-      setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholders.");
+      setToast(toastFromError(error, "Circle API is unavailable."));
     }).finally(() => setIsLoading(false));
   }, []);
 
-  const visibleCircles = circles.length > 0 ? circles : fallbackCircles;
   const filteredCircles = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return visibleCircles.filter((circle) => {
+    return circles.filter((circle) => {
       const matchesQuery = !needle || [circle.externalId, circle.displayName, ...circle.aliases].some((value) => value.toLowerCase().includes(needle));
       if (!matchesQuery) return false;
       switch (filter) {
@@ -198,7 +104,7 @@ function CircleListPage() {
         return true;
       }
     });
-  }, [filter, query, visibleCircles]);
+  }, [circles, filter, query]);
   const totalPages = Math.max(1, Math.ceil(filteredCircles.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageCircles = filteredCircles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -217,7 +123,7 @@ function CircleListPage() {
         </div>
       </section>
 
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
+      <ToastNotice toast={toast} onClose={() => setToast(null)} />
 
       <section className="space-y-3">
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
@@ -284,7 +190,7 @@ function CircleListPage() {
           ))}
           {pageCircles.length === 0 && (
             <Card>
-              <CardContent className="p-5 text-sm text-muted-foreground">No circles match this view.</CardContent>
+              <CardContent className="p-5 text-sm text-muted-foreground">{isLoading ? "Loading circles." : "No circles match this view."}</CardContent>
             </Card>
           )}
         </div>
@@ -343,7 +249,7 @@ function CircleCard({ circle }: { circle: CircleSummary }) {
 function CircleDetailPage({ externalId }: { externalId: string }) {
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [isEditingState, setIsEditingState] = useState(false);
   const [ratingDraft, setRatingDraft] = useState(0);
   const [noteDraft, setNoteDraft] = useState("");
@@ -365,22 +271,19 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
   useEffect(() => {
     setIsLoading(true);
-    setMessage("");
+    setToast(null);
     api.getCircle(externalId).then((next) => {
       setDetail(next);
       setRatingDraft(next.rating ?? 0);
       setNoteDraft(next.note);
       if (next.autoRefresh.status === "queued") {
-        setMessage(`Auto refresh queued: ${next.autoRefresh.mode} crawl for ${next.autoRefresh.reason}.`);
+        setToast({ kind: "info", message: `Auto refresh queued: ${next.autoRefresh.mode} crawl for ${next.autoRefresh.reason}.` });
       } else if (next.autoRefresh.status === "running") {
-        setMessage(`Auto refresh is already running: ${next.autoRefresh.mode} crawl.`);
+        setToast({ kind: "info", message: `Auto refresh is already running: ${next.autoRefresh.mode} crawl.` });
       }
     }).catch((error) => {
-      const fallback = fakeDetail(externalId);
-      setDetail(fallback);
-      setRatingDraft(fallback.rating ?? 0);
-      setNoteDraft(fallback.note);
-      setMessage(error instanceof Error ? error.message : "Circle API is unavailable. Showing fake placeholder.");
+      setDetail(null);
+      setToast(toastFromError(error, "Circle detail is unavailable."));
     }).finally(() => setIsLoading(false));
   }, [externalId]);
 
@@ -388,7 +291,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     api.getRuntimeSettings().then((settings) => setAutoSyncRemote(settings.autoSyncRemote || settings.cacheEnabled)).catch(() => setAutoSyncRemote(false));
   }, []);
 
-  const circle = detail ?? fakeDetail(externalId);
+  const circle = detail ?? emptyCircleDetail(externalId);
   const filteredWorks = useMemo(() => {
     const needle = workQuery.trim().toLowerCase();
     return circle.works.filter((work) => {
@@ -429,11 +332,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     setRefreshingScope(scope);
     try {
       const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
-      setMessage(refreshMessage(result));
+      setToast({ kind: "success", message: refreshMessage(result) });
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Refresh workflow failed.");
+      setToast(toastFromError(error, "Refresh workflow failed."));
     } finally {
       setRefreshingScope(null);
     }
@@ -448,9 +351,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       });
       setDetail((current) => current ? { ...current, ...next, works: current.works } : current);
       setIsEditingState(false);
-      setMessage("Circle note saved.");
+      setToast({ kind: "success", message: "Circle note saved." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Circle note save failed.");
+      setToast(toastFromError(error, "Circle note save failed."));
     }
   };
 
@@ -458,12 +361,12 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     if (!deleteTarget) return;
     try {
       const result = await api.deleteCircleCatalogWork(externalId, deleteTarget.primaryCode);
-      setMessage(result.deleted > 0 ? `${deleteTarget.primaryCode} removed from this circle catalog.` : `${deleteTarget.primaryCode} was already removed.`);
+      setToast({ kind: "success", message: result.deleted > 0 ? `${deleteTarget.primaryCode} removed from this circle catalog.` : `${deleteTarget.primaryCode} was already removed.` });
       const next = await api.getCircle(externalId);
       setDetail(next);
       setDeleteTarget(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Catalog work delete failed.");
+      setToast(toastFromError(error, "Catalog work delete failed."));
     }
   };
 
@@ -485,7 +388,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: result.listeningStatus } : item),
       } : current);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+      setToast(toastFromError(error, "Mark update failed."));
     }
   };
 
@@ -493,11 +396,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
-    setMessage("");
+    setToast(null);
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      setMessage(`Synced and marked ${syncResult.primaryCode}.`);
+      setToast({ kind: "success", message: `Synced and marked ${syncResult.primaryCode}.` });
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
@@ -505,7 +408,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       });
       setMarkConfirm(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+      setToast(toastFromError(error, "Mark update failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -538,16 +441,16 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
   const runBulkSaveSelected = async () => {
     setIsBulkSaving(true);
-    setMessage("");
+    setToast(null);
     try {
       const results = await runCircleBulkBySource(selectedWorks, "save");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setMessage(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
+      setToast({ kind: "success", message: `Bulk workflow ${runIds}: fetched ${fetched} selected works.` });
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
+      setToast(toastFromError(error, "Bulk fetch failed."));
     } finally {
       setIsBulkSaving(false);
       setSaveConfirm(null);
@@ -557,17 +460,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const bulkSyncAndSaveSelected = async () => {
     if (selectedSyncableWorks.length === 0) return;
     setIsBulkSaving(true);
-    setMessage("");
+    setToast(null);
     try {
       const results = await runCircleBulkBySource(selectedSyncableWorks, "sync_save");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setMessage(`Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.`);
+      setToast({ kind: "success", message: `Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.` });
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk sync/fetch failed.");
+      setToast(toastFromError(error, "Bulk sync/fetch failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -587,12 +490,12 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
-    setMessage("");
+    setToast(null);
     try {
       const detail = await api.getRemoteSourceWork(target.sourceId, work.primaryCode);
       setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)) });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+      setToast(toastFromError(error, "Remote directory failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -601,14 +504,14 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const fetchSingleSelection = async () => {
     if (!fetchSelection) return;
     setIsBulkSaving(true);
-    setMessage("");
+    setToast(null);
     try {
       const result = await api.saveRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
-      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
+      setToast({ kind: "success", message: `Fetched ${result.primaryCode} through workflow run #${result.runId}.` });
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+      setToast(toastFromError(error, "Fetch failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -620,10 +523,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
     setIsBulkSaving(true);
     try {
       const result = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
-      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+      setToast({ kind: "success", message: `Synced ${result.primaryCode} through workflow run #${result.runId}.` });
       setDetail(await api.getCircle(externalId));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sync failed.");
+      setToast(toastFromError(error, "Sync failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -636,7 +539,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
         Back to circles
       </Button>
 
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
+      <ToastNotice toast={toast} onClose={() => setToast(null)} />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
@@ -658,7 +561,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                     DLsite
                   </a>
                 </Button>
-                <Button size="sm" disabled={isLoading || refreshingScope !== null} onClick={() => void refresh("all", "incremental")}>
+                <Button size="sm" disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)} onClick={() => void refresh("all", "incremental")}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
@@ -738,16 +641,10 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <CardTitle>Workflow Shortcuts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Shortcut
-              title="Run recommended workflow"
-              description="Catalog, work metadata, then source matching."
-              disabled={refreshingScope !== null}
-              onClick={() => void refresh("all", "incremental")}
-            />
             <RefreshActionRow
               title="Catalog"
               description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
-              disabled={refreshingScope !== null}
+              disabled={refreshingScope !== null || isTranslationCircle(circle.externalId)}
               active={refreshingScope === "catalog" || refreshingScope === "all"}
               onRun={(mode) => void refresh("catalog", mode)}
             />
@@ -761,20 +658,17 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             <RefreshActionRow
               title="Sources"
               description={`${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
-              disabled={refreshingScope !== null}
+              disabled={refreshingScope !== null || isTranslationCircle(circle.externalId)}
               active={refreshingScope === "source" || refreshingScope === "all"}
               onRun={(mode) => void refresh("source", mode)}
             />
-            <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
-              Auto refresh follows the catalog threshold. Full runs keep catalog rows and user state intact.
-            </div>
+            {isTranslationCircle(circle.externalId) && <div className="text-xs text-muted-foreground">Catalog and source refresh are disabled for translation umbrella circles.</div>}
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
               <Search className="h-4 w-4" />
               <input
@@ -876,26 +770,6 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               onPageSizeChange={setWorkPageSize}
             />
           )}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Source Match</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {sourceTags(circle.sourceSummaries).length > 0 ? sourceTags(circle.sourceSummaries).map((source) => (
-              <div key={source.key} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{source.displayName}</div>
-                  <div className="text-xs text-muted-foreground">{source.count} matches</div>
-                </div>
-                <AvailabilityBadge status={source.status} />
-              </div>
-            )) : (
-              <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">No source matches yet.</div>
-            )}
-          </CardContent>
-        </Card>
       </section>
       {deleteTarget && (
         <CatalogDeleteConfirmModal
@@ -1155,38 +1029,10 @@ function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWor
   );
 }
 
-function Shortcut({ title, description, disabled, onClick }: { title: string; description: string; disabled?: boolean; onClick?: () => void }) {
+function RefreshActionRow({ title, description, disabled, active, onRun }: { title: string; description: string; disabled?: boolean; active?: boolean; onRun: (mode: CircleRefreshMode) => void }) {
   return (
-    <button
-      className="flex w-full items-center justify-between gap-3 rounded-md border bg-background p-3 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <span>
-        <span className="block font-medium">{title}</span>
-        <span className="block text-xs text-muted-foreground">{description}</span>
-      </span>
-      <RefreshCw className="h-4 w-4 shrink-0 text-primary" />
-    </button>
-  );
-}
-
-function RefreshActionRow({
-  title,
-  description,
-  disabled,
-  active,
-  onRun,
-}: {
-  title: string;
-  description: string;
-  disabled?: boolean;
-  active?: boolean;
-  onRun: (mode: CircleRefreshMode) => void;
-}) {
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="mb-2 flex items-start justify-between gap-3">
+    <div className="rounded-md border bg-background px-3 py-2">
+      <div className="mb-1.5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium">{title}</div>
           <div className="truncate text-xs text-muted-foreground">{description}</div>
@@ -1194,10 +1040,10 @@ function RefreshActionRow({
         {active && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-primary" />}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRun("incremental")}>
+        <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("incremental")}>
           Incremental
         </Button>
-        <Button variant="outline" size="sm" disabled={disabled} onClick={() => onRun("full")}>
+        <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("full")}>
           Full
         </Button>
       </div>
@@ -1222,10 +1068,6 @@ function SyncBadge({ state }: { state: string }) {
   return <Badge variant={state === "fresh" ? "secondary" : "warning"}>{label}</Badge>;
 }
 
-function AvailabilityBadge({ status }: { status: string }) {
-  return <Badge variant={status === "available" ? "outline" : "warning"}>{status}</Badge>;
-}
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Card>
@@ -1237,11 +1079,42 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function fakeDetail(externalId: string): CircleDetail {
+type ToastState = { kind: "success" | "error" | "info"; message: string };
+
+function ToastNotice({ toast, onClose }: { toast: ToastState | null; onClose: () => void }) {
+  if (!toast) return null;
+  return (
+    <div className="fixed right-4 top-4 z-50 flex max-w-sm items-start gap-2 rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
+      {toast.kind === "error" ? <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
+      <div className="min-w-0 flex-1 text-foreground">{toast.message}</div>
+      <button className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close notification">x</button>
+    </div>
+  );
+}
+
+function toastFromError(error: unknown, fallback: string): ToastState {
+  return { kind: "error", message: error instanceof Error ? error.message : fallback };
+}
+
+function emptyCircleDetail(externalId: string): CircleDetail {
   return {
-    ...fallbackCircles[0],
+    id: 0,
     externalId,
-    works: fallbackWorks,
+    displayName: externalId,
+    aliases: [],
+    rating: null,
+    note: "",
+    favorite: false,
+    localWorks: 0,
+    playableWorks: 0,
+    remoteWorks: 0,
+    missingWorks: 0,
+    catalogWorks: 0,
+    lastSyncedAt: null,
+    syncState: "pending",
+    autoRefresh: { status: "skipped", reason: "", mode: "" },
+    sourceSummaries: [],
+    works: [],
   };
 }
 
@@ -1307,6 +1180,10 @@ function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
 function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number } | null {
   const remote = sourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
   return remote?.sourceId ? { sourceId: remote.sourceId } : null;
+}
+
+function isTranslationCircle(externalId: string) {
+  return externalId.toUpperCase() === TRANSLATION_CIRCLE_ID;
 }
 
 function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }) {
