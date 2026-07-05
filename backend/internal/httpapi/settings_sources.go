@@ -1048,6 +1048,30 @@ func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
 	return nil
 }
 
+func (s *Server) ensureWorkManualOverrideSchema(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS work_manual_override (
+			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+			field_name TEXT NOT NULL,
+			value_json TEXT NOT NULL DEFAULT 'null',
+			asset_path TEXT NOT NULL DEFAULT '',
+			updated_by_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(work_id, field_name)
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_work_manual_override_field
+		ON work_manual_override(field_name, updated_at)
+	`); err != nil {
+		return err
+	}
+	return nil
+}
+
 func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSourcePresence) error {
 	presence.PresenceType = strings.TrimSpace(presence.PresenceType)
 	if presence.PresenceType == "" {
@@ -1101,8 +1125,14 @@ func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, wo
 	}
 	flags.WorkID = nullableInt64(workID)
 	flags.HasRemote = s.workHasLocationType(ctx, workID.Int64, sourceID, "remote_stream")
+	if !flags.HasRemote {
+		flags.HasRemote = s.workHasSourcePresence(ctx, workID.Int64, sourceID, "remote", "available")
+	}
 	flags.HasCache = s.workHasLocationType(ctx, workID.Int64, sourceID, "cache")
 	flags.HasLocal = s.workHasLocationType(ctx, workID.Int64, 0, "local")
+	if !flags.HasLocal {
+		flags.HasLocal = s.workHasSourcePresence(ctx, workID.Int64, 0, "local", "available")
+	}
 	return flags, nil
 }
 
@@ -1118,6 +1148,27 @@ func (s *Server) workHasLocationType(ctx context.Context, workID int64, sourceID
 	args := []any{workID, locationType}
 	if sourceID > 0 {
 		query += " AND location.file_source_id = ?"
+		args = append(args, sourceID)
+	}
+	query += " LIMIT 1"
+	var found int
+	return s.db.QueryRowContext(ctx, query, args...).Scan(&found) == nil
+}
+
+func (s *Server) workHasSourcePresence(ctx context.Context, workID int64, sourceID int64, presenceType string, availability string) bool {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return false
+	}
+	query := `
+		SELECT 1
+		FROM work_source_presence
+		WHERE work_id = ?
+			AND presence_type = ?
+			AND availability = ?
+	`
+	args := []any{workID, presenceType, availability}
+	if sourceID > 0 {
+		query += " AND file_source_id = ?"
 		args = append(args, sourceID)
 	}
 	query += " LIMIT 1"
