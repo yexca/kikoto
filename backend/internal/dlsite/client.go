@@ -47,6 +47,11 @@ type Product struct {
 	ProductRaw        json.RawMessage      `json:"-"`
 	DynamicRaw        json.RawMessage      `json:"-"`
 	RateAverage2DP    *float64             `json:"-"`
+	Language          string               `json:"-"`
+}
+
+type ProductOptions struct {
+	Languages []string
 }
 
 type Image struct {
@@ -96,6 +101,10 @@ func NewClient(httpClient *http.Client) *Client {
 }
 
 func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, error) {
+	return c.FetchProductWithOptions(ctx, workno, ProductOptions{})
+}
+
+func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, options ProductOptions) (Product, error) {
 	workno = strings.ToUpper(strings.TrimSpace(workno))
 	if workno == "" {
 		return Product{}, fmt.Errorf("empty workno")
@@ -103,11 +112,14 @@ func (c *Client) FetchProduct(ctx context.Context, workno string) (Product, erro
 
 	var lastErr error
 	for _, site := range candidateSites(workno) {
-		product, err := c.fetchProductFromSite(ctx, site, workno)
-		if err == nil {
-			return product, nil
+		for _, language := range normalizeLanguages(options.Languages) {
+			product, err := c.fetchProductFromSite(ctx, site, workno, language)
+			if err == nil {
+				product.Language = language
+				return product, nil
+			}
+			lastErr = err
 		}
-		lastErr = err
 	}
 
 	if lastErr == nil {
@@ -214,8 +226,11 @@ func (p Product) CoverURL() string {
 	return ""
 }
 
-func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno string) (Product, error) {
+func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno string, language string) (Product, error) {
 	endpoint := fmt.Sprintf("%s/%s/api/=/product.json?workno=%s", strings.TrimRight(c.baseURL, "/"), site, url.QueryEscape(workno))
+	if language != "" {
+		endpoint += "&locale=" + url.QueryEscape(language)
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return Product{}, err
@@ -474,6 +489,23 @@ func candidateSites(workno string) []string {
 	default:
 		return []string{"maniax", "pro"}
 	}
+}
+
+func normalizeLanguages(values []string) []string {
+	seen := map[string]bool{}
+	languages := []string{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		languages = append(languages, value)
+	}
+	if len(languages) == 0 {
+		return []string{""}
+	}
+	return languages
 }
 
 func candidateMakerSites(makerID string) []string {

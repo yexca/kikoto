@@ -47,3 +47,32 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 		t.Fatalf("RateAverage2DP = %v", product.RateAverage2DP)
 	}
 }
+
+func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/maniax/api/=/product.json":
+			if r.URL.Query().Get("locale") != "en-us" {
+				t.Fatalf("locale = %s", r.URL.Query().Get("locale"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Localized title"}]`))
+		case "/maniax-touch/product/info/ajax":
+			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.5}}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+
+	product, err := client.FetchProductWithOptions(context.Background(), "RJ0123456", ProductOptions{Languages: []string{"en-us"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if product.Language != "en-us" {
+		t.Fatalf("Language = %s", product.Language)
+	}
+}

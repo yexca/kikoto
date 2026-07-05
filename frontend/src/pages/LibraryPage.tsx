@@ -18,6 +18,7 @@ import {
   ImageIcon,
   ExternalLink,
   Cloud,
+  Languages,
   ListChecks,
   MoreHorizontal,
   Pause,
@@ -1751,6 +1752,8 @@ function WorkDetailView({
         ratingCount={work.ratingCount}
         sales={work.sales}
         series={work.series}
+        baseCode={work.baseCode}
+        metadataLanguage={work.metadataLanguage}
         dlsiteFetchedAt={work.dlsiteFetchedAt}
         releaseDate={work.releaseDate ?? "Unknown"}
         ageRating={work.ageRating}
@@ -1831,6 +1834,8 @@ function DetailHero({
   ratingCount,
   sales,
   series,
+  baseCode,
+  metadataLanguage,
   dlsiteFetchedAt,
   releaseDate,
   ageRating,
@@ -1851,6 +1856,8 @@ function DetailHero({
   ratingCount: number | null;
   sales: number | null;
   series: string;
+  baseCode?: string;
+  metadataLanguage?: string;
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -1908,6 +1915,18 @@ function DetailHero({
           dlsiteFetchedAt={dlsiteFetchedAt}
           ageRating={ageRating}
         />
+
+        {(metadataLanguage || baseCode) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+            <Languages className="h-3.5 w-3.5" />
+            {metadataLanguage && <span>DLsite metadata: <span className="font-semibold text-foreground">{languageLabel(metadataLanguage)}</span></span>}
+            {baseCode && (
+              <button className="inline-flex items-center gap-1 font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
+                Base work {baseCode}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <DetailChipRow
@@ -3328,6 +3347,34 @@ function ageRatingView(value: string) {
   default:
     return { label: value, className: "text-foreground" };
   }
+}
+
+function languageLabel(value: string) {
+  switch (value.trim().toLowerCase()) {
+  case "ja":
+  case "ja-jp":
+    return "Japanese";
+  case "en":
+  case "en-us":
+    return "English";
+  case "zh":
+  case "zh-cn":
+    return "Simplified Chinese";
+  case "zh-tw":
+    return "Traditional Chinese";
+  case "ko":
+  case "ko-kr":
+    return "Korean";
+  default:
+    return value || "Unknown";
+  }
+}
+
+function openWorkCodeRoute(code: string) {
+  const cleanCode = code.trim();
+  if (!cleanCode) return;
+  window.history.pushState({}, "", `/${cleanCode}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function listeningStatusLabel(status: ListeningStatus) {
