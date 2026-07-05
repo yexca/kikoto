@@ -58,6 +58,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/works/{id}/favorite-lists", s.setWorkFavoriteLists)
 	mux.HandleFunc("GET /api/circles", s.listCircles)
 	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
+	mux.HandleFunc("POST /api/circles/{externalId}/auto-refresh", s.autoRefreshCircle)
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
@@ -71,7 +72,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/voices/{personId}/merges/{mergeId}/undo", s.undoVoiceMergeReview)
 	mux.HandleFunc("PATCH /api/voices/{personId}/user-state", s.updateVoiceUserState)
 	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
-	mux.HandleFunc("GET /api/assets/covers/{file}", s.getCoverAsset)
+	mux.HandleFunc("GET /api/assets/covers/", s.getCoverAsset)
 	mux.HandleFunc("GET /api/assets/manual/{file}", s.getManualAsset)
 	mux.HandleFunc("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
@@ -193,12 +194,16 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
-	file := filepath.Base(r.PathValue("file"))
-	if file == "." || file == string(filepath.Separator) || strings.Contains(file, "..") {
+	relPath := strings.TrimPrefix(r.URL.Path, "/api/assets/covers/")
+	if relPath == "" || strings.Contains(relPath, "..") {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
 		return
 	}
-	path := filepath.Join(s.cfg.CacheRoot, "cover", file)
+	path, err := safeCachePath(filepath.Join(s.cfg.CacheRoot, "cover"), relPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
+		return
+	}
 	http.ServeFile(w, r, path)
 }
 
@@ -3688,13 +3693,37 @@ func (s *Server) coverURL(primaryCode string) string {
 		return manualURL
 	}
 	for _, extension := range []string{".jpg", ".jpeg", ".png", ".webp"} {
-		file := code + extension
-		path := filepath.Join(s.cfg.CacheRoot, "cover", file)
+		file := coverAssetRelativePath(code, extension)
+		path := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(file))
 		if _, err := os.Stat(path); err == nil {
 			return "/api/assets/covers/" + file
 		}
+		legacyFile := code + extension
+		legacyPath := filepath.Join(s.cfg.CacheRoot, "cover", legacyFile)
+		if _, err := os.Stat(legacyPath); err == nil {
+			return "/api/assets/covers/" + legacyFile
+		}
 	}
 	return ""
+}
+
+func coverAssetRelativePath(code string, extension string) string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	prefix := code
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	group := "misc"
+	digits := ""
+	for _, char := range code {
+		if char >= '0' && char <= '9' {
+			digits += string(char)
+		}
+	}
+	if len(digits) >= 3 {
+		group = digits[:3]
+	}
+	return filepath.ToSlash(filepath.Join(prefix, group, code+extension))
 }
 
 func (s *Server) manualCoverURL(primaryCode string) string {
@@ -3753,6 +3782,28 @@ func safeDataPath(root string, relPath string) (string, error) {
 	}
 	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 		return "", fmt.Errorf("path escapes data root")
+	}
+	return absPath, nil
+}
+
+func safeCachePath(root string, relPath string) (string, error) {
+	if strings.TrimSpace(relPath) == "" || filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("invalid relative path")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(filepath.Join(absRoot, filepath.FromSlash(relPath)))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		return "", fmt.Errorf("path escapes cache root")
 	}
 	return absPath, nil
 }
