@@ -1445,6 +1445,7 @@ function RemoteWorkDetailView({
         series=""
         dlsiteFetchedAt=""
         releaseDate={detail.releaseDate || "Unknown"}
+        ageRating={detail.ageRating}
         durationSeconds={detail.durationSeconds}
         voiceActors={detail.voiceActors}
         voiceCredits={[]}
@@ -1752,6 +1753,7 @@ function WorkDetailView({
         series={work.series}
         dlsiteFetchedAt={work.dlsiteFetchedAt}
         releaseDate={work.releaseDate ?? "Unknown"}
+        ageRating={work.ageRating}
         durationSeconds={work.durationSeconds}
         voiceActors={work.voiceActors}
         voiceCredits={work.voiceCredits ?? []}
@@ -1831,6 +1833,7 @@ function DetailHero({
   series,
   dlsiteFetchedAt,
   releaseDate,
+  ageRating,
   durationSeconds,
   voiceActors,
   voiceCredits,
@@ -1850,6 +1853,7 @@ function DetailHero({
   series: string;
   dlsiteFetchedAt: string;
   releaseDate: string;
+  ageRating: string;
   durationSeconds: number | null;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
@@ -1862,7 +1866,7 @@ function DetailHero({
     : voiceActors.map((name) => ({ personId: 0, displayName: name }));
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+    <section className="grid gap-5 xl:grid-cols-[minmax(420px,560px)_minmax(0,1fr)]">
       <div className="self-start overflow-hidden rounded-lg border bg-muted">
         <div className="aspect-[4/3]">
           {coverUrl ? (
@@ -1895,12 +1899,15 @@ function DetailHero({
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <MetaTile icon={<Star className="h-3.5 w-3.5 fill-current" />} label={ratingLabel} value={rating === null ? "No rating" : `${rating.toFixed(2)}${ratingCount ? ` / ${ratingCount.toLocaleString()}` : ""}`} />
-          <MetaTile icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
-          <MetaTile icon={<Clock3 className="h-3.5 w-3.5" />} label="Released" value={releaseDate} />
-          <MetaTile icon={<RefreshCw className="h-3.5 w-3.5" />} label="DL updated" value={dlsiteFetchedAt || "Unknown"} />
-        </div>
+        <DlsiteMetrics
+          ratingLabel={ratingLabel}
+          rating={rating}
+          ratingCount={ratingCount}
+          sales={sales}
+          releaseDate={releaseDate}
+          dlsiteFetchedAt={dlsiteFetchedAt}
+          ageRating={ageRating}
+        />
 
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <DetailChipRow
@@ -2211,14 +2218,46 @@ function DirectoryMessage({ message }: { message: string }) {
   return <div className="mb-4 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">{message}</div>;
 }
 
-function MetaTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function DlsiteMetrics({
+  ratingLabel,
+  rating,
+  ratingCount,
+  sales,
+  releaseDate,
+  dlsiteFetchedAt,
+  ageRating,
+}: {
+  ratingLabel: string;
+  rating: number | null;
+  ratingCount: number | null;
+  sales: number | null;
+  releaseDate: string;
+  dlsiteFetchedAt: string;
+  ageRating: string;
+}) {
+  const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? "Rate" : ratingLabel;
+  const rateValue = rating === null
+    ? "No rating"
+    : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
   return (
-    <div className="rounded-md border bg-card p-2.5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {icon}
-        {label}
+    <div className="rounded-lg border bg-card p-3 text-sm">
+      <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+        <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
+        <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
+        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Rating" value={ageRatingLabel(ageRating)} />
+        <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label="Released" value={releaseDate} />
+        <MetricLine icon={<RefreshCw className="h-3.5 w-3.5" />} label="DL updated" value={dlsiteFetchedAt || "Unknown"} />
       </div>
-      <div className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function MetricLine({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-xs font-semibold text-foreground">{value}</span>
     </div>
   );
 }
@@ -3264,6 +3303,30 @@ function formatDuration(value: number | null) {
   const minutes = Math.floor((value % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
   return `${minutes}m`;
+}
+
+function ageRatingLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+  case "adult":
+  case "r18":
+  case "r-18":
+  case "18":
+    return "R-18";
+  case "r15":
+  case "r-15":
+  case "15":
+    return "R-15";
+  case "general":
+  case "all":
+  case "全年齢":
+  case "all ages":
+    return "All ages";
+  case "":
+    return "Unknown";
+  default:
+    return value;
+  }
 }
 
 function listeningStatusLabel(status: ListeningStatus) {
