@@ -2239,25 +2239,26 @@ function DlsiteMetrics({
   const rateValue = rating === null
     ? "No rating"
     : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
+  const age = ageRatingView(ageRating);
+  const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
     <div className="rounded-lg border bg-card p-3 text-sm">
       <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
         <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
         <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
-        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Rating" value={ageRatingLabel(ageRating)} />
-        <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label="Released" value={releaseDate} />
-        <MetricLine icon={<RefreshCw className="h-3.5 w-3.5" />} label="DL updated" value={dlsiteFetchedAt || "Unknown"} />
+        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.className} />
+        <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
       </div>
     </div>
   );
 }
 
-function MetricLine({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function MetricLine({ icon, label, value, valueClassName = "" }: { icon: ReactNode; label: string; value: string; valueClassName?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-muted-foreground">{icon}</span>
       <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate text-xs font-semibold text-foreground">{value}</span>
+      <span className={`min-w-0 truncate text-xs font-semibold ${valueClassName || "text-foreground"}`}>{value}</span>
     </div>
   );
 }
@@ -3305,27 +3306,27 @@ function formatDuration(value: number | null) {
   return `${minutes}m`;
 }
 
-function ageRatingLabel(value: string) {
+function ageRatingView(value: string) {
   const normalized = value.trim().toLowerCase();
   switch (normalized) {
   case "adult":
   case "r18":
   case "r-18":
   case "18":
-    return "R-18";
+    return { label: "R18", className: "text-destructive" };
   case "r15":
   case "r-15":
   case "15":
-    return "R-15";
+    return { label: "R15", className: "text-blue-600" };
   case "general":
   case "all":
   case "全年齢":
   case "all ages":
-    return "All ages";
+    return { label: "全年齢", className: "text-emerald-600" };
   case "":
-    return "Unknown";
+    return { label: "Unknown", className: "text-muted-foreground" };
   default:
-    return value;
+    return { label: value, className: "text-foreground" };
   }
 }
 
