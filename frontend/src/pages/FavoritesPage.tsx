@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,10 @@ export function FavoritesPage() {
   const [pageSize, setPageSize] = useState<PageSize>(24);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
@@ -156,12 +160,18 @@ export function FavoritesPage() {
     });
   }, [activeList, availabilityFilter, listWorkIDs, query, shelfWorks, statusFilter]);
 
+  useEffect(() => {
+    setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => filteredWorks.some((work) => work.id === id))));
+  }, [filteredWorks]);
+
   const totalPages = Math.max(1, Math.ceil(filteredWorks.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = query.trim() || statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all";
   const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
+  const selectedWorks = filteredWorks.filter((work) => selectedWorkIDs.has(work.id));
+  const allPagedWorksSelected = pagedWorks.length > 0 && pagedWorks.every((work) => selectedWorkIDs.has(work.id));
 
   const openWork = (work: Work) => {
     window.history.pushState({}, "", `/${work.primaryCode}`);
@@ -233,6 +243,47 @@ export function FavoritesPage() {
     await reloadFavoriteLists();
     setActiveList(selectedList.id);
     setMessage("");
+  };
+
+  const toggleWorkSelection = (workID: number, selected: boolean) => {
+    setSelectedWorkIDs((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(workID);
+      else next.delete(workID);
+      return next;
+    });
+  };
+
+  const togglePagedSelection = (selected: boolean) => {
+    setSelectedWorkIDs((ids) => {
+      const next = new Set(ids);
+      for (const work of pagedWorks) {
+        if (selected) next.add(work.id);
+        else next.delete(work.id);
+      }
+      return next;
+    });
+  };
+
+  const applyListMembership = async (targetListIDs: number[]) => {
+    const targetWorks = selectedWorks;
+    if (targetWorks.length === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      for (const work of targetWorks) {
+        await api.setWorkFavoriteLists(work.id, targetListIDs);
+      }
+      setWorks(await api.listWorks());
+      await reloadFavoriteLists();
+      setSelectedWorkIDs(new Set());
+      setSelectionMode(false);
+      setListDialogTarget(null);
+      setMessage(`Updated list membership for ${targetWorks.length} work${targetWorks.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bulk list update failed.");
+    } finally {
+      setIsBulkUpdating(false);
+    }
   };
 
   return (
@@ -354,6 +405,14 @@ export function FavoritesPage() {
           Showing {filteredWorks.length} of {shelfWorks.length} shelf works
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
+            setSelectionMode((value) => {
+              if (value) setSelectedWorkIDs(new Set());
+              return !value;
+            });
+          }}>
+            Select
+          </Button>
           <ColumnPicker
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
@@ -375,6 +434,44 @@ export function FavoritesPage() {
         </div>
       </div>
 
+      {selectionMode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={allPagedWorksSelected}
+              disabled={pagedWorks.length === 0}
+              onChange={(event) => togglePagedSelection(event.target.checked)}
+            />
+            {selectedWorks.length} selected
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>Select page</Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              setSelectedWorkIDs(new Set());
+              setSelectionMode(false);
+            }}>Cancel</Button>
+            <div className="relative">
+              <Button variant="outline" size="sm" disabled={selectedWorks.length === 0 || isBulkUpdating} onClick={() => setListDialogTarget((target) => target ? null : { mode: "bulk" })}>
+                Change lists
+              </Button>
+              {listDialogTarget && (
+                <ListMembershipPopover
+                  title={`${selectedWorks.length} selected works`}
+                  work={null}
+                  favoriteLists={favoriteLists}
+                  defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
+                  disabled={isBulkUpdating}
+                  align="right"
+                  onClose={() => setListDialogTarget(null)}
+                  onSave={applyListMembership}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid min-h-60 place-items-center rounded-lg border bg-card text-sm text-muted-foreground">Loading favorites...</div>
       ) : pagedWorks.length > 0 ? (
@@ -384,6 +481,24 @@ export function FavoritesPage() {
               <FavoriteWorkCard
                 key={work.id}
                 work={work}
+                selected={selectedWorkIDs.has(work.id)}
+                selectionActive={selectionMode}
+                onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
+                favoriteLists={favoriteLists}
+                isListSaving={isBulkUpdating}
+                onSaveLists={async (listIDs) => {
+                  setIsBulkUpdating(true);
+                  try {
+                    await api.setWorkFavoriteLists(work.id, listIDs);
+                    setWorks(await api.listWorks());
+                    await reloadFavoriteLists();
+                    setMessage(`Updated list membership for ${work.primaryCode}.`);
+                  } catch (error) {
+                    setMessage(error instanceof Error ? error.message : "List membership could not be saved.");
+                  } finally {
+                    setIsBulkUpdating(false);
+                  }
+                }}
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
                 onFavoriteChange={updateWorkFavorite}
@@ -481,22 +596,40 @@ function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
 
 function FavoriteWorkCard({
   work,
+  selected,
+  selectionActive,
+  onSelectedChange,
+  favoriteLists,
+  isListSaving,
+  onSaveLists,
   onOpen,
   onStatusChange,
   onFavoriteChange,
 }: {
   work: Work;
+  selected: boolean;
+  selectionActive: boolean;
+  onSelectedChange: (selected: boolean) => void;
+  favoriteLists: FavoriteList[];
+  isListSaving: boolean;
+  onSaveLists: (listIDs: number[]) => Promise<void>;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
 }) {
   const sourceBadges = work.availability.length > 0 ? work.availability : ["missing"];
+  const [isListPopoverOpen, setIsListPopoverOpen] = useState(false);
 
   return (
     <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="p-0">
         <button className="block w-full text-left" onClick={onOpen}>
           <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+            {selectionActive && (
+              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} />
+              </label>
+            )}
             {work.coverUrl ? (
               <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" />
             ) : (
@@ -556,6 +689,26 @@ function FavoriteWorkCard({
               <Heart className="h-4 w-4 fill-current" />
               Remove
             </Button>
+            <div className="relative">
+              <Button variant="outline" size="sm" onClick={() => setIsListPopoverOpen((open) => !open)}>
+                <ListMusic className="h-4 w-4" />
+                Lists
+              </Button>
+              {isListPopoverOpen && (
+                <ListMembershipPopover
+                  title={`${work.primaryCode} lists`}
+                  work={work}
+                  favoriteLists={favoriteLists}
+                  disabled={isListSaving}
+                  align="right"
+                  onClose={() => setIsListPopoverOpen(false)}
+                  onSave={async (listIDs) => {
+                    await onSaveLists(listIDs);
+                    setIsListPopoverOpen(false);
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </CardContent>
@@ -700,6 +853,114 @@ function ConfirmDeleteList({
             Delete
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ListMembershipPopover({
+  title,
+  work,
+  favoriteLists,
+  defaultSelectedListIDs,
+  disabled,
+  align = "left",
+  onClose,
+  onSave,
+}: {
+  title: string;
+  work: Work | null;
+  favoriteLists: FavoriteList[];
+  defaultSelectedListIDs?: number[];
+  disabled: boolean;
+  align?: "left" | "right";
+  onClose: () => void;
+  onSave: (listIDs: number[]) => Promise<void>;
+}) {
+  const [selectedIDs, setSelectedIDs] = useState<Set<number>>(() => new Set(defaultSelectedListIDs ?? []));
+  const [isLoading, setIsLoading] = useState(Boolean(work));
+  const [error, setError] = useState("");
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!work) return;
+    let cancelled = false;
+    setIsLoading(true);
+    api.getWorkFavoriteLists(work.id)
+      .then((lists) => {
+        if (!cancelled) setSelectedIDs(new Set(lists.filter((list) => list.selected).map((list) => list.id)));
+      })
+      .catch((nextError) => {
+        if (!cancelled) setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [work]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && popoverRef.current?.contains(target)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const toggleList = (listID: number, selected: boolean) => {
+    setSelectedIDs((items) => {
+      const next = new Set(items);
+      if (selected) next.add(listID);
+      else next.delete(listID);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    setError("");
+    try {
+      await onSave(Array.from(selectedIDs));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "List membership could not be saved.");
+    }
+  };
+
+  return (
+    <div
+      ref={popoverRef}
+      className={`absolute top-full z-50 mt-2 w-72 rounded-lg border bg-card p-3 text-left shadow-xl ${align === "right" ? "right-0" : "left-0"}`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="mt-3 max-h-64 space-y-2 overflow-auto">
+        {isLoading ? (
+          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading lists...</div>
+        ) : favoriteLists.length > 0 ? favoriteLists.map((list) => (
+          <label key={list.id} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-muted">
+            <input type="checkbox" checked={selectedIDs.has(list.id)} onChange={(event) => toggleList(list.id, event.target.checked)} />
+            <span className="min-w-0 flex-1 truncate">{list.name}</span>
+          </label>
+        )) : (
+          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
+        )}
+        {error && <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>}
+      </div>
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" disabled={disabled || isLoading} onClick={() => void save()}>
+          Save
+        </Button>
       </div>
     </div>
   );
