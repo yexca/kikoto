@@ -59,6 +59,8 @@ SQLite stores:
 - Media file locations.
 - Workflow definitions, triggers, runs, node runs, jobs, and candidates.
 - Users, sessions, quick work marks, favorite/tag foundations, and media progress.
+- Logical work editions for translated product codes.
+- Favorite lists and favorite list membership.
 - Party, party catalog, and per-user party state for circle or maker pages.
 - Person, alias, credit, and per-user person state for voice actor pages.
 
@@ -71,6 +73,7 @@ Runtime files live under mounted `config/` and `data/` directories.
   rather than queued worker jobs.
 - Retry and restart recovery are not implemented.
 - Queue restore is not implemented.
-- Favorite-list and custom-tag UI is not implemented yet.
+- Favorite-list selection exists on work detail; list management UI is not
+  implemented yet.
 - Review/maintenance triage for stale catalog rows and ambiguous scan results is
   not implemented yet.

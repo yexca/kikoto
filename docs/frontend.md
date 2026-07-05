@@ -7,6 +7,8 @@ Kikoto's frontend is a compact personal library and player interface.
 - Library grid.
 - Library pagination with 24/48 works per page.
 - Work detail routes by product code.
+- Work detail language edition selector for translated product-code families.
+- Work detail favorite-list selector for existing lists.
 - Circle list and circle detail routes.
 - Voice actor list and detail routes.
 - Local directory tree.
@@ -16,7 +18,7 @@ Kikoto's frontend is a compact personal library and player interface.
 - Users page for administrators.
 - Quick listening mark controls.
 - Global player dock.
-- Favorites placeholder for marks, playlists, and user-tag workflows.
+- Favorites surface for quick marks and work-detail list membership.
 
 ## Library
 
@@ -43,13 +45,28 @@ Work detail shows:
 - Cover.
 - Product code and title.
 - Circle, rating, tags, and voice metadata.
+- Known translated editions for the same logical work.
 - Local file tree.
 - DLsite link.
 - Play action.
 - Quick listening mark.
+- Favorite-list membership.
 - Per-track progress for resume.
 - Source availability tabs for local, cached, remote, and configured compatible
   sources.
+
+When a work belongs to a translated product-code family, the detail page keeps
+the base metadata page while showing every known edition. Editions with local
+media are selectable for playback and directory-tree browsing. Editions without
+local media remain visible but unavailable, so users can see that the
+translation exists without implying that it can be played locally.
+
+If the base edition has no local files, the page defaults the file tree to the
+first playable local edition.
+
+The favorite control opens a selector for existing favorite lists. Adding a work
+to any list also keeps the legacy favorite state enabled for compatibility.
+Full favorite-list creation and management is a separate workflow.
 
 Clicking a playable file queues the playable audio files in that same folder. The work-level Play action queues all playable tracks in the work.
 
@@ -115,7 +132,8 @@ The expanded player keeps a stable outer size. Queue and lyrics panels replace t
 ## Future Frontend Work
 
 - Real search and filtering.
-- Favorites playlists and custom tag UI.
+- Favorite-list creation, rename, sort, and deletion UI.
+- Custom user tag UI.
 - Persisted queue restore.
 - Source connection tests and priority controls.
 - Workflow retry actions.

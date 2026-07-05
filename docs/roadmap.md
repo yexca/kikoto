@@ -22,6 +22,8 @@
 - Voice favorite, user tags, alias review, merge, and merge undo.
 - Global custom player dock.
 - Per-user quick listening marks for works.
+- Work-detail favorite-list selection for existing lists.
+- Logical work edition grouping for translated product codes.
 - Per-user playback progress persisted by logical media item.
 - Settings-based source and cache configuration.
 - Workflow definitions, scheduled triggers, system definitions, and Activity run detail.
@@ -30,7 +32,7 @@
 
 - Restore queue state.
 - Add real search and filters.
-- Add favorite list and custom user tag UI.
+- Add favorite-list management and custom user tag UI.
 - Add file change detection for local folders.
 - Add review/maintenance triage for stale, duplicate, or ambiguous scan results.
 - Add workflow retry actions.

@@ -18,6 +18,8 @@ work
 Important tables:
 
 - `work`
+- `logical_work`
+- `work_edition`
 - `work_external_id`
 - `metadata_provider`
 - `metadata_snapshot`
@@ -27,6 +29,11 @@ Important tables:
 - `work_party`
 
 DLsite metadata sync stores snapshots for traceability and updates normalized work fields used by the library and detail views.
+
+`logical_work` and `work_edition` group translated product codes into one
+logical work family while preserving edition-specific work rows and media
+availability. A translated code can resolve to a base work page, and the detail
+view can still expose which editions have local media.
 
 Circle and maker browsing use the party tables. Catalog rows can exist before a
 work has been imported into the unified work table.
@@ -88,6 +95,9 @@ Important tables:
 Quick listening marks live on `user_work_state`. Playback progress lives on
 `user_media_progress` and is attached to logical `media_item` records rather than
 raw file locations.
+
+Favorite list membership lives in `favorite_list_item`. The `favorite` flag on
+`user_work_state` is kept as a compatibility summary.
 
 Circle ratings and notes live on `user_party_state`. Voice actor favorite,
 rating, note, and tag state lives on person user-state and user-tag tables.
