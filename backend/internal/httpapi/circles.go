@@ -13,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -749,6 +750,9 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 	} else if catalogWorks == 0 {
 		item.SyncState = "stale"
 	}
+	if isTranslationUmbrellaCircle(item.ExternalID) {
+		item.SyncState = "excluded"
+	}
 	return nil
 }
 
@@ -1173,7 +1177,8 @@ func (s *Server) maybeStartCircleAutoRefresh(partyID int64, externalID string, l
 		defer s.clearCircleAutoRefreshRunning(partyID)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		_, _ = s.runCircleRefresh(ctx, partyID, externalID, circleRefreshRequest{Mode: mode, ProductMode: "available"})
+		request := normalizeCircleRefreshRequest(circleRefreshRequest{Scope: "all", Mode: mode, ProductMode: "available"})
+		_, _ = s.runCircleRefresh(ctx, partyID, externalID, request)
 	}()
 	return circleAutoRefresh{Status: "queued", Reason: reason, Mode: mode}
 }
@@ -1324,18 +1329,19 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 	}
 	candidates := workCodes
 	if productMode != "all" {
-		available, err := s.availableCircleCatalogCodes(ctx, partyID, workCodes)
+		missing, err := s.circleCatalogCodesMissingMetadata(ctx, partyID, workCodes)
 		if err != nil {
 			return 0, err
 		}
 		filtered := []string{}
 		for _, code := range workCodes {
-			if available[strings.ToUpper(strings.TrimSpace(code))] {
+			if missing[strings.ToUpper(strings.TrimSpace(code))] {
 				filtered = append(filtered, code)
 			}
 		}
 		candidates = filtered
 	}
+	syncer := metasync.NewDLsiteSyncer(s.db, client).WithCacheRoot(s.cfg.CacheRoot)
 	synced := 0
 	for _, code := range candidates {
 		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
@@ -1349,6 +1355,13 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		title := firstNonEmpty(product.WorkName, product.ProductName, product.WorkNo)
 		release := nullableStringFromText(product.RegistDate)
 		if err := s.upsertPartyCatalogItem(ctx, partyID, product.WorkNo, title, release, dlsiteURL(product.WorkNo), "catalog", raw); err != nil {
+			return synced, err
+		}
+		workID, err := syncer.SyncProduct(ctx, product)
+		if err != nil {
+			return synced, err
+		}
+		if err := s.upsertWorkParty(ctx, workID, partyID, "circle", "circle_refresh"); err != nil {
 			return synced, err
 		}
 		party := parsedParty{ExternalID: normalizeMakerID(product.MakerID), DisplayName: strings.TrimSpace(product.MakerName)}
@@ -1518,6 +1531,45 @@ func scanCatalogCodeRows(rows *sql.Rows) (map[string]bool, error) {
 		}
 		code = strings.ToUpper(strings.TrimSpace(code))
 		if code != "" {
+			result[code] = true
+		}
+	}
+	return result, rows.Err()
+}
+
+func (s *Server) circleCatalogCodesMissingMetadata(ctx context.Context, partyID int64, workCodes []string) (map[string]bool, error) {
+	wanted := map[string]bool{}
+	for _, code := range workCodes {
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" {
+			wanted[code] = true
+		}
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT catalog.primary_code
+		FROM party_catalog_item AS catalog
+		LEFT JOIN metadata_provider AS provider ON provider.code = 'dlsite'
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		WHERE catalog.party_id = ?
+			AND NOT EXISTS (
+				SELECT 1
+				FROM metadata_snapshot AS snapshot
+				WHERE snapshot.work_id = work.id
+					AND snapshot.provider_id = provider.id
+			)
+	`, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		code = strings.ToUpper(strings.TrimSpace(code))
+		if code != "" && wanted[code] {
 			result[code] = true
 		}
 	}

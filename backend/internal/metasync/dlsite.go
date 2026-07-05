@@ -147,6 +147,17 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	return result, nil
 }
 
+func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) (int64, error) {
+	workID, err := s.ensureWorkForProduct(ctx, product)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.applyProduct(ctx, workID, product); err != nil {
+		return 0, err
+	}
+	return workID, nil
+}
+
 func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
 	if client, ok := s.client.(DLsiteClientWithOptions); ok {
 		return client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: s.languages})
