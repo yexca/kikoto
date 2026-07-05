@@ -110,6 +110,7 @@ type remoteWorkDetail struct {
 	Circle          string              `json:"circle"`
 	Rating          *float64            `json:"rating"`
 	Sales           *int64              `json:"sales"`
+	AgeRating       string              `json:"ageRating"`
 	ReleaseDate     string              `json:"releaseDate"`
 	DurationSeconds *int64              `json:"durationSeconds"`
 	Tags            []string            `json:"tags"`
@@ -1850,6 +1851,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		Circle:          circle,
 		Rating:          work.RateAverage2DP,
 		Sales:           work.DLCount,
+		AgeRating:       work.AgeCategoryString,
 		ReleaseDate:     releaseDate,
 		DurationSeconds: duration,
 		Tags:            tags,

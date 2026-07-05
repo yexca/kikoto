@@ -201,6 +201,7 @@ export type RemoteWorkDetail = {
   circle: string;
   rating: number | null;
   sales: number | null;
+  ageRating: string;
   releaseDate: string;
   durationSeconds: number | null;
   tags: string[];
