@@ -1185,9 +1185,9 @@ function listeningStatusLabel(status: string) {
   return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
 }
 
-function sourceTags(sources: CircleSourceStat[]) {
+function sourceTags(sources: CircleSourceStat[] | null | undefined) {
   const seen = new Set<string>();
-  return sources.filter((source) => {
+  return (sources ?? []).filter((source) => {
     if (source.key === "cache") return false;
     const key = source.key;
     if (seen.has(key)) return false;

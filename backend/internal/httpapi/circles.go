@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,7 +95,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if err := s.syncPartiesFromDLsiteSnapshots(r.Context()); err != nil {
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -129,6 +130,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	items := []circleSummary{}
+	partyIDs := []int64{}
 	for rows.Next() {
 		var item circleSummary
 		var rating sql.NullInt64
@@ -142,11 +144,18 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		item.Favorite = favorite != 0
 		item.LastSyncedAt = nullableString(lastSynced)
 		item.Aliases = []string{}
-		if err := s.fillCircleStats(r.Context(), user.ID, &item); err != nil {
-			writeError(w, err)
-			return
-		}
+		item.SourceSummaries = []circleSourceStat{}
+		setDefaultCircleState(&item)
 		items = append(items, item)
+		partyIDs = append(partyIDs, item.ID)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.fillCircleStatsBatch(r.Context(), items, partyIDs); err != nil {
+		writeError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, items)
 }
@@ -162,6 +171,10 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ensureCircleSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -195,6 +208,10 @@ func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ensureCircleSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -240,6 +257,10 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ensureCircleSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -690,6 +711,18 @@ func (s *Server) upsertWorkParty(ctx context.Context, workID int64, partyID int6
 	return err
 }
 
+func upsertWorkPartyTx(ctx context.Context, tx *sql.Tx, providerID int64, workID int64, partyID int64, role string, source string) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+			provider_id = excluded.provider_id,
+			source = excluded.source,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, partyID, strings.TrimSpace(firstNonEmpty(role, "circle")), providerID, source)
+	return err
+}
+
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
@@ -747,12 +780,7 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 }
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
-	if isTranslationUmbrellaCircle(item.ExternalID) {
-		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
-	}
-	if item.AutoRefresh.Status == "" {
-		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "not evaluated"}
-	}
+	setDefaultCircleState(item)
 	var catalogWorks int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT primary_code) FROM party_catalog_item WHERE party_id = ?", item.ID).Scan(&catalogWorks); err != nil {
 		return err
@@ -786,6 +814,196 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 		item.SyncState = "excluded"
 	}
 	return nil
+}
+
+func setDefaultCircleState(item *circleSummary) {
+	if isTranslationUmbrellaCircle(item.ExternalID) {
+		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "translation umbrella circle", Mode: ""}
+	}
+	if item.AutoRefresh.Status == "" {
+		item.AutoRefresh = circleAutoRefresh{Status: "skipped", Reason: "not evaluated"}
+	}
+	item.SyncState = "fresh"
+	if item.LastSyncedAt == nil {
+		item.SyncState = "pending"
+	}
+	if isTranslationUmbrellaCircle(item.ExternalID) {
+		item.SyncState = "excluded"
+	}
+}
+
+func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary, partyIDs []int64) error {
+	if len(items) == 0 {
+		return nil
+	}
+	byID := map[int64]*circleSummary{}
+	for index := range items {
+		byID[items[index].ID] = &items[index]
+	}
+	catalogCounts, err := s.loadCircleCatalogCounts(ctx, partyIDs)
+	if err != nil {
+		return err
+	}
+	for partyID, count := range catalogCounts {
+		if item := byID[partyID]; item != nil {
+			item.CatalogWorks = count
+		}
+	}
+	localCounts, remoteCounts, err := s.loadCircleAvailabilityCounts(ctx, partyIDs)
+	if err != nil {
+		return err
+	}
+	for partyID, count := range localCounts {
+		if item := byID[partyID]; item != nil {
+			item.LocalWorks = count
+			item.PlayableWorks = count
+		}
+	}
+	for partyID, count := range remoteCounts {
+		if item := byID[partyID]; item != nil {
+			item.RemoteWorks = count
+		}
+	}
+	for index := range items {
+		items[index].MissingWorks = items[index].CatalogWorks - items[index].LocalWorks - items[index].RemoteWorks
+		if items[index].MissingWorks < 0 {
+			items[index].MissingWorks = 0
+		}
+		if items[index].LastSyncedAt != nil && items[index].CatalogWorks == 0 && !isTranslationUmbrellaCircle(items[index].ExternalID) {
+			items[index].SyncState = "stale"
+		}
+	}
+	return nil
+}
+
+func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
+	query, args := int64InQuery(`
+		SELECT party_id, COUNT(DISTINCT primary_code)
+		FROM party_catalog_item
+		WHERE party_id IN (%s)
+		GROUP BY party_id
+	`, partyIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[int64]int{}
+	for rows.Next() {
+		var partyID int64
+		var count int
+		if err := rows.Scan(&partyID, &count); err != nil {
+			return nil, err
+		}
+		result[partyID] = count
+	}
+	return result, rows.Err()
+}
+
+func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []int64) (map[int64]int, map[int64]int, error) {
+	query, args := int64InQuery(`
+		SELECT relation.party_id, location.location_type, COUNT(DISTINCT work.id)
+		FROM work_party AS relation
+		INNER JOIN work ON work.id = relation.work_id
+		INNER JOIN media_item AS item ON item.work_id = work.id
+		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		WHERE relation.party_id IN (%s)
+			AND location.availability = 'available'
+		GROUP BY relation.party_id, location.location_type
+	`, partyIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	localCounts := map[int64]int{}
+	remoteCounts := map[int64]int{}
+	for rows.Next() {
+		var partyID int64
+		var locationType string
+		var count int
+		if err := rows.Scan(&partyID, &locationType, &count); err != nil {
+			return nil, nil, err
+		}
+		if locationType == "local" {
+			localCounts[partyID] += count
+		} else {
+			remoteCounts[partyID] += count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	query, args = int64InQuery(`
+		SELECT catalog.party_id, COUNT(DISTINCT catalog.primary_code)
+		FROM party_catalog_item AS catalog
+		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
+		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+		WHERE catalog.party_id IN (%s)
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+			AND source.enabled = 1
+		GROUP BY catalog.party_id
+	`, partyIDs)
+	remoteRows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer remoteRows.Close()
+	for remoteRows.Next() {
+		var partyID int64
+		var count int
+		if err := remoteRows.Scan(&partyID, &count); err != nil {
+			return nil, nil, err
+		}
+		if count > remoteCounts[partyID] {
+			remoteCounts[partyID] = count
+		}
+	}
+	if err := remoteRows.Err(); err != nil {
+		return nil, nil, err
+	}
+	query, args = int64InQuery(`
+		SELECT relation.party_id, COUNT(DISTINCT work.id)
+		FROM work_party AS relation
+		INNER JOIN work ON work.id = relation.work_id
+		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
+		INNER JOIN file_source AS source ON source.id = presence.file_source_id
+		WHERE relation.party_id IN (%s)
+			AND presence.presence_type = 'remote'
+			AND presence.availability = 'available'
+			AND source.enabled = 1
+		GROUP BY relation.party_id
+	`, partyIDs)
+	presenceRows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer presenceRows.Close()
+	for presenceRows.Next() {
+		var partyID int64
+		var count int
+		if err := presenceRows.Scan(&partyID, &count); err != nil {
+			return nil, nil, err
+		}
+		if count > remoteCounts[partyID] {
+			remoteCounts[partyID] = count
+		}
+	}
+	if err := presenceRows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return localCounts, remoteCounts, nil
+}
+
+func int64InQuery(template string, values []int64) (string, []any) {
+	placeholders := make([]string, 0, len(values))
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		placeholders = append(placeholders, "?")
+		args = append(args, value)
+	}
+	return fmt.Sprintf(template, strings.Join(placeholders, ",")), args
 }
 
 func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circleSourceStat, error) {
@@ -1045,9 +1263,42 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 			continue
 		}
 		hasRemote = true
+		seenSource[sourceID] = true
 		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: sourceName, Status: "available", Count: count})
 	}
 	if err := catalogRows.Err(); err != nil {
+		return nil, err
+	}
+	presenceRows, err := s.db.QueryContext(ctx, `
+		SELECT source.id, source.display_name, COUNT(*)
+		FROM work
+		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
+		INNER JOIN file_source AS source ON source.id = presence.file_source_id
+		WHERE UPPER(work.primary_code) = UPPER(?)
+			AND presence.presence_type = 'remote'
+			AND presence.availability = 'available'
+			AND source.enabled = 1
+		GROUP BY source.id, source.display_name
+	`, code)
+	if err != nil {
+		return nil, err
+	}
+	defer presenceRows.Close()
+	for presenceRows.Next() {
+		var sourceID int64
+		var sourceName string
+		var count int
+		if err := presenceRows.Scan(&sourceID, &sourceName, &count); err != nil {
+			return nil, err
+		}
+		if seenSource[sourceID] {
+			continue
+		}
+		hasRemote = true
+		seenSource[sourceID] = true
+		tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: sourceName, Status: "available", Count: count})
+	}
+	if err := presenceRows.Err(); err != nil {
 		return nil, err
 	}
 	if hasRemote {
@@ -1503,7 +1754,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 				pageCodes = beforeKnown
 				for _, code := range pageCodes {
 					if remoteWork, ok := remoteWorks[code]; ok {
-						if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, remoteWork); err != nil {
+						if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, source, remoteWork); err != nil {
 							return synced, err
 						}
 						synced++
@@ -1517,7 +1768,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 			if !ok {
 				continue
 			}
-			if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, remoteWork); err != nil {
+			if err := s.upsertRemoteSourceCatalogWork(ctx, partyID, providerID, source, remoteWork); err != nil {
 				return synced, err
 			}
 			synced++
@@ -1539,7 +1790,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	return synced, nil
 }
 
-func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int64, providerID int64, remoteWork kikoeru.Work) error {
+func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int64, providerID int64, source remoteSourceForUse, remoteWork kikoeru.Work) error {
 	code := normalizedRemoteWorkCode(remoteWork)
 	if code == "" {
 		return nil
@@ -1550,7 +1801,36 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
 	release := nullableStringFromText(normalizeDateText(remoteWork.Release))
-	return s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), true)
+	if err := s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), true); err != nil {
+		return err
+	}
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, raw)
+	if err != nil {
+		return err
+	}
+	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+		WorkID:       workID,
+		FileSourceID: source.ID,
+		PresenceType: "remote",
+		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
+		SourceURL:    remoteWork.SourceURL,
+		Availability: "available",
+		RawJSON:      string(raw),
+	}); err != nil {
+		return err
+	}
+	if err := upsertWorkPartyTx(ctx, tx, providerID, workID, partyID, "circle", "remote_source_catalog"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) knownCircleCatalogCodes(ctx context.Context, partyID int64) (map[string]bool, error) {
