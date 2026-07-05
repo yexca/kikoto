@@ -47,6 +47,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
+	mux.HandleFunc("GET /api/favorite-lists/{id}/work-ids", s.listFavoriteListWorkIDs)
 	mux.HandleFunc("GET /api/works/{id}/favorite-lists", s.getWorkFavoriteLists)
 	mux.HandleFunc("PUT /api/works/{id}/favorite-lists", s.setWorkFavoriteLists)
 	mux.HandleFunc("GET /api/circles", s.listCircles)

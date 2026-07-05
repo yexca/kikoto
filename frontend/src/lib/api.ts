@@ -69,6 +69,11 @@ export type FavoriteList = {
   selected?: boolean;
 };
 
+export type FavoriteListWorkIDs = {
+  listId: number;
+  workIds: number[];
+};
+
 export type WorkResolveResponse = {
   requestedCode: string;
   resolvedCode: string;
@@ -742,6 +747,7 @@ export const api = {
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
+  listFavoriteListWorkIDs: (id: number) => getJSON<FavoriteListWorkIDs>(`/api/favorite-lists/${id}/work-ids`),
   getWorkFavoriteLists: (id: number) => getJSON<FavoriteList[]>(`/api/works/${id}/favorite-lists`),
   setWorkFavoriteLists: (id: number, listIds: number[]) =>
     putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, { listIds }),
