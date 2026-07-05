@@ -797,6 +797,7 @@ function WorkCard({
             sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
             sourceBadges={work.availability.map((item) => ({ value: item, variant: item === "missing" ? ("warning" as const) : ("secondary" as const) }))}
+            progress={work.progress}
           />
         </div>
         <div className="flex h-11 items-center justify-between border-t px-3">
@@ -1049,6 +1050,7 @@ function WorkCardBody({
   sales,
   tagBadges,
   sourceBadges,
+  progress,
 }: {
   title: string;
   circle: string;
@@ -1059,6 +1061,7 @@ function WorkCardBody({
   sales: number | null;
   tagBadges: CardBadge[];
   sourceBadges: CardBadge[];
+  progress?: Work["progress"];
 }) {
   return (
     <div className="flex min-h-52 flex-col gap-3 p-4">
@@ -1085,12 +1088,31 @@ function WorkCardBody({
         <div className="truncate">Release {releaseDate || "unknown"} · Updated {updatedAt || "unknown"}</div>
         <div className="truncate">DLsite rate {rating === null ? "unknown" : rating.toFixed(2)} · Sales {sales === null ? "unknown" : sales.toLocaleString()}</div>
       </div>
+      {progress && <WorkProgress progress={progress} />}
       <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
         {sourceBadges.length > 0 ? sourceBadges.map((badge) => (
           <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
             {badge.value}
           </Badge>
         )) : <Badge variant="warning">missing</Badge>}
+      </div>
+    </div>
+  );
+}
+
+function WorkProgress({ progress }: { progress: Work["progress"] }) {
+  const percent = progress.percent ?? (progress.completedTracks > 0 && progress.trackedTracks > 0 ? (progress.completedTracks / progress.trackedTracks) * 100 : 0);
+  if (progress.trackedTracks === 0 && !progress.lastPlayedAt) {
+    return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
+  }
+  return (
+    <div className="space-y-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+      </div>
+      <div className="truncate text-xs text-muted-foreground">
+        {progress.percent === null ? `${progress.completedTracks}/${progress.trackedTracks} tracks` : `${Math.round(progress.percent)}%`}
+        {progress.lastPlayedAt ? ` · ${formatShortDate(progress.lastPlayedAt)}` : ""}
       </div>
     </div>
   );
@@ -1215,6 +1237,12 @@ function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("RJ") ? "maniax" : "home";
   return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function IconButton({

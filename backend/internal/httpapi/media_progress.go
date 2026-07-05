@@ -24,6 +24,15 @@ type mediaProgressResponse struct {
 	LastPlayedAt    *string  `json:"lastPlayedAt"`
 }
 
+type workProgressSummary struct {
+	PositionSeconds float64  `json:"positionSeconds"`
+	DurationSeconds *float64 `json:"durationSeconds"`
+	Percent         *float64 `json:"percent"`
+	CompletedTracks int64    `json:"completedTracks"`
+	TrackedTracks   int64    `json:"trackedTracks"`
+	LastPlayedAt    *string  `json:"lastPlayedAt"`
+}
+
 func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requirePermission(w, r, "playback:use")
 	if !ok {
@@ -127,6 +136,44 @@ func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemI
 	progress.DurationSeconds = nullableFloat64(durationSeconds)
 	progress.LastPlayedAt = nullableString(lastPlayedAt)
 	return progress, nil
+}
+
+func (s *Server) workProgressSummary(ctx context.Context, userID int64, workID int64) (workProgressSummary, error) {
+	var position sql.NullFloat64
+	var duration sql.NullFloat64
+	var completedTracks sql.NullInt64
+	var trackedTracks sql.NullInt64
+	var lastPlayedAt sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			SUM(CASE WHEN user_media_progress.completed = 1 THEN COALESCE(user_media_progress.duration_seconds, media_item.duration_seconds, user_media_progress.position_seconds, 0) ELSE COALESCE(user_media_progress.position_seconds, 0) END),
+			SUM(COALESCE(user_media_progress.duration_seconds, media_item.duration_seconds, 0)),
+			SUM(CASE WHEN user_media_progress.completed = 1 THEN 1 ELSE 0 END),
+			COUNT(user_media_progress.media_item_id),
+			MAX(user_media_progress.last_played_at)
+		FROM media_item
+		LEFT JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
+			AND user_media_progress.user_id = ?
+		WHERE media_item.work_id = ?
+			AND media_item.kind = 'audio'
+	`, userID, workID).Scan(&position, &duration, &completedTracks, &trackedTracks, &lastPlayedAt); err != nil {
+		return workProgressSummary{}, err
+	}
+	summary := workProgressSummary{
+		PositionSeconds: position.Float64,
+		DurationSeconds: nullableFloat64(duration),
+		CompletedTracks: completedTracks.Int64,
+		TrackedTracks:   trackedTracks.Int64,
+		LastPlayedAt:    nullableString(lastPlayedAt),
+	}
+	if duration.Valid && duration.Float64 > 0 {
+		percent := position.Float64 / duration.Float64 * 100
+		if percent > 100 {
+			percent = 100
+		}
+		summary.Percent = &percent
+	}
+	return summary, nil
 }
 
 func nullableMediaProgress(position sql.NullFloat64, duration sql.NullFloat64, completed sql.NullBool, lastPlayedAt sql.NullString) *mediaProgressDetail {
