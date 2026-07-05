@@ -10,6 +10,7 @@ cache/*
 config/*
 !config/.gitkeep
 !config/app.example.yaml
+!config/remote-sources.example.yml
 
 backend/bin/
 backend/*.db

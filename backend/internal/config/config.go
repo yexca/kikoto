@@ -38,7 +38,7 @@ func Load() Config {
 		DevMode:           envBool("KIKOTO_DEV_MODE", false),
 		RootUsername:      env("KIKOTO_ROOT_USERNAME", "root"),
 		RootPassword:      env("KIKOTO_ROOT_PASSWORD", "change-me"),
-		RemoteSourceSeeds: envRemoteSourceSeeds("KIKOTO_REMOTE_SOURCES"),
+		RemoteSourceSeeds: loadRemoteSourceSeeds(),
 	}
 }
 
@@ -76,48 +76,98 @@ func envBool(key string, fallback bool) bool {
 	}
 }
 
-func envRemoteSourceSeeds(key string) []RemoteSourceSeed {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
+func loadRemoteSourceSeeds() []RemoteSourceSeed {
+	if !envBool("KIKOTO_REMOTE_SOURCES_ENABLED", false) {
 		return nil
 	}
+	path := env("KIKOTO_REMOTE_SOURCES_FILE", "../config/remote-sources.yaml")
+	rawBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return parseRemoteSourceSeedYAML(string(rawBytes))
+}
+
+func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 	seeds := []RemoteSourceSeed{}
-	for _, item := range strings.Split(raw, ";") {
-		parts := strings.Split(item, "|")
-		if len(parts) < 2 {
+	current := RemoteSourceSeed{}
+	hasCurrent := false
+	flush := func() {
+		if strings.TrimSpace(current.DisplayName) != "" && strings.TrimSpace(current.APIURL) != "" {
+			if current.SourceType == "" {
+				current.SourceType = "kikoeru_compatible"
+			}
+			if current.Priority <= 0 {
+				current.Priority = 30
+			}
+			if current.BaseURL == "" {
+				current.BaseURL = current.APIURL
+			}
+			seeds = append(seeds, current)
+		}
+		current = RemoteSourceSeed{}
+		hasCurrent = false
+	}
+	for _, rawLine := range strings.Split(raw, "\n") {
+		line := strings.TrimSpace(stripYAMLComment(rawLine))
+		if line == "" || line == "sources:" || line == "remote_sources:" {
 			continue
 		}
-		displayName := strings.TrimSpace(parts[0])
-		apiURL := strings.TrimSpace(parts[1])
-		if displayName == "" || apiURL == "" {
+		if strings.HasPrefix(line, "- ") {
+			if hasCurrent {
+				flush()
+			}
+			hasCurrent = true
+			line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
+			if line == "" {
+				continue
+			}
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
 			continue
 		}
-		seed := RemoteSourceSeed{
-			DisplayName: displayName,
-			APIURL:      apiURL,
-			BaseURL:     apiURL,
-			SourceType:  "kikoeru_compatible",
-			Priority:    30,
-			Enabled:     true,
+		hasCurrent = true
+		key = normalizeSeedYAMLKey(key)
+		value = trimYAMLValue(value)
+		switch key {
+		case "display_name", "displayname", "name":
+			current.DisplayName = value
+		case "api_url", "apiurl":
+			current.APIURL = value
+		case "base_url", "baseurl":
+			current.BaseURL = value
+		case "fallback_url", "fallbackurl":
+			current.FallbackURL = value
+		case "source_type", "sourcetype", "type":
+			current.SourceType = value
+		case "priority":
+			current.Priority = parsePositiveInt(value, current.Priority)
+		case "enabled":
+			current.Enabled = parseBool(value, true)
 		}
-		if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
-			seed.SourceType = strings.TrimSpace(parts[2])
-		}
-		if len(parts) > 3 {
-			seed.Priority = parsePositiveInt(parts[3], seed.Priority)
-		}
-		if len(parts) > 4 {
-			seed.Enabled = parseBool(parts[4], seed.Enabled)
-		}
-		if len(parts) > 5 && strings.TrimSpace(parts[5]) != "" {
-			seed.BaseURL = strings.TrimSpace(parts[5])
-		}
-		if len(parts) > 6 {
-			seed.FallbackURL = strings.TrimSpace(parts[6])
-		}
-		seeds = append(seeds, seed)
+	}
+	if hasCurrent {
+		flush()
 	}
 	return seeds
+}
+
+func stripYAMLComment(value string) string {
+	if before, _, ok := strings.Cut(value, "#"); ok {
+		return before
+	}
+	return value
+}
+
+func normalizeSeedYAMLKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func trimYAMLValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, `"'`)
+	return value
 }
 
 func parsePositiveInt(value string, fallback int) int {

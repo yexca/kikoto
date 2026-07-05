@@ -30,6 +30,13 @@ export type WorkProgressSummary = {
   completed: boolean;
 };
 
+export type WorksPage = {
+  works: Work[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
 export type WorkDetail = {
   id: number;
   primaryCode: string;
@@ -750,6 +757,10 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
+  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all") =>
+    getJSON<WorksPage>(
+      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+    ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
   listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "") =>
