@@ -1101,18 +1101,16 @@ function WorkCardBody({
 }
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {
-  const percent = progress.percent ?? (progress.completedTracks > 0 && progress.trackedTracks > 0 ? (progress.completedTracks / progress.trackedTracks) * 100 : 0);
-  if (progress.trackedTracks === 0 && !progress.lastPlayedAt) {
+  if (!progress.mediaItemId || !progress.lastPlayedAt) {
     return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
   }
   return (
     <div className="space-y-1">
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.percent === null ? `${progress.completedTracks}/${progress.trackedTracks} tracks` : `${Math.round(progress.percent)}%`}
-        {progress.lastPlayedAt ? ` · ${formatShortDate(progress.lastPlayedAt)}` : ""}
+        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -1239,10 +1237,16 @@ function dlsiteWorkURL(code: string) {
   return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
 }
 
-function formatShortDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function progressPercent(progress: Work["progress"]) {
+  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
+  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function IconButton({
@@ -1608,6 +1612,7 @@ function WorkDetailView({
     [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail],
   );
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
+  const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
   const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
   const player = usePlayer();
@@ -1699,14 +1704,17 @@ function WorkDetailView({
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
     player.playQueue(tracks.map((track) => toPlayerTrack(track, work)), locationId);
-    if (work.listeningStatus === "none" || work.listeningStatus === "want_to_listen") {
-      void onStatusChange(work.id, "listening");
-    }
   };
 
   const playAll = () => {
     if (work && allTracks.length > 0) {
       playTracks(allTracks, allTracks[0].locationId);
+    }
+  };
+
+  const resumePlayback = () => {
+    if (resumeTrack) {
+      playTracks(allTracks, resumeTrack.locationId);
     }
   };
 
@@ -1872,6 +1880,7 @@ function WorkDetailView({
             favoriteMenuOpen={favoriteMenuOpen}
             onFavoriteMenuOpenChange={setFavoriteMenuOpen}
             onPlay={playAll}
+            onResume={resumeTrack ? resumePlayback : undefined}
             onMark={(status) => void onStatusChange(work.id, status)}
             onFavorite={() => void onFavoriteChange(work.id, !work.favorite)}
             onFavoriteListChange={(listID, selected) => void updateFavoriteLists(listID, selected)}
@@ -2276,6 +2285,7 @@ function DetailActionBar({
   favoriteLists = [],
   favoriteMenuOpen = false,
   onPlay,
+  onResume,
   onMark,
   onFavorite,
   onFavoriteListChange,
@@ -2294,6 +2304,7 @@ function DetailActionBar({
   favoriteLists?: FavoriteList[];
   favoriteMenuOpen?: boolean;
   onPlay: () => void;
+  onResume?: () => void;
   onMark: (status: ListeningStatus) => void;
   onFavorite: () => void;
   onFavoriteListChange?: (listID: number, selected: boolean) => void;
@@ -2323,6 +2334,12 @@ function DetailActionBar({
         <Play className="h-4 w-4" />
         Play
       </Button>
+      {onResume && (
+        <Button variant="outline" size="sm" disabled={busy} onClick={onResume}>
+          <Clock3 className="h-4 w-4" />
+          Resume
+        </Button>
+      )}
       <select
         className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
         value={listeningStatus}
@@ -3442,6 +3459,16 @@ function flattenTracks(root: TreeNode) {
   };
   visit(root);
   return tracks;
+}
+
+function latestResumeTrack(tracks: TreeTrack[]) {
+  return tracks
+    .filter((track) => track.progress && !track.progress.completed && track.progress.positionSeconds > 0)
+    .sort((left, right) => {
+      const leftTime = left.progress?.lastPlayedAt ? Date.parse(left.progress.lastPlayedAt) : 0;
+      const rightTime = right.progress?.lastPlayedAt ? Date.parse(right.progress.lastPlayedAt) : 0;
+      return rightTime - leftTime;
+    })[0] ?? null;
 }
 
 function countTreeFiles(root: TreeNode) {

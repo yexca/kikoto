@@ -136,7 +136,7 @@ export function FavoritesPage() {
     };
   }, [favoriteLists, listWorkIDs]);
 
-  const shelfWorks = useMemo(() => works.filter((work) => work.favorite || work.listeningStatus !== "none"), [works]);
+  const shelfWorks = useMemo(() => works.filter((work) => work.favorite || work.listeningStatus !== "none" || Boolean(work.progress.mediaItemId)), [works]);
   const favoriteWorks = useMemo(() => works.filter((work) => work.favorite), [works]);
   const statusCounts = useMemo(() => countByStatus(shelfWorks), [shelfWorks]);
   const listCounts = useMemo(() => estimateListCounts(favoriteLists, favoriteWorks.length, listWorkIDs), [favoriteLists, favoriteWorks.length, listWorkIDs]);
@@ -718,18 +718,16 @@ function FavoriteWorkCard({
 }
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {
-  const percent = progress.percent ?? (progress.completedTracks > 0 && progress.trackedTracks > 0 ? (progress.completedTracks / progress.trackedTracks) * 100 : 0);
-  if (progress.trackedTracks === 0 && !progress.lastPlayedAt) {
+  if (!progress.mediaItemId || !progress.lastPlayedAt) {
     return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
   }
   return (
     <div className="space-y-1">
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.percent === null ? `${progress.completedTracks}/${progress.trackedTracks} tracks` : `${Math.round(progress.percent)}%`}
-        {progress.lastPlayedAt ? ` · ${formatShortDate(progress.lastPlayedAt)}` : ""}
+        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -1017,8 +1015,14 @@ function estimateListCounts(lists: FavoriteList[], favoriteCount: number, listWo
   return counts;
 }
 
-function formatShortDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function progressPercent(progress: Work["progress"]) {
+  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
+  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }

@@ -321,6 +321,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		item.Favorite = favorite != 0
 		metadata := parseDLsiteSnapshot(snapshot.String)
 		familyMediaCode := item.PrimaryCode
+		progressWorkID := item.ID
 		if visible, err := s.workEditionVisibleInLibrary(r.Context(), item.ID); err != nil {
 			writeError(w, err)
 			return
@@ -354,6 +355,9 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				item.AvailableLocations = availableLocations
 				item.Availability = availability
 			}
+			if workID, ok := s.workIDForCode(r.Context(), familyMediaCode); ok {
+				progressWorkID = workID
+			}
 		}
 		item.ReleaseDate = metadata.ReleaseDate
 		item.UpdatedAt = item.CreatedAt
@@ -372,7 +376,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		if len(item.Availability) == 0 {
 			item.Availability = availabilityBadges(availableLocationTypes.String)
 		}
-		progress, err := s.workProgressSummary(r.Context(), user.ID, item.ID)
+		progress, err := s.workProgressSummary(r.Context(), user.ID, progressWorkID)
 		if err != nil {
 			writeError(w, err)
 			return
