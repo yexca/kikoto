@@ -13,7 +13,7 @@ import {
   SlidersHorizontal,
   Star,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -269,23 +269,53 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
 
-  useEffect(() => {
-    setIsLoading(true);
-    setToast(null);
-    api.getCircle(externalId).then((next) => {
+  const loadCircleDetail = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+      setToast(null);
+    }
+    try {
+      const next = await api.getCircle(externalId);
       setDetail(next);
       setRatingDraft(next.rating ?? 0);
       setNoteDraft(next.note);
+      return next;
+    } catch (error) {
+      setDetail(null);
+      setToast(toastFromError(error, "Circle detail is unavailable."));
+      return null;
+    } finally {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+    }
+  }, [externalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutID: number | undefined;
+    const pollAutoRefresh = async (attempt = 0) => {
+      const next = await loadCircleDetail(attempt === 0);
+      if (cancelled || !next) return;
       if (next.autoRefresh.status === "queued") {
         setToast({ kind: "info", message: `Auto refresh queued: ${next.autoRefresh.mode} crawl for ${next.autoRefresh.reason}.` });
       } else if (next.autoRefresh.status === "running") {
         setToast({ kind: "info", message: `Auto refresh is already running: ${next.autoRefresh.mode} crawl.` });
+      } else if (attempt > 0 && next.autoRefresh.status === "skipped" && next.autoRefresh.reason === "fresh") {
+        setToast({ kind: "success", message: "Auto refresh completed." });
       }
-    }).catch((error) => {
-      setDetail(null);
-      setToast(toastFromError(error, "Circle detail is unavailable."));
-    }).finally(() => setIsLoading(false));
-  }, [externalId]);
+      if ((next.autoRefresh.status === "queued" || next.autoRefresh.status === "running") && attempt < 30) {
+        timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
+      }
+    };
+    void pollAutoRefresh();
+    return () => {
+      cancelled = true;
+      if (timeoutID !== undefined) {
+        window.clearTimeout(timeoutID);
+      }
+    };
+  }, [loadCircleDetail]);
 
   useEffect(() => {
     api.getRuntimeSettings().then((settings) => setAutoSyncRemote(settings.autoSyncRemote || settings.cacheEnabled)).catch(() => setAutoSyncRemote(false));
@@ -549,7 +579,6 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{circle.externalId}</Badge>
                   <SyncBadge state={circle.syncState} />
-                  <Badge variant="secondary">external ID route</Badge>
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
@@ -1064,8 +1093,8 @@ function refreshMessage(result: { runId: number; scope: CircleRefreshScope; page
 }
 
 function SyncBadge({ state }: { state: string }) {
-  const label = state === "fresh" ? "fresh" : state === "stale" ? "needs refresh" : "first pull";
-  return <Badge variant={state === "fresh" ? "secondary" : "warning"}>{label}</Badge>;
+  const label = state === "fresh" ? "fresh" : state === "stale" ? "needs refresh" : state === "excluded" ? "excluded" : "first pull";
+  return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
