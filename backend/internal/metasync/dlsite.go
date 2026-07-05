@@ -25,10 +25,12 @@ type DLsiteClientWithOptions interface {
 }
 
 type DLsiteSyncer struct {
-	db        *sql.DB
-	client    DLsiteClient
-	cacheRoot string
-	languages []string
+	db            *sql.DB
+	client        DLsiteClient
+	cacheRoot     string
+	languages     []string
+	triggerType   string
+	triggerReason string
 }
 
 type DLsiteSyncResult struct {
@@ -47,7 +49,7 @@ type workTarget struct {
 }
 
 func NewDLsiteSyncer(db *sql.DB, client DLsiteClient) *DLsiteSyncer {
-	return &DLsiteSyncer{db: db, client: client}
+	return &DLsiteSyncer{db: db, client: client, triggerType: "manual", triggerReason: "manual"}
 }
 
 func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
@@ -57,6 +59,20 @@ func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
 
 func (s *DLsiteSyncer) WithLanguages(languages []string) *DLsiteSyncer {
 	s.languages = normalizeLanguages(languages)
+	return s
+}
+
+func (s *DLsiteSyncer) WithTrigger(triggerType string, triggerReason string) *DLsiteSyncer {
+	triggerType = strings.TrimSpace(triggerType)
+	triggerReason = strings.TrimSpace(triggerReason)
+	if triggerType == "" {
+		triggerType = "manual"
+	}
+	if triggerReason == "" {
+		triggerReason = triggerType
+	}
+	s.triggerType = triggerType
+	s.triggerReason = triggerReason
 	return s
 }
 
@@ -281,7 +297,7 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 		return 0, 0, err
 	}
 
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", result.Status, "manual", "manual", map[string]any{}, summary)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", result.Status, s.triggerType, s.triggerReason, map[string]any{}, summary)
 	if err != nil {
 		return 0, 0, err
 	}

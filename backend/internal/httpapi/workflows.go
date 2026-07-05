@@ -14,22 +14,23 @@ import (
 var workflowCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 var allowedWorkflowNodeTypes = map[string]bool{
-	"select_local_source":   true,
-	"discover_local_files":  true,
-	"select_remote_source":  true,
-	"discover_remote_works": true,
-	"fetch_remote_tree":     true,
-	"select_works":          true,
-	"select_media_items":    true,
-	"filter_candidates":     true,
-	"match_works":           true,
-	"plan_save":             true,
-	"sync_file_locations":   true,
-	"sync_metadata":         true,
-	"verify_files":          true,
-	"materialize_cache":     true,
-	"materialize_save":      true,
-	"cleanup_cache":         true,
+	"select_local_source":      true,
+	"discover_local_files":     true,
+	"select_remote_source":     true,
+	"discover_remote_works":    true,
+	"fetch_remote_tree":        true,
+	"select_works":             true,
+	"select_media_items":       true,
+	"filter_candidates":        true,
+	"match_works":              true,
+	"plan_save":                true,
+	"sync_file_locations":      true,
+	"sync_metadata":            true,
+	"verify_files":             true,
+	"materialize_cache":        true,
+	"materialize_save":         true,
+	"cleanup_cache":            true,
+	"dispatch_child_workflows": true,
 }
 
 var allowedScheduledTriggerTypes = map[string]bool{
@@ -90,6 +91,15 @@ type systemWorkflowSpec struct {
 }
 
 var systemWorkflowSpecs = []systemWorkflowSpec{
+	{
+		Code:        "startup_library_refresh",
+		Name:        "Startup library refresh",
+		Description: "Run startup library maintenance by scanning local files and then syncing metadata.",
+		Nodes: []map[string]string{
+			{"id": "scan", "type": "dispatch_child_workflows", "displayName": "Run local library scan"},
+			{"id": "metadata", "type": "dispatch_child_workflows", "displayName": "Run metadata sync"},
+		},
+	},
 	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
