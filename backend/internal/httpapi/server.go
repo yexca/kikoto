@@ -273,25 +273,26 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type work struct {
-		ID                 int64    `json:"id"`
-		PrimaryCode        string   `json:"primaryCode"`
-		Title              string   `json:"title"`
-		CreatedAt          string   `json:"createdAt"`
-		UpdatedAt          string   `json:"updatedAt"`
-		ReleaseDate        *string  `json:"releaseDate"`
-		CoverURL           string   `json:"coverUrl"`
-		DLsiteURL          string   `json:"dlsiteUrl"`
-		Circle             string   `json:"circle"`
-		CircleExternalID   string   `json:"circleExternalId"`
-		Rating             *float64 `json:"rating"`
-		Sales              *int64   `json:"sales"`
-		Tags               []string `json:"tags"`
-		VoiceActors        []string `json:"voiceActors"`
-		TrackCount         int64    `json:"trackCount"`
-		AvailableLocations int64    `json:"availableLocations"`
-		Availability       []string `json:"availability"`
-		ListeningStatus    string   `json:"listeningStatus"`
-		Favorite           bool     `json:"favorite"`
+		ID                 int64               `json:"id"`
+		PrimaryCode        string              `json:"primaryCode"`
+		Title              string              `json:"title"`
+		CreatedAt          string              `json:"createdAt"`
+		UpdatedAt          string              `json:"updatedAt"`
+		ReleaseDate        *string             `json:"releaseDate"`
+		CoverURL           string              `json:"coverUrl"`
+		DLsiteURL          string              `json:"dlsiteUrl"`
+		Circle             string              `json:"circle"`
+		CircleExternalID   string              `json:"circleExternalId"`
+		Rating             *float64            `json:"rating"`
+		Sales              *int64              `json:"sales"`
+		Tags               []string            `json:"tags"`
+		VoiceActors        []string            `json:"voiceActors"`
+		TrackCount         int64               `json:"trackCount"`
+		AvailableLocations int64               `json:"availableLocations"`
+		Availability       []string            `json:"availability"`
+		Progress           workProgressSummary `json:"progress"`
+		ListeningStatus    string              `json:"listeningStatus"`
+		Favorite           bool                `json:"favorite"`
 	}
 
 	works := []work{}
@@ -371,6 +372,12 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		if len(item.Availability) == 0 {
 			item.Availability = availabilityBadges(availableLocationTypes.String)
 		}
+		progress, err := s.workProgressSummary(r.Context(), user.ID, item.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		item.Progress = progress
 		works = append(works, item)
 	}
 

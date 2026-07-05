@@ -657,6 +657,7 @@ function FavoriteWorkCard({
               <div className="truncate">Release {work.releaseDate || "unknown"} · Updated {work.updatedAt || work.createdAt || "unknown"}</div>
               <div className="truncate">{work.trackCount} tracks · Sales {work.sales === null ? "unknown" : work.sales.toLocaleString()}</div>
             </div>
+            <WorkProgress progress={work.progress} />
             <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
               {sourceBadges.map((badge) => (
                 <Badge key={badge} variant={badge === "missing" ? "warning" : "secondary"}>
@@ -713,6 +714,24 @@ function FavoriteWorkCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function WorkProgress({ progress }: { progress: Work["progress"] }) {
+  const percent = progress.percent ?? (progress.completedTracks > 0 && progress.trackedTracks > 0 ? (progress.completedTracks / progress.trackedTracks) * 100 : 0);
+  if (progress.trackedTracks === 0 && !progress.lastPlayedAt) {
+    return <div className="h-8 text-xs text-muted-foreground">No playback yet</div>;
+  }
+  return (
+    <div className="space-y-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+      </div>
+      <div className="truncate text-xs text-muted-foreground">
+        {progress.percent === null ? `${progress.completedTracks}/${progress.trackedTracks} tracks` : `${Math.round(progress.percent)}%`}
+        {progress.lastPlayedAt ? ` · ${formatShortDate(progress.lastPlayedAt)}` : ""}
+      </div>
+    </div>
   );
 }
 
@@ -996,4 +1015,10 @@ function estimateListCounts(lists: FavoriteList[], favoriteCount: number, listWo
     if (workIDs) counts.set(list.id, workIDs.length);
   }
   return counts;
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

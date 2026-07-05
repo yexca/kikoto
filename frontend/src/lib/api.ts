@@ -16,8 +16,18 @@ export type Work = {
   trackCount: number;
   availableLocations: number;
   availability: string[];
+  progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+};
+
+export type WorkProgressSummary = {
+  positionSeconds: number;
+  durationSeconds: number | null;
+  percent: number | null;
+  completedTracks: number;
+  trackedTracks: number;
+  lastPlayedAt: string | null;
 };
 
 export type WorkDetail = {
