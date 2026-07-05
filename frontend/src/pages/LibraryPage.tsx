@@ -2290,11 +2290,11 @@ function DlsiteMetrics({
   const age = ageRatingView(ageRating);
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
-    <div className="max-w-2xl rounded-lg border bg-card p-3 text-sm">
-      <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+    <div className="max-w-3xl rounded-lg border bg-card p-3 text-sm">
+      <div className="grid gap-x-5 gap-y-2 sm:grid-cols-[minmax(11rem,0.8fr)_minmax(18rem,1.2fr)]">
         <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
-        <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
         <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.className} />
+        <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
         <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
       </div>
     </div>

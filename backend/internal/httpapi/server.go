@@ -1416,6 +1416,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	if err := s.ensureCircleSchema(ctx); err != nil {
 		return workDetail{}, err
 	}
+	if err := s.ensureVoiceSchema(ctx); err != nil {
+		return workDetail{}, err
+	}
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -1512,6 +1515,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
 	work.VoiceCredits = []voiceCredit{}
+	if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, id); err != nil {
+		return workDetail{}, err
+	}
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {
 		return workDetail{}, err
