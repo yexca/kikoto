@@ -43,6 +43,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/circles", s.listCircles)
@@ -356,7 +357,24 @@ type workDetail struct {
 	VoiceCredits     []voiceCredit     `json:"voiceCredits"`
 	ListeningStatus  string            `json:"listeningStatus"`
 	Favorite         bool              `json:"favorite"`
+	Translations     []workTranslation `json:"translations"`
 	MediaItems       []mediaItemDetail `json:"mediaItems"`
+}
+
+type workTranslation struct {
+	WorkID           *int64 `json:"workId"`
+	PrimaryCode      string `json:"primaryCode"`
+	Title            string `json:"title"`
+	MetadataLanguage string `json:"metadataLanguage"`
+	Current          bool   `json:"current"`
+}
+
+type workResolveResponse struct {
+	RequestedCode string `json:"requestedCode"`
+	ResolvedCode  string `json:"resolvedCode"`
+	WorkID        int64  `json:"workId"`
+	BaseCode      string `json:"baseCode"`
+	IsTranslation bool   `json:"isTranslation"`
 }
 
 type voiceCredit struct {
@@ -416,6 +434,27 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, work)
+}
+
+func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	code := normalizeDLsiteCode(r.PathValue("code"))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
+		return
+	}
+	resolved, err := s.resolveWorkCodeDetail(r.Context(), code)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resolved)
 }
 
 func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
@@ -1401,6 +1440,11 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
 	work.VoiceCredits = []voiceCredit{}
+	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
+	if err != nil {
+		return workDetail{}, err
+	}
+	work.Translations = translations
 	creditRows, err := s.db.QueryContext(ctx, `
 		SELECT person.id, person.display_name
 		FROM work_credit AS credit
@@ -1567,6 +1611,152 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	}
 
 	return work, nil
+}
+
+func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workResolveResponse, error) {
+	code = normalizeDLsiteCode(code)
+	if code == "" {
+		return workResolveResponse{}, sql.ErrNoRows
+	}
+
+	workID, primaryCode, baseCode, err := s.loadWorkCodeMetadata(ctx, code)
+	if err != nil {
+		return workResolveResponse{}, err
+	}
+	resolvedCode := primaryCode
+	resolvedID := workID
+	if baseCode != "" && !strings.EqualFold(baseCode, primaryCode) {
+		if baseID, _, _, err := s.loadWorkCodeMetadata(ctx, baseCode); err == nil {
+			resolvedID = baseID
+			resolvedCode = baseCode
+		}
+	}
+	return workResolveResponse{
+		RequestedCode: code,
+		ResolvedCode:  resolvedCode,
+		WorkID:        resolvedID,
+		BaseCode:      baseCode,
+		IsTranslation: !strings.EqualFold(code, resolvedCode),
+	}, nil
+}
+
+func (s *Server) loadWorkCodeMetadata(ctx context.Context, code string) (int64, string, string, error) {
+	var workID int64
+	var primaryCode string
+	var snapshot sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT work.id, work.primary_code, (
+			SELECT metadata_snapshot.snapshot_json
+			FROM metadata_snapshot
+			INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+			WHERE metadata_snapshot.work_id = work.id
+				AND metadata_provider.code = 'dlsite'
+			ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+			LIMIT 1
+		)
+		FROM work
+		WHERE UPPER(work.primary_code) = UPPER(?)
+	`, code).Scan(&workID, &primaryCode, &snapshot); err != nil {
+		return 0, "", "", err
+	}
+	metadata := parseDLsiteSnapshot(snapshot.String)
+	return workID, primaryCode, metadata.BaseCode, nil
+}
+
+func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, baseCode string, editions []workTranslation) ([]workTranslation, error) {
+	familyCode := normalizeDLsiteCode(baseCode)
+	if familyCode == "" {
+		familyCode = normalizeDLsiteCode(primaryCode)
+	}
+	if familyCode == "" {
+		return []workTranslation{}, nil
+	}
+
+	translations := []workTranslation{}
+	seen := map[string]bool{}
+	addTranslation := func(item workTranslation) {
+		item.PrimaryCode = normalizeDLsiteCode(item.PrimaryCode)
+		if item.PrimaryCode == "" || seen[item.PrimaryCode] {
+			return
+		}
+		seen[item.PrimaryCode] = true
+		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+		translations = append(translations, item)
+	}
+	for _, edition := range editions {
+		addTranslation(edition)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT work.id, work.primary_code, work.title, snapshot.snapshot_json
+		FROM work
+		LEFT JOIN metadata_snapshot AS snapshot ON snapshot.id = (
+			SELECT metadata_snapshot.id
+			FROM metadata_snapshot
+			INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+			WHERE metadata_snapshot.work_id = work.id
+				AND metadata_provider.code = 'dlsite'
+			ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+			LIMIT 1
+		)
+		WHERE UPPER(work.primary_code) = UPPER(?)
+			OR EXISTS (
+				SELECT 1
+				FROM metadata_snapshot AS family_snapshot
+				INNER JOIN metadata_provider ON metadata_provider.id = family_snapshot.provider_id
+				WHERE family_snapshot.work_id = work.id
+					AND metadata_provider.code = 'dlsite'
+					AND family_snapshot.id = snapshot.id
+			)
+		ORDER BY work.primary_code ASC
+	`, familyCode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var workID int64
+		var item workTranslation
+		var snapshot sql.NullString
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &snapshot); err != nil {
+			return nil, err
+		}
+		item.WorkID = &workID
+		metadata := parseDLsiteSnapshot(snapshot.String)
+		if item.MetadataLanguage == "" {
+			item.MetadataLanguage = metadata.MetadataLanguage
+		}
+		translationBaseCode := metadata.BaseCode
+		if translationBaseCode == "" {
+			translationBaseCode = item.PrimaryCode
+		}
+		if !strings.EqualFold(translationBaseCode, familyCode) && !strings.EqualFold(item.PrimaryCode, familyCode) {
+			continue
+		}
+		if seen[strings.ToUpper(strings.TrimSpace(item.PrimaryCode))] {
+			for index := range translations {
+				if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
+					translations[index].WorkID = item.WorkID
+					translations[index].Title = item.Title
+					if translations[index].MetadataLanguage == "" {
+						translations[index].MetadataLanguage = item.MetadataLanguage
+					}
+					translations[index].Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+					break
+				}
+			}
+			continue
+		}
+		addTranslation(item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(translations) <= 1 {
+		return []workTranslation{}, nil
+	}
+	return translations, nil
 }
 
 func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
@@ -2411,6 +2601,7 @@ type dlsiteSnapshotMetadata struct {
 	CircleExternalID string
 	BaseCode         string
 	MetadataLanguage string
+	LanguageEditions []workTranslation
 	ReleaseDate      *string
 	Rating           *float64
 	RatingCount      *int64
@@ -2434,6 +2625,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	var combined struct {
 		Product json.RawMessage `json:"product"`
 		Dynamic json.RawMessage `json:"dynamic"`
+		Kikoto  struct {
+			Language string `json:"language"`
+		} `json:"_kikoto"`
 	}
 	if err := json.Unmarshal(rawBytes, &combined); err == nil && len(combined.Product) > 0 {
 		rawBytes = combined.Product
@@ -2479,6 +2673,16 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		Kikoto struct {
 			Language string `json:"language"`
 		} `json:"_kikoto"`
+		TranslationInfo struct {
+			OriginalWorkNo string `json:"original_workno"`
+			ParentWorkNo   string `json:"parent_workno"`
+			Lang           string `json:"lang"`
+		} `json:"translation_info"`
+		LanguageEditions []struct {
+			WorkNo string `json:"workno"`
+			Label  string `json:"label"`
+			Lang   string `json:"lang"`
+		} `json:"language_editions"`
 	}
 	if err := json.Unmarshal(rawBytes, &payload); err != nil {
 		return metadata
@@ -2516,11 +2720,22 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
 	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
-	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(payload.Kikoto.Language, payload.Language, payload.Locale))
-	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
+	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(combined.Kikoto.Language, payload.Kikoto.Language, payload.Language, payload.Locale, payload.TranslationInfo.Lang))
+	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
 	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
 	if metadata.BaseCode == currentCode {
 		metadata.BaseCode = ""
+	}
+	for _, edition := range payload.LanguageEditions {
+		code := normalizeDLsiteCode(edition.WorkNo)
+		if code == "" {
+			continue
+		}
+		metadata.LanguageEditions = append(metadata.LanguageEditions, workTranslation{
+			PrimaryCode:      code,
+			MetadataLanguage: firstNonEmpty(edition.Label, edition.Lang),
+			Current:          strings.EqualFold(code, currentCode),
+		})
 	}
 	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
 		metadata.ReleaseDate = &release

@@ -137,13 +137,19 @@ export function LibraryPage() {
       return;
     }
     const work = works.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
-    if (!work) {
-      if (works.length > 0) {
-        setSelectedWork(null);
-      }
+    if (work) {
+      api.getWork(work.id).then((detail) => {
+        if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
+          void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
+          return;
+        }
+        setSelectedWork(detail);
+      }).catch(() => setSelectedWork(null));
       return;
     }
-    api.getWork(work.id).then(setSelectedWork).catch(() => setSelectedWork(null));
+    if (works.length > 0) {
+      void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
+    }
   }, [selectedCode, works]);
 
   useEffect(() => {
@@ -1754,6 +1760,7 @@ function WorkDetailView({
         series={work.series}
         baseCode={work.baseCode}
         metadataLanguage={work.metadataLanguage}
+        translations={work.translations ?? []}
         dlsiteFetchedAt={work.dlsiteFetchedAt}
         releaseDate={work.releaseDate ?? "Unknown"}
         ageRating={work.ageRating}
@@ -1836,6 +1843,7 @@ function DetailHero({
   series,
   baseCode,
   metadataLanguage,
+  translations,
   dlsiteFetchedAt,
   releaseDate,
   ageRating,
@@ -1858,6 +1866,7 @@ function DetailHero({
   series: string;
   baseCode?: string;
   metadataLanguage?: string;
+  translations?: WorkDetail["translations"];
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -1871,6 +1880,7 @@ function DetailHero({
   const displayVoiceCredits = voiceCredits.length > 0
     ? voiceCredits
     : voiceActors.map((name) => ({ personId: 0, displayName: name }));
+  const baseTranslation = translations?.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
 
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(420px,560px)_minmax(0,1fr)]">
@@ -1916,14 +1926,33 @@ function DetailHero({
           ageRating={ageRating}
         />
 
-        {(metadataLanguage || baseCode) && (
+        {(metadataLanguage || baseCode || (translations && translations.length > 0)) && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
             <Languages className="h-3.5 w-3.5" />
             {metadataLanguage && <span>DLsite metadata: <span className="font-semibold text-foreground">{languageLabel(metadataLanguage)}</span></span>}
-            {baseCode && (
+            {baseCode && baseTranslation?.workId ? (
               <button className="inline-flex items-center gap-1 font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
                 Base work {baseCode}
               </button>
+            ) : baseCode ? (
+              <span className="font-semibold text-foreground">Base work {baseCode}</span>
+            ) : null}
+            {translations && translations.length > 0 && (
+              <span className="flex flex-wrap items-center gap-1">
+                <span>Versions:</span>
+                {translations.map((translation) => (
+                  <button
+                    key={translation.primaryCode}
+                    className={`rounded border px-1.5 py-0.5 ${
+                      translation.current || !translation.workId ? "border-muted bg-muted text-muted-foreground" : "border-primary/30 text-primary hover:bg-primary/10"
+                    }`}
+                    disabled={translation.current || !translation.workId}
+                    onClick={() => translation.workId && !translation.current && openWorkCodeRoute(translation.primaryCode)}
+                  >
+                    {translation.primaryCode}{translation.metadataLanguage ? ` ${languageLabel(translation.metadataLanguage)}` : ""}
+                  </button>
+                ))}
+              </span>
             )}
           </div>
         )}
@@ -3375,6 +3404,25 @@ function openWorkCodeRoute(code: string) {
   if (!cleanCode) return;
   window.history.pushState({}, "", `/${cleanCode}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+async function resolveAndOpenWork(
+  code: string,
+  setSelectedWork: (work: WorkDetail | null) => void,
+  setSelectedCode: (code: string | null) => void,
+) {
+  try {
+    const resolved = await api.resolveWorkCode(code);
+    const work = await api.getWork(resolved.workId);
+    setSelectedWork(work);
+    if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
+      window.history.replaceState({}, "", `/${resolved.resolvedCode}`);
+      setSelectedCode(resolved.resolvedCode);
+      window.dispatchEvent(new Event("kikoto:navigation"));
+    }
+  } catch {
+    setSelectedWork(null);
+  }
 }
 
 function listeningStatusLabel(status: ListeningStatus) {

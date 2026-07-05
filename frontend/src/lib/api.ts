@@ -48,7 +48,24 @@ export type WorkDetail = {
   voiceCredits: VoiceCredit[];
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  translations: WorkTranslation[];
   mediaItems: MediaItem[];
+};
+
+export type WorkTranslation = {
+  workId: number | null;
+  primaryCode: string;
+  title: string;
+  metadataLanguage: string;
+  current: boolean;
+};
+
+export type WorkResolveResponse = {
+  requestedCode: string;
+  resolvedCode: string;
+  workId: number;
+  baseCode: string;
+  isTranslation: boolean;
 };
 
 export type VoiceCredit = {
@@ -714,6 +731,7 @@ export const api = {
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
+  resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
