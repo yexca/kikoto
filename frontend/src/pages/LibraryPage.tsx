@@ -904,7 +904,7 @@ function WorkCard({
             rating={work.rating}
             sales={work.sales}
             tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={sourceBadgesForAvailability(work.availability)}
+            sourceBadges={sourceBadgesForWork(work)}
             progress={work.progress}
           />
         </div>
@@ -1147,6 +1147,28 @@ function WorkCardMedia({
 }
 
 type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
+
+function sourceBadgesForWork(work: Work): CardBadge[] {
+  const presenceBadges = sourceBadgesForPresence(work.sourcePresence ?? []);
+  if (presenceBadges.length > 0) return presenceBadges;
+  return sourceBadgesForAvailability(work.availability);
+}
+
+function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>): CardBadge[] {
+  const order = ["local", "tracked", "cache", "remote"];
+  return [...sourcePresence]
+    .filter((item) => item.type && item.type !== "location")
+    .sort((a, b) => {
+      const left = order.indexOf(a.type);
+      const right = order.indexOf(b.type);
+      return (left === -1 ? order.length : left) - (right === -1 ? order.length : right);
+    })
+    .map((item) => {
+      const availability = item.availability || "unknown";
+      const label = availability === "available" ? item.type : `${item.type} ${availability}`;
+      return { value: label, variant: availability === "available" ? "secondary" : "warning" };
+    });
+}
 
 function sourceBadgesForAvailability(availability: string[]): CardBadge[] {
   const order = ["local", "cache", "cached", "remote", "missing"];
@@ -3940,23 +3962,6 @@ async function resolveAndOpenWork(
 
 function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
-}
-
-function hasTrackedPresence(work: Work) {
-  return (
-    hasRemoteAvailability(work) ||
-    work.favorite ||
-    work.listeningStatus !== "none" ||
-    Boolean(work.progress?.mediaItemId)
-  );
-}
-
-function hasRemoteAvailability(work: Work) {
-  return work.availability.some((item) => item === "remote" || item === "cache" || item === "cached");
-}
-
-function hasLocalAvailability(work: Work) {
-  return work.availability.includes("local");
 }
 
 function parseSearchTokens(query: string): SearchToken[] {
