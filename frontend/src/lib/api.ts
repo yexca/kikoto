@@ -436,6 +436,17 @@ export type WorkflowDefinition = {
   updatedAt: string;
 };
 
+export type WorkflowNodeType = {
+  type: string;
+  phase: string;
+  displayName: string;
+  description: string;
+  userVisible: boolean;
+  configSchema: string;
+  inputSchema: string;
+  outputSchema: string;
+};
+
 export type WorkflowTrigger = {
   id: number;
   workflowDefinitionId: number;
@@ -935,6 +946,7 @@ export const api = {
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
+  listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
   createWorkflowDefinition: (payload: { code: string; displayName: string; description: string; definitionJson: string }) =>
     postJSONBody<WorkflowDefinition>("/api/workflow-definitions", payload),
   updateWorkflowDefinition: (

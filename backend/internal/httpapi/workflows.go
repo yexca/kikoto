@@ -15,31 +15,80 @@ import (
 
 var workflowCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
-var allowedWorkflowNodeTypes = map[string]bool{
-	"select_local_source":      true,
-	"discover_local_files":     true,
-	"select_remote_source":     true,
-	"discover_remote_works":    true,
-	"fetch_remote_tree":        true,
-	"select_works":             true,
-	"select_media_items":       true,
-	"filter_candidates":        true,
-	"match_works":              true,
-	"plan_save":                true,
-	"sync_file_locations":      true,
-	"sync_metadata":            true,
-	"verify_files":             true,
-	"materialize_cache":        true,
-	"materialize_save":         true,
-	"cleanup_cache":            true,
-	"dispatch_child_workflows": true,
+var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
+	nodeType("select_local_source", "target", "Select local source", "Choose a configured local folder source.", true, schemaObject("sourceId", "scanDepth"), schemaObject(), schemaObject("sourceId", "path")),
+	nodeType("select_remote_source", "target", "Select remote source", "Choose one or more configured remote sources.", true, schemaObject("sourceId", "sourceIds"), schemaObject(), schemaObject("sourceIds")),
+	nodeType("select_works", "target", "Select works", "Choose known works for a workflow run.", true, schemaObject("workIds", "codes", "scope"), schemaObject(), schemaObject("workIds", "codes")),
+	nodeType("select_media_items", "target", "Select media items", "Choose media items or file locations.", true, schemaObject("mediaItemIds", "locationIds", "locationType"), schemaObject(), schemaObject("mediaItemIds", "locationIds")),
+	nodeType("select_remote_works", "target", "Select remote works", "Choose multiple remote works for a bulk action.", false, schemaObject("sourceId", "codes", "action"), schemaObject(), schemaObject("sourceId", "codes")),
+	nodeType("select_party", "target", "Select circle", "Choose a circle or party catalog target.", false, schemaObject("externalId", "provider"), schemaObject(), schemaObject("partyId", "externalId")),
+
+	nodeType("discover_local_files", "discover", "Discover local files", "Scan local folders and detect work files.", true, schemaObject("includeExisting", "markMissing"), schemaObject("sourceId", "path"), schemaObject("files", "detectedWorks")),
+	nodeType("discover_remote_works", "discover", "Discover remote works", "Find remote works or remote matches.", true, schemaObject("query", "pageSize"), schemaObject("sourceIds", "codes"), schemaObject("remoteWorks")),
+	nodeType("fetch_remote_tree", "discover", "Fetch remote tree", "Fetch a remote work file tree.", true, schemaObject("sourceId", "code"), schemaObject("sourceId", "code"), schemaObject("tracks", "snapshotBytes")),
+	nodeType("refresh_circle_catalog", "discover", "Refresh circle catalog", "Fetch and update a circle catalog.", false, schemaObject("mode", "productMode"), schemaObject("partyId", "externalId"), schemaObject("catalogWorks", "pagesFetched")),
+
+	nodeType("filter_candidates", "filter", "Filter candidates", "Keep only candidates matching workflow rules.", true, schemaObject("rule", "status", "limit"), schemaObject("candidates"), schemaObject("candidates", "rejected")),
+
+	nodeType("match_works", "match", "Match works", "Match candidates to known works and availability state.", true, schemaObject("strategy"), schemaObject("candidates"), schemaObject("matchedWorks", "unmatched")),
+	nodeType("check_source_availability", "match", "Check source availability", "Check remote source availability for works.", false, schemaObject("sourceIds", "staleAfterDays"), schemaObject("codes", "sourceIds"), schemaObject("sources", "hasLocal", "hasCache", "hasRemote")),
+
+	nodeType("plan_save", "plan", "Plan save", "Build a download/save plan and reuse cache hits.", true, schemaObject("saveRootTemplate", "paths"), schemaObject("tracks", "cacheState"), schemaObject("items", "summary")),
+
+	nodeType("materialize_cache", "execute", "Materialize cache", "Download or copy media into cache.", true, schemaObject("cacheRoot", "overwrite"), schemaObject("downloadUrl", "cachePath"), schemaObject("cachePath", "bytes")),
+	nodeType("materialize_save", "execute", "Materialize save", "Create local files from remote or cached content.", true, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
+	nodeType("cleanup_cache", "execute", "Cleanup cache", "Delete cached files or clear cache-related state.", true, schemaObject("deleteFiles", "clearState"), schemaObject("locationIds", "cachePath"), schemaObject("deleted", "cleared")),
+	nodeType("dispatch_child_workflows", "execute", "Dispatch child workflows", "Run child workflows from a parent workflow.", false, schemaObject("workflowCode", "mode"), schemaObject("codes", "action"), schemaObject("childRuns")),
+
+	nodeType("verify_files", "verify", "Verify files", "Validate materialized file outputs.", true, schemaObject("checkSize", "checkHash"), schemaObject("paths", "expected"), schemaObject("verified", "failed")),
+
+	nodeType("sync_file_locations", "commit", "Sync file locations", "Persist local, remote, or cache file locations.", true, schemaObject("locationType", "markMissing"), schemaObject("workId", "locations"), schemaObject("syncedLocations")),
+	nodeType("sync_metadata", "commit", "Sync metadata", "Persist metadata snapshots and normalized work fields.", true, schemaObject("provider", "language", "forceRefresh"), schemaObject("workIds", "codes"), schemaObject("syncedWorks", "skippedWorks", "failedWorks")),
 }
+
+var allowedWorkflowNodeTypes = workflowNodeTypeMap(workflowNodeTypeRegistry)
 
 var allowedScheduledTriggerTypes = map[string]bool{
 	"startup":          true,
 	"schedule":         true,
 	"filesystem_event": true,
 	"source_poll":      true,
+}
+
+func nodeType(nodeType string, phase string, displayName string, description string, userVisible bool, configSchema string, inputSchema string, outputSchema string) workflowNodeTypeRecord {
+	return workflowNodeTypeRecord{
+		Type:         nodeType,
+		Phase:        phase,
+		DisplayName:  displayName,
+		Description:  description,
+		UserVisible:  userVisible,
+		ConfigSchema: configSchema,
+		InputSchema:  inputSchema,
+		OutputSchema: outputSchema,
+	}
+}
+
+func schemaObject(fields ...string) string {
+	properties := map[string]any{}
+	for _, field := range fields {
+		properties[field] = map[string]string{"description": field}
+	}
+	raw, err := json.Marshal(map[string]any{
+		"type":       "object",
+		"properties": properties,
+	})
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
+}
+
+func workflowNodeTypeMap(records []workflowNodeTypeRecord) map[string]bool {
+	result := map[string]bool{}
+	for _, record := range records {
+		result[record.Type] = true
+	}
+	return result
 }
 
 type workflowDefinitionPayload struct {
@@ -88,6 +137,13 @@ func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *Server) listWorkflowNodeTypes(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, workflowNodeTypeRegistry)
 }
 
 type systemWorkflowSpec struct {
@@ -1085,6 +1141,7 @@ func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error 
 			ID          string `json:"id"`
 			Type        string `json:"type"`
 			DisplayName string `json:"displayName"`
+			Config      any    `json:"config"`
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal([]byte(payload.DefinitionJSON), &definition); err != nil {
@@ -1106,6 +1163,11 @@ func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error 
 		seen[nodeID] = true
 		if !allowedWorkflowNodeTypes[nodeType] {
 			return fmt.Errorf("unsupported node type: %s", nodeType)
+		}
+		if node.Config != nil {
+			if _, ok := node.Config.(map[string]any); !ok {
+				return fmt.Errorf("node config must be an object")
+			}
 		}
 	}
 	return nil
