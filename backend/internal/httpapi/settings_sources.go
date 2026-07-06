@@ -964,8 +964,8 @@ func (s *Server) latestSourceAvailabilityCheckedAt(ctx context.Context, code str
 		FROM work_source_presence AS presence
 		INNER JOIN work ON work.id = presence.work_id
 		WHERE work.primary_code = ?
-			AND presence.presence_type = 'remote'
-	`, code).Scan(&checkedAt)
+			AND presence.presence_type = ?
+	`, code, sourcePresenceTypeRemoteSource).Scan(&checkedAt)
 	if err != nil {
 		return "", err
 	}
@@ -986,8 +986,8 @@ func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceA
 		INNER JOIN work ON work.id = presence.work_id
 		WHERE work.primary_code = ?
 			AND presence.file_source_id = ?
-			AND presence.presence_type = 'remote'
-	`, workCode, sourceID).Scan(&availability, &remoteID, &rawJSON)
+			AND presence.presence_type = ?
+	`, workCode, sourceID, sourcePresenceTypeRemoteSource).Scan(&availability, &remoteID, &rawJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -1274,6 +1274,8 @@ type workSourcePresence struct {
 	RawJSON      string
 }
 
+const sourcePresenceTypeRemoteSource = "source"
+
 func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS work_source_presence (
@@ -1297,6 +1299,18 @@ func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_work_source_presence_source
 		ON work_source_presence(file_source_id, availability, updated_at)
 	`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE work_source_presence
+		SET presence_type = ?
+		WHERE presence_type = 'remote'
+			AND file_source_id IN (
+				SELECT id
+				FROM file_source
+				WHERE source_type <> 'local'
+			)
+	`, sourcePresenceTypeRemoteSource); err != nil {
 		return err
 	}
 	return nil
@@ -1380,7 +1394,7 @@ func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, wo
 	flags.WorkID = nullableInt64(workID)
 	flags.HasRemote = s.workHasLocationType(ctx, workID.Int64, sourceID, "remote_stream")
 	if !flags.HasRemote {
-		flags.HasRemote = s.workHasSourcePresence(ctx, workID.Int64, sourceID, "remote", "available")
+		flags.HasRemote = s.workHasSourcePresence(ctx, workID.Int64, sourceID, sourcePresenceTypeRemoteSource, "available")
 	}
 	flags.HasCache = s.workHasLocationType(ctx, workID.Int64, sourceID, "cache")
 	flags.HasLocal = s.workHasLocationType(ctx, workID.Int64, 0, "local")
@@ -1539,7 +1553,7 @@ func (s *Server) recordAvailabilityPresence(ctx context.Context, tx *sql.Tx, cod
 		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 			WorkID:       workID,
 			FileSourceID: result.SourceID,
-			PresenceType: "remote",
+			PresenceType: sourcePresenceTypeRemoteSource,
 			RemoteID:     result.RemoteID,
 			Availability: availability,
 			RawJSON: mustJSON(map[string]any{

@@ -1014,7 +1014,7 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
 		WHERE relation.party_id IN (%s)
-			AND presence.presence_type = 'remote'
+			AND presence.presence_type = 'source'
 			AND presence.availability = 'available'
 			AND source.enabled = 1
 		GROUP BY relation.party_id
@@ -1409,7 +1409,7 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
 		WHERE UPPER(work.primary_code) = UPPER(?)
-			AND presence.presence_type = 'remote'
+			AND presence.presence_type = 'source'
 			AND presence.availability = 'available'
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
@@ -2002,7 +2002,7 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID:       workID,
 		FileSourceID: source.ID,
-		PresenceType: "remote",
+		PresenceType: sourcePresenceTypeRemoteSource,
 		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
 		SourceURL:    remoteWork.SourceURL,
 		Availability: "available",

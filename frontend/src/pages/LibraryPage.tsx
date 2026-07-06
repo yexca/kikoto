@@ -1355,9 +1355,9 @@ function workHasDirectoryAvailability(work: Work) {
 }
 
 function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>, options: { hideTracked?: boolean } = {}): CardBadge[] {
-  const order = ["local", "tracked", "cache", "remote"];
+  const order = ["local", "tracked", "source", "cache"];
   return [...sourcePresence]
-    .filter((item) => item.type && item.type !== "location" && !(options.hideTracked && item.type === "tracked"))
+    .filter((item) => item.type && item.type !== "location" && item.type !== "remote" && !(options.hideTracked && item.type === "tracked"))
     .sort((a, b) => {
       const left = order.indexOf(a.type);
       const right = order.indexOf(b.type);
@@ -1365,8 +1365,10 @@ function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresenc
     })
     .map((item) => {
       const availability = item.availability || "unknown";
-      const label = availability === "available" ? item.type : `${item.type} ${availability}`;
-      return { value: label, variant: availability === "available" ? "secondary" : "warning" };
+      const sourceName = item.type === "source" ? (item.fileSourceName || item.fileSourceCode || "source") : item.type;
+      const label = availability === "available" ? sourceName : `${sourceName} ${availability}`;
+      const variant = availability !== "available" ? "warning" : item.type === "local" || item.type === "cache" ? "secondary" : "outline";
+      return { value: label, variant };
     });
 }
 
@@ -1379,9 +1381,11 @@ function sourceBadgesForAvailability(availability: string[]): CardBadge[] {
       return (left === -1 ? order.length : left) - (right === -1 ? order.length : right);
     })
     .map((item) => {
-      const label = item === "remote" ? "remote known" : item === "cache" || item === "cached" ? "cache" : item;
-      return { value: label, variant: item === "missing" ? "warning" : item === "remote" ? "outline" : "secondary" };
-    });
+      if (item === "remote") return null;
+      const label = item === "cache" || item === "cached" ? "cache" : item;
+      return { value: label, variant: item === "missing" ? "warning" : "secondary" };
+    })
+    .filter((badge): badge is CardBadge => badge !== null);
 }
 
 function WorkCardBody({
@@ -2754,7 +2758,7 @@ function sourceKnownStates(summary: SourceAvailabilitySource) {
   const states: string[] = [];
   if (summary.hasLocal) states.push("local");
   if (summary.hasCache) states.push("cache");
-  if (summary.hasRemote && summary.status !== "available") states.push("remote known");
+  if (summary.hasRemote && summary.status !== "available") states.push("source known");
   return states;
 }
 

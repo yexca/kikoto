@@ -279,8 +279,17 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 					AND media_file_location.availability = 'available'
 			) AS available_location_types,
 			(
-				SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+				SELECT GROUP_CONCAT(
+					DISTINCT presence.presence_type || '|' ||
+						presence.availability || '|' ||
+						presence.file_source_id || '|' ||
+						COALESCE(source.code, '') || '|' ||
+						COALESCE(source.display_name, '') || '|' ||
+						COALESCE(presence.remote_id, '') || '|' ||
+						COALESCE(presence.source_url, '')
+				)
 				FROM work_source_presence AS presence
+				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 				WHERE presence.work_id = work.id
 			) AS source_presence,
 			(
@@ -574,8 +583,17 @@ func libraryListSelectSQL(where string) string {
 					AND media_file_location.availability = 'available'
 			) AS available_location_types,
 			(
-				SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+				SELECT GROUP_CONCAT(
+					DISTINCT presence.presence_type || '|' ||
+						presence.availability || '|' ||
+						presence.file_source_id || '|' ||
+						COALESCE(source.code, '') || '|' ||
+						COALESCE(source.display_name, '') || '|' ||
+						COALESCE(presence.remote_id, '') || '|' ||
+						COALESCE(presence.source_url, '')
+				)
 				FROM work_source_presence AS presence
+				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 				WHERE presence.work_id = work.id
 			) AS source_presence,
 			(
@@ -1046,21 +1064,54 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 	items := []sourcePresenceItem{}
 	seen := map[string]bool{}
 	for _, part := range strings.Split(raw, ",") {
-		presenceType, availability, ok := strings.Cut(strings.TrimSpace(part), ":")
-		presenceType = strings.TrimSpace(presenceType)
-		availability = strings.TrimSpace(availability)
-		if !ok || presenceType == "" {
+		part = strings.TrimSpace(part)
+		if part == "" {
 			continue
 		}
-		if availability == "" {
-			availability = "unknown"
+		item := sourcePresenceItem{}
+		if strings.Contains(part, "|") {
+			fields := strings.Split(part, "|")
+			if len(fields) > 0 {
+				item.Type = strings.TrimSpace(fields[0])
+			}
+			if len(fields) > 1 {
+				item.Availability = strings.TrimSpace(fields[1])
+			}
+			if len(fields) > 2 {
+				item.FileSourceID, _ = strconv.ParseInt(strings.TrimSpace(fields[2]), 10, 64)
+			}
+			if len(fields) > 3 {
+				item.FileSourceCode = strings.TrimSpace(fields[3])
+			}
+			if len(fields) > 4 {
+				item.FileSourceName = strings.TrimSpace(fields[4])
+			}
+			if len(fields) > 5 {
+				item.RemoteID = strings.TrimSpace(fields[5])
+			}
+			if len(fields) > 6 {
+				item.SourceURL = strings.TrimSpace(fields[6])
+			}
+		} else {
+			presenceType, availability, ok := strings.Cut(part, ":")
+			if !ok {
+				continue
+			}
+			item.Type = strings.TrimSpace(presenceType)
+			item.Availability = strings.TrimSpace(availability)
 		}
-		key := strings.ToLower(presenceType + ":" + availability)
+		if item.Type == "" {
+			continue
+		}
+		if item.Availability == "" {
+			item.Availability = "unknown"
+		}
+		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		items = append(items, sourcePresenceItem{Type: presenceType, Availability: availability})
+		items = append(items, item)
 	}
 	return items
 }
@@ -3442,34 +3493,35 @@ func (s *Server) localWorkCodesNeedingRemoteAvailability(ctx context.Context, so
 					SELECT 1 FROM work_source_presence AS presence
 					WHERE presence.work_id = work.id
 						AND presence.file_source_id = ?
-						AND presence.presence_type = 'remote'
+						AND presence.presence_type = ?
 				)
 				OR EXISTS (
 					SELECT 1 FROM work_source_presence AS presence
 					WHERE presence.work_id = work.id
 						AND presence.file_source_id = ?
-						AND presence.presence_type = 'remote'
+						AND presence.presence_type = ?
 				)
 		`
-		args = append(args, sourceID, sourceID)
+		args = append(args, sourceID, sourcePresenceTypeRemoteSource, sourceID, sourcePresenceTypeRemoteSource)
 	} else {
 		query += `
 				NOT EXISTS (
 					SELECT 1 FROM work_source_presence AS presence
 					WHERE presence.work_id = work.id
-						AND presence.presence_type = 'remote'
+						AND presence.presence_type = ?
 				)
 		`
+		args = append(args, sourcePresenceTypeRemoteSource)
 		if staleAfter > 0 {
 			query += `
 				OR EXISTS (
 					SELECT 1 FROM work_source_presence AS presence
 					WHERE presence.work_id = work.id
-						AND presence.presence_type = 'remote'
+						AND presence.presence_type = ?
 						AND (presence.last_checked_at IS NULL OR presence.last_checked_at < ?)
 				)
 			`
-			args = append(args, staleCutoff)
+			args = append(args, sourcePresenceTypeRemoteSource, staleCutoff)
 		}
 	}
 	query += `
