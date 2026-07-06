@@ -3294,7 +3294,14 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithLanguages(dlsiteLanguageFallbacks(language)).
 		WithTrigger(triggerType, triggerReason)
-	return syncer.SyncAll(ctx)
+	result, err := syncer.SyncAll(ctx)
+	if err != nil {
+		return result, err
+	}
+	if err := s.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func dlsiteLanguageFallbacks(language string) []string {

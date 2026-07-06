@@ -38,10 +38,12 @@ func main() {
 	if cfg.DevMode {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
 	}
-	if err := server.RunStartupWorkflows(context.Background()); err != nil {
-		slog.Error("run startup workflows", "error", err)
-	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
+	go func() {
+		if err := server.RunStartupWorkflows(context.Background()); err != nil {
+			slog.Error("run startup workflows", "error", err)
+		}
+	}()
 
 	if err := http.ListenAndServe(cfg.HTTPAddr, server.Routes()); err != nil {
 		slog.Error("http server stopped", "error", err)

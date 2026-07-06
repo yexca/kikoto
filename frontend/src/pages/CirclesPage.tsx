@@ -36,6 +36,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 ];
 type CircleFilter = "all" | "available" | "local" | "remote" | "missing" | "stale" | "rated";
 type CircleRefreshScope = "all" | "catalog" | "work" | "source";
+type CircleRefreshResultScope = CircleRefreshScope | "metadata";
 type CircleRefreshMode = "incremental" | "full";
 
 export function CirclesPage() {
@@ -1093,8 +1094,8 @@ function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "a
   return "available";
 }
 
-function refreshMessage(result: { runId: number; scope: CircleRefreshScope; pagesFetched: number; catalogWorks: number; productSynced: number; productSkipped?: number; productFailed?: number; sourceSynced: number }) {
-  const scopeLabel = result.scope === "all" ? "recommended" : result.scope;
+function refreshMessage(result: { runId: number; scope: CircleRefreshResultScope; pagesFetched: number; catalogWorks: number; productSynced: number; productSkipped?: number; productFailed?: number; sourceSynced: number }) {
+  const scopeLabel = result.scope === "all" ? "recommended" : result.scope === "metadata" ? "metadata" : result.scope;
   const failed = result.productFailed ? `, ${result.productFailed} failed` : "";
   const skipped = result.productSkipped ? `, ${result.productSkipped} skipped` : "";
   return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON${skipped}${failed}, ${result.sourceSynced} source matches.`;

@@ -140,6 +140,35 @@ func TestParseWorkCodesPrefersSearchResultList(t *testing.T) {
 	}
 }
 
+func TestParseWorkCodesKeepsNestedSearchResults(t *testing.T) {
+	raw := `
+		<html>
+			<body>
+				<div id="search_result_list">
+					<div class="n_worklist">
+						<div><a href="/maniax/work/=/product_id/RJ01111111.html">Catalog work 1</a></div>
+						<div><a href="/maniax/work/=/product_id/RJ02222222.html">Catalog work 2</a></div>
+					</div>
+				</div>
+				<div class="recommend">
+					<a href="/maniax/work/=/product_id/RJ09999999.html">Recommended work</a>
+				</div>
+			</body>
+		</html>
+	`
+	codes := parseWorkCodes(raw)
+	if len(codes) != 2 || codes[0] != "RJ01111111" || codes[1] != "RJ02222222" {
+		t.Fatalf("codes = %#v", codes)
+	}
+}
+
+func TestParseMakerNameRemovesProfileSuffix(t *testing.T) {
+	raw := `<html><head><title>Bedtime Story 被談聲聆 サークルプロフィール | 作品一覧「DLsite 同人 - R18」</title></head></html>`
+	if got := parseMakerName(raw); got != "Bedtime Story 被談聲聆" {
+		t.Fatalf("maker name = %q", got)
+	}
+}
+
 func TestMakerProfileURLsIncludeLanguageOptionsForPages(t *testing.T) {
 	urls := makerProfileURLs("https://example.test", "maniax", "RG01001551", 2, []string{"JPN", "CHI_HANS", "NM"})
 	if len(urls) != 1 {

@@ -553,7 +553,6 @@ func candidateMakerSites(makerID string) []string {
 var (
 	titlePattern          = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	workLinkPattern       = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
-	workListBlockPattern  = regexp.MustCompile(`(?is)<(?:div|ul|section)\b[^>]*(?:id=["']search_result_list["']|class=["'][^"']*\bn_worklist\b[^"']*["'])[^>]*>.*?</(?:div|ul|section)>`)
 	pageTotalPattern      = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
 	numberTextPattern     = regexp.MustCompile(`[0-9][0-9,]*`)
 	pagePathPattern       = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
@@ -571,15 +570,15 @@ func parseMakerName(rawHTML string) string {
 			title = title[:index]
 		}
 	}
+	for _, suffix := range []string{"サークルプロフィール", "Circle Profile"} {
+		title = strings.TrimSuffix(strings.TrimSpace(title), suffix)
+	}
 	title = strings.TrimSpace(strings.Join(strings.Fields(title), " "))
 	return title
 }
 
 func parseWorkCodes(rawHTML string) []string {
-	searchSpace := rawHTML
-	if blocks := workListBlockPattern.FindAllString(rawHTML, -1); len(blocks) > 0 {
-		searchSpace = strings.Join(blocks, "\n")
-	}
+	searchSpace := makerWorkListSearchSpace(rawHTML)
 	matches := workLinkPattern.FindAllStringSubmatch(searchSpace, -1)
 	seen := map[string]bool{}
 	codes := []string{}
@@ -595,6 +594,31 @@ func parseWorkCodes(rawHTML string) []string {
 		codes = append(codes, code)
 	}
 	return codes
+}
+
+func makerWorkListSearchSpace(rawHTML string) string {
+	start := strings.Index(rawHTML, `id="search_result_list"`)
+	if start < 0 {
+		start = strings.Index(rawHTML, `class="n_worklist"`)
+	}
+	if start < 0 {
+		return rawHTML
+	}
+	searchSpace := rawHTML[start:]
+	end := len(searchSpace)
+	for _, marker := range []string{
+		`id="work_related"`,
+		`class="work_related"`,
+		`class="recommend"`,
+		`id="ranking"`,
+		`class="page_navi"`,
+		`id="footer"`,
+	} {
+		if index := strings.Index(searchSpace, marker); index > 0 && index < end {
+			end = index
+		}
+	}
+	return searchSpace[:end]
 }
 
 func makerProfileURLs(baseURL string, site string, makerID string, page int, languages []string) []string {
