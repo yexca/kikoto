@@ -25,6 +25,11 @@ export type Work = {
 export type SourcePresenceItem = {
   type: string;
   availability: string;
+  fileSourceId?: number;
+  fileSourceCode?: string;
+  fileSourceName?: string;
+  remoteId?: string;
+  sourceUrl?: string;
 };
 
 export type WorkProgressSummary = {
@@ -72,6 +77,7 @@ export type WorkDetail = {
   listeningStatus: ListeningStatus;
   favorite: boolean;
   translations: WorkTranslation[];
+  sourcePresence: SourcePresenceItem[] | null;
   mediaItems: MediaItem[];
 };
 

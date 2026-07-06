@@ -472,40 +472,46 @@ type libraryWorkSummary struct {
 }
 
 type sourcePresenceItem struct {
-	Type         string `json:"type"`
-	Availability string `json:"availability"`
+	Type           string `json:"type"`
+	Availability   string `json:"availability"`
+	FileSourceID   int64  `json:"fileSourceId"`
+	FileSourceCode string `json:"fileSourceCode"`
+	FileSourceName string `json:"fileSourceName"`
+	RemoteID       string `json:"remoteId"`
+	SourceURL      string `json:"sourceUrl"`
 }
 
 type workDetail struct {
-	ID               int64             `json:"id"`
-	PrimaryCode      string            `json:"primaryCode"`
-	BaseCode         string            `json:"baseCode"`
-	MetadataLanguage string            `json:"metadataLanguage"`
-	WorkType         string            `json:"workType"`
-	Title            string            `json:"title"`
-	TitleKana        string            `json:"titleKana"`
-	Description      string            `json:"description"`
-	ReleaseDate      *string           `json:"releaseDate"`
-	AgeRating        string            `json:"ageRating"`
-	DurationSeconds  *int64            `json:"durationSeconds"`
-	CreatedAt        string            `json:"createdAt"`
-	UpdatedAt        string            `json:"updatedAt"`
-	CoverURL         string            `json:"coverUrl"`
-	DLsiteURL        string            `json:"dlsiteUrl"`
-	Circle           string            `json:"circle"`
-	CircleExternalID string            `json:"circleExternalId"`
-	Rating           *float64          `json:"rating"`
-	RatingCount      *int64            `json:"ratingCount"`
-	Sales            *int64            `json:"sales"`
-	Series           string            `json:"series"`
-	DLsiteFetchedAt  string            `json:"dlsiteFetchedAt"`
-	Tags             []string          `json:"tags"`
-	VoiceActors      []string          `json:"voiceActors"`
-	VoiceCredits     []voiceCredit     `json:"voiceCredits"`
-	ListeningStatus  string            `json:"listeningStatus"`
-	Favorite         bool              `json:"favorite"`
-	Translations     []workTranslation `json:"translations"`
-	MediaItems       []mediaItemDetail `json:"mediaItems"`
+	ID               int64                `json:"id"`
+	PrimaryCode      string               `json:"primaryCode"`
+	BaseCode         string               `json:"baseCode"`
+	MetadataLanguage string               `json:"metadataLanguage"`
+	WorkType         string               `json:"workType"`
+	Title            string               `json:"title"`
+	TitleKana        string               `json:"titleKana"`
+	Description      string               `json:"description"`
+	ReleaseDate      *string              `json:"releaseDate"`
+	AgeRating        string               `json:"ageRating"`
+	DurationSeconds  *int64               `json:"durationSeconds"`
+	CreatedAt        string               `json:"createdAt"`
+	UpdatedAt        string               `json:"updatedAt"`
+	CoverURL         string               `json:"coverUrl"`
+	DLsiteURL        string               `json:"dlsiteUrl"`
+	Circle           string               `json:"circle"`
+	CircleExternalID string               `json:"circleExternalId"`
+	Rating           *float64             `json:"rating"`
+	RatingCount      *int64               `json:"ratingCount"`
+	Sales            *int64               `json:"sales"`
+	Series           string               `json:"series"`
+	DLsiteFetchedAt  string               `json:"dlsiteFetchedAt"`
+	Tags             []string             `json:"tags"`
+	VoiceActors      []string             `json:"voiceActors"`
+	VoiceCredits     []voiceCredit        `json:"voiceCredits"`
+	ListeningStatus  string               `json:"listeningStatus"`
+	Favorite         bool                 `json:"favorite"`
+	Translations     []workTranslation    `json:"translations"`
+	SourcePresence   []sourcePresenceItem `json:"sourcePresence"`
+	MediaItems       []mediaItemDetail    `json:"mediaItems"`
 }
 
 type workTranslation struct {
@@ -826,16 +832,30 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 }
 
 func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
-	var raw sql.NullString
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			presence.presence_type,
+			presence.availability,
+			presence.file_source_id,
+			COALESCE(source.code, ''),
+			COALESCE(source.display_name, ''),
+			COALESCE(presence.remote_id, ''),
+			COALESCE(presence.source_url, '')
 		FROM work_source_presence AS presence
 		INNER JOIN work ON work.id = presence.work_id
+		LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 		WHERE UPPER(work.primary_code) = UPPER(?)
-	`, code).Scan(&raw); err != nil {
+		ORDER BY presence.presence_type, source.display_name, presence.file_source_id
+	`, code)
+	if err != nil {
 		return nil
 	}
-	return parseSourcePresenceSummary(raw.String)
+	defer rows.Close()
+	items, err := scanSourcePresenceRows(rows)
+	if err != nil {
+		return nil
+	}
+	return items
 }
 
 func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
@@ -863,6 +883,38 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 		items = append(items, sourcePresenceItem{Type: presenceType, Availability: availability})
 	}
 	return items
+}
+
+func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
+	items := []sourcePresenceItem{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var item sourcePresenceItem
+		if err := rows.Scan(
+			&item.Type,
+			&item.Availability,
+			&item.FileSourceID,
+			&item.FileSourceCode,
+			&item.FileSourceName,
+			&item.RemoteID,
+			&item.SourceURL,
+		); err != nil {
+			return nil, err
+		}
+		if item.Type == "" {
+			continue
+		}
+		if item.Availability == "" {
+			item.Availability = "unknown"
+		}
+		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {
@@ -2031,6 +2083,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
 		return workDetail{}, err
 	}
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return workDetail{}, err
+	}
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -2076,6 +2131,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.DurationSeconds = nullableInt64(durationSeconds)
 	work.CoverURL = s.coverURL(work.PrimaryCode)
 	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
+	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
 	work.MediaItems = []mediaItemDetail{}
 
 	var snapshot sql.NullString

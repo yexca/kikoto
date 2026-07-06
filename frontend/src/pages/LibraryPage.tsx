@@ -1794,7 +1794,7 @@ function WorkDetailView({
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
-  const selectedRemoteSource = remoteSources.find((item) => selectedSource?.key === remoteSourceTabKey(item.source.id));
+  const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code) : work?.primaryCode || code;
@@ -2126,6 +2126,7 @@ function WorkDetailView({
           <SourceAvailabilitySummary
             tabs={sourceTabs}
             remoteSources={remoteSources}
+            sourcePresence={work.sourcePresence ?? []}
             checking={isCheckingSources}
             checkedAt={sourceCheckedAt}
             onRefresh={() => void refreshSourceAvailability()}
@@ -2307,18 +2308,21 @@ function DetailHero({
 function SourceAvailabilitySummary({
   tabs,
   remoteSources,
+  sourcePresence,
   checking,
   checkedAt,
   onRefresh,
 }: {
   tabs: SourceTabInfo[];
   remoteSources: RemoteSourceAvailability[];
+  sourcePresence: NonNullable<WorkDetail["sourcePresence"]>;
   checking: boolean;
   checkedAt: string;
   onRefresh: () => void;
 }) {
   const localTabs = tabs.filter((tab) => !tab.key.startsWith("remote-source:"));
-  if (localTabs.length === 0 && remoteSources.length === 0 && !checking) return null;
+  const unforkedSources = trackedUnforkedSources(sourcePresence, remoteSources);
+  if (localTabs.length === 0 && remoteSources.length === 0 && unforkedSources.length === 0 && !checking) return null;
   return (
     <div className="mb-4 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2331,6 +2335,9 @@ function SourceAvailabilitySummary({
           {remoteSources.map((remote) => (
             <SourceStatusBadge key={remote.source.id} remote={remote} />
           ))}
+          {unforkedSources.map((presence) => (
+            <UnforkedSourceBadge key={`${presence.type}:${presence.availability}`} presence={presence} />
+          ))}
           {checking && <Badge variant="secondary">Checking sources</Badge>}
           {!checking && checkedAt && <span className="text-xs text-muted-foreground">Checked {formatDateTime(checkedAt)}</span>}
         </div>
@@ -2339,6 +2346,27 @@ function SourceAvailabilitySummary({
           Refresh
         </Button>
       </div>
+    </div>
+  );
+}
+
+function UnforkedSourceBadge({ presence }: { presence: NonNullable<WorkDetail["sourcePresence"]>[number] }) {
+  const availability = presence.availability || "unknown";
+  const sourceName = presence.fileSourceName || presence.fileSourceCode || "Tracked";
+  const title = availability === "available"
+    ? "Tracked from a remote source, but no forked directory tree has been saved yet."
+    : `Tracked source is ${availability}. Fork is unavailable until the source can be refreshed.`;
+  return (
+    <div
+      className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900"
+      title={title}
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+      <span className="truncate font-medium">{sourceName}</span>
+      <span>unforked</span>
+      {availability !== "available" && (
+        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px]">{availability}</span>
+      )}
     </div>
   );
 }
@@ -2909,7 +2937,7 @@ type SourceTabInfo = {
   key: string;
   label: string;
   fileSourceId: number | null;
-  kind?: "local";
+  kind?: "local" | "remote";
 };
 
 type RemoteSourceAvailability = {
@@ -2953,9 +2981,15 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
       fileSourceId: null,
+      kind: "remote",
     });
   }
   return baseTabs;
+}
+
+function trackedUnforkedSources(sourcePresence: NonNullable<WorkDetail["sourcePresence"]>, remoteSources: RemoteSourceAvailability[]) {
+  if (remoteSources.some((remote) => remoteSourceCanBrowse(remote.summary))) return [];
+  return sourcePresence.filter((presence) => presence.type === "tracked");
 }
 
 function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {
