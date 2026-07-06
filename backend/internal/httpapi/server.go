@@ -2954,9 +2954,6 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
 	}
-	if len(result.AvailabilityWorkCodes) > 0 {
-		go s.runStartupAvailabilityChecks(context.Background(), result.AvailabilityWorkCodes)
-	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
 		return startupLibraryRefreshResult{}, err
 	}
@@ -2987,6 +2984,9 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}
 	if err := s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, status, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
+	}
+	if len(result.AvailabilityWorkCodes) > 0 {
+		go s.runStartupAvailabilityChecks(context.Background(), result.AvailabilityWorkCodes)
 	}
 	return result, nil
 }
@@ -3176,6 +3176,9 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureStartupLibraryRefreshTrigger(ctx); err != nil {
 		return err
 	}
+	if err := s.markStaleStartupLibraryRefreshRuns(ctx); err != nil {
+		return err
+	}
 	var enabled int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(trigger.enabled), 0)
@@ -3191,6 +3194,37 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return nil
 	}
 	_, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup")
+	return err
+}
+
+func (s *Server) markStaleStartupLibraryRefreshRuns(ctx context.Context) error {
+	output := mustJSON(map[string]any{"error": "startup interrupted before completion"})
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'failed',
+			error_message = CASE
+				WHEN error_message <> '' THEN error_message
+				ELSE 'startup interrupted before completion'
+			END,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE status IN ('queued', 'running')
+			AND workflow_run_id IN (
+				SELECT id
+				FROM workflow_run
+				WHERE workflow_code = 'startup_library_refresh'
+					AND status IN ('queued', 'running')
+			)
+	`); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = 'failed',
+			summary_json = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE workflow_code = 'startup_library_refresh'
+			AND status IN ('queued', 'running')
+	`, output)
 	return err
 }
 

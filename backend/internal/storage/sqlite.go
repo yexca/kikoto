@@ -21,7 +21,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	if _, err := db.Exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;"); err != nil {
+	if _, err := db.Exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
