@@ -22,6 +22,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  WorkCardActionButton,
+  WorkCardDLsiteAction,
+  WorkCardFooter,
+  WorkCardSelection,
+  WorkCardShell,
+  cardDate,
+  dlsiteTagBadges,
+  type WorkCardViewModel,
+} from "@/components/work-card/WorkCardShell";
+import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type Work } from "@/lib/api";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
@@ -617,63 +628,19 @@ function FavoriteWorkCard({
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
 }) {
-  const sourceBadges = work.availability.length > 0 ? work.availability : ["missing"];
   const [isListPopoverOpen, setIsListPopoverOpen] = useState(false);
+  const view = favoriteWorkCardView(work);
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
-      <CardContent className="p-0">
-        <button className="block w-full text-left" onClick={onOpen}>
-          <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            {selectionActive && (
-              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-                <input type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} />
-              </label>
-            )}
-            {work.coverUrl ? (
-              <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" />
-            ) : (
-              <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{work.primaryCode.slice(0, 2)}</div>
-            )}
-            <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode}</div>
-            <div className="absolute bottom-3 right-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
-              {work.rating === null ? "No rating" : `Rate ${work.rating.toFixed(2)}`}
-            </div>
-          </div>
-          <div className="flex min-h-48 flex-col gap-3 p-4">
-            <div className="space-y-1">
-              <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <div className="truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</div>
-            </div>
-            <div className="flex min-h-6 flex-wrap gap-1.5">
-              <Badge>{listeningStatusLabel(work.listeningStatus)}</Badge>
-              {work.tags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="truncate">Release {work.releaseDate || "unknown"} · Updated {work.updatedAt || work.createdAt || "unknown"}</div>
-              <div className="truncate">{work.trackCount} tracks · Sales {work.sales === null ? "unknown" : work.sales.toLocaleString()}</div>
-            </div>
-            <WorkProgress progress={work.progress} />
-            <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
-              {sourceBadges.map((badge) => (
-                <Badge key={badge} variant={badge === "missing" ? "warning" : "secondary"}>
-                  {badge}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </button>
-        <div className="flex h-12 items-center justify-between border-t px-3">
-          <Button variant="ghost" size="icon" asChild title="Open DLsite">
-            <a href={work.dlsiteUrl} target="_blank" rel="noreferrer" aria-label="Open DLsite">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-          <div className="flex items-center gap-2">
+    <WorkCardShell
+      work={view}
+      selection={selectionActive ? <WorkCardSelection checked={selected} onChange={onSelectedChange} /> : undefined}
+      onOpen={onOpen}
+      footer={(
+        <WorkCardFooter
+          left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
+          right={(
+            <>
             <select
               className="h-8 rounded-md border bg-background px-2 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
               value={work.listeningStatus}
@@ -686,15 +653,19 @@ function FavoriteWorkCard({
                 </option>
               ))}
             </select>
-            <Button variant="outline" size="sm" onClick={() => void onFavoriteChange(work.id, false)}>
+            <WorkCardActionButton title="Remove favorite" onClick={(event) => {
+              event.stopPropagation();
+              void onFavoriteChange(work.id, false);
+            }}>
               <Heart className="h-4 w-4 fill-current" />
-              Remove
-            </Button>
+            </WorkCardActionButton>
             <div className="relative">
-              <Button variant="outline" size="sm" onClick={() => setIsListPopoverOpen((open) => !open)}>
+              <WorkCardActionButton title="Favorite lists" onClick={(event) => {
+                event.stopPropagation();
+                setIsListPopoverOpen((open) => !open);
+              }}>
                 <ListMusic className="h-4 w-4" />
-                Lists
-              </Button>
+              </WorkCardActionButton>
               {isListPopoverOpen && (
                 <ListMembershipPopover
                   title={`${work.primaryCode} lists`}
@@ -710,10 +681,11 @@ function FavoriteWorkCard({
                 />
               )}
             </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+            </>
+          )}
+        />
+      )}
+    />
   );
 }
 
@@ -731,6 +703,26 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
       </div>
     </div>
   );
+}
+
+function favoriteWorkCardView(work: Work): WorkCardViewModel {
+  return {
+    code: work.primaryCode,
+    title: work.title,
+    circle: work.circle || "Unknown circle",
+    circleExternalId: work.circleExternalId,
+    coverUrl: work.coverUrl,
+    rating: work.rating,
+    series: null,
+    dlsiteTags: [
+      { key: `status:${work.listeningStatus}`, label: listeningStatusLabel(work.listeningStatus), variant: "secondary" },
+      ...dlsiteTagBadges(work.tags),
+    ],
+    date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
+    progress: work.progress,
+    userTags: [],
+    sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+  };
 }
 
 function Pagination({

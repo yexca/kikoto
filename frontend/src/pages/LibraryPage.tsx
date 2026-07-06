@@ -16,6 +16,7 @@ import {
   FolderTree,
   HardDrive,
   HardDriveDownload,
+  Heart,
   Headphones,
   ImageIcon,
   ExternalLink,
@@ -56,6 +57,18 @@ import {
   type Work,
   type WorkDetail,
 } from "@/lib/api";
+import {
+  WorkCardActionButton,
+  WorkCardDLsiteAction,
+  WorkCardFooter,
+  WorkCardSelection,
+  WorkCardShell,
+  cardDate,
+  dlsiteTagBadges,
+  type WorkCardBadge,
+  type WorkCardViewModel,
+} from "@/components/work-card/WorkCardShell";
+import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
 import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
@@ -481,7 +494,13 @@ export function LibraryPage() {
         <div className="space-y-3">
           <section className={workGridClassName(mobileColumns, desktopColumns)}>
             {pagedWorks.map((work) => (
-              <WorkCard key={work.id} work={work} onOpen={() => openWork(work)} onStatusChange={updateWorkStatus} />
+              <WorkCard
+                key={work.id}
+                work={work}
+                onOpen={() => openWork(work)}
+                onStatusChange={updateWorkStatus}
+                onFavoriteChange={updateWorkFavorite}
+              />
             ))}
             {visibleWorks.length === 0 && (
               <Card className="sm:col-span-2 xl:col-span-3">
@@ -828,6 +847,7 @@ function RemoteSourcePanel({
             <RemoteWorkCard
               key={work.remoteId}
               work={work}
+              source={source}
               selected={bulkCodes.has(work.primaryCode)}
               selectable={Boolean(work.primaryCode)}
               selectionActive={selectionActive}
@@ -873,13 +893,16 @@ function WorkCard({
   work,
   onOpen,
   onStatusChange,
+  onFavoriteChange,
 }: {
   work: Work;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
 }) {
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
+  const view = libraryWorkCardView(work);
 
   useEffect(() => {
     if (!isMarkOpen) return;
@@ -900,31 +923,26 @@ function WorkCard({
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
-      <CardContent className="p-0">
-        <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
-          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode} rating={work.rating} />
-          <WorkCardBody
-            title={work.title}
-            circle={work.circle || "Unknown circle"}
-            circleExternalId={work.circleExternalId}
-            releaseDate={work.releaseDate}
-            updatedAt={work.updatedAt || work.createdAt}
-            rating={work.rating}
-            sales={work.sales}
-            tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={sourceBadgesForWork(work)}
-            progress={work.progress}
-          />
-        </div>
-        <div className="flex h-11 items-center justify-between border-t px-3">
-          <Button variant="ghost" size="icon" asChild title="Open DLsite">
-            <a href={work.dlsiteUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
+    <WorkCardShell
+      work={view}
+      onOpen={onOpen}
+      onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      footer={(
+        <WorkCardFooter
+          left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
+          right={(
+            <>
+              <WorkCardActionButton
+                title={work.favorite ? "Remove favorite" : "Add favorite"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void onFavoriteChange(work.id, !work.favorite);
+                }}
+              >
+                <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
+              </WorkCardActionButton>
           <div className="relative" ref={markMenuRef}>
-            <IconButton
+                <WorkCardActionButton
               title={`Mark: ${listeningStatusLabel(work.listeningStatus)}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -932,7 +950,7 @@ function WorkCard({
               }}
             >
               <ListChecks className={work.listeningStatus === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-            </IconButton>
+                </WorkCardActionButton>
             {isMarkOpen && (
               <MarkMenu
                 value={work.listeningStatus}
@@ -943,14 +961,17 @@ function WorkCard({
               />
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+            </>
+          )}
+        />
+      )}
+    />
   );
 }
 
 function RemoteWorkCard({
   work,
+  source,
   selected,
   selectable,
   selectionActive,
@@ -962,6 +983,7 @@ function RemoteWorkCard({
   onSave,
 }: {
   work: RemoteWork;
+  source: LibrarySource;
   selected: boolean;
   selectable: boolean;
   selectionActive: boolean;
@@ -974,6 +996,7 @@ function RemoteWorkCard({
 }) {
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
+  const view = remoteWorkCardView(work, source);
 
   useEffect(() => {
     if (!isMarkOpen) return;
@@ -994,36 +1017,18 @@ function RemoteWorkCard({
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
-      <CardContent className="p-0">
-        <div className="relative block w-full cursor-pointer text-left" onClick={onOpen}>
-          {selectionActive && (
-            <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-              <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-            </label>
-          )}
-          <WorkCardMedia coverUrl={work.coverUrl} code={work.primaryCode || work.remoteId} rating={work.rating} />
-          <WorkCardBody
-            title={work.title}
-            circle={work.circle || "Unknown circle"}
-            circleExternalId=""
-            releaseDate={work.releaseDate || null}
-            updatedAt={work.updatedAt || work.releaseDate}
-            rating={work.rating}
-            sales={work.sales}
-            tagBadges={work.tags.slice(0, 3).map((tag) => ({ value: tag, variant: "outline" as const }))}
-            sourceBadges={work.remotePlayable ? [{ value: "remote available", variant: "outline" as const }] : []}
-          />
-        </div>
-        <div className="flex h-11 items-center justify-between border-t px-3">
-          <Button variant="ghost" size="icon" asChild title="Open DLsite">
-            <a href={dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-          <div className="flex items-center gap-1">
-            <IconButton
-              title="Sync"
+    <WorkCardShell
+      work={view}
+      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      onOpen={onOpen}
+      canOpen={Boolean(work.primaryCode)}
+      footer={(
+        <WorkCardFooter
+          left={<WorkCardDLsiteAction href={dlsiteWorkURL(work.primaryCode)} />}
+          right={(
+            <>
+            <WorkCardActionButton
+              title="Track"
               disabled={isBusy || !work.primaryCode}
               onClick={(event) => {
                 event.stopPropagation();
@@ -1031,8 +1036,8 @@ function RemoteWorkCard({
               }}
             >
               <RefreshCw className="h-4 w-4" />
-            </IconButton>
-            <IconButton
+            </WorkCardActionButton>
+            <WorkCardActionButton
               title="Fetch"
               disabled={isBusy || !work.primaryCode}
               onClick={(event) => {
@@ -1041,9 +1046,9 @@ function RemoteWorkCard({
               }}
             >
               <HardDriveDownload className="h-4 w-4" />
-            </IconButton>
+            </WorkCardActionButton>
             <div className="relative" ref={markMenuRef}>
-              <IconButton
+              <WorkCardActionButton
                 title="Mark"
                 disabled={isBusy || !work.primaryCode}
                 onClick={(event) => {
@@ -1052,7 +1057,7 @@ function RemoteWorkCard({
                 }}
               >
                 <ListChecks className="h-4 w-4" />
-              </IconButton>
+              </WorkCardActionButton>
               {isMarkOpen && (
                 <MarkMenu
                   value="none"
@@ -1063,10 +1068,11 @@ function RemoteWorkCard({
                 />
               )}
             </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+            </>
+          )}
+        />
+      )}
+    />
   );
 }
 
@@ -1127,6 +1133,42 @@ function RemoteStateConfirmModal({
       </div>
     </div>
   );
+}
+
+function libraryWorkCardView(work: Work): WorkCardViewModel {
+  return {
+    code: work.primaryCode,
+    title: work.title,
+    circle: work.circle || "Unknown circle",
+    circleExternalId: work.circleExternalId,
+    coverUrl: work.coverUrl,
+    rating: work.rating,
+    series: null,
+    dlsiteTags: dlsiteTagBadges(work.tags),
+    date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
+    progress: work.progress,
+    userTags: [],
+    sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+  };
+}
+
+function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardViewModel {
+  const sourceLabel = source.displayName || source.code || "remote source";
+  return {
+    code: work.primaryCode || work.remoteId,
+    title: work.title,
+    circle: work.circle || sourceLabel || "Unknown circle",
+    coverUrl: work.coverUrl,
+    rating: work.rating,
+    series: null,
+    dlsiteTags: dlsiteTagBadges(work.tags),
+    date: cardDate(work.releaseDate, work.updatedAt || work.releaseDate),
+    progress: null,
+    userTags: [],
+    sourceBadges: work.remotePlayable
+      ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
+      : [{ key: `source:remote:${source.id}:unavailable`, label: `${sourceLabel} unavailable`, variant: "warning" }],
+  };
 }
 
 function WorkCardMedia({

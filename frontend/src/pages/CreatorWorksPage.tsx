@@ -8,6 +8,7 @@ import {
   GitMerge,
   HardDriveDownload,
   HardDrive,
+  Heart,
   Layers3,
   ListChecks,
   Loader2,
@@ -27,6 +28,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import {
+  WorkCardActionButton,
+  WorkCardDLsiteAction,
+  WorkCardFooter,
+  WorkCardSelection,
+  WorkCardShell,
+  cardDate,
+  dlsiteTagBadges,
+  type WorkCardViewModel,
+} from "@/components/work-card/WorkCardShell";
+import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteWorkDetail, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 import { openCircleRoute } from "@/pages/CirclesPage";
 
@@ -725,6 +737,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
+  const view = voiceWorkCardView(work);
 
   useEffect(() => {
     if (!isMarkOpen) return;
@@ -745,77 +758,37 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   }, [isMarkOpen]);
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
-      <CardContent className="p-0">
-        <button className={`block w-full text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`} disabled={!canOpen} onClick={() => openWorkRoute(work)}>
-          <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            {selectionActive && (
-              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-                <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-              </label>
-            )}
-            {cover && <img src={cover} alt="" className="h-full w-full object-contain" loading="lazy" />}
-            <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode || sourceName || "Source"}</div>
-          </div>
-          <div className="flex min-h-52 flex-col gap-3 p-4">
-            <div className="space-y-1">
-              <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <button
-                className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if ("circleExternalId" in work && work.circleExternalId) openCircleRoute(work.circleExternalId);
-                }}
-              >
-                {work.circle || sourceName || "Unknown circle"}
-              </button>
-            </div>
-            <div className="flex min-h-6 flex-wrap gap-1.5">
-              {metadataTags.length > 0 ? metadataTags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>) : <span className="text-xs text-muted-foreground">No tags</span>}
-            </div>
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="truncate">Release {voiceWorkReleaseDate(work) || "unknown"} · Updated {voiceWorkUpdatedAt(work) || "unknown"}</div>
-              <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {voiceWorkSales(work) === null ? "unknown" : voiceWorkSales(work)?.toLocaleString()}</div>
-            </div>
-            {"progress" in work && work.progress?.mediaItemId && (
-              <WorkProgressLine progress={work.progress} />
-            )}
-            <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
-              <Badge variant={isKnown ? "secondary" : "outline"}>{status}</Badge>
-              {cache && <Badge variant="secondary">Cache</Badge>}
-              {tags.length > 0 ? tags.map((tag) => <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>{tag.displayName}</Badge>) : (
-                <>
-                  {local && <Badge variant="secondary">Local</Badge>}
-                  {remote && <Badge variant="outline">{sourceName || "Source"}</Badge>}
-                  {!local && !remote && !cache && <Badge variant="warning">Unavailable</Badge>}
-                </>
-              )}
-            </div>
-          </div>
-        </button>
-        <div className="flex h-11 items-center justify-between gap-1 border-t px-3">
-          <Button variant="ghost" size="icon" asChild title="Open DLsite">
-            <a href={voiceWorkDLsiteURL(work)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" title="Sync" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
+    <WorkCardShell
+      work={view}
+      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      canOpen={canOpen}
+      onOpen={() => openWorkRoute(work)}
+      onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      footer={(
+        <WorkCardFooter
+          left={<WorkCardDLsiteAction href={voiceWorkDLsiteURL(work)} />}
+          right={(
+            <>
+            <WorkCardActionButton title="Track" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSync();
             }}>
               <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" title="Fetch" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
+            </WorkCardActionButton>
+            <WorkCardActionButton title="Fetch" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSave();
             }}>
               <HardDriveDownload className="h-4 w-4" />
-            </Button>
+            </WorkCardActionButton>
+            <WorkCardActionButton title="Add favorite" disabled={!workId} onClick={(event) => {
+              event.stopPropagation();
+              if (workId) void api.updateWorkUserState(workId, { favorite: true });
+            }}>
+              <Heart className="h-4 w-4" />
+            </WorkCardActionButton>
             <div className="relative min-w-0" ref={markMenuRef}>
-            <Button
-              variant="ghost"
-              size="icon"
+            <WorkCardActionButton
               title={`Mark: ${listeningStatusLabel(listeningMark)}`}
               disabled={isUnavailable && !voiceWorkRemoteTarget(work)}
               onClick={(event) => {
@@ -824,7 +797,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               }}
             >
               <ListChecks className={listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-            </Button>
+            </WorkCardActionButton>
             {isMarkOpen && (
               <MarkMenu
                 value={normalizeListeningStatus(listeningMark)}
@@ -835,10 +808,11 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               />
             )}
           </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+            </>
+          )}
+        />
+      )}
+    />
   );
 }
 
@@ -1133,6 +1107,37 @@ function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["
       </div>
     </div>
   );
+}
+
+function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardViewModel {
+  const isKnown = "local" in work;
+  const sourceName = "sourceName" in work ? work.sourceName : "";
+  const sourceBadges = isKnown
+    ? circleSourceBadges({ local: work.local, remote: work.remote, cache: work.cache, sourceTags: work.sourceTags })
+    : circleSourceBadges({ local: work.hasLocal, remote: work.hasRemote || work.remotePlayable, cache: work.hasCache, sourceTags: work.remotePlayable && work.sourceId ? [{
+      key: String(work.sourceId),
+      displayName: sourceName || work.sourceCode || "remote source",
+      sourceId: work.sourceId,
+      status: "available",
+      count: 1,
+    }] : [] });
+  return {
+    code: work.primaryCode || sourceName || "Source",
+    title: work.title,
+    circle: work.circle || sourceName || "Unknown circle",
+    circleExternalId: "circleExternalId" in work ? work.circleExternalId : undefined,
+    coverUrl: work.coverUrl,
+    rating: work.rating,
+    series: null,
+    dlsiteTags: dlsiteTagBadges(work.tags),
+    date: cardDate(voiceWorkReleaseDate(work), voiceWorkUpdatedAt(work)),
+    progress: "progress" in work ? work.progress : null,
+    userTags: [],
+    sourceBadges: [
+      { key: `status:${isKnown ? "known" : work.importStatus}`, label: isKnown ? "Known" : work.importStatus, variant: isKnown ? "secondary" : "outline" },
+      ...sourceBadges,
+    ],
+  };
 }
 
 function RemoteSourcePanel({ sources }: { sources: VoiceRemoteSourceSet[] }) {

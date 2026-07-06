@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileAudio,
   HardDriveDownload,
+  Heart,
   ListChecks,
   NotebookPen,
   RefreshCw,
@@ -19,6 +20,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import {
+  WorkCardActionButton,
+  WorkCardDLsiteAction,
+  WorkCardFooter,
+  WorkCardSelection,
+  WorkCardShell,
+  cardDate,
+  dlsiteTagBadges,
+  type WorkCardViewModel,
+} from "@/components/work-card/WorkCardShell";
+import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
@@ -378,6 +390,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const code = seriesCode?.toUpperCase() ?? "";
     return code ? circle.series.find((series) => series.titleId.toUpperCase() === code) ?? null : null;
   }, [circle.series, seriesCode]);
+  const seriesNameByCode = useMemo(() => buildSeriesNameByCode(circle.series), [circle.series]);
   const isSeriesView = seriesCode !== undefined;
   const seriesWorks = useMemo(() => {
     if (!isSeriesView) return [];
@@ -833,6 +846,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                       <CatalogWorkCard
                         key={work.primaryCode}
                         work={work}
+                        seriesName={seriesNameByCode.get(work.primaryCode.toUpperCase()) ?? null}
                         selected={selectedWorkCodes.has(work.primaryCode)}
                         selectable={isCircleBulkSaveSelectable(work)}
                         selectionActive={false}
@@ -894,6 +908,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <CatalogWorkCard
                 key={work.primaryCode}
                 work={work}
+                seriesName={seriesNameByCode.get(work.primaryCode.toUpperCase()) ?? null}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
                 selectionActive={selectionMode}
@@ -956,6 +971,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
 function CatalogWorkCard({
   work,
+  seriesName,
   selected,
   selectable,
   selectionActive,
@@ -966,6 +982,7 @@ function CatalogWorkCard({
   onStatusChange,
 }: {
   work: CircleCatalogWork;
+  seriesName: string | null;
   selected: boolean;
   selectable: boolean;
   selectionActive: boolean;
@@ -976,10 +993,10 @@ function CatalogWorkCard({
   onStatusChange: (status: ListeningStatus) => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
-  const tags = sourceTags(work.sourceTags);
   const isUnavailable = !work.local && !work.remote;
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
+  const view = catalogWorkCardView(work, seriesName);
 
   useEffect(() => {
     if (!isMarkOpen) return;
@@ -1004,81 +1021,37 @@ function CatalogWorkCard({
   };
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
-      <CardContent className="p-0">
-        <button
-          className={`block w-full text-left ${directoryTarget ? "cursor-pointer" : "cursor-default"}`}
-          disabled={!directoryTarget}
-          onClick={openTarget}
-        >
-          <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-            {selectionActive && (
-              <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-                <input type="checkbox" checked={selected} disabled={!selectable} onChange={(event) => onSelectedChange(event.target.checked)} />
-              </label>
-            )}
-            {work.coverUrl ? <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain" /> : null}
-            <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{work.primaryCode}</div>
-          </div>
-          <div className="flex min-h-52 flex-col gap-3 p-4">
-            <div className="space-y-1">
-              <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-              <button
-                className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openCircleRoute(work.circleExternalId || undefined);
-                }}
-              >
-                {work.circle || "Unknown circle"}
-              </button>
-            </div>
-            <div className="flex min-h-6 flex-wrap gap-1.5">
-              {work.tags.slice(0, 4).length > 0 ? work.tags.slice(0, 4).map((tag) => (
-                <Badge key={tag} variant="outline">{tag}</Badge>
-              )) : <span className="text-xs text-muted-foreground">No tags</span>}
-            </div>
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <div className="truncate">Release {work.releaseDate ?? "unknown"} · Updated {work.updatedAt || "unknown"}</div>
-              <div className="truncate">DLsite rate {work.rating === null ? "unknown" : work.rating.toFixed(2)} · Sales {work.sales === null ? "unknown" : work.sales.toLocaleString()}</div>
-            </div>
-            {work.progress?.mediaItemId && (
-              <WorkProgressLine progress={work.progress} />
-            )}
-            <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
-              {work.catalogStatus !== "imported" && <Badge variant="outline">{work.catalogStatus}</Badge>}
-              {!work.dlsiteAvailable && <Badge variant="warning">DLsite missing</Badge>}
-              {tags.length > 0 ? tags.map((tag) => (
-                <Badge key={tag.key} variant={tag.key === "local" ? "secondary" : "outline"}>
-                  {tag.displayName}
-                </Badge>
-              )) : <Badge variant="warning">Unavailable</Badge>}
-            </div>
-          </div>
-        </button>
-        <div className="flex h-11 items-center justify-between gap-1 border-t px-3">
-          <Button variant="ghost" size="icon" asChild title="Open DLsite">
-            <a href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" title="Sync" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+    <WorkCardShell
+      work={view}
+      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      canOpen={Boolean(directoryTarget)}
+      onOpen={openTarget}
+      onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      footer={(
+        <WorkCardFooter
+          left={<WorkCardDLsiteAction href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} />}
+          right={(
+            <>
+            <WorkCardActionButton title="Track" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSync();
             }}>
               <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" title="Fetch" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+            </WorkCardActionButton>
+            <WorkCardActionButton title="Fetch" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSave();
             }}>
               <HardDriveDownload className="h-4 w-4" />
-            </Button>
+            </WorkCardActionButton>
+            <WorkCardActionButton title="Add favorite" disabled={work.workId === null} onClick={(event) => {
+              event.stopPropagation();
+              if (work.workId !== null) void api.updateWorkUserState(work.workId, { favorite: true });
+            }}>
+              <Heart className="h-4 w-4" />
+            </WorkCardActionButton>
             <div className="relative" ref={markMenuRef}>
-            <Button
-              variant="ghost"
-              size="icon"
+            <WorkCardActionButton
               title={`Mark: ${listeningStatusLabel(work.listeningMark)}`}
               disabled={isUnavailable && !circleWorkRemoteTarget(work)}
               onClick={(event) => {
@@ -1087,7 +1060,7 @@ function CatalogWorkCard({
               }}
             >
               <ListChecks className={work.listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-            </Button>
+            </WorkCardActionButton>
             {isMarkOpen && (
               <MarkMenu
                 value={normalizeListeningStatus(work.listeningMark)}
@@ -1098,23 +1071,19 @@ function CatalogWorkCard({
               />
             )}
           </div>
-          </div>
-          <div className="hidden items-center gap-1">
             {!work.dlsiteAvailable && (
-              <Button variant="ghost" size="sm" onClick={onDeleteMissing}>
-                Delete
-              </Button>
+              <WorkCardActionButton title="Delete missing catalog item" onClick={(event) => {
+                event.stopPropagation();
+                onDeleteMissing();
+              }}>
+                <CircleAlert className="h-4 w-4" />
+              </WorkCardActionButton>
             )}
-            <Button variant="ghost" size="sm" asChild>
-              <a href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                DLsite
-              </a>
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+            </>
+          )}
+        />
+      )}
+    />
   );
 }
 
@@ -1165,6 +1134,39 @@ function CatalogDeleteConfirmModal({ work, onClose, onConfirm }: { work: CircleC
       </div>
     </div>
   );
+}
+
+function catalogWorkCardView(work: CircleCatalogWork, seriesName: string | null): WorkCardViewModel {
+  const sourceBadges = circleSourceBadges({ local: work.local, remote: work.remote, sourceTags: work.sourceTags });
+  const statusBadges = [
+    ...(work.catalogStatus !== "imported" ? [{ key: `catalog:${work.catalogStatus}`, label: work.catalogStatus, variant: "outline" as const }] : []),
+    ...(!work.dlsiteAvailable ? [{ key: "dlsite:missing", label: "DLsite missing", variant: "warning" as const }] : []),
+    ...sourceBadges,
+  ];
+  return {
+    code: work.primaryCode,
+    title: work.title,
+    circle: work.circle || "Unknown circle",
+    circleExternalId: work.circleExternalId,
+    coverUrl: work.coverUrl,
+    rating: work.rating,
+    series: seriesName,
+    dlsiteTags: dlsiteTagBadges(work.tags),
+    date: cardDate(work.releaseDate, work.updatedAt),
+    progress: work.progress ?? null,
+    userTags: [],
+    sourceBadges: statusBadges,
+  };
+}
+
+function buildSeriesNameByCode(series: CircleSeries[]) {
+  const map = new Map<string, string>();
+  for (const item of series) {
+    for (const code of item.workCodes) {
+      if (!map.has(code.toUpperCase())) map.set(code.toUpperCase(), item.name);
+    }
+  }
+  return map;
 }
 
 function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {
