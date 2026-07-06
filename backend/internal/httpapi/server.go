@@ -247,6 +247,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
+	if pagedRequest && strings.TrimSpace(r.URL.Query().Get("q")) == "" {
+		s.listWorksPageFast(w, r, user.ID)
+		return
+	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			work.id,
@@ -312,98 +316,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	works := []libraryWorkSummary{}
-	for rows.Next() {
-		var item libraryWorkSummary
-		var snapshot sql.NullString
-		var availableLocationTypes sql.NullString
-		var sourcePresence sql.NullString
-		var partyLink sql.NullString
-		var favorite int
-		if err := rows.Scan(
-			&item.ID,
-			&item.PrimaryCode,
-			&item.Title,
-			&item.CreatedAt,
-			&item.TrackCount,
-			&item.AvailableLocations,
-			&availableLocationTypes,
-			&sourcePresence,
-			&snapshot,
-			&partyLink,
-			&item.ListeningStatus,
-			&favorite,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		item.Favorite = favorite != 0
-		item.SourcePresence = parseSourcePresenceSummary(sourcePresence.String)
-		metadata := parseDLsiteSnapshot(snapshot.String)
-		familyMediaCode := item.PrimaryCode
-		progressWorkID := item.ID
-		if visible, err := s.workEditionVisibleInLibrary(r.Context(), item.ID); err != nil {
-			writeError(w, err)
-			return
-		} else if !visible {
-			continue
-		}
-		if mediaCode, ok, err := s.logicalWorkMediaCode(r.Context(), item.ID); err != nil {
-			writeError(w, err)
-			return
-		} else if ok {
-			familyMediaCode = mediaCode
-		} else {
-			if metadata.BaseCode != "" && s.workCodeExists(r.Context(), metadata.BaseCode) {
-				continue
-			}
-			for _, translation := range metadata.LanguageEditions {
-				if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
-					continue
-				}
-				if workID, ok := s.workIDForCode(r.Context(), translation.PrimaryCode); ok {
-					if hasMedia, err := s.workHasMedia(r.Context(), workID); err == nil && hasMedia {
-						familyMediaCode = translation.PrimaryCode
-						break
-					}
-				}
-			}
-		}
-		if !strings.EqualFold(familyMediaCode, item.PrimaryCode) {
-			if trackCount, availableLocations, availability, ok := s.workAvailabilityForCode(r.Context(), familyMediaCode); ok {
-				item.TrackCount = trackCount
-				item.AvailableLocations = availableLocations
-				item.Availability = availability
-			}
-			item.SourcePresence = s.sourcePresenceForCode(r.Context(), familyMediaCode)
-			if workID, ok := s.workIDForCode(r.Context(), familyMediaCode); ok {
-				progressWorkID = workID
-			}
-		}
-		item.ReleaseDate = metadata.ReleaseDate
-		item.UpdatedAt = item.CreatedAt
-		item.CoverURL = s.coverURL(item.PrimaryCode)
-		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
-		item.Circle = metadata.Circle
-		item.CircleExternalID = metadata.CircleExternalID
-		if name, externalID := parsePartyLink(partyLink.String); name != "" {
-			item.Circle = name
-			item.CircleExternalID = externalID
-		}
-		item.Rating = metadata.Rating
-		item.Sales = metadata.Sales
-		item.Tags = metadata.Tags
-		item.VoiceActors = metadata.VoiceActors
-		if len(item.Availability) == 0 {
-			item.Availability = availabilityBadges(availableLocationTypes.String)
-		}
-		progress, err := s.workProgressSummary(r.Context(), user.ID, progressWorkID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		item.Progress = progress
-		works = append(works, item)
+	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows)
+	if err != nil {
+		writeError(w, err)
+		return
 	}
 
 	if pagedRequest {
@@ -445,6 +361,239 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, works)
+}
+
+func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sql.Rows) ([]libraryWorkSummary, error) {
+	works := []libraryWorkSummary{}
+	for rows.Next() {
+		var item libraryWorkSummary
+		var snapshot sql.NullString
+		var availableLocationTypes sql.NullString
+		var sourcePresence sql.NullString
+		var partyLink sql.NullString
+		var favorite int
+		if err := rows.Scan(
+			&item.ID,
+			&item.PrimaryCode,
+			&item.Title,
+			&item.CreatedAt,
+			&item.TrackCount,
+			&item.AvailableLocations,
+			&availableLocationTypes,
+			&sourcePresence,
+			&snapshot,
+			&partyLink,
+			&item.ListeningStatus,
+			&favorite,
+		); err != nil {
+			return nil, err
+		}
+		item.Favorite = favorite != 0
+		item.SourcePresence = parseSourcePresenceSummary(sourcePresence.String)
+		metadata := parseDLsiteSnapshot(snapshot.String)
+		familyMediaCode := item.PrimaryCode
+		progressWorkID := item.ID
+		if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
+			return nil, err
+		} else if !visible {
+			continue
+		}
+		if mediaCode, ok, err := s.logicalWorkMediaCode(ctx, item.ID); err != nil {
+			return nil, err
+		} else if ok {
+			familyMediaCode = mediaCode
+		} else {
+			if metadata.BaseCode != "" && s.workCodeExists(ctx, metadata.BaseCode) {
+				continue
+			}
+			for _, translation := range metadata.LanguageEditions {
+				if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
+					continue
+				}
+				if workID, ok := s.workIDForCode(ctx, translation.PrimaryCode); ok {
+					if hasMedia, err := s.workHasMedia(ctx, workID); err == nil && hasMedia {
+						familyMediaCode = translation.PrimaryCode
+						break
+					}
+				}
+			}
+		}
+		if !strings.EqualFold(familyMediaCode, item.PrimaryCode) {
+			if trackCount, availableLocations, availability, ok := s.workAvailabilityForCode(ctx, familyMediaCode); ok {
+				item.TrackCount = trackCount
+				item.AvailableLocations = availableLocations
+				item.Availability = availability
+			}
+			item.SourcePresence = s.sourcePresenceForCode(ctx, familyMediaCode)
+			if workID, ok := s.workIDForCode(ctx, familyMediaCode); ok {
+				progressWorkID = workID
+			}
+		}
+		item.ReleaseDate = metadata.ReleaseDate
+		item.UpdatedAt = item.CreatedAt
+		item.CoverURL = s.coverURL(item.PrimaryCode)
+		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
+		item.Circle = metadata.Circle
+		item.CircleExternalID = metadata.CircleExternalID
+		if name, externalID := parsePartyLink(partyLink.String); name != "" {
+			item.Circle = name
+			item.CircleExternalID = externalID
+		}
+		item.Rating = metadata.Rating
+		item.Sales = metadata.Sales
+		item.Tags = metadata.Tags
+		item.VoiceActors = metadata.VoiceActors
+		if len(item.Availability) == 0 {
+			item.Availability = availabilityBadges(availableLocationTypes.String)
+		}
+		progress, err := s.workProgressSummary(ctx, userID, progressWorkID)
+		if err != nil {
+			return nil, err
+		}
+		item.Progress = progress
+		works = append(works, item)
+	}
+	return works, rows.Err()
+}
+
+func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
+	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	page := queryInt(r, "page", 1)
+	pageSize := queryInt(r, "pageSize", 24)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 24
+	}
+	where, args := libraryListWhere(scope, status)
+	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
+	countArgs := append([]any{userID}, args...)
+	var total int
+	if err := s.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
+		writeError(w, err)
+		return
+	}
+	offset := (page - 1) * pageSize
+	query := libraryListSelectSQL(where) + " ORDER BY work.created_at DESC LIMIT ? OFFSET ?"
+	queryArgs := append([]any{userID}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
+	rows, err := s.db.QueryContext(r.Context(), query, queryArgs...)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"works":    works,
+		"page":     page,
+		"pageSize": pageSize,
+		"total":    total,
+	})
+}
+
+func libraryListWhere(scope string, status string) (string, []any) {
+	clauses := []string{"1 = 1"}
+	args := []any{}
+	switch scope {
+	case "local":
+		clauses = append(clauses, `EXISTS (
+			SELECT 1
+			FROM media_file_location AS scope_location
+			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
+			WHERE scope_item.work_id = work.id
+				AND scope_location.location_type = 'local'
+				AND scope_location.availability = 'available'
+		)`)
+	case "tracked":
+		clauses = append(clauses, `EXISTS (
+			SELECT 1
+			FROM work_source_presence AS scope_presence
+			WHERE scope_presence.work_id = work.id
+				AND scope_presence.presence_type = 'tracked'
+		)`)
+	}
+	if status != "" && status != "all" {
+		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
+		args = append(args, status)
+	}
+	clauses = append(clauses, `NOT EXISTS (
+		SELECT 1
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE edition.work_id = work.id
+			AND logical.canonical_work_id IS NOT NULL
+			AND logical.canonical_work_id <> work.id
+			AND edition.is_canonical = 0
+	)`)
+	return strings.Join(clauses, " AND "), args
+}
+
+func libraryListSelectSQL(where string) string {
+	return `
+		SELECT
+			work.id,
+			work.primary_code,
+			work.title,
+			work.created_at,
+			(
+				SELECT COUNT(*)
+				FROM media_item
+				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
+			) AS track_count,
+			(
+				SELECT COUNT(*)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_item.kind = 'audio'
+					AND media_file_location.availability = 'available'
+			) AS available_locations,
+			(
+				SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type)
+				FROM media_file_location
+				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
+				WHERE media_item.work_id = work.id
+					AND media_file_location.availability = 'available'
+			) AS available_location_types,
+			(
+				SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+				FROM work_source_presence AS presence
+				WHERE presence.work_id = work.id
+			) AS source_presence,
+			(
+				SELECT snapshot_json
+				FROM metadata_snapshot
+				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+				WHERE metadata_snapshot.work_id = work.id
+					AND metadata_provider.code = 'dlsite'
+				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+				LIMIT 1
+			) AS snapshot_json,
+			(
+				SELECT party.display_name || '|' || external.external_id
+				FROM work_party AS relation
+				INNER JOIN party ON party.id = relation.party_id
+				LEFT JOIN party_external_id AS external ON external.party_id = party.id
+					AND external.is_primary = 1
+				WHERE relation.work_id = work.id
+					AND relation.role = 'circle'
+				ORDER BY relation.updated_at DESC
+				LIMIT 1
+			) AS party_link,
+			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+			COALESCE(user_work_state.favorite, 0) AS favorite
+		FROM work
+		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
+			AND user_work_state.user_id = ?
+		WHERE ` + where
 }
 
 type libraryWorkSummary struct {
