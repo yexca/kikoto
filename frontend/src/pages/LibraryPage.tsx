@@ -1143,7 +1143,7 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     circleExternalId: work.circleExternalId,
     coverUrl: work.coverUrl,
     rating: work.rating,
-    series: null,
+    series: work.series || null,
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
     progress: work.progress,

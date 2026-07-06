@@ -137,7 +137,9 @@ type voiceKnownWork struct {
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
+	Series           string              `json:"series"`
 	ListeningMark    string              `json:"listeningMark"`
+	Favorite         bool                `json:"favorite"`
 	Local            bool                `json:"local"`
 	Remote           bool                `json:"remote"`
 	Cache            bool                `json:"cache"`
@@ -678,6 +680,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				LIMIT 1
 			) AS party_link,
 			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
+			COALESCE(user_work_state.favorite, 0) AS favorite,
 			EXISTS (
 				SELECT 1 FROM media_file_location AS location
 				INNER JOIN media_item AS item ON item.id = location.media_item_id
@@ -744,7 +747,9 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			Rating:           metadata.Rating,
 			Sales:            metadata.Sales,
 			Tags:             metadata.Tags,
+			Series:           metadata.Series,
 			ListeningMark:    row.ListeningStatus,
+			Favorite:         row.Favorite,
 			Local:            row.HasLocal,
 			Remote:           row.HasRemote,
 			Cache:            row.HasCache,
@@ -1847,6 +1852,7 @@ type voiceWorkRow struct {
 	Snapshot        string
 	CircleLink      sql.NullString
 	ListeningStatus string
+	Favorite        bool
 	HasLocal        bool
 	HasRemote       bool
 	HasCache        bool
@@ -1855,7 +1861,9 @@ type voiceWorkRow struct {
 func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var item voiceWorkRow
 	var hasLocal, hasRemote, hasCache int
-	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &hasLocal, &hasRemote, &hasCache)
+	var favorite int
+	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache)
+	item.Favorite = favorite != 0
 	item.HasLocal = hasLocal != 0
 	item.HasRemote = hasRemote != 0
 	item.HasCache = hasCache != 0

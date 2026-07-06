@@ -443,6 +443,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.Sales = metadata.Sales
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
+		item.Series = metadata.Series
 		if len(item.Availability) == 0 {
 			item.Availability = availabilityBadges(availableLocationTypes.String)
 		}
@@ -611,6 +612,7 @@ type libraryWorkSummary struct {
 	Sales              *int64               `json:"sales"`
 	Tags               []string             `json:"tags"`
 	VoiceActors        []string             `json:"voiceActors"`
+	Series             string               `json:"series"`
 	TrackCount         int64                `json:"trackCount"`
 	AvailableLocations int64                `json:"availableLocations"`
 	Availability       []string             `json:"availability"`

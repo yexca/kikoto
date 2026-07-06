@@ -713,7 +713,7 @@ function favoriteWorkCardView(work: Work): WorkCardViewModel {
     circleExternalId: work.circleExternalId,
     coverUrl: work.coverUrl,
     rating: work.rating,
-    series: null,
+    series: work.series || null,
     dlsiteTags: [
       { key: `status:${work.listeningStatus}`, label: listeningStatusLabel(work.listeningStatus), variant: "secondary" },
       ...dlsiteTagBadges(work.tags),
