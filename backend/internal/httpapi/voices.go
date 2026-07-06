@@ -138,6 +138,7 @@ type voiceKnownWork struct {
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
 	Series           string              `json:"series"`
+	SeriesTitleID    string              `json:"seriesTitleId"`
 	ListeningMark    string              `json:"listeningMark"`
 	Favorite         bool                `json:"favorite"`
 	Local            bool                `json:"local"`
@@ -186,6 +187,10 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ensureVoiceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := s.ensureCircleSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -695,7 +700,15 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				SELECT 1 FROM media_file_location AS location
 				INNER JOIN media_item AS item ON item.id = location.media_item_id
 				WHERE item.work_id = work.id AND location.location_type = 'cache' AND location.availability = 'available'
-			) AS has_cache
+			) AS has_cache,
+			COALESCE((
+				SELECT series.title_id
+				FROM party_series_work AS series_work
+				INNER JOIN party_series AS series ON series.id = series_work.series_id
+				WHERE UPPER(series_work.primary_code) = UPPER(work.primary_code)
+				ORDER BY series.last_seen_at DESC, series.id DESC
+				LIMIT 1
+			), '') AS series_title_id
 		FROM work_credit AS credit
 		INNER JOIN work ON work.id = credit.work_id
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
@@ -748,6 +761,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			Sales:            metadata.Sales,
 			Tags:             metadata.Tags,
 			Series:           metadata.Series,
+			SeriesTitleID:    row.SeriesTitleID,
 			ListeningMark:    row.ListeningStatus,
 			Favorite:         row.Favorite,
 			Local:            row.HasLocal,
@@ -1856,13 +1870,14 @@ type voiceWorkRow struct {
 	HasLocal        bool
 	HasRemote       bool
 	HasCache        bool
+	SeriesTitleID   string
 }
 
 func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var item voiceWorkRow
 	var hasLocal, hasRemote, hasCache int
 	var favorite int
-	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache)
+	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
 	item.Favorite = favorite != 0
 	item.HasLocal = hasLocal != 0
 	item.HasRemote = hasRemote != 0

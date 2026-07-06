@@ -444,6 +444,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
+		item.SeriesTitleID = s.seriesTitleIDForWork(ctx, item.PrimaryCode)
 		if len(item.Availability) == 0 {
 			item.Availability = availabilityBadges(availableLocationTypes.String)
 		}
@@ -605,6 +606,25 @@ func libraryListSelectSQL(where string) string {
 		WHERE ` + where
 }
 
+func (s *Server) seriesTitleIDForWork(ctx context.Context, code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
+	}
+	var titleID string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT series.title_id
+		FROM party_series_work AS series_work
+		INNER JOIN party_series AS series ON series.id = series_work.series_id
+		WHERE UPPER(series_work.primary_code) = UPPER(?)
+		ORDER BY series.last_seen_at DESC, series.id DESC
+		LIMIT 1
+	`, code).Scan(&titleID); err != nil {
+		return ""
+	}
+	return titleID
+}
+
 type libraryWorkSummary struct {
 	ID                 int64                `json:"id"`
 	PrimaryCode        string               `json:"primaryCode"`
@@ -621,6 +641,7 @@ type libraryWorkSummary struct {
 	Tags               []string             `json:"tags"`
 	VoiceActors        []string             `json:"voiceActors"`
 	Series             string               `json:"series"`
+	SeriesTitleID      string               `json:"seriesTitleId"`
 	TrackCount         int64                `json:"trackCount"`
 	AvailableLocations int64                `json:"availableLocations"`
 	Availability       []string             `json:"availability"`
@@ -4374,6 +4395,20 @@ func parsePartyLink(value string) (string, string) {
 		externalID = strings.ToUpper(strings.TrimSpace(parts[1]))
 	}
 	return name, externalID
+}
+
+func parseSeriesLink(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(value, "|", 2)
+	name := strings.TrimSpace(parts[0])
+	titleID := ""
+	if len(parts) > 1 {
+		titleID = strings.TrimSpace(parts[1])
+	}
+	return name, titleID
 }
 
 func normalizeDLsiteCode(value string) string {

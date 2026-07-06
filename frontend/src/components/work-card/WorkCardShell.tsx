@@ -1,4 +1,4 @@
-import { ExternalLink, Star } from "lucide-react";
+import { ChevronRight, ExternalLink, Star } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -137,13 +137,15 @@ function WorkCardBody({
       {work.series && (
         onSeriesOpen ? (
           <button
-            className="truncate text-left text-xs text-muted-foreground hover:text-primary"
+            className="group/series inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
             onClick={(event) => {
               event.stopPropagation();
               onSeriesOpen();
             }}
           >
-            Series <span className="font-medium text-foreground">{work.series}</span>
+            <span className="shrink-0">Series</span>
+            <span className="truncate font-medium text-foreground group-hover/series:text-primary">{work.series}</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60 transition-transform group-hover/series:translate-x-0.5 group-hover/series:opacity-100" />
           </button>
         ) : (
           <div className="truncate text-xs text-muted-foreground">
