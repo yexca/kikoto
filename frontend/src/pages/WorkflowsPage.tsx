@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   api,
+  type WorkflowCandidate,
+  type WorkflowEvent,
   type WorkflowDefinition,
   type WorkflowNodeRun,
   type WorkflowRun,
@@ -146,6 +148,8 @@ export function WorkflowsPage({
   const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
   const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
+  const [selectedRunEvents, setSelectedRunEvents] = useState<WorkflowEvent[]>([]);
+  const [selectedRunCandidates, setSelectedRunCandidates] = useState<WorkflowCandidate[]>([]);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
@@ -209,10 +213,14 @@ export function WorkflowsPage({
   useEffect(() => {
     if (!selectedRunSummary) {
       setSelectedRun(null);
+      setSelectedRunEvents([]);
+      setSelectedRunCandidates([]);
       return;
     }
     setSelectedRunID(selectedRunSummary.id);
     api.getWorkflowRun(selectedRunSummary.id).then(setSelectedRun).catch(() => setSelectedRun(null));
+    api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents).catch(() => setSelectedRunEvents([]));
+    api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates).catch(() => setSelectedRunCandidates([]));
   }, [selectedRunSummary?.id]);
 
   const runLocalScan = async () => {
@@ -239,6 +247,17 @@ export function WorkflowsPage({
     } finally {
       setIsSyncingMetadata(false);
     }
+  };
+
+  const refreshSelectedRunReview = async () => {
+    if (!selectedRunSummary) return;
+    const [nextCandidates, nextEvents] = await Promise.all([
+      api.listWorkflowRunCandidates(selectedRunSummary.id).catch(() => []),
+      api.listWorkflowRunEvents(selectedRunSummary.id).catch(() => []),
+    ]);
+    setSelectedRunCandidates(nextCandidates);
+    setSelectedRunEvents(nextEvents);
+    refreshRuns(runPage, activityView, runQuery);
   };
 
   return (
@@ -364,7 +383,7 @@ export function WorkflowsPage({
           />
           <Workbench
             left={<RunSidebar runs={visibleRuns} selectedId={selectedRunSummary?.id ?? null} onSelect={(run) => setSelectedRunID(run.id)} />}
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} view={runDetailView} onViewChange={setRunDetailView} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} />}
           />
         </>
       )}
@@ -728,12 +747,18 @@ function WorkflowDetail({
 
 function RunDetail({
   run,
+  events,
+  candidates,
   view,
   onViewChange,
+  onCandidateUpdate,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
+  events: WorkflowEvent[];
+  candidates: WorkflowCandidate[];
   view: RunDetailView;
   onViewChange: (view: RunDetailView) => void;
+  onCandidateUpdate: () => Promise<void>;
 }) {
   if (!run) {
     return <EmptyPanel text="Select a run to inspect execution by node." />;
@@ -773,9 +798,9 @@ function RunDetail({
         ) : view === "steps" ? (
           nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} /> : <EmptyPanel text="This run has no node detail yet." />
         ) : view === "items" ? (
-          <RunItems run={run} nodeRuns={nodeRuns} />
+          <RunItems run={run} nodeRuns={nodeRuns} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />
         ) : (
-          <RunLogs run={run} nodeRuns={nodeRuns} />
+          <RunLogs run={run} nodeRuns={nodeRuns} events={events} />
         )}
       </CardContent>
     </Card>
@@ -804,7 +829,17 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
   );
 }
 
-function RunItems({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
+function RunItems({
+  run,
+  nodeRuns,
+  candidates,
+  onCandidateUpdate,
+}: {
+  run: WorkflowRunDetail | WorkflowRun;
+  nodeRuns: WorkflowNodeRun[];
+  candidates: WorkflowCandidate[];
+  onCandidateUpdate: () => Promise<void>;
+}) {
   const interestingNodes = nodeRuns.filter((node) => node.status !== "succeeded" || node.errorMessage || hasNonEmptyJSON(node.outputJson));
   return (
     <div className="space-y-3">
@@ -813,6 +848,50 @@ function RunItems({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nod
         <Metric icon={<AlertCircle className="h-3.5 w-3.5" />} label="failed items" value={`${run.failedNodeRuns + run.failedJobs}`} />
         <Metric icon={<Clock3 className="h-3.5 w-3.5" />} label="skipped items" value={`${run.skippedNodeRuns + run.skippedJobs}`} />
       </div>
+      {candidates.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Candidates</div>
+          <div className="divide-y rounded-md border">
+            {candidates.map((candidate) => (
+              <div key={candidate.id} className="grid gap-2 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{candidate.externalKey || candidate.type}</div>
+                    <div className="text-xs text-muted-foreground">{candidate.type} · updated {candidate.updatedAt}</div>
+                  </div>
+                  <StatusBadge status={candidate.status} />
+                </div>
+                <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />
+                {hasNonEmptyJSON(candidate.decisionJson) && <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />}
+                {candidateNeedsReview(candidate) && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
+                        await onCandidateUpdate();
+                      }}
+                    >
+                      Mark resolved
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
+                        await onCandidateUpdate();
+                      }}
+                    >
+                      Ignore
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="divide-y rounded-md border">
         {interestingNodes.map((node) => (
           <div key={node.id} className="grid gap-2 p-3">
@@ -833,14 +912,21 @@ function RunItems({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nod
   );
 }
 
-function RunLogs({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
-  const entries = [
+function RunLogs({ run, nodeRuns, events }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[]; events: WorkflowEvent[] }) {
+  const entries = events.length > 0 ? events.map((event) => ({
+    time: event.createdAt,
+    level: event.level,
+    message: event.message,
+    detail: summarizeJSON(event.detailJson),
+    type: event.eventType,
+  })) : [
     { time: run.createdAt, level: "info", message: `Run created: ${run.displayName}`, detail: run.triggerReason },
     ...nodeRuns.map((node) => ({
       time: node.startedAt || node.createdAt,
       level: node.status === "failed" ? "error" : node.status === "skipped" || node.status === "partial" ? "warn" : "info",
       message: `${node.displayName || node.nodeId} ${node.status}`,
       detail: node.errorMessage || summarizeJSON(node.outputJson),
+      type: "node.derived",
     })),
   ];
   return (
@@ -851,6 +937,7 @@ function RunLogs({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; node
           <div className={entry.level === "error" ? "text-destructive" : entry.level === "warn" ? "text-primary" : "text-muted-foreground"}>{entry.level}</div>
           <div className="min-w-0">
             <div className="font-medium">{entry.message}</div>
+            {"type" in entry && entry.type && <div className="text-xs text-muted-foreground">{entry.type}</div>}
             {entry.detail && <div className="mt-1 break-words text-xs text-muted-foreground">{entry.detail}</div>}
           </div>
         </div>
@@ -1362,6 +1449,10 @@ function switchActivityView(
 
 function reviewCount(run: WorkflowRun) {
   return run.pendingCandidates + run.skippedNodeRuns + run.skippedJobs + (run.status === "partial" || run.status === "skipped" ? 1 : 0);
+}
+
+function candidateNeedsReview(candidate: WorkflowCandidate) {
+  return !["accepted", "rejected", "ignored", "resolved"].includes(candidate.status);
 }
 
 function formatRunTime(run: WorkflowRun) {

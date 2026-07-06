@@ -49,6 +49,31 @@ type workflowNodeRunRecord struct {
 	CreatedAt    string `json:"createdAt"`
 }
 
+type workflowEventRecord struct {
+	ID         int64  `json:"id"`
+	RunID      int64  `json:"runId"`
+	NodeRunID  *int64 `json:"nodeRunId"`
+	JobID      *int64 `json:"jobId"`
+	Level      string `json:"level"`
+	EventType  string `json:"eventType"`
+	Message    string `json:"message"`
+	DetailJSON string `json:"detailJson"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+type workflowCandidateRecord struct {
+	ID           int64  `json:"id"`
+	RunID        int64  `json:"runId"`
+	NodeRunID    *int64 `json:"nodeRunId"`
+	Type         string `json:"type"`
+	ExternalKey  string `json:"externalKey"`
+	Status       string `json:"status"`
+	PayloadJSON  string `json:"payloadJson"`
+	DecisionJSON string `json:"decisionJson"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
 type workflowRunDetailRecord struct {
 	workflowRunRecord
 	NodeRuns []workflowNodeRunRecord `json:"nodeRuns"`

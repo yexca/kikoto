@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 var workflowCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
@@ -55,6 +57,11 @@ type workflowTriggerPayload struct {
 	ScheduleJSON         string  `json:"scheduleJson"`
 	ConfigJSON           string  `json:"configJson"`
 	NextRunAt            *string `json:"nextRunAt"`
+}
+
+type workflowCandidateUpdatePayload struct {
+	Status       string `json:"status"`
+	DecisionJSON string `json:"decisionJson"`
 }
 
 func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
@@ -522,6 +529,239 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	if _, err := s.loadWorkflowRun(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT
+			id,
+			workflow_run_id,
+			workflow_node_run_id,
+			workflow_job_id,
+			level,
+			event_type,
+			message,
+			detail_json,
+			created_at
+		FROM workflow_event
+		WHERE workflow_run_id = ?
+		ORDER BY created_at ASC, id ASC
+	`, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+
+	events := []workflowEventRecord{}
+	for rows.Next() {
+		var item workflowEventRecord
+		var nodeRunID sql.NullInt64
+		var jobID sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.RunID,
+			&nodeRunID,
+			&jobID,
+			&item.Level,
+			&item.EventType,
+			&item.Message,
+			&item.DetailJSON,
+			&item.CreatedAt,
+		); err != nil {
+			writeError(w, err)
+			return
+		}
+		item.NodeRunID = nullableInt64(nodeRunID)
+		item.JobID = nullableInt64(jobID)
+		events = append(events, item)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	if _, err := s.loadWorkflowRun(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	candidates, err := s.loadWorkflowCandidates(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, candidates)
+}
+
+func (s *Server) loadWorkflowCandidates(ctx context.Context, runID int64) ([]workflowCandidateRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			id,
+			workflow_run_id,
+			workflow_node_run_id,
+			candidate_type,
+			external_key,
+			status,
+			payload_json,
+			decision_json,
+			created_at,
+			updated_at
+		FROM workflow_candidate
+		WHERE workflow_run_id = ?
+		ORDER BY updated_at DESC, id DESC
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candidates := []workflowCandidateRecord{}
+	for rows.Next() {
+		var item workflowCandidateRecord
+		var nodeRunID sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.RunID,
+			&nodeRunID,
+			&item.Type,
+			&item.ExternalKey,
+			&item.Status,
+			&item.PayloadJSON,
+			&item.DecisionJSON,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.NodeRunID = nullableInt64(nodeRunID)
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
+func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
+		return
+	}
+	var payload workflowCandidateUpdatePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	payload.Status = strings.TrimSpace(payload.Status)
+	payload.DecisionJSON = strings.TrimSpace(payload.DecisionJSON)
+	if payload.DecisionJSON == "" {
+		payload.DecisionJSON = "{}"
+	}
+	if !allowedCandidateReviewStatus(payload.Status) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported candidate status"})
+		return
+	}
+	if !json.Valid([]byte(payload.DecisionJSON)) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "decision JSON is invalid"})
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var runID int64
+	var nodeRunID sql.NullInt64
+	var candidateType string
+	var externalKey string
+	if err := tx.QueryRowContext(r.Context(), `
+		SELECT workflow_run_id, workflow_node_run_id, candidate_type, external_key
+		FROM workflow_candidate
+		WHERE id = ?
+	`, id).Scan(&runID, &nodeRunID, &candidateType, &externalKey); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow candidate not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE workflow_candidate
+		SET status = ?, decision_json = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, payload.Status, payload.DecisionJSON, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := workflow.InsertEvent(r.Context(), tx, runID, workflow.EventSpec{
+		NodeRunID: nullableInt64Value(nodeRunID),
+		Level:     "info",
+		Type:      "candidate.reviewed",
+		Message:   "Candidate " + payload.Status,
+		Detail: map[string]any{
+			"candidate_id":   id,
+			"candidate_type": candidateType,
+			"external_key":   externalKey,
+			"status":         payload.Status,
+		},
+	}); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	candidates, err := s.loadWorkflowCandidates(r.Context(), runID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	for _, candidate := range candidates {
+		if candidate.ID == id {
+			writeJSON(w, http.StatusOK, candidate)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (workflowDefinitionPayload, bool) {
 	var payload workflowDefinitionPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -737,6 +977,22 @@ func validateWorkflowTriggerPayload(payload workflowTriggerPayload) error {
 		return fmt.Errorf("config JSON is invalid")
 	}
 	return nil
+}
+
+func allowedCandidateReviewStatus(status string) bool {
+	switch status {
+	case "accepted", "rejected", "ignored", "resolved":
+		return true
+	default:
+		return false
+	}
+}
+
+func nullableInt64Value(value sql.NullInt64) int64 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int64
 }
 
 func (s *Server) loadWorkflowDefinition(ctx context.Context, id int64) (workflowDefinitionRecord, error) {

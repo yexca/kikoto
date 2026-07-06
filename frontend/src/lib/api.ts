@@ -389,6 +389,31 @@ export type WorkflowRunDetail = WorkflowRun & {
   nodeRuns: WorkflowNodeRun[];
 };
 
+export type WorkflowEvent = {
+  id: number;
+  runId: number;
+  nodeRunId: number | null;
+  jobId: number | null;
+  level: string;
+  eventType: string;
+  message: string;
+  detailJson: string;
+  createdAt: string;
+};
+
+export type WorkflowCandidate = {
+  id: number;
+  runId: number;
+  nodeRunId: number | null;
+  type: string;
+  externalKey: string;
+  status: string;
+  payloadJson: string;
+  decisionJson: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type WorkflowDefinition = {
   id: number;
   code: string;
@@ -937,6 +962,10 @@ export const api = {
       `/api/workflow-runs?page=${page}&pageSize=${pageSize}&view=${encodeURIComponent(view)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
+  listWorkflowRunEvents: (id: number) => getJSON<WorkflowEvent[]>(`/api/workflow-runs/${id}/events`),
+  listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
+  updateWorkflowCandidate: (id: number, payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string }) =>
+    patchJSONBody<WorkflowCandidate>(`/api/workflow-candidates/${id}`, { status: payload.status, decisionJson: payload.decisionJson ?? "{}" }),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   recordRemoteBulkRun: (payload: { action: "sync" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
     postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
