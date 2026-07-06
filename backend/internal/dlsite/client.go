@@ -83,10 +83,19 @@ type MakerProfile struct {
 	SiteID       string   `json:"site_id"`
 	URL          string   `json:"url"`
 	WorkCodes    []string `json:"work_codes"`
+	Series       []MakerSeries `json:"series"`
 	RawHTML      string   `json:"raw_html"`
 	PagesFetched int      `json:"pages_fetched"`
 	ReachedEnd   bool     `json:"reached_end"`
 	TotalWorks   int      `json:"total_works"`
+}
+
+type MakerSeries struct {
+	TitleID   string   `json:"title_id"`
+	Name      string   `json:"name"`
+	URL       string   `json:"url"`
+	WorkCount int      `json:"work_count"`
+	WorkCodes []string `json:"work_codes"`
 }
 
 type MakerCatalogOptions struct {
@@ -394,6 +403,7 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 	firstProfile.RawHTML = firstRaw
 	firstProfile.PagesFetched = pagesFetched
 	firstProfile.ReachedEnd = reachedEnd
+	firstProfile.Series = c.fetchMakerSeriesCatalogs(ctx, firstProfile.Series, languages)
 	return firstProfile, nil
 }
 
@@ -439,6 +449,7 @@ func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID
 		SiteID:       site,
 		URL:          endpoint,
 		WorkCodes:    parseWorkCodes(rawHTML),
+		Series:       parseMakerSeries(rawHTML),
 		RawHTML:      rawHTML,
 		PagesFetched: 1,
 		TotalWorks:   parsePageTotal(rawHTML),
@@ -553,6 +564,7 @@ func candidateMakerSites(makerID string) []string {
 var (
 	titlePattern          = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	workLinkPattern       = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	seriesLinkPattern     = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["']([^"']*/fsr/=/title_id/(SRI[0-9]+)/[^"']*)["'][^>]*>(.*?)</a>`)
 	pageTotalPattern      = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
 	numberTextPattern     = regexp.MustCompile(`[0-9][0-9,]*`)
 	pagePathPattern       = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
@@ -596,6 +608,59 @@ func parseWorkCodes(rawHTML string) []string {
 	return codes
 }
 
+func parseMakerSeries(rawHTML string) []MakerSeries {
+	searchSpace := rawHTML
+	if start := strings.Index(rawHTML, `class="prof_work_series"`); start >= 0 {
+		searchSpace = rawHTML[start:]
+		if end := strings.Index(searchSpace, `</td>`); end > 0 {
+			searchSpace = searchSpace[:end]
+		}
+	}
+	matches := seriesLinkPattern.FindAllStringSubmatch(searchSpace, -1)
+	seen := map[string]bool{}
+	series := []MakerSeries{}
+	for _, match := range matches {
+		if len(match) < 4 {
+			continue
+		}
+		titleID := strings.ToUpper(strings.TrimSpace(match[2]))
+		if titleID == "" || seen[titleID] {
+			continue
+		}
+		seen[titleID] = true
+		label := strings.TrimSpace(strings.Join(strings.Fields(html.UnescapeString(stripTags(match[3]))), " "))
+		name := cleanSeriesName(label)
+		series = append(series, MakerSeries{
+			TitleID:   titleID,
+			Name:      name,
+			URL:       normalizeDLsiteURL(match[1]),
+			WorkCount: parseSeriesWorkCount(label),
+		})
+	}
+	return series
+}
+
+func cleanSeriesName(label string) string {
+	name := strings.TrimSpace(label)
+	if index := strings.LastIndex(name, "（"); index > 0 {
+		name = strings.TrimSpace(name[:index])
+	} else if index := strings.LastIndex(name, "("); index > 0 {
+		name = strings.TrimSpace(name[:index])
+	}
+	name = strings.TrimSuffix(strings.TrimSpace(name), "シリーズ")
+	name = strings.Trim(name, "「」\"'")
+	return strings.TrimSpace(name)
+}
+
+func parseSeriesWorkCount(label string) int {
+	matches := numberTextPattern.FindAllString(label, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	value, _ := strconv.Atoi(strings.ReplaceAll(matches[len(matches)-1], ",", ""))
+	return value
+}
+
 func makerWorkListSearchSpace(rawHTML string) string {
 	start := strings.Index(rawHTML, `id="search_result_list"`)
 	if start < 0 {
@@ -619,6 +684,54 @@ func makerWorkListSearchSpace(rawHTML string) string {
 		}
 	}
 	return searchSpace[:end]
+}
+
+func normalizeDLsiteURL(raw string) string {
+	raw = strings.TrimSpace(html.UnescapeString(raw))
+	if strings.HasPrefix(raw, "//") {
+		return "https:" + raw
+	}
+	if strings.HasPrefix(raw, "/") {
+		return "https://www.dlsite.com" + raw
+	}
+	return raw
+}
+
+func (c *Client) fetchMakerSeriesCatalogs(ctx context.Context, series []MakerSeries, languages []string) []MakerSeries {
+	for index := range series {
+		catalog, err := c.fetchMakerSeriesCatalog(ctx, series[index], languages)
+		if err == nil {
+			series[index].WorkCodes = catalog
+		}
+	}
+	return series
+}
+
+func (c *Client) fetchMakerSeriesCatalog(ctx context.Context, series MakerSeries, languages []string) ([]string, error) {
+	endpoint := series.URL
+	if endpoint == "" {
+		return nil, fmt.Errorf("empty series URL")
+	}
+	endpoint += makerLanguageOptionsPath(languages)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("User-Agent", c.userAgent)
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("dlsite series %s returned %s", series.TitleID, response.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	return parseWorkCodes(string(body)), nil
 }
 
 func makerProfileURLs(baseURL string, site string, makerID string, page int, languages []string) []string {

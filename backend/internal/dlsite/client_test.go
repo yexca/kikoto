@@ -169,6 +169,70 @@ func TestParseMakerNameRemovesProfileSuffix(t *testing.T) {
 	}
 }
 
+func TestParseMakerSeries(t *testing.T) {
+	raw := `
+		<div class="prof_work_series">
+			<ul>
+				<li><p class="work_series"><a href="https://www.dlsite.com/maniax/fsr/=/title_id/SRI0000039267/order/release_d/from/maker_profile.series">「萌妖逸事」シリーズ （4作品）</a></p></li>
+			</ul>
+		</div>
+	`
+	series := parseMakerSeries(raw)
+	if len(series) != 1 {
+		t.Fatalf("series = %#v", series)
+	}
+	if series[0].TitleID != "SRI0000039267" || series[0].Name != "萌妖逸事" || series[0].WorkCount != 4 {
+		t.Fatalf("series[0] = %#v", series[0])
+	}
+}
+
+func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
+	var seriesPath string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/circle/profile/=/maker_id/"):
+			_, _ = w.Write([]byte(`
+				<html>
+					<head><title>Example Circle | DLsite</title></head>
+					<body>
+						<div id="search_result_list"><a href="/maniax/work/=/product_id/RJ01111111.html">Work</a></div>
+						<div class="prof_work_series">
+							<a href="` + server.URL + `/maniax/fsr/=/title_id/SRI0000039267/order/release_d/from/maker_profile.series">「萌妖逸事」シリーズ （2作品）</a>
+						</div>
+					</body>
+				</html>
+			`))
+		case strings.Contains(r.URL.Path, "/fsr/=/title_id/SRI0000039267/"):
+			seriesPath = r.URL.Path
+			_, _ = w.Write([]byte(`
+				<html><body>
+					<div id="search_result_list">
+						<a href="/maniax/work/=/product_id/RJ02222222.html">Series work</a>
+					</div>
+				</body></html>
+			`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+
+	profile, err := client.FetchMakerCatalog(context.Background(), "RG01001551", MakerCatalogOptions{Languages: []string{"JPN", "CHI_HANS", "NM"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profile.Series) != 1 || len(profile.Series[0].WorkCodes) != 1 || profile.Series[0].WorkCodes[0] != "RJ02222222" {
+		t.Fatalf("Series = %#v", profile.Series)
+	}
+	if !strings.Contains(seriesPath, "/options[1]/CHI_HANS/") {
+		t.Fatalf("seriesPath = %s", seriesPath)
+	}
+}
+
 func TestMakerProfileURLsIncludeLanguageOptionsForPages(t *testing.T) {
 	urls := makerProfileURLs("https://example.test", "maniax", "RG01001551", 2, []string{"JPN", "CHI_HANS", "NM"})
 	if len(urls) != 1 {
