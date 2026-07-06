@@ -14,14 +14,24 @@ type workflowRunRecord struct {
 	NodeRunCount       int64  `json:"nodeRunCount"`
 	CompletedNodeRuns  int64  `json:"completedNodeRuns"`
 	FailedNodeRuns     int64  `json:"failedNodeRuns"`
+	SkippedNodeRuns    int64  `json:"skippedNodeRuns"`
 	JobCount           int64  `json:"jobCount"`
 	CompletedJobs      int64  `json:"completedJobs"`
 	FailedJobs         int64  `json:"failedJobs"`
+	SkippedJobs        int64  `json:"skippedJobs"`
 	CandidateCount     int64  `json:"candidateCount"`
+	PendingCandidates  int64  `json:"pendingCandidates"`
 	AcceptedCandidates int64  `json:"acceptedCandidates"`
 	RejectedCandidates int64  `json:"rejectedCandidates"`
 	DefinitionID       *int64 `json:"definitionId"`
 	TriggerID          *int64 `json:"triggerId"`
+}
+
+type workflowRunsPageRecord struct {
+	Runs     []workflowRunRecord `json:"runs"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"pageSize"`
+	Total    int64               `json:"total"`
 }
 
 type workflowNodeRunRecord struct {

@@ -556,10 +556,13 @@ func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunReco
 		&item.NodeRunCount,
 		&item.CompletedNodeRuns,
 		&item.FailedNodeRuns,
+		&item.SkippedNodeRuns,
 		&item.JobCount,
 		&item.CompletedJobs,
 		&item.FailedJobs,
+		&item.SkippedJobs,
 		&item.CandidateCount,
+		&item.PendingCandidates,
 		&item.AcceptedCandidates,
 		&item.RejectedCandidates,
 		&definitionID,
@@ -602,6 +605,12 @@ func workflowRunSelectSQL() string {
 			) AS failed_node_runs,
 			(
 				SELECT COUNT(*)
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status = 'skipped'
+			) AS skipped_node_runs,
+			(
+				SELECT COUNT(*)
 				FROM workflow_job
 				WHERE workflow_job.workflow_run_id = run.id
 			) AS job_count,
@@ -619,9 +628,21 @@ func workflowRunSelectSQL() string {
 			) AS failed_jobs,
 			(
 				SELECT COUNT(*)
+				FROM workflow_job
+				WHERE workflow_job.workflow_run_id = run.id
+					AND workflow_job.status = 'skipped'
+			) AS skipped_jobs,
+			(
+				SELECT COUNT(*)
 				FROM workflow_candidate
 				WHERE workflow_candidate.workflow_run_id = run.id
 			) AS candidate_count,
+			(
+				SELECT COUNT(*)
+				FROM workflow_candidate
+				WHERE workflow_candidate.workflow_run_id = run.id
+					AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')
+			) AS pending_candidates,
 			(
 				SELECT COUNT(*)
 				FROM workflow_candidate

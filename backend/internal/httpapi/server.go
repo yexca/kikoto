@@ -2495,76 +2495,70 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			run.id,
-			run.workflow_code,
-			run.display_name,
-			run.status,
-			run.trigger_type,
-			run.trigger_reason,
-			run.created_at,
-			COALESCE(run.started_at, ''),
-			COALESCE(run.finished_at, ''),
-			run.summary_json,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-			) AS node_run_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status = 'succeeded'
-			) AS completed_node_runs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status = 'failed'
-			) AS failed_node_runs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-			) AS job_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-					AND workflow_job.status = 'succeeded'
-			) AS completed_jobs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-					AND workflow_job.status = 'failed'
-			) AS failed_jobs,
-			(
-				SELECT COUNT(*)
+	page := queryInt(r, "page", 1)
+	pageSize := queryInt(r, "pageSize", 25)
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 25
+	}
+	offset := (page - 1) * pageSize
+	view := strings.TrimSpace(r.URL.Query().Get("view"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	workflowCode := strings.TrimSpace(r.URL.Query().Get("workflowCode"))
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+
+	conditions := []string{"1 = 1"}
+	args := []any{}
+	switch view {
+	case "running":
+		conditions = append(conditions, "run.status IN ('queued', 'running')")
+	case "failed":
+		conditions = append(conditions, "run.status = 'failed'")
+	case "review":
+		conditions = append(conditions, `(
+			run.status IN ('partial', 'skipped')
+			OR EXISTS (
+				SELECT 1
 				FROM workflow_candidate
 				WHERE workflow_candidate.workflow_run_id = run.id
-			) AS candidate_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status = 'accepted'
-			) AS accepted_candidates,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status = 'rejected'
-			) AS rejected_candidates,
-			run.workflow_definition_id,
-			run.trigger_id
-		FROM workflow_run
-			AS run
-		ORDER BY run.created_at DESC
-		LIMIT 100
-	`)
+					AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM workflow_node_run
+				WHERE workflow_node_run.workflow_run_id = run.id
+					AND workflow_node_run.status IN ('partial', 'skipped')
+			)
+		)`)
+	case "completed", "history", "logs":
+		conditions = append(conditions, "run.status NOT IN ('queued', 'running')")
+	}
+	if status != "" && status != "all" {
+		conditions = append(conditions, "run.status = ?")
+		args = append(args, status)
+	}
+	if workflowCode != "" && workflowCode != "all" {
+		conditions = append(conditions, "run.workflow_code = ?")
+		args = append(args, workflowCode)
+	}
+	if query != "" {
+		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ?)")
+		like := "%" + query + "%"
+		args = append(args, like, like, like)
+	}
+	whereSQL := strings.Join(conditions, " AND ")
+	var total int64
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM workflow_run AS run WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		writeError(w, err)
+		return
+	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
+	rows, err := s.db.QueryContext(r.Context(), workflowRunSelectSQL()+`
+		FROM workflow_run AS run
+		WHERE `+whereSQL+`
+		ORDER BY run.created_at DESC, run.id DESC
+		LIMIT ? OFFSET ?
+	`, queryArgs...)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -2590,10 +2584,13 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 			&item.NodeRunCount,
 			&item.CompletedNodeRuns,
 			&item.FailedNodeRuns,
+			&item.SkippedNodeRuns,
 			&item.JobCount,
 			&item.CompletedJobs,
 			&item.FailedJobs,
+			&item.SkippedJobs,
 			&item.CandidateCount,
+			&item.PendingCandidates,
 			&item.AcceptedCandidates,
 			&item.RejectedCandidates,
 			&definitionID,
@@ -2607,7 +2604,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		runs = append(runs, item)
 	}
 
-	writeJSON(w, http.StatusOK, runs)
+	writeJSON(w, http.StatusOK, workflowRunsPageRecord{Runs: runs, Page: page, PageSize: pageSize, Total: total})
 }
 
 func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request) {
