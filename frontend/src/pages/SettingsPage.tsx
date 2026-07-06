@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type AppSettings, type FileSource } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
-const DEFAULT_SAVE_SUFFIX = "/<source_name>/<work_code>";
+const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
+const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
 const REMOTE_SOURCE_TYPES = new Set(["kikoeru_compatible", "kikoeru_compilable_number178"]);
 
 const emptyRemoteSource = {
@@ -362,8 +363,8 @@ function LocalLibrarySettings({
         <div className="grid gap-3 border-t p-4 md:grid-cols-2">
           <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
           <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />
-          <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}/voiceworks_<source_name>/<work_code>`} />
-          <ReadonlyField label="Remote save path" value={`${settings?.remoteSaveTemplate ?? "/data/<source_name>/<work_code>"}`} />
+          <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
+          <ReadonlyField label="Remote fetch path" value={`${settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}`} />
         </div>
       </details>
     </div>
@@ -516,8 +517,8 @@ function RemoteSourceSettings({
           </div>
 
           <div className="grid gap-2 text-sm md:grid-cols-2">
-            <ReadonlyField label="Remote cache root" value={`${settings?.cacheRoot ?? ""}/voiceworks_<source_name>/<work_code>`} />
-            <ReadonlyField label="Remote save root" value={saveTemplate} />
+            <ReadonlyField label="Remote cache root" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
+            <ReadonlyField label="Remote fetch root" value={saveTemplate} />
           </div>
 
           <Button size="sm" onClick={() => void onSave()} disabled={Boolean(saveSuffixError)}>

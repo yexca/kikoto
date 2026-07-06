@@ -300,8 +300,9 @@ export type RemoteWorkSyncResult = {
 export type RemoteWorkSaveSummary = {
   total: number;
   skipExisting: number;
-  copyCache: number;
-  download: number;
+  cacheHit: number;
+  cacheDownload: number;
+  promote: number;
 };
 
 export type RemoteWorkSavePlanItem = {
@@ -311,6 +312,7 @@ export type RemoteWorkSavePlanItem = {
   action: string;
   status: string;
   sourcePath: string;
+  cachePath: string;
   targetPath: string;
 };
 
@@ -331,8 +333,8 @@ export type RemoteWorkSaveResult = {
   saveRoot: string;
   savedFiles: number;
   skippedFiles: number;
-  copiedFromCache: number;
-  downloadedFiles: number;
+  cachedFiles: number;
+  promotedFiles: number;
   plan: RemoteWorkSaveSummary;
 };
 
@@ -841,9 +843,13 @@ export const api = {
   checkSourceAvailability: (code: string, sourceId = 0) =>
     postJSONBody<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`, { sourceId }),
   planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save-plan`, { paths }),
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save`, { paths }),
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
+  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[]) =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
+  fetchRemoteSourceWork: (id: number, code: string, paths: string[]) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
@@ -990,7 +996,7 @@ export const api = {
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
-  recordRemoteBulkRun: (payload: { action: "sync" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
+  recordRemoteBulkRun: (payload: { action: "sync" | "fetch" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
     postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };

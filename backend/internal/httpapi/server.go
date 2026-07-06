@@ -95,6 +95,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}", s.getRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
@@ -1348,7 +1350,11 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 		return mediaCacheResult{}, err
 	}
 
-	targetPath := filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(cacheRelPath))
+	targetPath, err := safeCachePath(s.cfg.CacheRoot, cacheRelPath)
+	if err != nil {
+		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
+		return mediaCacheResult{}, err
+	}
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		_ = s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "failed", cacheRelPath, err.Error(), 0)
 		return mediaCacheResult{}, err
@@ -1915,8 +1921,9 @@ func cacheMediaRelPath(sourceCode string, workCode string, remotePath string) st
 	if workCode == "" {
 		workCode = "UNKNOWN"
 	}
+	prefix, group := workCodeShard(workCode)
 	parts := strings.Split(strings.ReplaceAll(remotePath, "\\", "/"), "/")
-	cleanParts := []string{"voiceworks_" + cleanSource, workCode}
+	cleanParts := []string{"media", cleanSource, prefix, group, workCode}
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" || part == "." || part == ".." {
@@ -1925,6 +1932,28 @@ func cacheMediaRelPath(sourceCode string, workCode string, remotePath string) st
 		cleanParts = append(cleanParts, filepath.Base(part))
 	}
 	return filepath.ToSlash(filepath.Join(cleanParts...))
+}
+
+func workCodeShard(workCode string) (string, string) {
+	code := strings.ToUpper(strings.TrimSpace(workCode))
+	prefix := code
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	if prefix == "" {
+		prefix = "UNKNOWN"
+	}
+	digits := ""
+	for _, char := range code {
+		if char >= '0' && char <= '9' {
+			digits += string(char)
+		}
+	}
+	group := "misc"
+	if len(digits) >= 3 {
+		group = digits[:3]
+	}
+	return prefix, group
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
@@ -2762,8 +2791,9 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload.Action = strings.TrimSpace(payload.Action)
-	if payload.Action != "sync" && payload.Action != "save" && payload.Action != "sync_save" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be sync, save, or sync_save"})
+	payload.Action = normalizeRemoteBulkAction(payload.Action)
+	if payload.Action == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be sync, fetch, or sync_fetch"})
 		return
 	}
 	codes := []string{}
@@ -2799,6 +2829,19 @@ type remoteBulkWorkflowResult struct {
 	ChildRuns []int64  `json:"childRuns"`
 }
 
+func normalizeRemoteBulkAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case "sync":
+		return "sync"
+	case "fetch", "save":
+		return "fetch"
+	case "sync_fetch", "sync_save":
+		return "sync_fetch"
+	default:
+		return ""
+	}
+}
+
 type startupLibraryRefreshResult struct {
 	RunID                 int64    `json:"runId"`
 	Status                string   `json:"status"`
@@ -2813,12 +2856,16 @@ type startupLibraryRefreshResult struct {
 }
 
 func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
+	action = normalizeRemoteBulkAction(action)
+	if action == "" {
+		return remoteBulkWorkflowResult{}, fmt.Errorf("invalid remote bulk action")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return remoteBulkWorkflowResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work sync or save workflows.", map[string]any{
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work sync or fetch workflows.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_remote_works"},
 			{"id": "dispatch", "type": "dispatch_child_workflows"},
@@ -2852,7 +2899,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 
 	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded"}
 	for _, code := range codes {
-		if action == "sync" || action == "sync_save" {
+		if action == "sync" || action == "sync_fetch" {
 			syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
 			if err != nil {
 				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
@@ -2861,7 +2908,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 			result.Synced++
 			result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
 		}
-		if action == "save" || action == "sync_save" {
+		if action == "fetch" || action == "sync_fetch" {
 			saveResult, err := s.runRemoteWorkSave(ctx, sourceID, code, []string{})
 			if err != nil {
 				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)

@@ -33,10 +33,11 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("match_works", "match", "Match works", "Match candidates to known works and availability state.", true, schemaObject("strategy"), schemaObject("candidates"), schemaObject("matchedWorks", "unmatched")),
 	nodeType("check_source_availability", "match", "Check source availability", "Check remote source availability for works.", false, schemaObject("sourceIds", "staleAfterDays"), schemaObject("codes", "sourceIds"), schemaObject("sources", "hasLocal", "hasCache", "hasRemote")),
 
-	nodeType("plan_save", "plan", "Plan save", "Build a download/save plan and reuse cache hits.", true, schemaObject("saveRootTemplate", "paths"), schemaObject("tracks", "cacheState"), schemaObject("items", "summary")),
+	nodeType("plan_save", "plan", "Plan fetch", "Build a cache and local promotion plan for selected remote files.", true, schemaObject("saveRootTemplate", "paths"), schemaObject("tracks", "cacheState"), schemaObject("items", "summary")),
 
 	nodeType("materialize_cache", "execute", "Materialize cache", "Download or copy media into cache.", true, schemaObject("cacheRoot", "overwrite"), schemaObject("downloadUrl", "cachePath"), schemaObject("cachePath", "bytes")),
-	nodeType("materialize_save", "execute", "Materialize save", "Create local files from remote or cached content.", true, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
+	nodeType("materialize_save", "execute", "Materialize save", "Compatibility node for older save workflows.", false, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
+	nodeType("promote_cache_to_local", "execute", "Promote cache to local", "Move cached media into the local library.", true, schemaObject("mode", "overwrite"), schemaObject("cachePath", "targetPath"), schemaObject("localPath", "moved")),
 	nodeType("cleanup_cache", "execute", "Cleanup cache", "Delete cached files or clear cache-related state.", true, schemaObject("deleteFiles", "clearState"), schemaObject("locationIds", "cachePath"), schemaObject("deleted", "cleared")),
 	nodeType("dispatch_child_workflows", "execute", "Dispatch child workflows", "Run child workflows from a parent workflow.", false, schemaObject("workflowCode", "mode"), schemaObject("codes", "action"), schemaObject("childRuns")),
 
