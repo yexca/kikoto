@@ -117,3 +117,14 @@ type workflowTriggerRecord struct {
 	CreatedAt            string  `json:"createdAt"`
 	UpdatedAt            string  `json:"updatedAt"`
 }
+
+type workflowNodeTypeRecord struct {
+	Type         string `json:"type"`
+	Phase        string `json:"phase"`
+	DisplayName  string `json:"displayName"`
+	Description  string `json:"description"`
+	UserVisible  bool   `json:"userVisible"`
+	ConfigSchema string `json:"configSchema"`
+	InputSchema  string `json:"inputSchema"`
+	OutputSchema string `json:"outputSchema"`
+}

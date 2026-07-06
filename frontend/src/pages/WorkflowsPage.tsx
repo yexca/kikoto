@@ -29,6 +29,7 @@ import {
   type WorkflowCandidate,
   type WorkflowEvent,
   type WorkflowDefinition,
+  type WorkflowNodeType,
   type WorkflowNodeRun,
   type WorkflowRun,
   type WorkflowRunDetail,
@@ -46,6 +47,7 @@ type WorkflowNode = {
   id: string;
   type: string;
   displayName?: string;
+  config?: Record<string, unknown>;
 };
 
 type WorkflowTemplate = {
@@ -54,24 +56,13 @@ type WorkflowTemplate = {
   nodes: WorkflowNode[];
 };
 
-const nodeOptions = [
-  "select_local_source",
-  "discover_local_files",
-  "select_remote_source",
-  "discover_remote_works",
-  "fetch_remote_tree",
-  "select_works",
-  "select_media_items",
-  "filter_candidates",
-  "match_works",
-  "plan_save",
-  "sync_file_locations",
-  "sync_metadata",
-  "verify_files",
-  "materialize_cache",
-  "materialize_save",
-  "cleanup_cache",
-] as const;
+const fallbackNodeTypes: WorkflowNodeType[] = [
+  { type: "select_works", phase: "target", displayName: "Select works", description: "Choose known works.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+  { type: "filter_candidates", phase: "filter", displayName: "Filter candidates", description: "Filter workflow candidates.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+  { type: "sync_metadata", phase: "commit", displayName: "Sync metadata", description: "Persist metadata.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+];
+
+const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
 
@@ -139,6 +130,7 @@ export function WorkflowsPage({
   const [activityView, setActivityView] = useState<ActivityView>("running");
   const [runDetailView, setRunDetailView] = useState<RunDetailView>("overview");
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0 });
@@ -158,6 +150,7 @@ export function WorkflowsPage({
 
   const refresh = () => {
     api.listWorkflowDefinitions().then(setDefinitions).catch(() => setDefinitions([]));
+    api.listWorkflowNodeTypes().then(setNodeTypes).catch(() => setNodeTypes(fallbackNodeTypes));
     api.listWorkflowTriggers().then(setTriggers).catch(() => setTriggers([]));
   };
 
@@ -306,6 +299,7 @@ export function WorkflowsPage({
                 <WorkflowDetail
                   definition={scheduledDefinition}
                   trigger={selectedTrigger}
+                  nodeTypes={nodeTypes}
                   readonly
                   onEditTrigger={() => setModalMode("edit-trigger")}
                   onEditDefinition={() => undefined}
@@ -328,6 +322,7 @@ export function WorkflowsPage({
               right={
                 <WorkflowDetail
                   definition={selectedDefinition}
+                  nodeTypes={nodeTypes}
                   readonly={workflowView === "system" || !selectedDefinition?.editable}
                   systemRunKind={selectedSystemRunKind}
                   isRunningAction={selectedSystemRunKind === "local_scan" ? isRunningScan : isSyncingMetadata}
@@ -398,7 +393,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} />}
           />
         </>
       )}
@@ -407,6 +402,7 @@ export function WorkflowsPage({
         <WorkflowModal
           title="New workflow"
           definition={null}
+          nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
             setSelectedDefinitionID(definition.id);
@@ -419,6 +415,7 @@ export function WorkflowsPage({
         <WorkflowModal
           title="Edit workflow"
           definition={selectedDefinition}
+          nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
             setSelectedDefinitionID(definition.id);
@@ -430,6 +427,7 @@ export function WorkflowsPage({
       {modalMode === "edit-node" && selectedDefinition && editingNodeIndex !== null && (
         <NodeModal
           definition={selectedDefinition}
+          nodeTypes={nodeTypes}
           nodeIndex={editingNodeIndex}
           onClose={() => setModalMode(null)}
           onSaved={() => {
@@ -706,6 +704,7 @@ function RunSidebar({
 function WorkflowDetail({
   definition,
   trigger,
+  nodeTypes,
   readonly,
   systemRunKind,
   isRunningAction,
@@ -717,6 +716,7 @@ function WorkflowDetail({
 }: {
   definition: WorkflowDefinition | null;
   trigger?: WorkflowTrigger | null;
+  nodeTypes: WorkflowNodeType[];
   readonly: boolean;
   systemRunKind?: "local_scan" | "metadata_sync";
   isRunningAction?: boolean;
@@ -777,7 +777,7 @@ function WorkflowDetail({
           </div>
         )}
         {trigger && <TriggerSummary trigger={trigger} />}
-        <NodePipeline nodes={nodes} readonly={readonly} onEditNode={onEditNode} />
+        <NodePipeline nodes={nodes} nodeTypes={nodeTypes} readonly={readonly} onEditNode={onEditNode} />
       </CardContent>
     </Card>
   );
@@ -787,6 +787,7 @@ function RunDetail({
   run,
   events,
   candidates,
+  nodeTypes,
   view,
   onViewChange,
   onCandidateUpdate,
@@ -795,6 +796,7 @@ function RunDetail({
   run: WorkflowRunDetail | WorkflowRun | null;
   events: WorkflowEvent[];
   candidates: WorkflowCandidate[];
+  nodeTypes: WorkflowNodeType[];
   view: RunDetailView;
   onViewChange: (view: RunDetailView) => void;
   onCandidateUpdate: () => Promise<void>;
@@ -839,7 +841,7 @@ function RunDetail({
         {view === "overview" ? (
           <RunOverview run={run} nodeRuns={nodeRuns} />
         ) : view === "steps" ? (
-          nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} /> : <EmptyPanel text="This run has no node detail yet." />
+          nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} nodeTypes={nodeTypes} /> : <EmptyPanel text="This run has no node detail yet." />
         ) : view === "items" ? (
           <RunItems run={run} nodeRuns={nodeRuns} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />
         ) : (
@@ -989,35 +991,38 @@ function RunLogs({ run, nodeRuns, events }: { run: WorkflowRunDetail | WorkflowR
   );
 }
 
-function NodePipeline({ nodes, readonly, onEditNode }: { nodes: WorkflowNode[]; readonly: boolean; onEditNode: (index: number) => void }) {
+function NodePipeline({ nodes, nodeTypes, readonly, onEditNode }: { nodes: WorkflowNode[]; nodeTypes: WorkflowNodeType[]; readonly: boolean; onEditNode: (index: number) => void }) {
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex min-w-max items-stretch gap-3">
-        {nodes.map((node, index) => (
-          <div key={`${node.id}-${index}`} className="flex items-center gap-3">
-            <NodeCard
-              title={node.displayName || node.id}
-              subtitle={node.type}
-              status="idle"
-              readonly={readonly}
-              onEdit={() => onEditNode(index)}
-              onDoubleClick={() => !readonly && onEditNode(index)}
-            />
-            {index < nodes.length - 1 && <Connector />}
-          </div>
-        ))}
+    <div className="grid gap-3">
+      <div className="overflow-x-auto pb-2">
+        <div className="flex min-w-max items-stretch gap-3">
+          {nodes.map((node, index) => (
+            <div key={`${node.id}-${index}`} className="flex items-center gap-3">
+              <NodeCard
+                title={node.displayName || node.id}
+                subtitle={nodeSubtitle(node.type, nodeTypes)}
+                status="idle"
+                readonly={readonly}
+                onEdit={() => onEditNode(index)}
+                onDoubleClick={() => !readonly && onEditNode(index)}
+              />
+              {index < nodes.length - 1 && <Connector />}
+            </div>
+          ))}
+        </div>
       </div>
+      <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />
     </div>
   );
 }
 
-function RunNodePipeline({ nodes }: { nodes: WorkflowNodeRun[] }) {
+function RunNodePipeline({ nodes, nodeTypes }: { nodes: WorkflowNodeRun[]; nodeTypes: WorkflowNodeType[] }) {
   return (
     <div className="overflow-x-auto pb-2">
       <div className="flex min-w-max items-stretch gap-3">
         {nodes.map((node, index) => (
           <div key={node.id} className="flex items-center gap-3">
-            <NodeCard title={node.displayName || node.nodeId} subtitle={node.nodeType} status={node.status} error={node.errorMessage} readonly />
+            <NodeCard title={node.displayName || node.nodeId} subtitle={nodeSubtitle(node.nodeType, nodeTypes)} status={node.status} error={node.errorMessage} readonly />
             {index < nodes.length - 1 && <Connector active={node.status === "succeeded"} />}
           </div>
         ))}
@@ -1095,11 +1100,13 @@ function SummaryCell({ label, value }: { label: string; value: string }) {
 function WorkflowModal({
   title,
   definition,
+  nodeTypes,
   onClose,
   onSaved,
 }: {
   title: string;
   definition: WorkflowDefinition | null;
+  nodeTypes: WorkflowNodeType[];
   onClose: () => void;
   onSaved: (definition: WorkflowDefinition) => void;
 }) {
@@ -1108,8 +1115,14 @@ function WorkflowModal({
   const [description, setDescription] = useState(definition?.description ?? "");
   const [templateId, setTemplateID] = useState(workflowTemplates[1].id);
   const [nodes, setNodes] = useState<WorkflowNode[]>(definition ? parseNodes(definition.definitionJson) : workflowTemplates[1].nodes);
+  const recommendedPhase = recommendedNextPhase(nodes, nodeTypes);
+  const [insertPhase, setInsertPhase] = useState(recommendedPhase);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setInsertPhase(recommendedNextPhase(nodes, nodeTypes));
+  }, [nodes, nodeTypes]);
 
   const save = async () => {
     setSaving(true);
@@ -1171,14 +1184,27 @@ function WorkflowModal({
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-medium">Nodes</div>
-            <Button size="sm" variant="outline" onClick={() => setNodes((current) => [...current, { id: `node_${current.length + 1}`, type: "filter_candidates" }])}>
-              <Plus className="h-4 w-4" />
-              Add node
-            </Button>
+            <div className="flex items-center gap-2">
+              <select
+                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={insertPhase}
+                onChange={(event) => setInsertPhase(event.target.value)}
+                aria-label="Node phase to add"
+              >
+                {availableInsertPhases(nodeTypes).map((phase) => (
+                  <option key={phase} value={phase}>{phase}</option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" onClick={() => setNodes((current) => [...current, createSuggestedNode(current, nodeTypes, insertPhase)])}>
+                <Plus className="h-4 w-4" />
+                Add node
+              </Button>
+            </div>
           </div>
+          <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} />
           <div className="grid gap-2">
             {nodes.map((node, index) => (
-              <NodeInlineEditor key={`${node.id}-${index}`} node={node} onChange={(patch) => setNodes(updateNodes(nodes, index, patch))} onRemove={() => setNodes(nodes.filter((_, nodeIndex) => nodeIndex !== index))} />
+              <NodeInlineEditor key={`${node.id}-${index}`} node={node} nodeTypes={nodeTypes} onChange={(patch) => setNodes(updateNodes(nodes, index, patch))} onRemove={() => setNodes(nodes.filter((_, nodeIndex) => nodeIndex !== index))} />
             ))}
           </div>
         </div>
@@ -1202,11 +1228,13 @@ function WorkflowModal({
 
 function NodeModal({
   definition,
+  nodeTypes,
   nodeIndex,
   onClose,
   onSaved,
 }: {
   definition: WorkflowDefinition;
+  nodeTypes: WorkflowNodeType[];
   nodeIndex: number;
   onClose: () => void;
   onSaved: () => void;
@@ -1238,7 +1266,7 @@ function NodeModal({
   return (
     <Modal title="Edit node" onClose={onClose}>
       <div className="space-y-3">
-        <NodeInlineEditor node={node} onChange={(patch) => setNode({ ...node, ...patch })} />
+        <NodeInlineEditor node={node} nodeTypes={nodeTypes} onChange={(patch) => setNode({ ...node, ...patch })} />
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end">
           <Button onClick={save} disabled={saving}>
@@ -1348,21 +1376,183 @@ function TriggerModal({
   );
 }
 
-function NodeInlineEditor({ node, onChange, onRemove }: { node: WorkflowNode; onChange: (patch: Partial<WorkflowNode>) => void; onRemove?: () => void }) {
+function NodeInlineEditor({
+  node,
+  nodeTypes,
+  onChange,
+  onRemove,
+}: {
+  node: WorkflowNode;
+  nodeTypes: WorkflowNodeType[];
+  onChange: (patch: Partial<WorkflowNode>) => void;
+  onRemove?: () => void;
+}) {
+  const visibleTypes = nodeTypes.filter((type) => type.userVisible || type.type === node.type);
+  const metadata = nodeTypes.find((type) => type.type === node.type);
+  const configFields = metadata ? schemaFieldNames(metadata.configSchema) : [];
+  const configKey = JSON.stringify(node.config ?? {});
+  const [configDraft, setConfigDraft] = useState(JSON.stringify(node.config ?? {}, null, 2));
+  const [configError, setConfigError] = useState("");
+
+  useEffect(() => {
+    setConfigDraft(JSON.stringify(node.config ?? {}, null, 2));
+    setConfigError("");
+  }, [node.id, node.type, configKey]);
+
+  const commitConfigDraft = () => {
+    try {
+      const parsed = JSON.parse(configDraft);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setConfigError("Config must be a JSON object.");
+        return;
+      }
+      setConfigError("");
+      onChange({ config: parsed as Record<string, unknown> });
+    } catch {
+      setConfigError("Config JSON is invalid.");
+    }
+  };
+
   return (
-    <div className="grid gap-2 rounded-md border p-3 md:grid-cols-[1fr_1.3fr_1fr_auto]">
-      <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.id} onChange={(event) => onChange({ id: event.target.value })} />
-      <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.type} onChange={(event) => onChange({ type: event.target.value })}>
-        {nodeOptions.map((option) => (
-          <option key={option} value={option}>{option}</option>
-        ))}
-      </select>
-      <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Display name" value={node.displayName ?? ""} onChange={(event) => onChange({ displayName: event.target.value })} />
-      {onRemove && (
-        <Button size="icon" variant="outline" aria-label="Remove node" onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+    <div className="grid gap-3 rounded-md border p-3">
+      <div className="grid gap-2 md:grid-cols-[1fr_1.3fr_1fr_auto]">
+        <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.id} onChange={(event) => onChange({ id: event.target.value })} />
+        <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={node.type} onChange={(event) => onChange({ type: event.target.value, config: {} })}>
+          {phaseOrder.map((phase) => {
+            const options = visibleTypes.filter((type) => type.phase === phase);
+            if (options.length === 0) return null;
+            return (
+              <optgroup key={phase} label={phase}>
+                {options.map((option) => (
+                  <option key={option.type} value={option.type}>{option.displayName}</option>
+                ))}
+              </optgroup>
+            );
+          })}
+          {visibleTypes.some((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number])) && (
+            <optgroup label="other">
+              {visibleTypes.filter((type) => !phaseOrder.includes(type.phase as (typeof phaseOrder)[number])).map((option) => (
+                <option key={option.type} value={option.type}>{option.displayName}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder="Display name" value={node.displayName ?? ""} onChange={(event) => onChange({ displayName: event.target.value })} />
+        {onRemove && (
+          <Button size="icon" variant="outline" aria-label="Remove node" onClick={onRemove}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      {metadata && (
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
+          <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <div className="font-medium text-foreground">{metadata.phase} · {metadata.type}</div>
+            <div className="mt-1">{metadata.description}</div>
+            <div className="mt-2 grid gap-1">
+              <span>Config: {schemaFields(metadata.configSchema)}</span>
+              <span>Input: {schemaFields(metadata.inputSchema)}</span>
+              <span>Output: {schemaFields(metadata.outputSchema)}</span>
+            </div>
+          </div>
+          <div className="grid gap-3">
+            <ConfigFields
+              fields={configFields}
+              config={node.config ?? {}}
+              onChange={(config) => onChange({ config })}
+            />
+            <Field label="Config JSON">
+              <textarea
+                className="min-h-24 rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+                value={configDraft}
+                onBlur={commitConfigDraft}
+                onChange={(event) => setConfigDraft(event.target.value)}
+              />
+              {configError && <span className="text-xs text-destructive">{configError}</span>}
+            </Field>
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+function ConfigFields({
+  fields,
+  config,
+  onChange,
+}: {
+  fields: string[];
+  config: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+}) {
+  if (fields.length === 0) {
+    return <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">No structured config fields.</div>;
+  }
+
+  const updateField = (field: string, value: unknown) => {
+    const next = { ...config };
+    if (value === "" || (Array.isArray(value) && value.length === 0)) {
+      delete next[field];
+    } else {
+      next[field] = value;
+    }
+    onChange(next);
+  };
+
+  return (
+    <div className="grid gap-2 rounded-md border bg-background p-3">
+      <div className="text-xs font-medium text-muted-foreground">Config fields</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {fields.map((field) => {
+          const kind = configFieldKind(field);
+          const value = config[field];
+          if (kind === "boolean") {
+            return (
+              <label key={field} className="flex h-9 items-center gap-2 rounded-md border bg-card px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(value)}
+                  onChange={(event) => updateField(field, event.target.checked)}
+                />
+                <span>{field}</span>
+              </label>
+            );
+          }
+          return (
+            <Field key={field} label={field}>
+              <input
+                className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                type={kind === "number" ? "number" : "text"}
+                value={formatConfigInputValue(value)}
+                onChange={(event) => updateField(field, parseConfigInputValue(event.target.value, kind, field))}
+              />
+            </Field>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowHints({ nodes, nodeTypes, compact = false }: { nodes: WorkflowNode[]; nodeTypes: WorkflowNodeType[]; compact?: boolean }) {
+  const hints = workflowHints(nodes, nodeTypes);
+  if (hints.length === 0) {
+    return compact ? null : (
+      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+        Workflow shape looks consistent.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+      {hints.map((hint) => (
+        <div key={hint} className="flex gap-2">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span>{hint}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1513,6 +1703,94 @@ function updateNodes(nodes: WorkflowNode[], index: number, patch: Partial<Workfl
   return nodes.map((node, nodeIndex) => (nodeIndex === index ? { ...node, ...patch } : node));
 }
 
+function availableInsertPhases(nodeTypes: WorkflowNodeType[]) {
+  const phases = phaseOrder.filter((phase) => nodeTypes.some((nodeType) => nodeType.userVisible && nodeType.phase === phase));
+  return phases.length > 0 ? phases : ["filter"];
+}
+
+function recommendedNextPhase(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
+  const phases = availableInsertPhases(nodeTypes);
+  if (nodes.length === 0) {
+    return phases.includes("target") ? "target" : phases[0];
+  }
+  const lastKnownNode = [...nodes].reverse().map((node) => nodeTypes.find((nodeType) => nodeType.type === node.type)).find(Boolean);
+  if (!lastKnownNode) {
+    return phases[0];
+  }
+  const lastIndex = phaseOrder.indexOf(lastKnownNode.phase as (typeof phaseOrder)[number]);
+  const nextPhase = phaseOrder.slice(Math.max(0, lastIndex + 1)).find((phase) => phases.includes(phase));
+  return nextPhase ?? lastKnownNode.phase;
+}
+
+function createSuggestedNode(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[], phase: string): WorkflowNode {
+  const visibleTypes = nodeTypes.filter((nodeType) => nodeType.userVisible);
+  const selectedType = visibleTypes.find((nodeType) => nodeType.phase === phase) ?? visibleTypes[0] ?? nodeTypes[0];
+  const type = selectedType?.type ?? "filter_candidates";
+  const baseID = nodeIDBase(type);
+  const used = new Set(nodes.map((node) => node.id));
+  let id = baseID;
+  let suffix = 2;
+  while (used.has(id)) {
+    id = `${baseID}_${suffix}`;
+    suffix += 1;
+  }
+  return { id, type, displayName: selectedType?.displayName ?? type };
+}
+
+function nodeIDBase(type: string) {
+  return type
+    .replace(/^(select|discover|filter|match|plan|materialize|verify|sync|cleanup|dispatch)_/, "")
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/^_+|_+$/g, "") || "node";
+}
+
+function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
+  const hints: string[] = [];
+  const typeMap = new Map(nodeTypes.map((nodeType) => [nodeType.type, nodeType]));
+  const seen = new Set<string>();
+  let hasTarget = false;
+  let hasCommit = false;
+  let lastPhaseIndex = -1;
+
+  nodes.forEach((node, index) => {
+    const nodeID = node.id.trim();
+    const metadata = typeMap.get(node.type);
+    if (!nodeID) {
+      hints.push(`Node ${index + 1} needs an id.`);
+    } else if (seen.has(nodeID)) {
+      hints.push(`Node id "${nodeID}" is duplicated.`);
+    }
+    seen.add(nodeID);
+
+    if (!metadata) {
+      hints.push(`${nodeID || `Node ${index + 1}`} uses an unknown type: ${node.type}.`);
+      return;
+    }
+
+    if (metadata.phase === "target") {
+      hasTarget = true;
+    }
+    if (metadata.phase === "commit") {
+      hasCommit = true;
+    }
+    const phaseIndex = phaseOrder.indexOf(metadata.phase as (typeof phaseOrder)[number]);
+    if (phaseIndex >= 0 && lastPhaseIndex > phaseIndex) {
+      hints.push(`${nodeID || metadata.displayName} moves from a later phase back to ${metadata.phase}; that is allowed, but check the data flow.`);
+    }
+    if (phaseIndex >= 0) {
+      lastPhaseIndex = Math.max(lastPhaseIndex, phaseIndex);
+    }
+  });
+
+  if (!hasTarget) {
+    hints.push("Consider starting with a target node so the run has an explicit source or work set.");
+  }
+  if (!hasCommit) {
+    hints.push("This workflow has no commit node; it may inspect or materialize data without persisting library state.");
+  }
+  return hints.slice(0, 5);
+}
+
 function switchActivityView(
   view: ActivityView,
   setActivityView: (view: ActivityView) => void,
@@ -1532,6 +1810,60 @@ function reviewCount(run: WorkflowRun) {
 
 function candidateNeedsReview(candidate: WorkflowCandidate) {
   return !["accepted", "rejected", "ignored", "resolved"].includes(candidate.status);
+}
+
+function nodeSubtitle(type: string, nodeTypes: WorkflowNodeType[]) {
+  const metadata = nodeTypes.find((nodeType) => nodeType.type === type);
+  return metadata ? `${metadata.phase} · ${type}` : type;
+}
+
+function schemaFields(schemaJson: string) {
+  const fields = schemaFieldNames(schemaJson);
+  return fields.length > 0 ? fields.join(", ") : "none";
+}
+
+function schemaFieldNames(schemaJson: string) {
+  try {
+    const parsed = JSON.parse(schemaJson) as { properties?: Record<string, unknown> };
+    return Object.keys(parsed.properties ?? {});
+  } catch {
+    return [];
+  }
+}
+
+function configFieldKind(field: string) {
+  if (/^(is|has|can)[A-Z_]/.test(field) || /enabled|overwrite|dryRun|force|include|mark|delete|clear|check/i.test(field)) {
+    return "boolean";
+  }
+  if (/count|limit|size|depth|days|page|minutes|seconds|gb|no$/i.test(field)) {
+    return "number";
+  }
+  return "text";
+}
+
+function formatConfigInputValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+  if (value === undefined || value === null || typeof value === "object") {
+    return "";
+  }
+  return String(value);
+}
+
+function parseConfigInputValue(value: string, kind: string, field: string) {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return "";
+  }
+  if (kind === "number") {
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : trimmed;
+  }
+  if (/(ids|codes|paths)$/i.test(field) || trimmed.includes(",")) {
+    return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return value;
 }
 
 function formatRunTime(run: WorkflowRun) {
