@@ -509,6 +509,24 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
+export type RemoteCollectionRunResult = {
+  runId: number;
+  sourceId: number;
+  collectionKind: string;
+  action: "track" | "fetch";
+  status: string;
+  discovered: number;
+  accepted: number;
+  skipped: number;
+  tracked: number;
+  fetched: number;
+  failed: number;
+  childRuns: number[];
+  failures: string[];
+  expectedMaximum: number;
+  returnedCount: number;
+};
+
 export type CircleSourceStat = {
   key: string;
   sourceId?: number | null;
@@ -996,6 +1014,8 @@ export const api = {
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
+  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
+    postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
   recordRemoteBulkRun: (payload: { action: "sync" | "fetch" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
     postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),

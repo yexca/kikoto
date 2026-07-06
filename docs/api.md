@@ -375,6 +375,28 @@ parent run id, child run ids, synced count, and fetched count.
 
 Requires `workflows:run`.
 
+```http
+POST /api/workflow-runs/remote-popular
+```
+
+Runs the built-in popular remote collection workflow for a configured
+compatible source. The workflow discovers popular works from the source API and
+then either tracks them or fetches them into the local library.
+
+```json
+{
+  "action": "track",
+  "sourceId": 1,
+  "limit": 100
+}
+```
+
+`action` may be `track` or `fetch`. `sourceId` is optional; when omitted, the
+highest-priority enabled compatible source is used. `limit` defaults to 100 and
+is capped at 100.
+
+Requires `workflows:run`.
+
 ## Error Shape
 
 Errors are JSON objects with an `error` field:

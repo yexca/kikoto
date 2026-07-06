@@ -98,9 +98,12 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-const manuallyRunnableSystemWorkflows: Record<string, "local_scan" | "metadata_sync"> = {
-  local_library_scan: "local_scan",
-  metadata_sync: "metadata_sync",
+type SystemRunKind = "local_scan" | "metadata_sync" | "popular_track" | "popular_fetch";
+
+const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
+  local_library_scan: ["local_scan"],
+  metadata_sync: ["metadata_sync"],
+  remote_popular_collection: ["popular_track", "popular_fetch"],
 };
 
 const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode: boolean) => {
@@ -108,8 +111,8 @@ const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode
     return definitions;
   }
   return [...definitions].sort((left, right) => {
-    const leftManual = manuallyRunnableSystemWorkflows[left.code] ? 0 : 1;
-    const rightManual = manuallyRunnableSystemWorkflows[right.code] ? 0 : 1;
+    const leftManual = manuallyRunnableSystemWorkflows[left.code]?.length ? 0 : 1;
+    const rightManual = manuallyRunnableSystemWorkflows[right.code]?.length ? 0 : 1;
     if (leftManual !== rightManual) {
       return leftManual - rightManual;
     }
@@ -147,6 +150,7 @@ export function WorkflowsPage({
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
+  const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
 
   const refresh = () => {
     api.listWorkflowDefinitions().then(setDefinitions).catch(() => setDefinitions([]));
@@ -189,7 +193,7 @@ export function WorkflowsPage({
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
-  const selectedSystemRunKind =
+  const selectedSystemRunKinds =
     workflowView === "system" && selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
 
   useEffect(() => {
@@ -241,6 +245,39 @@ export function WorkflowsPage({
     } finally {
       setIsSyncingMetadata(false);
     }
+  };
+
+  const runPopularCollection = async (action: "track" | "fetch") => {
+    const kind: SystemRunKind = action === "track" ? "popular_track" : "popular_fetch";
+    setRunningSystemAction(kind);
+    try {
+      const result = await api.runRemotePopularCollection({ action });
+      setActivityMessage(`Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `fetched ${result.fetched}`}, failed ${result.failed}.`);
+      refresh();
+      setActivityView("completed");
+      setRunPage(1);
+      refreshRuns(1, "completed", runQuery);
+    } finally {
+      setRunningSystemAction(null);
+    }
+  };
+
+  const runSystemAction = async (kind: SystemRunKind) => {
+    if (kind === "local_scan") return runLocalScan();
+    if (kind === "metadata_sync") return runMetadataSync();
+    if (kind === "popular_track") return runPopularCollection("track");
+    if (kind === "popular_fetch") return runPopularCollection("fetch");
+  };
+
+  const systemActionBusy = (kind: SystemRunKind) => {
+    if (kind === "local_scan") return isRunningScan;
+    if (kind === "metadata_sync") return isSyncingMetadata;
+    return runningSystemAction === kind;
+  };
+
+  const systemActionAllowed = (kind: SystemRunKind) => {
+    if (kind === "metadata_sync") return canSyncMetadata;
+    return canRun;
   };
 
   const refreshSelectedRunReview = async () => {
@@ -324,16 +361,10 @@ export function WorkflowsPage({
                   definition={selectedDefinition}
                   nodeTypes={nodeTypes}
                   readonly={workflowView === "system" || !selectedDefinition?.editable}
-                  systemRunKind={selectedSystemRunKind}
-                  isRunningAction={selectedSystemRunKind === "local_scan" ? isRunningScan : isSyncingMetadata}
-                  canRunAction={selectedSystemRunKind === "local_scan" ? canRun : selectedSystemRunKind === "metadata_sync" ? canSyncMetadata : false}
-                  onRunSystemAction={
-                    selectedSystemRunKind === "local_scan"
-                      ? runLocalScan
-                      : selectedSystemRunKind === "metadata_sync"
-                        ? runMetadataSync
-                        : undefined
-                  }
+                  systemRunKinds={selectedSystemRunKinds}
+                  isSystemActionRunning={systemActionBusy}
+                  canRunSystemAction={systemActionAllowed}
+                  onRunSystemAction={runSystemAction}
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
                     setEditingNodeIndex(index);
@@ -502,7 +533,8 @@ function DefinitionSidebar({
         </div>
         <div className="space-y-2">
           {sortedDefinitions.map((definition) => {
-            const systemRunKind = manuallyRunnableSystemWorkflows[definition.code];
+            const systemRunKinds = manuallyRunnableSystemWorkflows[definition.code] ?? [];
+            const hasManualAction = systemRunKinds.length > 0;
             return (
               <button
                 key={definition.id}
@@ -519,7 +551,7 @@ function DefinitionSidebar({
                   <div className="flex shrink-0 flex-wrap justify-end gap-1">
                     <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
                     {definition.scope === "system" && (
-                      <Badge variant={systemRunKind ? "default" : "secondary"}>{systemRunKind ? "Manual" : "Read only"}</Badge>
+                      <Badge variant={hasManualAction ? "default" : "secondary"}>{hasManualAction ? "Manual" : "Read only"}</Badge>
                     )}
                   </div>
                 </div>
@@ -527,7 +559,7 @@ function DefinitionSidebar({
                   <span>{parseNodes(definition.definitionJson).length} nodes</span>
                   <span>{definition.triggerCount} triggers</span>
                   {definition.scope === "system" && (
-                    <span>{systemRunKind ? "manual action available" : "triggered by app actions"}</span>
+                    <span>{hasManualAction ? "manual action available" : "triggered by app actions"}</span>
                   )}
                 </div>
               </button>
@@ -706,9 +738,9 @@ function WorkflowDetail({
   trigger,
   nodeTypes,
   readonly,
-  systemRunKind,
-  isRunningAction,
-  canRunAction,
+  systemRunKinds,
+  isSystemActionRunning,
+  canRunSystemAction,
   onRunSystemAction,
   onEditDefinition,
   onEditTrigger,
@@ -718,10 +750,10 @@ function WorkflowDetail({
   trigger?: WorkflowTrigger | null;
   nodeTypes: WorkflowNodeType[];
   readonly: boolean;
-  systemRunKind?: "local_scan" | "metadata_sync";
-  isRunningAction?: boolean;
-  canRunAction?: boolean;
-  onRunSystemAction?: () => Promise<void>;
+  systemRunKinds?: SystemRunKind[];
+  isSystemActionRunning?: (kind: SystemRunKind) => boolean;
+  canRunSystemAction?: (kind: SystemRunKind) => boolean;
+  onRunSystemAction?: (kind: SystemRunKind) => Promise<void>;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
   onEditNode: (index: number) => void;
@@ -760,18 +792,22 @@ function WorkflowDetail({
                 Edit workflow
               </Button>
             )}
-            {definition.scope === "system" && systemRunKind && onRunSystemAction && (
-              <Button size="sm" onClick={() => void onRunSystemAction()} disabled={isRunningAction || !canRunAction}>
-                <Play className="h-4 w-4" />
-                {isRunningAction ? "Running" : systemRunKind === "local_scan" ? "Run local scan" : "Sync metadata"}
-              </Button>
-            )}
+            {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.map((kind) => {
+              const running = isSystemActionRunning?.(kind) ?? false;
+              const allowed = canRunSystemAction?.(kind) ?? false;
+              return (
+                <Button key={kind} size="sm" onClick={() => void onRunSystemAction(kind)} disabled={running || !allowed}>
+                  <Play className="h-4 w-4" />
+                  {running ? "Running" : systemRunKindLabel(kind)}
+                </Button>
+              );
+            })}
           </div>
         </div>
 
         {definition.scope === "system" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            {systemRunKind
+            {systemRunKinds?.length
               ? "This system workflow is read-only, but it exposes a manual action."
               : "This system workflow is read-only and is triggered by application actions."}
           </div>
@@ -781,6 +817,19 @@ function WorkflowDetail({
       </CardContent>
     </Card>
   );
+}
+
+function systemRunKindLabel(kind: SystemRunKind) {
+  switch (kind) {
+    case "local_scan":
+      return "Run local scan";
+    case "metadata_sync":
+      return "Sync metadata";
+    case "popular_track":
+      return "Track popular";
+    case "popular_fetch":
+      return "Fetch popular";
+  }
 }
 
 function RunDetail({

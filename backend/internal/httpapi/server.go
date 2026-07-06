@@ -118,6 +118,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
+	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	return withCORS(s.authMiddleware(mux))
 }
@@ -2811,6 +2812,20 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.runRemoteBulkWorkflow(context.WithoutCancel(r.Context()), payload.SourceID, payload.Action, codes)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) createRemotePopularCollectionRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	var payload remoteCollectionRunRequest
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+	result, err := s.runRemotePopularWorkflow(context.WithoutCancel(r.Context()), payload)
 	if err != nil {
 		writeError(w, err)
 		return
