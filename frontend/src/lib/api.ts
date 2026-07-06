@@ -350,14 +350,24 @@ export type WorkflowRun = {
   nodeRunCount: number;
   completedNodeRuns: number;
   failedNodeRuns: number;
+  skippedNodeRuns: number;
   jobCount: number;
   completedJobs: number;
   failedJobs: number;
+  skippedJobs: number;
   candidateCount: number;
+  pendingCandidates: number;
   acceptedCandidates: number;
   rejectedCandidates: number;
   definitionId: number | null;
   triggerId: number | null;
+};
+
+export type WorkflowRunsPage = {
+  runs: WorkflowRun[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 export type WorkflowNodeRun = {
@@ -922,7 +932,10 @@ export const api = {
     },
   ) => patchJSONBody<WorkflowTrigger>(`/api/workflow-triggers/${id}`, payload),
   deleteWorkflowTrigger: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-triggers/${id}`),
-  listWorkflowRuns: () => getJSON<WorkflowRun[]>("/api/workflow-runs"),
+  listWorkflowRuns: (page = 1, pageSize = 25, view = "running", query = "") =>
+    getJSON<WorkflowRunsPage>(
+      `/api/workflow-runs?page=${page}&pageSize=${pageSize}&view=${encodeURIComponent(view)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+    ),
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   recordRemoteBulkRun: (payload: { action: "sync" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
