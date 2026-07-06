@@ -49,6 +49,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
+	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
 	mux.HandleFunc("POST /api/favorite-lists", s.createFavoriteList)
@@ -2942,7 +2943,7 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}
 	result.LocalScanRunID = scanResult.RunID
 	result.DetectedWorks = scanResult.DetectedWorks
-	result.AvailabilityWorkCodes = scanResult.NewWorkCodes
+	result.AvailabilityWorkCodes = s.startupAvailabilityWorkCodes(ctx, scanResult.NewWorkCodes)
 	if err := s.updateStartupChildNode(ctx, scanNodeID, "succeeded", map[string]any{
 		"child_run_id":      scanResult.RunID,
 		"detected_works":    scanResult.DetectedWorks,
@@ -2953,8 +2954,8 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
 	}
-	if len(scanResult.NewWorkCodes) > 0 {
-		go s.runStartupAvailabilityChecks(context.Background(), scanResult.NewWorkCodes)
+	if len(result.AvailabilityWorkCodes) > 0 {
+		go s.runStartupAvailabilityChecks(context.Background(), result.AvailabilityWorkCodes)
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
 		return startupLibraryRefreshResult{}, err
@@ -3002,6 +3003,129 @@ func (s *Server) runStartupAvailabilityChecks(ctx context.Context, codes []strin
 		_, _ = s.checkWorkSourceAvailability(checkCtx, code, "startup", "new_local_work_detected")
 		cancel()
 	}
+}
+
+func (s *Server) startupAvailabilityWorkCodes(ctx context.Context, newCodes []string) []string {
+	seen := map[string]bool{}
+	codes := make([]string, 0, len(newCodes))
+	for _, rawCode := range newCodes {
+		code := strings.ToUpper(strings.TrimSpace(rawCode))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	staleCodes, err := s.localWorkCodesNeedingRemoteAvailability(ctx, 0, 7*24*time.Hour, 50)
+	if err != nil {
+		return codes
+	}
+	for _, code := range staleCodes {
+		if !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
+		}
+	}
+	return codes
+}
+
+func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID int64, reason string) {
+	codes, err := s.localWorkCodesNeedingRemoteAvailability(ctx, sourceID, 0, 100)
+	if err != nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, rawCode := range codes {
+		code := strings.ToUpper(strings.TrimSpace(rawCode))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		_, _ = s.checkWorkSourceAvailabilityForSources(checkCtx, code, sourceID, "source_poll", reason)
+		cancel()
+	}
+}
+
+func (s *Server) localWorkCodesNeedingRemoteAvailability(ctx context.Context, sourceID int64, staleAfter time.Duration, limit int) ([]string, error) {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	staleCutoff := time.Now().UTC().Add(-staleAfter).Format("2006-01-02 15:04:05")
+	query := `
+		SELECT DISTINCT work.primary_code
+		FROM work
+		WHERE work.primary_code <> ''
+			AND EXISTS (
+				SELECT 1
+				FROM media_item AS item
+				INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+				WHERE item.work_id = work.id
+					AND location.location_type = 'local'
+					AND location.availability = 'available'
+			)
+			AND (
+	`
+	args := []any{}
+	if sourceID > 0 {
+		query += `
+				NOT EXISTS (
+					SELECT 1 FROM work_source_presence AS presence
+					WHERE presence.work_id = work.id
+						AND presence.file_source_id = ?
+						AND presence.presence_type = 'remote'
+				)
+				OR EXISTS (
+					SELECT 1 FROM work_source_presence AS presence
+					WHERE presence.work_id = work.id
+						AND presence.file_source_id = ?
+						AND presence.presence_type = 'remote'
+				)
+		`
+		args = append(args, sourceID, sourceID)
+	} else {
+		query += `
+				NOT EXISTS (
+					SELECT 1 FROM work_source_presence AS presence
+					WHERE presence.work_id = work.id
+						AND presence.presence_type = 'remote'
+				)
+		`
+		if staleAfter > 0 {
+			query += `
+				OR EXISTS (
+					SELECT 1 FROM work_source_presence AS presence
+					WHERE presence.work_id = work.id
+						AND presence.presence_type = 'remote'
+						AND (presence.last_checked_at IS NULL OR presence.last_checked_at < ?)
+				)
+			`
+			args = append(args, staleCutoff)
+		}
+	}
+	query += `
+			)
+		ORDER BY work.updated_at DESC, work.id DESC
+		LIMIT ?
+	`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	codes := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		codes = append(codes, code)
+	}
+	return codes, rows.Err()
 }
 
 func (s *Server) updateStartupChildNode(ctx context.Context, nodeID int64, status string, output map[string]any, runErr error) error {
