@@ -55,7 +55,20 @@ type circleSourceStat struct {
 
 type circleDetail struct {
 	circleSummary
-	Works []circleCatalogWork `json:"works"`
+	Works  []circleCatalogWork `json:"works"`
+	Series []circleSeries      `json:"series"`
+}
+
+type circleSeries struct {
+	TitleID      string   `json:"titleId"`
+	Name         string   `json:"name"`
+	URL          string   `json:"url"`
+	DeclaredWorks int      `json:"declaredWorks"`
+	Works        int      `json:"works"`
+	LocalWorks   int      `json:"localWorks"`
+	RemoteWorks  int      `json:"remoteWorks"`
+	MissingWorks int      `json:"missingWorks"`
+	WorkCodes    []string `json:"workCodes"`
 }
 
 type circleCatalogWork struct {
@@ -194,7 +207,12 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, circleDetail{circleSummary: summary, Works: works})
+	series, err := s.loadCircleSeries(r.Context(), partyID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, circleDetail{circleSummary: summary, Works: works, Series: series})
 }
 
 func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +465,26 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(party_id, provider_id, primary_code)
 		)`,
+		`CREATE TABLE IF NOT EXISTS party_series (
+			id INTEGER PRIMARY KEY,
+			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+			provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
+			title_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL DEFAULT '',
+			declared_works INTEGER NOT NULL DEFAULT 0,
+			raw_json TEXT NOT NULL DEFAULT '{}',
+			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(party_id, provider_id, title_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS party_series_work (
+			series_id INTEGER NOT NULL REFERENCES party_series(id) ON DELETE CASCADE,
+			primary_code TEXT NOT NULL,
+			position INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(series_id, primary_code)
+		)`,
 		`CREATE TABLE IF NOT EXISTS party_catalog_refresh_state (
 			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
 			provider_code TEXT NOT NULL,
@@ -490,6 +528,9 @@ func (s *Server) ensureCircleSchema(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS idx_work_party_party ON work_party(party_id, role)"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS idx_party_series_party ON party_series(party_id, provider_id)"); err != nil {
 		return err
 	}
 	return nil
@@ -1200,6 +1241,79 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	return works, rows.Err()
 }
 
+func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleSeries, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			series.id,
+			series.title_id,
+			series.name,
+			series.url,
+			series.declared_works,
+			COUNT(series_work.primary_code),
+			COALESCE(SUM(CASE WHEN local_presence.primary_code IS NOT NULL THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN remote_presence.primary_code IS NOT NULL THEN 1 ELSE 0 END), 0),
+			GROUP_CONCAT(series_work.primary_code, ',')
+		FROM party_series AS series
+		LEFT JOIN party_series_work AS series_work ON series_work.series_id = series.id
+		LEFT JOIN (
+			SELECT DISTINCT UPPER(work.primary_code) AS primary_code
+			FROM work
+			INNER JOIN media_item AS item ON item.work_id = work.id
+			INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+			WHERE location.location_type IN ('local', 'cache')
+				AND location.availability = 'available'
+		) AS local_presence ON local_presence.primary_code = UPPER(series_work.primary_code)
+		LEFT JOIN (
+			SELECT DISTINCT UPPER(code.primary_code) AS primary_code
+			FROM (
+				SELECT item.primary_code
+				FROM party_catalog_item AS item
+				INNER JOIN metadata_provider AS provider ON provider.id = item.provider_id
+				WHERE item.party_id = ? AND provider.code != 'dlsite'
+				UNION
+				SELECT work.primary_code
+				FROM work_source_presence AS presence
+				INNER JOIN work ON work.id = presence.work_id
+				WHERE presence.availability = 'available'
+			) AS code
+		) AS remote_presence ON remote_presence.primary_code = UPPER(series_work.primary_code)
+		WHERE series.party_id = ?
+		GROUP BY series.id
+		ORDER BY series.last_seen_at DESC, series.id DESC
+	`, partyID, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []circleSeries{}
+	for rows.Next() {
+		var item circleSeries
+		var seriesID int64
+		var codes sql.NullString
+		if err := rows.Scan(&seriesID, &item.TitleID, &item.Name, &item.URL, &item.DeclaredWorks, &item.Works, &item.LocalWorks, &item.RemoteWorks, &codes); err != nil {
+			return nil, err
+		}
+		item.WorkCodes = splitCatalogCodes(codes.String)
+		item.MissingWorks = maxInt(0, item.Works-item.LocalWorks-item.RemoteWorks)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func splitCatalogCodes(raw string) []string {
+	codes := []string{}
+	seen := map[string]bool{}
+	for _, value := range strings.Split(raw, ",") {
+		code := strings.ToUpper(strings.TrimSpace(value))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	return codes
+}
+
 func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string) ([]circleSourceStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(*)
@@ -1565,6 +1679,7 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 		"site_id":       profile.SiteID,
 		"url":           profile.URL,
 		"work_codes":    profile.WorkCodes,
+		"series":        profile.Series,
 		"pages_fetched": profile.PagesFetched,
 		"reached_end":   profile.ReachedEnd,
 		"total_works":   profile.TotalWorks,
@@ -1594,6 +1709,9 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 		if _, err := tx.ExecContext(ctx, "UPDATE party_catalog_item SET dlsite_available = 0 WHERE party_id = ? AND provider_id = ?", partyID, providerID); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM party_series WHERE party_id = ? AND provider_id = ?", partyID, providerID); err != nil {
+			return err
+		}
 	}
 	for _, code := range profile.WorkCodes {
 		if _, err := tx.ExecContext(ctx, `
@@ -1610,6 +1728,51 @@ func (s *Server) applyMakerProfile(ctx context.Context, partyID int64, profile d
 				last_seen_at = CURRENT_TIMESTAMP
 		`, partyID, providerID, code, code, dlsiteURL(code), string(raw)); err != nil {
 			return err
+		}
+	}
+	for _, series := range profile.Series {
+		titleID := strings.ToUpper(strings.TrimSpace(series.TitleID))
+		name := strings.TrimSpace(series.Name)
+		if titleID == "" || name == "" {
+			continue
+		}
+		rawSeries, err := json.Marshal(series)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO party_series (party_id, provider_id, title_id, name, url, declared_works, raw_json, last_seen_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			ON CONFLICT(party_id, provider_id, title_id) DO UPDATE SET
+				name = excluded.name,
+				url = excluded.url,
+				declared_works = excluded.declared_works,
+				raw_json = excluded.raw_json,
+				last_seen_at = CURRENT_TIMESTAMP
+		`, partyID, providerID, titleID, name, strings.TrimSpace(series.URL), series.WorkCount, string(rawSeries)); err != nil {
+			return err
+		}
+		seriesID, err := selectID(ctx, tx, "SELECT id FROM party_series WHERE party_id = ? AND provider_id = ? AND title_id = ?", partyID, providerID, titleID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM party_series_work WHERE series_id = ?", seriesID); err != nil {
+			return err
+		}
+		for position, code := range series.WorkCodes {
+			code = strings.ToUpper(strings.TrimSpace(code))
+			if code == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO party_series_work (series_id, primary_code, position, updated_at)
+				VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT(series_id, primary_code) DO UPDATE SET
+					position = excluded.position,
+					updated_at = CURRENT_TIMESTAMP
+			`, seriesID, code, position+1); err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()

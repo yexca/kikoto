@@ -506,8 +506,21 @@ export type CircleCatalogWork = {
   progress?: WorkProgressSummary;
 };
 
+export type CircleSeries = {
+  titleId: string;
+  name: string;
+  url: string;
+  declaredWorks: number;
+  works: number;
+  localWorks: number;
+  remoteWorks: number;
+  missingWorks: number;
+  workCodes: string[];
+};
+
 export type CircleDetail = CircleSummary & {
   works: CircleCatalogWork[];
+  series: CircleSeries[];
 };
 
 export type VoiceSummary = {

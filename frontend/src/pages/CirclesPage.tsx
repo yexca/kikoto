@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
-import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
+import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const TRANSLATION_CIRCLE_ID = "RG60289";
@@ -269,6 +269,7 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
+  const [catalogView, setCatalogView] = useState<"works" | "series">("works");
 
   const loadCircleDetail = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -295,19 +296,27 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   useEffect(() => {
     let cancelled = false;
     let timeoutID: number | undefined;
+    let refreshStarted = false;
+    let metadataSyncToastShown = false;
     const pollAutoRefresh = async (attempt = 0) => {
       const next = await loadCircleDetail(attempt === 0);
       if (cancelled || !next) return;
       const autoRefresh = attempt === 0 ? await api.autoRefreshCircle(externalId).catch(() => next.autoRefresh) : next.autoRefresh;
       if (cancelled) return;
       if (autoRefresh.status === "queued") {
+        refreshStarted = true;
         setToast({ kind: "info", message: `Auto refresh queued: ${autoRefresh.mode} crawl for ${autoRefresh.reason}.` });
       } else if (autoRefresh.status === "running") {
+        refreshStarted = true;
         setToast({ kind: "info", message: `Auto refresh is already running: ${autoRefresh.mode} crawl.` });
       } else if (attempt > 0 && autoRefresh.status === "skipped" && autoRefresh.reason === "fresh") {
         setToast({ kind: "success", message: "Auto refresh completed." });
       }
-      if ((autoRefresh.status === "queued" || autoRefresh.status === "running") && attempt < 30) {
+      if (refreshStarted && !metadataSyncToastShown && circleCatalogNeedsMetadataRefresh(next)) {
+        metadataSyncToastShown = true;
+        setToast({ kind: "info", message: "Catalog fetched. Metadata is still syncing; refresh the page to show completed details." });
+      }
+      if ((autoRefresh.status === "queued" || autoRefresh.status === "running" || refreshStarted) && attempt < 30 && !metadataSyncToastShown) {
         timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
       }
     };
@@ -606,9 +615,9 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
             <div className="grid gap-3 sm:grid-cols-4">
               <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
+              <Stat label="Series" value={String(circle.series.length)} />
               <Stat label="Catalog only" value={String(catalogOnlyCount)} />
               <Stat label="Playable" value={String(playableCount)} />
-              <Stat label="Unavailable" value={String(circle.works.filter((work) => !work.local && !work.remote).length)} />
             </div>
 
             <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
@@ -705,6 +714,14 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
 
       <section className="space-y-3">
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex h-9 rounded-md border bg-background p-1 text-sm">
+              <button className={`rounded px-3 ${catalogView === "works" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => setCatalogView("works")}>
+                Works
+              </button>
+              <button className={`rounded px-3 ${catalogView === "series" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => setCatalogView("series")}>
+                Series
+              </button>
+            </div>
             <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
               <Search className="h-4 w-4" />
               <input
@@ -750,6 +767,18 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
             </div>
           </div>
 
+          {catalogView === "series" ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {circle.series.length > 0 ? circle.series.map((series) => (
+                <CircleSeriesCard key={series.titleId} series={series} />
+              )) : (
+                <Card>
+                  <CardContent className="p-5 text-sm text-muted-foreground">No series found for this circle.</CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+          <>
           {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
             <label className="flex items-center gap-2 text-muted-foreground">
               <input
@@ -805,6 +834,8 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
               onPageChange={setWorkPage}
               onPageSizeChange={setWorkPageSize}
             />
+          )}
+          </>
           )}
       </section>
       {deleteTarget && (
@@ -1101,6 +1132,10 @@ function refreshMessage(result: { runId: number; scope: CircleRefreshResultScope
   return `Refresh workflow #${result.runId} (${scopeLabel}): ${result.pagesFetched} pages, ${result.catalogWorks} catalog works, ${result.productSynced} product JSON${skipped}${failed}, ${result.sourceSynced} source matches.`;
 }
 
+function circleCatalogNeedsMetadataRefresh(circle: CircleDetail) {
+  return circle.catalogWorks > 0 && circle.works.some((work) => work.workId === null || work.title === work.primaryCode);
+}
+
 function SyncBadge({ state }: { state: string }) {
   const label = state === "fresh" ? "fresh" : state === "stale" ? "needs refresh" : state === "excluded" ? "excluded" : "first pull";
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
@@ -1153,7 +1188,54 @@ function emptyCircleDetail(externalId: string): CircleDetail {
     autoRefresh: { status: "skipped", reason: "", mode: "" },
     sourceSummaries: [],
     works: [],
+    series: [],
   };
+}
+
+function CircleSeriesCard({ series }: { series: CircleSeries }) {
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold">{series.name}</h3>
+            <div className="mt-1 text-xs text-muted-foreground">{series.titleId}</div>
+          </div>
+          {series.url && (
+            <Button variant="outline" size="icon" asChild>
+              <a href={series.url} target="_blank" rel="noreferrer" aria-label="Open DLsite series">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-center text-xs">
+          <div className="rounded-md border bg-background p-2">
+            <div className="text-sm font-semibold">{series.works}</div>
+            <div className="text-muted-foreground">Works</div>
+          </div>
+          <div className="rounded-md border bg-background p-2">
+            <div className="text-sm font-semibold">{series.localWorks}</div>
+            <div className="text-muted-foreground">Local</div>
+          </div>
+          <div className="rounded-md border bg-background p-2">
+            <div className="text-sm font-semibold">{series.remoteWorks}</div>
+            <div className="text-muted-foreground">Remote</div>
+          </div>
+          <div className="rounded-md border bg-background p-2">
+            <div className="text-sm font-semibold">{series.missingWorks}</div>
+            <div className="text-muted-foreground">Missing</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {series.workCodes.slice(0, 12).map((code) => (
+            <Badge key={code} variant="outline">{code}</Badge>
+          ))}
+          {series.workCodes.length > 12 && <Badge variant="secondary">+{series.workCodes.length - 12}</Badge>}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
