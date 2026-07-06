@@ -328,6 +328,13 @@ export function LibraryPage() {
     setSearchQuery(tokens.map(formatSearchToken).join(" "));
   };
 
+  const addTagSearchToken = (tag: string) => {
+    const value = tag.trim();
+    if (!value) return;
+    const next = searchTokens.filter((token) => !(token.kind === "tag" && token.value.toLowerCase() === value.toLowerCase()));
+    updateSearchTokens([...next, { kind: "tag", value }]);
+  };
+
   const removeSearchToken = (index: number) => {
     updateSearchTokens(searchTokens.filter((_token, tokenIndex) => tokenIndex !== index));
     setTokenEditor(null);
@@ -485,7 +492,12 @@ export function LibraryPage() {
           }}
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
+          onTagOpen={addTagSearchToken}
           onSynced={async (workId) => {
+            if (workId <= 0) {
+              await refreshCurrentWorksPage();
+              return;
+            }
             const detail = await api.getWork(workId);
             openWorkCodeRoute(detail.primaryCode);
           }}
@@ -500,6 +512,7 @@ export function LibraryPage() {
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
                 onFavoriteChange={updateWorkFavorite}
+                onTagOpen={addTagSearchToken}
               />
             ))}
             {visibleWorks.length === 0 && (
@@ -598,6 +611,7 @@ function RemoteSourcePanel({
   onPageSizeChange,
   autoSyncRemote,
   onOpenPreview,
+  onTagOpen,
   onSynced,
 }: {
   source: LibrarySource;
@@ -608,6 +622,7 @@ function RemoteSourcePanel({
   onPageSizeChange: (pageSize: number) => void;
   autoSyncRemote: boolean;
   onOpenPreview: (work: RemoteWork) => void;
+  onTagOpen: (tag: string) => void;
   onSynced: (workID: number) => Promise<void>;
 }) {
   const isLoading = result === null;
@@ -628,7 +643,7 @@ function RemoteSourcePanel({
     }
     if (!autoSyncRemote && reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be synced before Kikoto can mark it. You can enable Auto sync in Settings.",
+        "This work needs to be tracked before Kikoto can mark it. You can enable Auto sync in Settings.",
       );
       if (!confirmed) return;
     }
@@ -636,7 +651,7 @@ function RemoteSourcePanel({
     setMessage("");
     try {
       const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, reason);
-      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
       return result.workId;
     } catch (error) {
@@ -681,11 +696,11 @@ function RemoteSourcePanel({
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "sync", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) });
-      setMessage(`Bulk workflow #${parent.runId}: synced ${parent.synced} remote-only works.`);
+      const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) });
+      setMessage(`Bulk workflow #${parent.runId}: tracked ${parent.synced} remote-only works.`);
       await onSynced(0);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk sync failed.");
+      setMessage(error instanceof Error ? error.message : "Bulk track failed.");
     } finally {
       setIsBulkBusy(false);
     }
@@ -758,11 +773,27 @@ function RemoteSourcePanel({
     try {
       const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
       await api.updateWorkUserState(result.workId, { listeningStatus: status });
-      setMessage(`Synced and marked ${result.primaryCode}.`);
+      setMessage(`Tracked and marked ${result.primaryCode}.`);
       await onSynced(result.workId);
       setMarkTarget(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
+  };
+
+  const favoriteRemoteWork = async (work: RemoteWork, favorite: boolean) => {
+    if (!work.primaryCode) return;
+    setIsSyncingCode(work.primaryCode);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "favorite_remote");
+      await api.updateWorkUserState(result.workId, { favorite });
+      setMessage(`${favorite ? "Favorited" : "Removed favorite from"} ${result.primaryCode}.`);
+      await onSynced(result.workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Favorite update failed.");
     } finally {
       setIsSyncingCode(null);
     }
@@ -855,6 +886,8 @@ function RemoteSourcePanel({
               onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
               onFetch={() => void syncWork(work, "manual_fetch")}
+              onFavorite={(favorite) => void favoriteRemoteWork(work, favorite)}
+              onTagOpen={onTagOpen}
               onMark={(status) => void markRemoteWork(work, status)}
               onSave={() => void openSaveSelection(work)}
             />
@@ -894,11 +927,13 @@ function WorkCard({
   onOpen,
   onStatusChange,
   onFavoriteChange,
+  onTagOpen,
 }: {
   work: Work;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
+  onTagOpen: (tag: string) => void;
 }) {
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
@@ -927,6 +962,7 @@ function WorkCard({
       work={view}
       onOpen={onOpen}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      onTagOpen={onTagOpen}
       footer={(
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
@@ -979,6 +1015,8 @@ function RemoteWorkCard({
   onSelectedChange,
   onOpen,
   onFetch,
+  onFavorite,
+  onTagOpen,
   onMark,
   onSave,
 }: {
@@ -991,6 +1029,8 @@ function RemoteWorkCard({
   onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
   onFetch: () => void;
+  onFavorite: (favorite: boolean) => void;
+  onTagOpen: (tag: string) => void;
   onMark: (status: ListeningStatus) => void;
   onSave: () => void;
 }) {
@@ -1021,6 +1061,7 @@ function RemoteWorkCard({
       work={view}
       selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
       onOpen={onOpen}
+      onTagOpen={onTagOpen}
       canOpen={Boolean(work.primaryCode)}
       footer={(
         <WorkCardFooter
@@ -1036,6 +1077,16 @@ function RemoteWorkCard({
               }}
             >
               <RefreshCw className="h-4 w-4" />
+            </WorkCardActionButton>
+            <WorkCardActionButton
+              title={work.favorite ? "Favorite" : "Add favorite"}
+              disabled={isBusy || !work.primaryCode}
+              onClick={(event) => {
+                event.stopPropagation();
+                onFavorite(!work.favorite);
+              }}
+            >
+              <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
             </WorkCardActionButton>
             <WorkCardActionButton
               title="Fetch"
@@ -1095,13 +1146,13 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Sync before mark</h3>
+        <h3 className="text-base font-semibold">Track before mark</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be synced into Remote metadata before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+          {workCode} will be tracked before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Sync and mark</Button>
+          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
         </div>
       </div>
     </div>
@@ -1603,7 +1654,7 @@ function RemoteWorkDetailView({
     if (!detail?.primaryCode) return;
     if (!autoSyncRemote && reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be synced before Kikoto can mark it. You can enable Auto sync in Settings.",
+        "This work needs to be tracked before Kikoto can mark it. You can enable Auto sync in Settings.",
       );
       if (!confirmed) return;
     }
@@ -1615,7 +1666,7 @@ function RemoteWorkDetailView({
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      setMessage(error instanceof Error ? error.message : "Remote track failed.");
     } finally {
       setIsFetching(false);
     }
@@ -1809,9 +1860,9 @@ function RemoteWorkDetailView({
       )}
       {favoriteTarget !== null && (
         <RemoteStateConfirmModal
-          title="Sync before favorite"
-          description={`${detail.primaryCode} will be synced into Remote metadata before the favorite is saved. You can enable Auto sync in Settings to skip this prompt.`}
-          confirmLabel="Sync and favorite"
+          title="Track before favorite"
+          description={`${detail.primaryCode} will be tracked before the favorite is saved. You can enable Auto sync in Settings to skip this prompt.`}
+          confirmLabel="Track and favorite"
           onClose={() => setFavoriteTarget(null)}
           onConfirm={() => void updateRemoteFavorite(favoriteTarget, true)}
         />

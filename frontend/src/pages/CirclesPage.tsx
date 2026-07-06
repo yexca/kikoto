@@ -487,7 +487,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      setToast({ kind: "success", message: `Synced and marked ${syncResult.primaryCode}.` });
+      setToast({ kind: "success", message: `Tracked and marked ${syncResult.primaryCode}.` });
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
@@ -502,16 +502,25 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   };
 
   const updateCatalogWorkFavorite = async (work: CircleCatalogWork, favorite: boolean) => {
-    if (work.workId === null) return;
     try {
-      const result = await api.updateWorkUserState(work.workId, { favorite });
-      setDetail((current) => current ? {
-        ...current,
-        works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
-      } : current);
+      const workId = work.workId ?? await trackCatalogWorkForState(work, "circle_favorite");
+      if (!workId) return;
+      const result = await api.updateWorkUserState(workId, { favorite });
+      const next = await api.getCircle(externalId);
+      setDetail({
+        ...next,
+        works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
+      });
     } catch (error) {
       setToast(toastFromError(error, "Favorite update failed."));
     }
+  };
+
+  const trackCatalogWorkForState = async (work: CircleCatalogWork, reason: string) => {
+    const target = circleWorkRemoteTarget(work);
+    if (!target) return null;
+    const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, reason);
+    return syncResult.workId;
   };
 
   const toggleWorkSelection = (work: CircleCatalogWork, checked: boolean) => {
@@ -562,21 +571,21 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const results = await runCircleBulkBySource(selectedSyncableWorks, "sync_fetch");
+      const results = await runCircleBulkBySource(selectedSyncableWorks, "track_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setToast({ kind: "success", message: `Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.` });
+      setToast({ kind: "success", message: `Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.` });
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setToast(toastFromError(error, "Bulk sync/fetch failed."));
+      setToast(toastFromError(error, "Bulk track/fetch failed."));
     } finally {
       setIsBulkSaving(false);
     }
   };
 
-  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "sync_fetch") => {
+  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "track_fetch") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = circleWorkRemoteTarget(work);
@@ -623,10 +632,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     try {
       const result = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
-      setToast({ kind: "success", message: `Synced ${result.primaryCode} through workflow run #${result.runId}.` });
+      setToast({ kind: "success", message: `Tracked ${result.primaryCode} through workflow run #${result.runId}.` });
       setDetail(await api.getCircle(externalId));
     } catch (error) {
-      setToast(toastFromError(error, "Sync failed."));
+      setToast(toastFromError(error, "Track failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -867,6 +876,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                         onDeleteMissing={() => setDeleteTarget(work)}
                         onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                         onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
+                        onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, seriesCodeForWork(circle.series, work.primaryCode))}
                       />
                     )) : (
                       <Card>
@@ -906,7 +916,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               }}>Cancel selection</Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
                 <RefreshCw className="h-4 w-4" />
-                Sync + Fetch {selectedSyncableWorks.length}
+                Track + Fetch {selectedSyncableWorks.length}
               </Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedWorks.length === 0} onClick={() => void bulkSaveSelected()}>
                 <HardDriveDownload className="h-4 w-4" />
@@ -929,6 +939,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                 onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
+                onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, seriesCodeForWork(circle.series, work.primaryCode))}
               />
             )) : (
               <Card>
@@ -992,6 +1003,7 @@ function CatalogWorkCard({
   onDeleteMissing,
   onStatusChange,
   onFavoriteChange,
+  onSeriesOpen,
 }: {
   work: CircleCatalogWork;
   selected: boolean;
@@ -1003,6 +1015,7 @@ function CatalogWorkCard({
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
   onFavoriteChange: (favorite: boolean) => void;
+  onSeriesOpen: () => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
   const isUnavailable = !work.local && !work.remote;
@@ -1039,6 +1052,7 @@ function CatalogWorkCard({
       canOpen={Boolean(directoryTarget)}
       onOpen={openTarget}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      onSeriesOpen={work.series ? onSeriesOpen : undefined}
       footer={(
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} />}
@@ -1056,7 +1070,7 @@ function CatalogWorkCard({
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title={work.favorite ? "Remove favorite" : "Add favorite"} disabled={work.workId === null} onClick={(event) => {
+            <WorkCardActionButton title={work.favorite ? "Remove favorite" : "Add favorite"} disabled={!work.workId && !circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onFavoriteChange(!work.favorite);
             }}>
@@ -1118,13 +1132,13 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Sync before mark</h3>
+        <h3 className="text-base font-semibold">Track before mark</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be synced into Remote metadata before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+          {workCode} will be tracked before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Sync and mark</Button>
+          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
         </div>
       </div>
     </div>
@@ -1169,6 +1183,11 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     userTags: [],
     sourceBadges: statusBadges,
   };
+}
+
+function seriesCodeForWork(series: CircleSeries[], workCode: string) {
+  const normalizedCode = workCode.toUpperCase();
+  return series.find((item) => item.workCodes.some((code) => code.toUpperCase() === normalizedCode))?.titleId ?? null;
 }
 
 function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {
