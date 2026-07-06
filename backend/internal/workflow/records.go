@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 type NodeRunSpec struct {
@@ -69,8 +70,8 @@ func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string,
 			started_at,
 			finished_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`, definitionID, code, displayName, status, triggerType, triggerReason, inputJSON, summaryJSON)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
+	`, definitionID, code, displayName, status, triggerType, triggerReason, inputJSON, summaryJSON, workflowStatusFinished(status))
 }
 
 func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpec) (int64, error) {
@@ -96,8 +97,8 @@ func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpe
 			started_at,
 			finished_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`, runID, spec.NodeID, spec.NodeType, spec.DisplayName, spec.Position, spec.Status, inputJSON, outputJSON, spec.Error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
+	`, runID, spec.NodeID, spec.NodeType, spec.DisplayName, spec.Position, spec.Status, inputJSON, outputJSON, spec.Error, workflowStatusFinished(spec.Status))
 }
 
 func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int64, error) {
@@ -129,6 +130,15 @@ func marshal(value any) (string, error) {
 		return "", err
 	}
 	return string(bytes), nil
+}
+
+func workflowStatusFinished(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "succeeded", "failed", "partial", "cancelled", "skipped":
+		return true
+	default:
+		return false
+	}
 }
 
 func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {

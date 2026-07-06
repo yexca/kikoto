@@ -94,6 +94,7 @@ type MakerCatalogOptions struct {
 	MaxPages       int
 	KnownWorkCodes map[string]bool
 	Delay          time.Duration
+	Languages      []string
 }
 
 func NewClient(httpClient *http.Client) *Client {
@@ -328,6 +329,7 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 		mode = "incremental"
 	}
 	maxPages := options.MaxPages
+	languages := normalizeMakerCatalogLanguages(options.Languages)
 	for page := 1; page <= maxPages; page++ {
 		if page > 1 && options.Delay > 0 {
 			timer := time.NewTimer(options.Delay)
@@ -338,7 +340,7 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 			case <-timer.C:
 			}
 		}
-		profile, err := c.fetchMakerProfilePageCandidates(ctx, site, makerID, page)
+		profile, err := c.fetchMakerProfilePageCandidates(ctx, site, makerID, page, languages)
 		if err != nil {
 			if page > 1 && len(allCodes) > 0 {
 				reachedEnd = true
@@ -395,9 +397,9 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 	return firstProfile, nil
 }
 
-func (c *Client) fetchMakerProfilePageCandidates(ctx context.Context, site string, makerID string, page int) (MakerProfile, error) {
+func (c *Client) fetchMakerProfilePageCandidates(ctx context.Context, site string, makerID string, page int, languages []string) (MakerProfile, error) {
 	var lastErr error
-	for _, endpoint := range makerProfileURLs(c.baseURL, site, makerID, page) {
+	for _, endpoint := range makerProfileURLs(c.baseURL, site, makerID, page, languages) {
 		profile, err := c.fetchMakerProfilePage(ctx, site, makerID, endpoint)
 		if err == nil {
 			return profile, nil
@@ -549,11 +551,13 @@ func candidateMakerSites(makerID string) []string {
 }
 
 var (
-	titlePattern      = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	workLinkPattern   = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
-	pageTotalPattern  = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
-	numberTextPattern = regexp.MustCompile(`[0-9][0-9,]*`)
-	pagePathPattern   = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
+	titlePattern          = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	workLinkPattern       = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	workListBlockPattern  = regexp.MustCompile(`(?is)<(?:div|ul|section)\b[^>]*(?:id=["']search_result_list["']|class=["'][^"']*\bn_worklist\b[^"']*["'])[^>]*>.*?</(?:div|ul|section)>`)
+	pageTotalPattern      = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
+	numberTextPattern     = regexp.MustCompile(`[0-9][0-9,]*`)
+	pagePathPattern       = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
+	defaultMakerLanguages = []string{"JPN", "ENG", "CHI_HANS", "CHI_HANT", "KO_KR", "SPA", "GER", "FRE", "IND", "ITA", "POR", "SWE", "THA", "VIE", "OTL", "NM"}
 )
 
 func parseMakerName(rawHTML string) string {
@@ -572,7 +576,11 @@ func parseMakerName(rawHTML string) string {
 }
 
 func parseWorkCodes(rawHTML string) []string {
-	matches := workLinkPattern.FindAllStringSubmatch(rawHTML, -1)
+	searchSpace := rawHTML
+	if blocks := workListBlockPattern.FindAllString(rawHTML, -1); len(blocks) > 0 {
+		searchSpace = strings.Join(blocks, "\n")
+	}
+	matches := workLinkPattern.FindAllStringSubmatch(searchSpace, -1)
 	seen := map[string]bool{}
 	codes := []string{}
 	for _, match := range matches {
@@ -589,14 +597,47 @@ func parseWorkCodes(rawHTML string) []string {
 	return codes
 }
 
-func makerProfileURLs(baseURL string, site string, makerID string, page int) []string {
-	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID))
+func makerProfileURLs(baseURL string, site string, makerID string, page int, languages []string) []string {
+	optionsPath := makerLanguageOptionsPath(languages)
+	endpoint := fmt.Sprintf("%s/%s/circle/profile/=/maker_id/%s.html%s", strings.TrimRight(baseURL, "/"), site, url.PathEscape(makerID), optionsPath)
 	if page <= 1 {
 		return []string{endpoint}
 	}
 	return []string{
-		fmt.Sprintf("%s/%s/circle/profile/=/page/%d/maker_id/%s.html", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID)),
+		fmt.Sprintf("%s/%s/circle/profile/=/page/%d/maker_id/%s.html%s", strings.TrimRight(baseURL, "/"), site, page, url.PathEscape(makerID), optionsPath),
 	}
+}
+
+func normalizeMakerCatalogLanguages(values []string) []string {
+	if len(values) == 0 {
+		return append([]string{}, defaultMakerLanguages...)
+	}
+	seen := map[string]bool{}
+	languages := []string{}
+	for _, value := range values {
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		languages = append(languages, value)
+	}
+	if len(languages) == 0 {
+		return append([]string{}, defaultMakerLanguages...)
+	}
+	return languages
+}
+
+func makerLanguageOptionsPath(languages []string) string {
+	languages = normalizeMakerCatalogLanguages(languages)
+	var builder strings.Builder
+	for index, language := range languages {
+		builder.WriteString("/options[")
+		builder.WriteString(strconv.Itoa(index))
+		builder.WriteString("]/")
+		builder.WriteString(url.PathEscape(language))
+	}
+	return builder.String()
 }
 
 func normalizeCodeSet(codes map[string]bool) map[string]bool {
