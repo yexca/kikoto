@@ -403,7 +403,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedSyncable, "sync_save");
+      const results = await runVoiceBulkBySource(selectedSyncable, "sync_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
@@ -425,7 +425,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedSaveable, "save");
+      const results = await runVoiceBulkBySource(selectedSaveable, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       setMessage(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
@@ -438,7 +438,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "save" | "sync_save") => {
+  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "fetch" | "sync_fetch") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = voiceWorkRemoteTarget(work);
@@ -468,7 +468,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const result = await api.saveRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
       setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
       setFetchSelection(null);
       await refreshDetail();

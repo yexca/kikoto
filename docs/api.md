@@ -272,17 +272,18 @@ Requires `library:read`.
 ```http
 GET /api/remote-sources/{id}/works
 GET /api/remote-sources/{id}/works/{code}
-POST /api/remote-sources/{id}/works/{code}/save-plan
-POST /api/remote-sources/{id}/works/{code}/save
+POST /api/remote-sources/{id}/works/{code}/fetch-plan
+POST /api/remote-sources/{id}/works/{code}/fetch
 POST /api/remote-sources/{id}/works/{code}/sync
 POST /api/remote-sources/{id}/works/{code}/cache
 ```
 
 Browses a configured compatible remote source and syncs a selected remote work
 into the unified local database through the remote source sync workflow.
-Detail, save planning, save, and cache endpoints operate on selected works
-without creating duplicate work identities. The public UI calls remote file
-materialization "Fetch"; the API path still uses `save` for compatibility.
+Detail, fetch planning, fetch, and cache endpoints operate on selected works
+without creating duplicate work identities. Fetch first materializes selected
+remote files under `/cache/media/<source_code>/<code_prefix>/<code_group>/<work_code>/`,
+then promotes them into the local data tree.
 
 Requires `library:read`.
 
@@ -362,13 +363,14 @@ Runs a parent bulk remote workflow for one configured compatible source.
 
 ```json
 {
-  "action": "sync_save",
+  "action": "sync_fetch",
   "sourceId": 1,
   "codes": ["RJ000001", "RJ000002"]
 }
 ```
 
-`action` may be `sync`, `save`, or `sync_save`. The response includes the
+`action` may be `sync`, `fetch`, or `sync_fetch`. Legacy `save` and
+`sync_save` payloads are accepted as compatibility aliases. The response includes the
 parent run id, child run ids, synced count, and fetched count.
 
 Requires `workflows:run`.

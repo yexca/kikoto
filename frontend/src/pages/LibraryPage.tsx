@@ -672,7 +672,7 @@ function RemoteSourcePanel({
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "save", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) });
+      const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) });
       setMessage(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
       await onSynced(0);
     } catch (error) {
@@ -704,7 +704,7 @@ function RemoteSourcePanel({
     setIsSyncingCode(saveSelection.work.primaryCode);
     setMessage("");
     try {
-      const result = await api.saveRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths);
+      const result = await api.fetchRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths);
       setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
       setSaveSelection(null);
@@ -1584,7 +1584,7 @@ function RemoteWorkDetailView({
     setIsSaving(true);
     setMessage("");
     try {
-      const result = await api.saveRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
+      const result = await api.fetchRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
       setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       await onWorksChanged();
@@ -1930,7 +1930,7 @@ function WorkDetailView({
     setIsSaving(true);
     setMessage("");
     try {
-      const result = await api.saveRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
+      const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
       setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       await onWorksChanged();

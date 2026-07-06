@@ -518,7 +518,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const results = await runCircleBulkBySource(selectedWorks, "save");
+      const results = await runCircleBulkBySource(selectedWorks, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       setToast({ kind: "success", message: `Bulk workflow ${runIds}: fetched ${fetched} selected works.` });
@@ -537,7 +537,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const results = await runCircleBulkBySource(selectedSyncableWorks, "sync_save");
+      const results = await runCircleBulkBySource(selectedSyncableWorks, "sync_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
@@ -551,7 +551,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     }
   };
 
-  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "save" | "sync_save") => {
+  const runCircleBulkBySource = (works: CircleCatalogWork[], action: "fetch" | "sync_fetch") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = circleWorkRemoteTarget(work);
@@ -581,7 +581,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const result = await api.saveRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
       setToast({ kind: "success", message: `Fetched ${result.primaryCode} through workflow run #${result.runId}.` });
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));

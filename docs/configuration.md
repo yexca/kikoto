@@ -12,7 +12,7 @@ depth, cache options, and file source configuration in the UI.
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root, including cover images. |
-| `KIKOTO_LOCAL_SCAN_DEPTH` | `2` | Maximum folder depth used by local scan code detection. |
+| `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum folder depth used by local scan code detection. |
 | `KIKOTO_DEV_MODE` | `false` | When enabled, every request is authenticated as the configured root super administrator. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root super administrator username created or updated at startup. |
 | `KIKOTO_ROOT_PASSWORD` | `change-me` | Root super administrator password created or updated at startup. |
@@ -28,7 +28,7 @@ KIKOTO_HTTP_ADDR=0.0.0.0:7659
 KIKOTO_DB_PATH=/config/kikoto.db
 KIKOTO_DATA_ROOT=/data
 KIKOTO_CACHE_ROOT=/cache
-KIKOTO_LOCAL_SCAN_DEPTH=2
+KIKOTO_LOCAL_SCAN_DEPTH=4
 KIKOTO_DEV_MODE=true
 KIKOTO_ROOT_USERNAME=root
 KIKOTO_ROOT_PASSWORD=change-me
