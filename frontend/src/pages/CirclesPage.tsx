@@ -390,7 +390,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const code = seriesCode?.toUpperCase() ?? "";
     return code ? circle.series.find((series) => series.titleId.toUpperCase() === code) ?? null : null;
   }, [circle.series, seriesCode]);
-  const seriesNameByCode = useMemo(() => buildSeriesNameByCode(circle.series), [circle.series]);
   const isSeriesView = seriesCode !== undefined;
   const seriesWorks = useMemo(() => {
     if (!isSeriesView) return [];
@@ -499,6 +498,19 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       setToast(toastFromError(error, "Mark update failed."));
     } finally {
       setIsBulkSaving(false);
+    }
+  };
+
+  const updateCatalogWorkFavorite = async (work: CircleCatalogWork, favorite: boolean) => {
+    if (work.workId === null) return;
+    try {
+      const result = await api.updateWorkUserState(work.workId, { favorite });
+      setDetail((current) => current ? {
+        ...current,
+        works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
+      } : current);
+    } catch (error) {
+      setToast(toastFromError(error, "Favorite update failed."));
     }
   };
 
@@ -846,7 +858,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                       <CatalogWorkCard
                         key={work.primaryCode}
                         work={work}
-                        seriesName={seriesNameByCode.get(work.primaryCode.toUpperCase()) ?? null}
                         selected={selectedWorkCodes.has(work.primaryCode)}
                         selectable={isCircleBulkSaveSelectable(work)}
                         selectionActive={false}
@@ -855,6 +866,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                         onSave={() => void saveSingleWork(work)}
                         onDeleteMissing={() => setDeleteTarget(work)}
                         onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                        onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
                       />
                     )) : (
                       <Card>
@@ -908,7 +920,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <CatalogWorkCard
                 key={work.primaryCode}
                 work={work}
-                seriesName={seriesNameByCode.get(work.primaryCode.toUpperCase()) ?? null}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
                 selectionActive={selectionMode}
@@ -917,6 +928,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onSave={() => void saveSingleWork(work)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
               />
             )) : (
               <Card>
@@ -971,7 +983,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
 function CatalogWorkCard({
   work,
-  seriesName,
   selected,
   selectable,
   selectionActive,
@@ -980,9 +991,9 @@ function CatalogWorkCard({
   onSave,
   onDeleteMissing,
   onStatusChange,
+  onFavoriteChange,
 }: {
   work: CircleCatalogWork;
-  seriesName: string | null;
   selected: boolean;
   selectable: boolean;
   selectionActive: boolean;
@@ -991,12 +1002,13 @@ function CatalogWorkCard({
   onSave: () => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
+  onFavoriteChange: (favorite: boolean) => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
   const isUnavailable = !work.local && !work.remote;
   const [isMarkOpen, setIsMarkOpen] = useState(false);
   const markMenuRef = useRef<HTMLDivElement | null>(null);
-  const view = catalogWorkCardView(work, seriesName);
+  const view = catalogWorkCardView(work);
 
   useEffect(() => {
     if (!isMarkOpen) return;
@@ -1044,11 +1056,11 @@ function CatalogWorkCard({
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title="Add favorite" disabled={work.workId === null} onClick={(event) => {
+            <WorkCardActionButton title={work.favorite ? "Remove favorite" : "Add favorite"} disabled={work.workId === null} onClick={(event) => {
               event.stopPropagation();
-              if (work.workId !== null) void api.updateWorkUserState(work.workId, { favorite: true });
+              onFavoriteChange(!work.favorite);
             }}>
-              <Heart className="h-4 w-4" />
+              <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
             </WorkCardActionButton>
             <div className="relative" ref={markMenuRef}>
             <WorkCardActionButton
@@ -1136,7 +1148,7 @@ function CatalogDeleteConfirmModal({ work, onClose, onConfirm }: { work: CircleC
   );
 }
 
-function catalogWorkCardView(work: CircleCatalogWork, seriesName: string | null): WorkCardViewModel {
+function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
   const sourceBadges = circleSourceBadges({ local: work.local, remote: work.remote, sourceTags: work.sourceTags });
   const statusBadges = [
     ...(work.catalogStatus !== "imported" ? [{ key: `catalog:${work.catalogStatus}`, label: work.catalogStatus, variant: "outline" as const }] : []),
@@ -1150,23 +1162,13 @@ function catalogWorkCardView(work: CircleCatalogWork, seriesName: string | null)
     circleExternalId: work.circleExternalId,
     coverUrl: work.coverUrl,
     rating: work.rating,
-    series: seriesName,
+    series: work.series || null,
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(work.releaseDate, work.updatedAt),
     progress: work.progress ?? null,
     userTags: [],
     sourceBadges: statusBadges,
   };
-}
-
-function buildSeriesNameByCode(series: CircleSeries[]) {
-  const map = new Map<string, string>();
-  for (const item of series) {
-    for (const code of item.workCodes) {
-      if (!map.has(code.toUpperCase())) map.set(code.toUpperCase(), item.name);
-    }
-  }
-  return map;
 }
 
 function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWork["progress"]> }) {

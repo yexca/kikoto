@@ -388,6 +388,20 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
+  const updateWorkFavorite = async (work: VoiceKnownWork | VoiceRemoteWork, favorite: boolean) => {
+    const workId = "workId" in work ? work.workId : null;
+    if (!workId) return;
+    try {
+      const result = await api.updateWorkUserState(workId, { favorite });
+      setDetail((current) => current ? {
+        ...current,
+        works: current.works.map((item) => item.workId === workId ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
+      } : current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Favorite update failed.");
+    }
+  };
+
   const toggleWorkSelection = (work: VoiceKnownWork | VoiceRemoteWork, checked: boolean) => {
     const key = voiceWorkSelectionKey(work);
     setSelectedWorkKeys((current) => {
@@ -692,6 +706,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onSync={() => void syncSingleWork(work)}
               onSave={() => void saveSingleWork(work)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
+              onFavoriteChange={(favorite) => void updateWorkFavorite(work, favorite)}
             />
           ))}
           {pageWorks.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
@@ -721,7 +736,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteChange: (favorite: boolean) => void }) {
   const isKnown = "local" in work;
   const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
@@ -732,6 +747,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   const metadataTags = work.tags.slice(0, 4);
   const sourceName = "sourceName" in work ? work.sourceName : "";
   const workId = "workId" in work ? work.workId : null;
+  const favorite = "favorite" in work ? work.favorite : false;
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
   const isUnavailable = !local && !remote && !cache;
   const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
@@ -781,11 +797,11 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title="Add favorite" disabled={!workId} onClick={(event) => {
+            <WorkCardActionButton title={favorite ? "Remove favorite" : "Add favorite"} disabled={!workId} onClick={(event) => {
               event.stopPropagation();
-              if (workId) void api.updateWorkUserState(workId, { favorite: true });
+              onFavoriteChange(!favorite);
             }}>
-              <Heart className="h-4 w-4" />
+              <Heart className={favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
             </WorkCardActionButton>
             <div className="relative min-w-0" ref={markMenuRef}>
             <WorkCardActionButton
@@ -1128,7 +1144,7 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
     circleExternalId: "circleExternalId" in work ? work.circleExternalId : undefined,
     coverUrl: work.coverUrl,
     rating: work.rating,
-    series: null,
+    series: "series" in work ? work.series || null : null,
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(voiceWorkReleaseDate(work), voiceWorkUpdatedAt(work)),
     progress: "progress" in work ? work.progress : null,

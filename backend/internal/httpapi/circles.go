@@ -60,15 +60,15 @@ type circleDetail struct {
 }
 
 type circleSeries struct {
-	TitleID      string   `json:"titleId"`
-	Name         string   `json:"name"`
-	URL          string   `json:"url"`
+	TitleID       string   `json:"titleId"`
+	Name          string   `json:"name"`
+	URL           string   `json:"url"`
 	DeclaredWorks int      `json:"declaredWorks"`
-	Works        int      `json:"works"`
-	LocalWorks   int      `json:"localWorks"`
-	RemoteWorks  int      `json:"remoteWorks"`
-	MissingWorks int      `json:"missingWorks"`
-	WorkCodes    []string `json:"workCodes"`
+	Works         int      `json:"works"`
+	LocalWorks    int      `json:"localWorks"`
+	RemoteWorks   int      `json:"remoteWorks"`
+	MissingWorks  int      `json:"missingWorks"`
+	WorkCodes     []string `json:"workCodes"`
 }
 
 type circleCatalogWork struct {
@@ -84,9 +84,11 @@ type circleCatalogWork struct {
 	Tags             []string            `json:"tags"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
+	Series           string              `json:"series"`
 	CatalogStatus    string              `json:"catalogStatus"`
 	DLsiteAvailable  bool                `json:"dlsiteAvailable"`
 	ListeningMark    string              `json:"listeningMark"`
+	Favorite         bool                `json:"favorite"`
 	Local            bool                `json:"local"`
 	Remote           bool                `json:"remote"`
 	SourceTags       []circleSourceStat  `json:"sourceTags"`
@@ -1162,7 +1164,17 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 				ORDER BY fetched_at DESC, id DESC
 				LIMIT 1
 			), '') AS snapshot_json,
-			COALESCE(user_work_state.listening_status, 'none')
+			COALESCE(user_work_state.listening_status, 'none'),
+			COALESCE(user_work_state.favorite, 0),
+			COALESCE((
+				SELECT series.name
+				FROM party_series_work AS series_work
+				INNER JOIN party_series AS series ON series.id = series_work.series_id
+				WHERE series.party_id = ?
+					AND UPPER(series_work.primary_code) = UPPER(codes.primary_code)
+				ORDER BY series.last_seen_at DESC, series.id DESC
+				LIMIT 1
+			), '')
 		FROM (
 			SELECT DISTINCT primary_code
 			FROM party_catalog_item
@@ -1188,7 +1200,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 		ORDER BY COALESCE(dlsite_catalog.release_date, remote_catalog.release_date, '') DESC, codes.primary_code DESC
 		LIMIT 100
-	`, partyID, partyID, partyID, userID)
+	`, partyID, partyID, partyID, partyID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1199,19 +1211,24 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var release sql.NullString
 		var workID sql.NullInt64
 		var dlsiteAvailable int
+		var favorite int
 		var snapshot string
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark); err != nil {
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark, &favorite, &item.Series); err != nil {
 			return nil, err
 		}
 		metadata := parseDLsiteSnapshot(snapshot)
 		item.Tags = metadata.Tags
 		item.Rating = metadata.Rating
 		item.Sales = metadata.Sales
+		if item.Series == "" {
+			item.Series = metadata.Series
+		}
 		item.ReleaseDate = nullableString(release)
 		if item.ReleaseDate != nil {
 			item.UpdatedAt = *item.ReleaseDate
 		}
 		item.WorkID = nullableInt64(workID)
+		item.Favorite = favorite != 0
 		item.DLsiteAvailable = dlsiteAvailable != 0
 		item.CoverURL = s.coverURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
