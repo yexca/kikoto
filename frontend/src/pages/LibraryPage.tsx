@@ -6,6 +6,7 @@ import {
   CircleUserRound,
   Clock3,
   Database,
+  GitBranchPlus,
   Edit3,
   Trash2,
   Eye,
@@ -39,7 +40,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { openCircleRoute } from "@/pages/CirclesPage";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
   api,
@@ -134,12 +135,17 @@ export function LibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState("");
+  const [optimisticLibrarySearchTokens, setOptimisticLibrarySearchTokens] = useState<SearchToken[] | null>(null);
   const [tokenEditor, setTokenEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft } | null>(null);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
   const [workTotal, setWorkTotal] = useState(0);
+  const libraryRequestSeq = useRef(0);
+  const remoteRequestSeq = useRef(0);
+  const skipNextLibraryEffect = useRef(false);
+  const skipNextRemoteEffect = useRef(false);
   const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
   const debouncedSearchTokens = useMemo(() => parseSearchTokens(debouncedSearchQuery), [debouncedSearchQuery]);
   const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
@@ -159,17 +165,26 @@ export function LibraryPage() {
 
   useEffect(() => {
     if (activeTab.kind === "source") return;
+    if (skipNextLibraryEffect.current) {
+      skipNextLibraryEffect.current = false;
+      return;
+    }
+    const requestSeq = ++libraryRequestSeq.current;
     api
       .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter)
       .then((page) => {
+        if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
         setWorkTotal(page.total);
         setIsAPIAvailable(true);
+        setOptimisticLibrarySearchTokens(null);
       })
       .catch(() => {
+        if (requestSeq !== libraryRequestSeq.current) return;
         setWorks([]);
         setWorkTotal(0);
         setIsAPIAvailable(false);
+        setOptimisticLibrarySearchTokens(null);
       });
   }, [activeTab.kind, librarySearchQuery, statusFilter, workPage, workPageSize, workScope]);
 
@@ -191,9 +206,18 @@ export function LibraryPage() {
       setRemoteResult(null);
       return;
     }
+    if (skipNextRemoteEffect.current) {
+      skipNextRemoteEffect.current = false;
+      return;
+    }
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
+    const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult(null);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then(setRemoteResult).catch(() => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then((result) => {
+      if (requestSeq !== remoteRequestSeq.current) return;
+      setRemoteResult(result);
+    }).catch(() => {
+      if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult({
         sourceId: activeTab.source.id,
         works: [],
@@ -316,6 +340,43 @@ export function LibraryPage() {
     }));
   };
 
+  const loadLibraryWorksNow = (query: string, page = 1) => {
+    const requestSeq = ++libraryRequestSeq.current;
+    api.listWorksPage(page, workPageSize, query, workScope, statusFilter).then((result) => {
+      if (requestSeq !== libraryRequestSeq.current) return;
+      setWorks(result.works);
+      setWorkTotal(result.total);
+      setIsAPIAvailable(true);
+      setOptimisticLibrarySearchTokens(null);
+    }).catch(() => {
+      if (requestSeq !== libraryRequestSeq.current) return;
+      setWorks([]);
+      setWorkTotal(0);
+      setIsAPIAvailable(false);
+      setOptimisticLibrarySearchTokens(null);
+    });
+  };
+
+  const loadRemoteWorksNow = (source: LibrarySource, query: string, page = 1, options: { clearResult?: boolean } = {}) => {
+    const sourceState = remoteSourceStates[source.id] ?? defaultRemoteSourceViewState;
+    const requestSeq = ++remoteRequestSeq.current;
+    if (options.clearResult !== false) setRemoteResult(null);
+    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query).then((result) => {
+      if (requestSeq !== remoteRequestSeq.current) return;
+      setRemoteResult(result);
+    }).catch(() => {
+      if (requestSeq !== remoteRequestSeq.current) return;
+      setRemoteResult({
+        sourceId: source.id,
+        works: [],
+        page,
+        pageSize: sourceState.pageSize,
+        total: 0,
+        status: "unavailable",
+      });
+    });
+  };
+
   const refreshCurrentWorksPage = async () => {
     if (activeTab.kind === "source") return;
     const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter);
@@ -325,6 +386,7 @@ export function LibraryPage() {
   };
 
   const updateSearchTokens = (tokens: SearchToken[]) => {
+    setOptimisticLibrarySearchTokens(null);
     setSearchQuery(tokens.map(formatSearchToken).join(" "));
   };
 
@@ -332,7 +394,23 @@ export function LibraryPage() {
     const value = tag.trim();
     if (!value) return;
     const next = searchTokens.filter((token) => !(token.kind === "tag" && token.value.toLowerCase() === value.toLowerCase()));
-    updateSearchTokens([...next, { kind: "tag", value }]);
+    const nextTokens = [...next, { kind: "tag" as const, value }];
+    const nextQuery = nextTokens.map(formatSearchToken).join(" ");
+    const nextLibraryQuery = compileLibrarySearchQuery(nextTokens);
+    const nextRemoteQuery = formatRemoteSearchQuery(nextTokens);
+    setSearchQuery(nextQuery);
+    setDebouncedSearchQuery(nextQuery);
+    setDebouncedRemoteSearchQuery(nextQuery);
+    setWorkPage(1);
+    if (activeTab.kind === "source") {
+      skipNextRemoteEffect.current = true;
+      updateRemoteSourceState(activeTab.source.id, { page: 1, query: nextRemoteQuery });
+      loadRemoteWorksNow(activeTab.source, nextRemoteQuery, 1, { clearResult: false });
+      return;
+    }
+    setOptimisticLibrarySearchTokens(nextTokens);
+    skipNextLibraryEffect.current = true;
+    loadLibraryWorksNow(nextLibraryQuery, 1);
   };
 
   const removeSearchToken = (index: number) => {
@@ -396,7 +474,7 @@ export function LibraryPage() {
     );
   }
 
-  const visibleWorks = works;
+  const visibleWorks = optimisticLibrarySearchTokens === null ? works : works.filter((work) => workMatchesSearch(work, optimisticLibrarySearchTokens));
   const totalWorkPages = Math.max(1, Math.ceil(workTotal / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
@@ -409,11 +487,17 @@ export function LibraryPage() {
           <input
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => {
+              setOptimisticLibrarySearchTokens(null);
+              setSearchQuery(event.target.value);
+            }}
             placeholder="Search title, code, circle, tag, or creator"
           />
           {searchQuery.trim() && (
-            <button className="text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery("")} aria-label="Clear search">
+            <button className="text-muted-foreground hover:text-foreground" onClick={() => {
+              setOptimisticLibrarySearchTokens(null);
+              setSearchQuery("");
+            }} aria-label="Clear search">
               <X className="h-4 w-4" />
             </button>
           )}
@@ -557,7 +641,7 @@ function LibraryTabs({
       <TabButton active={activeTab.kind === "local"} onClick={() => onChange({ kind: "local" })} icon={<HardDrive className="h-4 w-4" />}>
         Local
       </TabButton>
-      <TabButton active={activeTab.kind === "tracked"} onClick={() => onChange({ kind: "tracked" })} icon={<Database className="h-4 w-4" />}>
+      <TabButton active={activeTab.kind === "tracked"} onClick={() => onChange({ kind: "tracked" })} icon={<GitBranchPlus className="h-4 w-4" />}>
         Tracked
       </TabButton>
       {sources.map((source) => (
@@ -565,7 +649,7 @@ function LibraryTabs({
           key={source.id}
           active={activeTab.kind === "source" && activeTab.source.id === source.id}
           onClick={() => onChange({ kind: "source", source })}
-          icon={<Database className="h-4 w-4" />}
+          icon={<Cloud className="h-4 w-4" />}
           disabled={!source.enabled}
         >
           {source.displayName}
@@ -854,8 +938,8 @@ function RemoteSourcePanel({
             setSelectionMode(false);
           }}>Cancel selection</Button>
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
-            <RefreshCw className="h-4 w-4" />
-            Sync {selectedSyncable.length}
+            <GitBranchPlus className="h-4 w-4" />
+            Track {selectedSyncable.length}
           </Button>
           <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSaveSelected()}>
             <HardDriveDownload className="h-4 w-4" />
@@ -962,6 +1046,7 @@ function WorkCard({
       work={view}
       onOpen={onOpen}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      onSeriesOpen={work.seriesTitleId && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
       onTagOpen={onTagOpen}
       footer={(
         <WorkCardFooter
@@ -1076,7 +1161,7 @@ function RemoteWorkCard({
                 onFetch();
               }}
             >
-              <RefreshCw className="h-4 w-4" />
+              <GitBranchPlus className="h-4 w-4" />
             </WorkCardActionButton>
             <WorkCardActionButton
               title={work.favorite ? "Favorite" : "Add favorite"}

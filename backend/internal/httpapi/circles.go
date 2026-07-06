@@ -85,6 +85,7 @@ type circleCatalogWork struct {
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Series           string              `json:"series"`
+	SeriesTitleID    string              `json:"seriesTitleId"`
 	CatalogStatus    string              `json:"catalogStatus"`
 	DLsiteAvailable  bool                `json:"dlsiteAvailable"`
 	ListeningMark    string              `json:"listeningMark"`
@@ -1167,7 +1168,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			COALESCE(user_work_state.listening_status, 'none'),
 			COALESCE(user_work_state.favorite, 0),
 			COALESCE((
-				SELECT series.name
+				SELECT series.name || '|' || series.title_id
 				FROM party_series_work AS series_work
 				INNER JOIN party_series AS series ON series.id = series_work.series_id
 				WHERE series.party_id = ?
@@ -1213,9 +1214,11 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var dlsiteAvailable int
 		var favorite int
 		var snapshot string
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark, &favorite, &item.Series); err != nil {
+		var seriesLink string
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
 			return nil, err
 		}
+		item.Series, item.SeriesTitleID = parseSeriesLink(seriesLink)
 		metadata := parseDLsiteSnapshot(snapshot)
 		item.Tags = metadata.Tags
 		item.Rating = metadata.Rating

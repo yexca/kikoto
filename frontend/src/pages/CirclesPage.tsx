@@ -5,6 +5,7 @@ import {
   CircleAlert,
   ExternalLink,
   FileAudio,
+  GitBranchPlus,
   HardDriveDownload,
   Heart,
   ListChecks,
@@ -74,7 +75,7 @@ export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
-function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
+export function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
   const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
   window.history.pushState({}, "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
@@ -876,7 +877,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                         onDeleteMissing={() => setDeleteTarget(work)}
                         onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                         onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
-                        onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, seriesCodeForWork(circle.series, work.primaryCode))}
+                        onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
                       />
                     )) : (
                       <Card>
@@ -915,7 +916,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 setSelectionMode(false);
               }}>Cancel selection</Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
-                <RefreshCw className="h-4 w-4" />
+                <GitBranchPlus className="h-4 w-4" />
                 Track + Fetch {selectedSyncableWorks.length}
               </Button>
               <Button variant="outline" size="sm" disabled={isBulkSaving || selectedWorks.length === 0} onClick={() => void bulkSaveSelected()}>
@@ -939,7 +940,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                 onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
-                onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, seriesCodeForWork(circle.series, work.primaryCode))}
+                onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
               />
             )) : (
               <Card>
@@ -1062,7 +1063,7 @@ function CatalogWorkCard({
               event.stopPropagation();
               onSync();
             }}>
-              <RefreshCw className="h-4 w-4" />
+              <GitBranchPlus className="h-4 w-4" />
             </WorkCardActionButton>
             <WorkCardActionButton title="Fetch" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();

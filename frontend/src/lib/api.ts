@@ -14,6 +14,7 @@ export type Work = {
   tags: string[];
   voiceActors: string[];
   series: string;
+  seriesTitleId: string;
   trackCount: number;
   availableLocations: number;
   availability: string[];
@@ -586,6 +587,7 @@ export type CircleCatalogWork = {
   rating: number | null;
   sales: number | null;
   series: string;
+  seriesTitleId: string;
   catalogStatus: string;
   dlsiteAvailable: boolean;
   listeningMark: string;
@@ -677,6 +679,7 @@ export type VoiceKnownWork = {
   sales: number | null;
   tags: string[];
   series: string;
+  seriesTitleId: string;
   listeningMark: ListeningStatus;
   favorite: boolean;
   local: boolean;

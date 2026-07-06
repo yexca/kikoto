@@ -5,6 +5,7 @@ import {
   Database,
   ExternalLink,
   FileAudio,
+  GitBranchPlus,
   GitMerge,
   HardDriveDownload,
   HardDrive,
@@ -40,7 +41,7 @@ import {
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteWorkDetail, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
-import { openCircleRoute } from "@/pages/CirclesPage";
+import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "local" | "remote" | "missing";
@@ -694,7 +695,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               setSelectionMode(false);
             }}>Cancel selection</Button>
             <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncAndSave()}>
-              <RefreshCw className="h-4 w-4" />
+              <GitBranchPlus className="h-4 w-4" />
               Track + Fetch {selectedSyncable.length}
             </Button>
             <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSave()}>
@@ -789,6 +790,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
       canOpen={canOpen}
       onOpen={() => openWorkRoute(work)}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
+      onSeriesOpen={"seriesTitleId" in work && work.seriesTitleId && "circleExternalId" in work && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
       footer={(
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={voiceWorkDLsiteURL(work)} />}
@@ -798,7 +800,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
               event.stopPropagation();
               onSync();
             }}>
-              <RefreshCw className="h-4 w-4" />
+              <GitBranchPlus className="h-4 w-4" />
             </WorkCardActionButton>
             <WorkCardActionButton title="Fetch" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();

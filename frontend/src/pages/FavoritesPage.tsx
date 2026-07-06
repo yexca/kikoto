@@ -34,6 +34,7 @@ import {
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type Work } from "@/lib/api";
+import { openCircleSeriesRoute } from "@/pages/CirclesPage";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -636,6 +637,7 @@ function FavoriteWorkCard({
       work={view}
       selection={selectionActive ? <WorkCardSelection checked={selected} onChange={onSelectedChange} /> : undefined}
       onOpen={onOpen}
+      onSeriesOpen={work.seriesTitleId && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
       footer={(
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
