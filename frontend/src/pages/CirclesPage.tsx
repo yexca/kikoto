@@ -50,15 +50,21 @@ export function CirclesPage() {
       window.removeEventListener("kikoto:navigation", syncPath);
     };
   }, []);
-  const externalId = circleExternalIdFromPath(path);
-  if (externalId) {
-    return <CircleDetailPage externalId={externalId} />;
+  const route = circleRouteFromPath(path);
+  if (route) {
+    return <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} />;
   }
   return <CircleListPage />;
 }
 
 export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
   window.history.pushState({}, "", `/circles/${encodeURIComponent(externalId)}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
+  const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
+  window.history.pushState({}, "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
@@ -247,7 +253,7 @@ function CircleCard({ circle }: { circle: CircleSummary }) {
   );
 }
 
-function CircleDetailPage({ externalId }: { externalId: string }) {
+function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -269,7 +275,6 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
-  const [catalogView, setCatalogView] = useState<"works" | "series">("works");
 
   const loadCircleDetail = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -369,6 +374,34 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
   useEffect(() => {
     setSelectedWorkCodes((current) => new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))));
   }, [filteredWorks]);
+  const selectedSeries = useMemo(() => {
+    const code = seriesCode?.toUpperCase() ?? "";
+    return code ? circle.series.find((series) => series.titleId.toUpperCase() === code) ?? null : null;
+  }, [circle.series, seriesCode]);
+  const isSeriesView = seriesCode !== undefined;
+  const seriesWorks = useMemo(() => {
+    if (!isSeriesView) return [];
+    const codes = new Set((selectedSeries?.workCodes ?? []).map((code) => code.toUpperCase()));
+    const base = selectedSeries ? circle.works.filter((work) => codes.has(work.primaryCode.toUpperCase())) : circle.works;
+    const needle = workQuery.trim().toLowerCase();
+    return base.filter((work) => {
+      const matchesQuery = !needle || [work.primaryCode, work.title, work.releaseDate ?? "", work.catalogStatus].some((value) => value.toLowerCase().includes(needle));
+      if (!matchesQuery) return false;
+      switch (availabilityFilter) {
+      case "available":
+        return work.local || work.remote;
+      case "unavailable":
+        return !work.local && !work.remote;
+      case "local":
+        return work.local;
+      case "remote":
+        return work.remote;
+      default:
+        return true;
+      }
+    });
+  }, [availabilityFilter, circle.works, isSeriesView, selectedSeries, workQuery]);
+  const activeSeriesCount = selectedSeries ? selectedSeries.works : circle.series.reduce((total, series) => total + series.works, 0);
 
   const refresh = async (scope: CircleRefreshScope, mode: CircleRefreshMode) => {
     setRefreshingScope(scope);
@@ -715,11 +748,11 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
       <section className="space-y-3">
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex h-9 rounded-md border bg-background p-1 text-sm">
-              <button className={`rounded px-3 ${catalogView === "works" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => setCatalogView("works")}>
-                Works
+              <button className={`rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => openCircleRoute(circle.externalId)}>
+                Works {circle.works.length}
               </button>
-              <button className={`rounded px-3 ${catalogView === "series" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => setCatalogView("series")}>
-                Series
+              <button className={`rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => openCircleSeriesRoute(circle.externalId)}>
+                Series {circle.series.length}
               </button>
             </div>
             <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
@@ -756,26 +789,77 @@ function CircleDetailPage({ externalId }: { externalId: string }) {
                 <SlidersHorizontal className="h-4 w-4" />
                 More
               </Button>
-              <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
-                setSelectionMode((value) => {
-                  if (value) setSelectedWorkCodes(new Set());
-                  return !value;
-                });
-              }}>
-                Select
-              </Button>
+              {!isSeriesView && (
+                <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
+                  setSelectionMode((value) => {
+                    if (value) setSelectedWorkCodes(new Set());
+                    return !value;
+                  });
+                }}>
+                  Select
+                </Button>
+              )}
             </div>
           </div>
 
-          {catalogView === "series" ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {circle.series.length > 0 ? circle.series.map((series) => (
-                <CircleSeriesCard key={series.titleId} series={series} />
-              )) : (
-                <Card>
-                  <CardContent className="p-5 text-sm text-muted-foreground">No series found for this circle.</CardContent>
-                </Card>
-              )}
+          {isSeriesView ? (
+            <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <CircleSeriesSidebar
+                externalId={circle.externalId}
+                series={circle.series}
+                selectedSeriesCode={selectedSeries?.titleId ?? null}
+                allCount={activeSeriesCount}
+              />
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-semibold">{selectedSeries ? selectedSeries.name : "All series"}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedSeries ? `${selectedSeries.titleId} · ${selectedSeries.works} works` : `${circle.series.length} series · ${activeSeriesCount} listed works`}
+                    </p>
+                  </div>
+                  {selectedSeries?.url && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={selectedSeries.url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4" />
+                        DLsite series
+                      </a>
+                    </Button>
+                  )}
+                </div>
+                {selectedSeries ? (
+                  <div className={circleWorkGridClassName(mobileColumns, desktopColumns)}>
+                    {seriesWorks.length > 0 ? seriesWorks.map((work) => (
+                      <CatalogWorkCard
+                        key={work.primaryCode}
+                        work={work}
+                        selected={selectedWorkCodes.has(work.primaryCode)}
+                        selectable={isCircleBulkSaveSelectable(work)}
+                        selectionActive={false}
+                        onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                        onSync={() => void syncSingleWork(work)}
+                        onSave={() => void saveSingleWork(work)}
+                        onDeleteMissing={() => setDeleteTarget(work)}
+                        onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                      />
+                    )) : (
+                      <Card>
+                        <CardContent className="p-5 text-sm text-muted-foreground">No works match this series view.</CardContent>
+                      </Card>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {circle.series.length > 0 ? circle.series.map((series) => (
+                      <CircleSeriesSummaryCard key={series.titleId} externalId={circle.externalId} series={series} />
+                    )) : (
+                      <Card>
+                        <CardContent className="p-5 text-sm text-muted-foreground">No series found for this circle.</CardContent>
+                      </Card>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
           <>
@@ -1192,23 +1276,63 @@ function emptyCircleDetail(externalId: string): CircleDetail {
   };
 }
 
-function CircleSeriesCard({ series }: { series: CircleSeries }) {
+function CircleSeriesSidebar({
+  externalId,
+  series,
+  selectedSeriesCode,
+  allCount,
+}: {
+  externalId: string;
+  series: CircleSeries[];
+  selectedSeriesCode: string | null;
+  allCount: number;
+}) {
   return (
-    <Card>
+    <aside className="rounded-lg border bg-card p-2">
+      <button
+        className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selectedSeriesCode === null ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
+        onClick={() => openCircleSeriesRoute(externalId)}
+      >
+        <span className="min-w-0 truncate font-medium">All series</span>
+        <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>{allCount}</span>
+      </button>
+      <div className="mt-2 space-y-1">
+        {series.length > 0 ? series.map((item) => {
+          const selected = selectedSeriesCode === item.titleId;
+          return (
+            <button
+              key={item.titleId}
+              className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selected ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
+              onClick={() => openCircleSeriesRoute(externalId, item.titleId)}
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{item.name}</span>
+                <span className={selected ? "block truncate text-xs text-primary-foreground/75" : "block truncate text-xs text-muted-foreground"}>{item.titleId}</span>
+              </span>
+              <span className={selected ? "text-primary-foreground/80" : "text-muted-foreground"}>{item.works}</span>
+            </button>
+          );
+        }) : (
+          <div className="px-3 py-2 text-sm text-muted-foreground">No series</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; series: CircleSeries }) {
+  return (
+    <Card className="h-full transition-colors hover:border-primary/50">
       <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold">{series.name}</h3>
-            <div className="mt-1 text-xs text-muted-foreground">{series.titleId}</div>
+        <button className="block w-full text-left" onClick={() => openCircleSeriesRoute(externalId, series.titleId)}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold">{series.name}</h3>
+              <div className="mt-1 text-xs text-muted-foreground">{series.titleId}</div>
+            </div>
+            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
           </div>
-          {series.url && (
-            <Button variant="outline" size="icon" asChild>
-              <a href={series.url} target="_blank" rel="noreferrer" aria-label="Open DLsite series">
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </Button>
-          )}
-        </div>
+        </button>
         <div className="grid grid-cols-4 gap-2 text-center text-xs">
           <div className="rounded-md border bg-background p-2">
             <div className="text-sm font-semibold">{series.works}</div>
@@ -1334,9 +1458,13 @@ function workProgressPercent(progress: NonNullable<CircleCatalogWork["progress"]
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
-function circleExternalIdFromPath(path: string) {
-  const match = path.match(/^\/circles\/([^/]+)\/?$/i);
-  return match ? safeDecodePathSegment(match[1]) : null;
+function circleRouteFromPath(path: string) {
+  const match = path.match(/^\/circles\/([^/]+)(?:\/(series)(?:\/([^/]+))?)?\/?$/i);
+  if (!match) return null;
+  return {
+    externalId: safeDecodePathSegment(match[1]),
+    seriesCode: match[3] ? safeDecodePathSegment(match[3]) : match[2] ? null : undefined,
+  };
 }
 
 function navigateToCirclesList() {
