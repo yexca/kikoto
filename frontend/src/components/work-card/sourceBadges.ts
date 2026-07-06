@@ -80,7 +80,7 @@ export function circleSourceBadges({
 
   if (cache) badges.push({ key: "source:cache", label: "Cache", variant: "secondary" });
   if (badges.length === 0 && remote) {
-    badges.push({ key: "source:tracked:legacy-remote", label: "Tracked", variant: "outline", title: "Legacy remote availability" });
+    badges.push({ key: "source:remote:legacy", label: "Remote", variant: "outline", title: "Legacy remote availability" });
   }
   return sortSourceBadges(dedupeBadges(badges));
 }
@@ -90,7 +90,7 @@ function availabilityBadges(availability: string[]): WorkCardBadge[] {
     const normalized = item.toLowerCase();
     if (normalized === "local") return { key: "source:local", label: "Local", variant: "secondary" };
     if (normalized === "cache" || normalized === "cached") return { key: "source:cache", label: "Cache", variant: "secondary" };
-    if (normalized === "remote") return { key: "source:tracked:legacy-remote", label: "Tracked", variant: "outline", title: "Legacy remote availability" };
+    if (normalized === "remote") return { key: "source:remote:legacy", label: "Remote", variant: "outline", title: "Legacy remote availability" };
     if (normalized === "missing") return { key: "source:missing", label: "Missing", variant: "warning" };
     return { key: `source:${normalized}`, label: item, variant: "outline" };
   });
@@ -98,7 +98,6 @@ function availabilityBadges(availability: string[]): WorkCardBadge[] {
 
 function normalizePresenceType(type: string) {
   const normalized = type.toLowerCase();
-  if (normalized === "remote") return "tracked";
   return normalized;
 }
 

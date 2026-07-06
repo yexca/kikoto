@@ -508,7 +508,15 @@ func libraryListWhere(scope string, status string) (string, []any) {
 			SELECT 1
 			FROM media_file_location AS scope_location
 			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
-			WHERE scope_item.work_id = work.id
+			WHERE (
+					scope_item.work_id = work.id
+					OR scope_item.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+				)
 				AND scope_location.location_type = 'local'
 				AND scope_location.availability = 'available'
 		)`)
@@ -3065,7 +3073,7 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 	payload.Action = strings.TrimSpace(payload.Action)
 	payload.Action = normalizeRemoteBulkAction(payload.Action)
 	if payload.Action == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be sync, fetch, or sync_fetch"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be track, fetch, or track_fetch"})
 		return
 	}
 	codes := []string{}
@@ -3117,12 +3125,12 @@ type remoteBulkWorkflowResult struct {
 
 func normalizeRemoteBulkAction(action string) string {
 	switch strings.TrimSpace(action) {
-	case "sync":
-		return "sync"
+	case "track", "sync":
+		return "track"
 	case "fetch", "save":
 		return "fetch"
-	case "sync_fetch", "sync_save":
-		return "sync_fetch"
+	case "track_fetch", "sync_fetch", "sync_save":
+		return "track_fetch"
 	default:
 		return ""
 	}
@@ -3151,7 +3159,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 		return remoteBulkWorkflowResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work sync or fetch workflows.", map[string]any{
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_bulk_action", "Run remote bulk action", "Select multiple remote works and dispatch per-work track or fetch workflows.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_remote_works"},
 			{"id": "dispatch", "type": "dispatch_child_workflows"},
@@ -3185,7 +3193,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 
 	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded"}
 	for _, code := range codes {
-		if action == "sync" || action == "sync_fetch" {
+		if action == "track" || action == "track_fetch" {
 			syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
 			if err != nil {
 				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
@@ -3194,7 +3202,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 			result.Synced++
 			result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
 		}
-		if action == "fetch" || action == "sync_fetch" {
+		if action == "fetch" || action == "track_fetch" {
 			saveResult, err := s.runRemoteWorkSave(ctx, sourceID, code, []string{})
 			if err != nil {
 				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)

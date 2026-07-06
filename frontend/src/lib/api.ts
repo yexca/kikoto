@@ -234,6 +234,7 @@ export type RemoteWork = {
   importStatus: string;
   remotePlayable: boolean;
   workId: number | null;
+  favorite: boolean;
 };
 
 export type RemoteTrack = {
@@ -1033,7 +1034,7 @@ export const api = {
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
-  recordRemoteBulkRun: (payload: { action: "sync" | "fetch" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
+  recordRemoteBulkRun: (payload: { action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
     postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };

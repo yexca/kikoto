@@ -170,6 +170,7 @@ type remoteWorkSummary struct {
 	ImportStatus   string   `json:"importStatus"`
 	RemotePlayable bool     `json:"remotePlayable"`
 	WorkID         *int64   `json:"workId"`
+	Favorite       bool     `json:"favorite"`
 }
 
 type remoteWorkDetail struct {
@@ -685,7 +686,8 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -731,7 +733,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummaries(r.Context(), remotePage.Works)
+	works, err := s.remoteWorkSummaries(r.Context(), user.ID, remotePage.Works)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1696,14 +1698,27 @@ func remoteWorkSummaryMatchesToken(work remoteWorkSummary, token listSearchToken
 	}
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []kikoeru.Work) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	for _, work := range works {
 		code := normalizedRemoteWorkCode(work)
 		var workID sql.NullInt64
+		var favorite bool
 		if code != "" {
 			if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
+			}
+			if workID.Valid {
+				var favoriteInt int
+				if err := s.db.QueryRowContext(ctx, `
+					SELECT COALESCE(favorite, 0)
+					FROM user_work_state
+					WHERE user_id = ? AND work_id = ?
+				`, userID, workID.Int64).Scan(&favoriteInt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return nil, err
+				} else if err == nil {
+					favorite = favoriteInt != 0
+				}
 			}
 		}
 		tags := []string{}
@@ -1737,6 +1752,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) 
 			ImportStatus:   status,
 			RemotePlayable: true,
 			WorkID:         nullableInt64(workID),
+			Favorite:       favorite,
 		})
 	}
 	return result, nil
@@ -1762,11 +1778,6 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
 		return remoteWorkSyncResult{}, err
 	}
-	tracks, rawTracks, err := client.Tracks(ctx, remoteWork.ID)
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
-		return remoteWorkSyncResult{}, err
-	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1775,14 +1786,13 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_source_sync", "Sync remote source", "Discover remote works, filter candidates, match works, and sync remote locations.", map[string]any{
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_source_sync", "Track remote source", "Discover remote works, filter candidates, match works, and track remote metadata.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_remote_source"},
 			{"id": "discover", "type": "discover_remote_works"},
 			{"id": "filter", "type": "filter_candidates"},
 			{"id": "match", "type": "match_works"},
 			{"id": "metadata", "type": "sync_metadata"},
-			{"id": "sync", "type": "sync_file_locations"},
 		},
 	})
 	if err != nil {
@@ -1793,8 +1803,8 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		workCode = code
 	}
 	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "trigger_reason": triggerReason}
-	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "track_nodes": countTrackNodes(tracks)}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", "Sync remote source", "succeeded", "manual", triggerReason, runInput, runSummary)
+	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": true}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", "Track remote source", "succeeded", "manual", triggerReason, runInput, runSummary)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -1818,7 +1828,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID:       workID,
 		FileSourceID: source.ID,
-		PresenceType: "remote",
+		PresenceType: "tracked",
 		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
 		SourceURL:    remoteWork.SourceURL,
 		Availability: "available",
@@ -1829,13 +1839,9 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err := s.downloadRemoteCover(ctx, workCode, firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	mediaItems, locations, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks)
-	if err != nil {
-		return remoteWorkSyncResult{}, err
-	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote works", Position: 2, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"remote_work_id": remoteWork.ID, "track_nodes": countTrackNodes(tracks)},
+		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"remote_work_id": remoteWork.ID},
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -1859,13 +1865,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Sync metadata", Position: 5, Status: "succeeded",
-		Input: map[string]any{"work_id": workID}, Output: map[string]any{"snapshot_bytes": len(rawWork) + len(rawTracks)},
-	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync file locations", Position: 6, Status: "succeeded",
-		Input: map[string]any{"work_id": workID, "file_source_id": source.ID}, Output: map[string]any{"media_items": mediaItems, "locations": locations},
+		Input: map[string]any{"work_id": workID}, Output: map[string]any{"snapshot_bytes": len(rawWork)},
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -1878,8 +1878,8 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		WorkID:           workID,
 		PrimaryCode:      workCode,
 		Status:           "succeeded",
-		SyncedMediaItems: mediaItems,
-		SyncedLocations:  locations,
+		SyncedMediaItems: 0,
+		SyncedLocations:  0,
 		TriggerReason:    triggerReason,
 	}, nil
 }

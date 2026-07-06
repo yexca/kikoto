@@ -378,7 +378,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      setMessage(`Synced and marked ${syncResult.primaryCode}.`);
+      setMessage(`Tracked and marked ${syncResult.primaryCode}.`);
       setMarkConfirm(null);
       await refreshDetail();
     } catch (error) {
@@ -390,16 +390,25 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const updateWorkFavorite = async (work: VoiceKnownWork | VoiceRemoteWork, favorite: boolean) => {
     const workId = "workId" in work ? work.workId : null;
-    if (!workId) return;
     try {
-      const result = await api.updateWorkUserState(workId, { favorite });
+      const targetWorkId = workId ?? await trackVoiceWorkForState(work, "voice_favorite");
+      if (!targetWorkId) return;
+      const result = await api.updateWorkUserState(targetWorkId, { favorite });
       setDetail((current) => current ? {
         ...current,
-        works: current.works.map((item) => item.workId === workId ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
+        works: current.works.map((item) => item.workId === targetWorkId ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
       } : current);
+      await refreshDetail();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Favorite update failed.");
     }
+  };
+
+  const trackVoiceWorkForState = async (work: VoiceKnownWork | VoiceRemoteWork, reason: string) => {
+    const target = voiceWorkRemoteTarget(work);
+    if (!target) return null;
+    const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, reason);
+    return syncResult.workId;
   };
 
   const toggleWorkSelection = (work: VoiceKnownWork | VoiceRemoteWork, checked: boolean) => {
@@ -429,14 +438,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const results = await runVoiceBulkBySource(selectedSyncable, "sync_fetch");
+      const results = await runVoiceBulkBySource(selectedSyncable, "track_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setMessage(`Bulk workflow ${runIds}: synced ${synced} and fetched ${fetched} selected works.`);
+      setMessage(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk sync/fetch failed.");
+      setMessage(error instanceof Error ? error.message : "Bulk track/fetch failed.");
     } finally {
       setIsBulkBusy(false);
     }
@@ -464,7 +473,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "fetch" | "sync_fetch") => {
+  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "fetch" | "track_fetch") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = voiceWorkRemoteTarget(work);
@@ -511,10 +520,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     try {
       const result = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
-      setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sync failed.");
+      setMessage(error instanceof Error ? error.message : "Track failed.");
     } finally {
       setIsBulkBusy(false);
     }
@@ -686,7 +695,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             }}>Cancel selection</Button>
             <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncAndSave()}>
               <RefreshCw className="h-4 w-4" />
-              Sync + Fetch {selectedSyncable.length}
+              Track + Fetch {selectedSyncable.length}
             </Button>
             <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSave()}>
               <HardDriveDownload className="h-4 w-4" />
@@ -797,7 +806,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title={favorite ? "Remove favorite" : "Add favorite"} disabled={!workId} onClick={(event) => {
+            <WorkCardActionButton title={favorite ? "Remove favorite" : "Add favorite"} disabled={!workId && !voiceWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onFavoriteChange(!favorite);
             }}>
@@ -1099,13 +1108,13 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Sync before mark</h3>
+        <h3 className="text-base font-semibold">Track before mark</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be synced into Remote metadata before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+          {workCode} will be tracked before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Sync and mark</Button>
+          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
         </div>
       </div>
     </div>

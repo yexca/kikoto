@@ -11,6 +11,7 @@ export type WorkCardBadge = {
   label: string;
   variant?: "default" | "secondary" | "outline" | "warning";
   title?: string;
+  onClick?: () => void;
 };
 
 export type WorkCardDate = {
@@ -40,6 +41,8 @@ export function WorkCardShell({
   canOpen = true,
   onOpen,
   onCircleOpen,
+  onSeriesOpen,
+  onTagOpen,
 }: {
   work: WorkCardViewModel;
   selection?: ReactNode;
@@ -47,11 +50,13 @@ export function WorkCardShell({
   canOpen?: boolean;
   onOpen?: () => void;
   onCircleOpen?: (externalId: string) => void;
+  onSeriesOpen?: () => void;
+  onTagOpen?: (tag: string) => void;
 }) {
   const content = (
     <>
       <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} />
-      <WorkCardBody work={work} onCircleOpen={onCircleOpen} />
+      <WorkCardBody work={work} onCircleOpen={onCircleOpen} onSeriesOpen={onSeriesOpen} onTagOpen={onTagOpen} />
     </>
   );
 
@@ -107,9 +112,13 @@ export function WorkCardMedia({
 function WorkCardBody({
   work,
   onCircleOpen,
+  onSeriesOpen,
+  onTagOpen,
 }: {
   work: WorkCardViewModel;
   onCircleOpen?: (externalId: string) => void;
+  onSeriesOpen?: () => void;
+  onTagOpen?: (tag: string) => void;
 }) {
   return (
     <div className="flex min-h-52 flex-1 flex-col gap-3 p-4">
@@ -126,11 +135,23 @@ function WorkCardBody({
         </button>
       </div>
       {work.series && (
-        <div className="truncate text-xs text-muted-foreground">
-          Series <span className="font-medium text-foreground">{work.series}</span>
-        </div>
+        onSeriesOpen ? (
+          <button
+            className="truncate text-left text-xs text-muted-foreground hover:text-primary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSeriesOpen();
+            }}
+          >
+            Series <span className="font-medium text-foreground">{work.series}</span>
+          </button>
+        ) : (
+          <div className="truncate text-xs text-muted-foreground">
+            Series <span className="font-medium text-foreground">{work.series}</span>
+          </div>
+        )
       )}
-      <BadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" />
+      <BadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
       {work.date && <div className="truncate text-xs text-muted-foreground">{work.date.label} {work.date.value}</div>}
       {work.progress?.mediaItemId && <WorkProgressLine progress={work.progress} />}
       {work.userTags && work.userTags.length > 0 && (
@@ -153,17 +174,34 @@ function BadgeList({
   badges,
   emptyLabel,
   emptyVariant = "outline",
+  onBadgeClick,
 }: {
   badges: WorkCardBadge[];
   emptyLabel: string;
   emptyVariant?: WorkCardBadge["variant"];
+  onBadgeClick?: (label: string) => void;
 }) {
   return (
     <div className="flex min-h-6 flex-wrap gap-1.5">
       {badges.length > 0 ? badges.map((badge) => (
-        <Badge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} variant={badge.variant ?? "secondary"} title={badge.title}>
-          {badge.label}
-        </Badge>
+        badge.onClick || onBadgeClick ? (
+          <button
+            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
+            }}
+            className="rounded-full"
+          >
+            <Badge variant={badge.variant ?? "secondary"} title={badge.title} className="cursor-pointer hover:border-primary hover:text-primary">
+              {badge.label}
+            </Badge>
+          </button>
+        ) : (
+          <Badge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} variant={badge.variant ?? "secondary"} title={badge.title}>
+            {badge.label}
+          </Badge>
+        )
       )) : <Badge variant={emptyVariant}>{emptyLabel}</Badge>}
     </div>
   );
