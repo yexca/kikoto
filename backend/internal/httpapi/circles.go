@@ -1469,7 +1469,7 @@ func (s *Server) maybeStartCircleAutoRefresh(partyID int64, externalID string, l
 		defer s.clearCircleAutoRefreshRunning(partyID)
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		request := normalizeCircleRefreshRequest(circleRefreshRequest{Scope: "all", Mode: mode, ProductMode: "available"})
+		request := normalizeCircleRefreshRequest(circleRefreshRequest{Scope: "metadata", Mode: mode, ProductMode: "available"})
 		_, _ = s.runCircleRefresh(ctx, partyID, externalID, request)
 	}()
 	return circleAutoRefresh{Status: "queued", Reason: reason, Mode: mode}
@@ -1996,7 +1996,7 @@ func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sourc
 func normalizeCircleRefreshRequest(request circleRefreshRequest) circleRefreshRequest {
 	request.Scope = strings.ToLower(strings.TrimSpace(request.Scope))
 	switch request.Scope {
-	case "catalog", "work", "source":
+	case "catalog", "work", "source", "metadata":
 	default:
 		request.Scope = "all"
 	}
@@ -2012,11 +2012,11 @@ func normalizeCircleRefreshRequest(request circleRefreshRequest) circleRefreshRe
 }
 
 func circleRefreshIncludesCatalog(scope string) bool {
-	return scope == "all" || scope == "catalog"
+	return scope == "all" || scope == "metadata" || scope == "catalog"
 }
 
 func circleRefreshIncludesWork(scope string) bool {
-	return scope == "all" || scope == "work"
+	return scope == "all" || scope == "metadata" || scope == "work"
 }
 
 func circleRefreshIncludesSource(scope string) bool {

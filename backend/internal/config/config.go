@@ -7,15 +7,15 @@ import (
 )
 
 type Config struct {
-	HTTPAddr            string
-	DatabasePath        string
-	DataRoot            string
-	CacheRoot           string
-	LocalScanDepth      int
-	DevMode             bool
-	RootUsername        string
-	RootPassword        string
-	RemoteSourceSeeds   []RemoteSourceSeed
+	HTTPAddr          string
+	DatabasePath      string
+	DataRoot          string
+	CacheRoot         string
+	LocalScanDepth    int
+	DevMode           bool
+	RootUsername      string
+	RootPassword      string
+	RemoteSourceSeeds []RemoteSourceSeed
 }
 
 type RemoteSourceSeed struct {
@@ -80,12 +80,19 @@ func loadRemoteSourceSeeds() []RemoteSourceSeed {
 	if !envBool("KIKOTO_REMOTE_SOURCES_ENABLED", false) {
 		return nil
 	}
-	path := env("KIKOTO_REMOTE_SOURCES_FILE", "../config/remote-sources.yaml")
-	rawBytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil
+	paths := []string{}
+	if configured := os.Getenv("KIKOTO_REMOTE_SOURCES_FILE"); configured != "" {
+		paths = append(paths, configured)
+	} else {
+		paths = append(paths, "/config/remote-sources.yml", "../config/remote-sources.yml", "../config/remote-sources.yaml")
 	}
-	return parseRemoteSourceSeedYAML(string(rawBytes))
+	for _, path := range paths {
+		rawBytes, err := os.ReadFile(path)
+		if err == nil {
+			return parseRemoteSourceSeedYAML(string(rawBytes))
+		}
+	}
+	return nil
 }
 
 func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {

@@ -624,7 +624,7 @@ export type CircleRefreshResult = {
   runId: number;
   externalId: string;
   status: string;
-  scope: "all" | "catalog" | "work" | "source";
+  scope: "all" | "catalog" | "work" | "source" | "metadata";
   catalogWorks: number;
   pagesFetched: number;
   productSynced: number;
