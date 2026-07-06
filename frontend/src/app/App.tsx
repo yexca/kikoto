@@ -66,11 +66,11 @@ function AuthenticatedApp() {
   return (
     <PlayerProvider>
       <div className="min-h-screen bg-background pb-20 lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:pb-0">
-        <aside className="hidden border-r bg-card lg:block">
+        <aside className="sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b px-5">
             <div className="text-xl font-bold">Kikoto</div>
           </div>
-          <nav className="p-3">
+          <nav className="min-h-0 flex-1 overflow-y-auto p-3">
             {visibleNavItems.map((item) => (
               <Button
                 key={item.id}
