@@ -266,7 +266,7 @@ export type SourceAvailabilitySource = {
   sourceId: number;
   sourceCode: string;
   displayName: string;
-  status: "available" | "not_found" | "unavailable" | "disabled" | "error";
+  status: "available" | "not_found" | "unavailable" | "disabled" | "error" | "unknown";
   remoteId: string;
   primaryCode: string;
   title: string;
@@ -771,6 +771,8 @@ export const api = {
     getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`),
   getSourceAvailability: (code: string) =>
     getJSON<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`),
+  checkSourceAvailability: (code: string, sourceId = 0) =>
+    postJSONBody<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`, { sourceId }),
   planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/save-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>

@@ -1755,6 +1755,7 @@ function WorkDetailView({
 }) {
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
+  const [sourceCheckedAt, setSourceCheckedAt] = useState("");
   const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources), [work, remoteSources]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
@@ -1802,23 +1803,21 @@ function WorkDetailView({
 
   useEffect(() => {
     setRemoteSources([]);
+    setSourceCheckedAt("");
     if (!work?.primaryCode || sources.length === 0) return;
     let cancelled = false;
-    setIsCheckingSources(true);
     api.getSourceAvailability(work.primaryCode)
       .then((result) => {
         if (cancelled) return;
-        const availableSources = result.sources.flatMap((summary) => {
+        const knownSources = result.sources.flatMap((summary) => {
           const source = sources.find((candidate) => candidate.id === summary.sourceId);
           return source ? [{ source, summary }] : [];
         });
-        setRemoteSources(availableSources);
+        setRemoteSources(knownSources);
+        setSourceCheckedAt(result.checkedAt);
       })
       .catch(() => {
         if (!cancelled) setRemoteSources([]);
-      })
-      .finally(() => {
-        if (!cancelled) setIsCheckingSources(false);
       });
     return () => {
       cancelled = true;
@@ -1965,6 +1964,26 @@ function WorkDetailView({
     }
   };
 
+  const refreshSourceAvailability = async () => {
+    if (!work?.primaryCode) return;
+    setIsCheckingSources(true);
+    setMessage("");
+    try {
+      const result = await api.checkSourceAvailability(work.primaryCode);
+      const checkedSources = result.sources.flatMap((summary) => {
+        const source = sources.find((candidate) => candidate.id === summary.sourceId);
+        return source ? [{ source, summary }] : [];
+      });
+      setRemoteSources(checkedSources);
+      setSourceCheckedAt(result.checkedAt);
+      setMessage(`Checked source availability through workflow run #${result.runId}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Source check failed.");
+    } finally {
+      setIsCheckingSources(false);
+    }
+  };
+
   const updateFavoriteLists = async (listID: number, selected: boolean) => {
     if (!work) return;
     const nextIDs = new Set(favoriteLists.filter((list) => list.selected).map((list) => list.id));
@@ -2086,6 +2105,8 @@ function WorkDetailView({
             tabs={sourceTabs}
             remoteSources={remoteSources}
             checking={isCheckingSources}
+            checkedAt={sourceCheckedAt}
+            onRefresh={() => void refreshSourceAvailability()}
           />
         )}
         directoryMode={directoryMode}
@@ -2265,25 +2286,36 @@ function SourceAvailabilitySummary({
   tabs,
   remoteSources,
   checking,
+  checkedAt,
+  onRefresh,
 }: {
   tabs: SourceTabInfo[];
   remoteSources: RemoteSourceAvailability[];
   checking: boolean;
+  checkedAt: string;
+  onRefresh: () => void;
 }) {
   const localTabs = tabs.filter((tab) => !tab.key.startsWith("remote-source:"));
   if (localTabs.length === 0 && remoteSources.length === 0 && !checking) return null;
   return (
     <div className="mb-4 rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {localTabs.map((tab) => (
-          <Badge key={tab.key} variant="secondary">
-            {tab.label}
-          </Badge>
-        ))}
-        {remoteSources.map((remote) => (
-          <SourceStatusBadge key={remote.source.id} remote={remote} />
-        ))}
-        {checking && <Badge variant="secondary">Checking sources</Badge>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {localTabs.map((tab) => (
+            <Badge key={tab.key} variant="secondary">
+              {tab.label}
+            </Badge>
+          ))}
+          {remoteSources.map((remote) => (
+            <SourceStatusBadge key={remote.source.id} remote={remote} />
+          ))}
+          {checking && <Badge variant="secondary">Checking sources</Badge>}
+          {!checking && checkedAt && <span className="text-xs text-muted-foreground">Checked {formatDateTime(checkedAt)}</span>}
+        </div>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
+          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
     </div>
   );
@@ -2321,6 +2353,9 @@ function sourceStatusMeta(summary: SourceAvailabilitySource) {
   }
   if (summary.status === "unavailable") {
     return { label: "unsupported", dotClass: "bg-amber-500" };
+  }
+  if (summary.status === "unknown") {
+    return { label: "not checked", dotClass: "bg-muted-foreground" };
   }
   return { label: "error", dotClass: "bg-destructive" };
 }
@@ -3824,6 +3859,12 @@ function formatDuration(value: number | null) {
   const minutes = Math.floor((value % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
   return `${minutes}m`;
+}
+
+function formatDateTime(value: string) {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return value;
+  return new Date(timestamp).toLocaleString();
 }
 
 function ageRatingView(value: string) {

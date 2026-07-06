@@ -218,6 +218,11 @@ type sourceAvailabilitySummary struct {
 	ElapsedMS   int64  `json:"elapsedMs"`
 }
 
+type sourceAvailabilityCheckRequest struct {
+	SourceID int64 `json:"sourceId"`
+	Force    bool  `json:"force"`
+}
+
 type remoteTrackDetail struct {
 	Type            string              `json:"type"`
 	Title           string              `json:"title"`
@@ -547,6 +552,9 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if source.Enabled {
+		go s.runSourceChangeAvailabilityChecks(context.Background(), source.ID, "source_created")
+	}
 	writeJSON(w, http.StatusCreated, source)
 }
 
@@ -621,6 +629,9 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if source.Enabled {
+		go s.runSourceChangeAvailabilityChecks(context.Background(), source.ID, "source_updated")
 	}
 	writeJSON(w, http.StatusOK, source)
 }
@@ -781,7 +792,26 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
-	response, err := s.checkWorkSourceAvailability(r.Context(), code, "detail_view", "work_detail_source_tabs")
+	response, err := s.readWorkSourceAvailability(r.Context(), code)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	var payload sourceAvailabilityCheckRequest
+	_ = json.NewDecoder(r.Body).Decode(&payload)
+	response, err := s.checkWorkSourceAvailabilityForSources(r.Context(), code, payload.SourceID, "manual", "work_detail_source_check")
 	if err != nil {
 		writeError(w, err)
 		return
@@ -790,6 +820,10 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) checkWorkSourceAvailability(ctx context.Context, code string, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {
+	return s.checkWorkSourceAvailabilityForSources(ctx, code, 0, triggerType, triggerReason)
+}
+
+func (s *Server) checkWorkSourceAvailabilityForSources(ctx context.Context, code string, onlySourceID int64, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
@@ -798,6 +832,9 @@ func (s *Server) checkWorkSourceAvailability(ctx context.Context, code string, t
 	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	results := make([]sourceAvailabilitySummary, 0, len(sources))
 	for _, source := range sources {
+		if onlySourceID > 0 && source.ID != onlySourceID {
+			continue
+		}
 		result := sourceAvailabilitySummary{
 			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled",
 		}
@@ -855,6 +892,112 @@ func (s *Server) checkWorkSourceAvailability(ctx context.Context, code string, t
 	return sourceAvailabilityResponse{
 		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
 	}, nil
+}
+
+func (s *Server) readWorkSourceAvailability(ctx context.Context, code string) (sourceAvailabilityResponse, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
+	if err != nil {
+		return sourceAvailabilityResponse{}, err
+	}
+	checkedAt, err := s.latestSourceAvailabilityCheckedAt(ctx, code)
+	if err != nil {
+		return sourceAvailabilityResponse{}, err
+	}
+	results := make([]sourceAvailabilitySummary, 0, len(sources))
+	for _, source := range sources {
+		result := sourceAvailabilitySummary{
+			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "unknown",
+		}
+		if !isKikoeruSourceType(source.SourceType) {
+			result.Status = "unavailable"
+			result.Error = "source is not a supported kikoeru source"
+		} else if !source.Enabled {
+			result.Status = "disabled"
+		}
+		if err := s.attachCachedSourcePresence(ctx, &result, source.ID, code); err != nil {
+			return sourceAvailabilityResponse{}, err
+		}
+		if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, firstNonEmpty(result.PrimaryCode, code)); err != nil {
+			return sourceAvailabilityResponse{}, err
+		}
+		results = append(results, result)
+	}
+	return sourceAvailabilityResponse{WorkCode: code, CheckedAt: checkedAt, Sources: results}, nil
+}
+
+func (s *Server) latestSourceAvailabilityCheckedAt(ctx context.Context, code string) (string, error) {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return "", err
+	}
+	var checkedAt sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT MAX(presence.last_checked_at)
+		FROM work_source_presence AS presence
+		INNER JOIN work ON work.id = presence.work_id
+		WHERE work.primary_code = ?
+			AND presence.presence_type = 'remote'
+	`, code).Scan(&checkedAt)
+	if err != nil {
+		return "", err
+	}
+	if !checkedAt.Valid {
+		return "", nil
+	}
+	return checkedAt.String, nil
+}
+
+func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return err
+	}
+	var availability, remoteID, rawJSON sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT presence.availability, presence.remote_id, presence.raw_json
+		FROM work_source_presence AS presence
+		INNER JOIN work ON work.id = presence.work_id
+		WHERE work.primary_code = ?
+			AND presence.file_source_id = ?
+			AND presence.presence_type = 'remote'
+	`, workCode, sourceID).Scan(&availability, &remoteID, &rawJSON)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	switch availability.String {
+	case "available":
+		result.Status = "available"
+	case "missing":
+		result.Status = "not_found"
+	case "disabled":
+		result.Status = "disabled"
+	case "unavailable":
+		result.Status = "error"
+	case "unknown":
+		if result.Status == "" {
+			result.Status = "unknown"
+		}
+	}
+	result.RemoteID = remoteID.String
+	if rawJSON.Valid {
+		var cached struct {
+			PrimaryCode string `json:"primary_code"`
+			Title       string `json:"title"`
+			CoverURL    string `json:"cover_url"`
+			Error       string `json:"error"`
+			ElapsedMS   int64  `json:"elapsed_ms"`
+		}
+		if json.Unmarshal([]byte(rawJSON.String), &cached) == nil {
+			result.PrimaryCode = cached.PrimaryCode
+			result.Title = cached.Title
+			result.CoverURL = cached.CoverURL
+			result.Error = cached.Error
+			result.ElapsedMS = cached.ElapsedMS
+		}
+	}
+	return nil
 }
 
 func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
