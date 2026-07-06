@@ -84,5 +84,26 @@ func Migrate(db *sql.DB, dir string) error {
 		}
 	}
 
-	return nil
+	return ensureCurrentSchema(db)
+}
+
+func ensureCurrentSchema(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS workflow_event (
+			id INTEGER PRIMARY KEY,
+			workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
+			workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL,
+			workflow_job_id INTEGER REFERENCES workflow_job(id) ON DELETE SET NULL,
+			level TEXT NOT NULL DEFAULT 'info',
+			event_type TEXT NOT NULL,
+			message TEXT NOT NULL,
+			detail_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_workflow_event_run
+			ON workflow_event(workflow_run_id, created_at, id);
+		CREATE INDEX IF NOT EXISTS idx_workflow_event_level
+			ON workflow_event(level, created_at);
+	`)
+	return err
 }

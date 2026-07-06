@@ -29,6 +29,15 @@ type JobSpec struct {
 	Error           string
 }
 
+type EventSpec struct {
+	NodeRunID int64
+	JobID     int64
+	Level     string
+	Type      string
+	Message   string
+	Detail    any
+}
+
 func EnsureDefinition(ctx context.Context, tx *sql.Tx, code string, displayName string, description string, definition any) (int64, error) {
 	definitionJSON, err := marshal(definition)
 	if err != nil {
@@ -57,7 +66,7 @@ func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string,
 	if err != nil {
 		return 0, err
 	}
-	return insertAndID(ctx, tx, `
+	runID, err := insertAndID(ctx, tx, `
 		INSERT INTO workflow_run (
 			workflow_definition_id,
 			workflow_code,
@@ -72,6 +81,18 @@ func InsertRun(ctx context.Context, tx *sql.Tx, definitionID int64, code string,
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
 	`, definitionID, code, displayName, status, triggerType, triggerReason, inputJSON, summaryJSON, workflowStatusFinished(status))
+	if err != nil {
+		return 0, err
+	}
+	if err := InsertEvent(ctx, tx, runID, EventSpec{
+		Level:   eventLevelForStatus(status),
+		Type:    "run.recorded",
+		Message: displayName + " " + status,
+		Detail:  map[string]any{"workflow_code": code, "status": status, "trigger_type": triggerType, "trigger_reason": triggerReason},
+	}); err != nil {
+		return 0, err
+	}
+	return runID, nil
 }
 
 func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpec) (int64, error) {
@@ -83,7 +104,7 @@ func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpe
 	if err != nil {
 		return 0, err
 	}
-	return insertAndID(ctx, tx, `
+	nodeRunID, err := insertAndID(ctx, tx, `
 		INSERT INTO workflow_node_run (
 			workflow_run_id,
 			node_id,
@@ -99,6 +120,23 @@ func InsertNodeRun(ctx context.Context, tx *sql.Tx, runID int64, spec NodeRunSpe
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
 	`, runID, spec.NodeID, spec.NodeType, spec.DisplayName, spec.Position, spec.Status, inputJSON, outputJSON, spec.Error, workflowStatusFinished(spec.Status))
+	if err != nil {
+		return 0, err
+	}
+	detail := map[string]any{"node_id": spec.NodeID, "node_type": spec.NodeType, "status": spec.Status}
+	if spec.Error != "" {
+		detail["error"] = spec.Error
+	}
+	if err := InsertEvent(ctx, tx, runID, EventSpec{
+		NodeRunID: nodeRunID,
+		Level:     eventLevelForStatus(spec.Status),
+		Type:      "node.recorded",
+		Message:   spec.DisplayName + " " + spec.Status,
+		Detail:    detail,
+	}); err != nil {
+		return 0, err
+	}
+	return nodeRunID, nil
 }
 
 func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int64, error) {
@@ -106,7 +144,7 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 	if err != nil {
 		return 0, err
 	}
-	return insertAndID(ctx, tx, `
+	jobID, err := insertAndID(ctx, tx, `
 		INSERT INTO workflow_job (
 			workflow_run_id,
 			workflow_node_run_id,
@@ -119,6 +157,56 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, payloadJSON, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
+	if err != nil {
+		return 0, err
+	}
+	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
+	if spec.Error != "" {
+		detail["error"] = spec.Error
+	}
+	if err := InsertEvent(ctx, tx, runID, EventSpec{
+		NodeRunID: spec.NodeRunID,
+		JobID:     jobID,
+		Level:     eventLevelForStatus(spec.Status),
+		Type:      "job.recorded",
+		Message:   spec.WorkerType + " " + spec.Status,
+		Detail:    detail,
+	}); err != nil {
+		return 0, err
+	}
+	return jobID, nil
+}
+
+func InsertEvent(ctx context.Context, tx *sql.Tx, runID int64, spec EventSpec) error {
+	detailJSON, err := marshal(spec.Detail)
+	if err != nil {
+		return err
+	}
+	level := strings.TrimSpace(spec.Level)
+	if level == "" {
+		level = "info"
+	}
+	eventType := strings.TrimSpace(spec.Type)
+	if eventType == "" {
+		eventType = "workflow.event"
+	}
+	message := strings.TrimSpace(spec.Message)
+	if message == "" {
+		message = eventType
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO workflow_event (
+			workflow_run_id,
+			workflow_node_run_id,
+			workflow_job_id,
+			level,
+			event_type,
+			message,
+			detail_json
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, runID, nullableID(spec.NodeRunID), nullableID(spec.JobID), level, eventType, message, detailJSON)
+	return err
 }
 
 func marshal(value any) (string, error) {
@@ -139,6 +227,24 @@ func workflowStatusFinished(status string) bool {
 	default:
 		return false
 	}
+}
+
+func eventLevelForStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed":
+		return "error"
+	case "partial", "skipped", "cancelled":
+		return "warn"
+	default:
+		return "info"
+	}
+}
+
+func nullableID(id int64) any {
+	if id <= 0 {
+		return nil
+	}
+	return id
 }
 
 func insertAndID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64, error) {
