@@ -109,6 +109,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/events", s.listWorkflowRunEvents)
 	mux.HandleFunc("GET /api/workflow-runs/{id}/candidates", s.listWorkflowRunCandidates)
+	mux.HandleFunc("POST /api/workflow-runs/{id}/cancel", s.cancelWorkflowRun)
+	mux.HandleFunc("POST /api/workflow-runs/{id}/retry", s.retryWorkflowRun)
+	mux.HandleFunc("POST /api/workflow-runs/recover-stale", s.recoverStaleWorkflowRuns)
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
@@ -3176,7 +3179,7 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureStartupLibraryRefreshTrigger(ctx); err != nil {
 		return err
 	}
-	if err := s.markStaleStartupLibraryRefreshRuns(ctx); err != nil {
+	if _, err := s.markStaleWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
 		return err
 	}
 	var enabled int
@@ -3194,37 +3197,6 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return nil
 	}
 	_, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup")
-	return err
-}
-
-func (s *Server) markStaleStartupLibraryRefreshRuns(ctx context.Context) error {
-	output := mustJSON(map[string]any{"error": "startup interrupted before completion"})
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_node_run
-		SET status = 'failed',
-			error_message = CASE
-				WHEN error_message <> '' THEN error_message
-				ELSE 'startup interrupted before completion'
-			END,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE status IN ('queued', 'running')
-			AND workflow_run_id IN (
-				SELECT id
-				FROM workflow_run
-				WHERE workflow_code = 'startup_library_refresh'
-					AND status IN ('queued', 'running')
-			)
-	`); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_run
-		SET status = 'failed',
-			summary_json = ?,
-			finished_at = CURRENT_TIMESTAMP
-		WHERE workflow_code = 'startup_library_refresh'
-			AND status IN ('queued', 'running')
-	`, output)
 	return err
 }
 

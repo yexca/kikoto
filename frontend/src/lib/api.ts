@@ -414,6 +414,14 @@ export type WorkflowCandidate = {
   updatedAt: string;
 };
 
+export type WorkflowRunActionResult = {
+  runId: number;
+  status: string;
+  message: string;
+  newRunId?: number;
+  recovered?: number;
+};
+
 export type WorkflowDefinition = {
   id: number;
   code: string;
@@ -957,7 +965,7 @@ export const api = {
     },
   ) => patchJSONBody<WorkflowTrigger>(`/api/workflow-triggers/${id}`, payload),
   deleteWorkflowTrigger: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-triggers/${id}`),
-  listWorkflowRuns: (page = 1, pageSize = 25, view = "running", query = "") =>
+  listWorkflowRuns: (page = 1, pageSize = 10, view = "running", query = "") =>
     getJSON<WorkflowRunsPage>(
       `/api/workflow-runs?page=${page}&pageSize=${pageSize}&view=${encodeURIComponent(view)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
@@ -966,6 +974,9 @@ export const api = {
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
   updateWorkflowCandidate: (id: number, payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string }) =>
     patchJSONBody<WorkflowCandidate>(`/api/workflow-candidates/${id}`, { status: payload.status, decisionJson: payload.decisionJson ?? "{}" }),
+  cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
+  retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
+  recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   recordRemoteBulkRun: (payload: { action: "sync" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
     postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),

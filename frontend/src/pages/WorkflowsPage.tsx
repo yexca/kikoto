@@ -141,9 +141,10 @@ export function WorkflowsPage({
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
-  const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 25, total: 0 });
+  const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0 });
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
+  const [activityMessage, setActivityMessage] = useState("");
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(null);
   const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
@@ -260,6 +261,12 @@ export function WorkflowsPage({
     refreshRuns(runPage, activityView, runQuery);
   };
 
+  const recoverStaleRuns = async () => {
+    const result = await api.recoverStaleWorkflowRuns();
+    setActivityMessage(`${result.recovered ?? 0} stale runs recovered.`);
+    refreshRuns(runPage, activityView, runQuery);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -363,27 +370,35 @@ export function WorkflowsPage({
           </SegmentedNav>
           <ActivityToolbar
             query={runQuery}
-            page={runsPage.page}
-            pageSize={runsPage.pageSize}
-            total={runsPage.total}
+            message={activityMessage}
             onQueryChange={setRunQuery}
             onSearch={() => {
               setRunPage(1);
               setSelectedRunID(null);
               refreshRuns(1, activityView, runQuery);
             }}
-            onPrevious={() => {
-              setSelectedRunID(null);
-              setRunPage(Math.max(1, runPage - 1));
-            }}
-            onNext={() => {
-              setSelectedRunID(null);
-              setRunPage(runPage + 1);
-            }}
+            onRecoverStale={recoverStaleRuns}
           />
           <Workbench
-            left={<RunSidebar runs={visibleRuns} selectedId={selectedRunSummary?.id ?? null} onSelect={(run) => setSelectedRunID(run.id)} />}
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} />}
+            left={
+              <RunSidebar
+                runs={visibleRuns}
+                selectedId={selectedRunSummary?.id ?? null}
+                page={runsPage.page}
+                pageSize={runsPage.pageSize}
+                total={runsPage.total}
+                onSelect={(run) => setSelectedRunID(run.id)}
+                onPrevious={() => {
+                  setSelectedRunID(null);
+                  setRunPage(Math.max(1, runPage - 1));
+                }}
+                onNext={() => {
+                  setSelectedRunID(null);
+                  setRunPage(runPage + 1);
+                }}
+              />
+            }
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} />}
           />
         </>
       )}
@@ -576,24 +591,17 @@ function TriggerSidebar({
 
 function ActivityToolbar({
   query,
-  page,
-  pageSize,
-  total,
+  message,
   onQueryChange,
   onSearch,
-  onPrevious,
-  onNext,
+  onRecoverStale,
 }: {
   query: string;
-  page: number;
-  pageSize: number;
-  total: number;
+  message: string;
   onQueryChange: (value: string) => void;
   onSearch: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
+  onRecoverStale: () => Promise<void>;
 }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 md:flex-row md:items-center md:justify-between">
       <label className="flex h-9 min-w-0 items-center gap-2 rounded-md border bg-background px-3 text-sm md:w-80">
@@ -608,30 +616,56 @@ function ActivityToolbar({
           }}
         />
       </label>
-      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
-        <span>
-          Page {page} / {totalPages} · {total} runs
-        </span>
-        <div className="flex gap-1">
-          <Button size="icon" variant="outline" className="h-8 w-8" disabled={page <= 1} onClick={onPrevious} aria-label="Previous page">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button size="icon" variant="outline" className="h-8 w-8" disabled={page >= totalPages} onClick={onNext} aria-label="Next page">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
+        {message && <span>{message}</span>}
+        <Button size="sm" variant="outline" onClick={() => void onRecoverStale()}>
+          Recover stale
+        </Button>
       </div>
     </div>
   );
 }
 
-function RunSidebar({ runs, selectedId, onSelect }: { runs: WorkflowRun[]; selectedId: number | null; onSelect: (run: WorkflowRun) => void }) {
+function RunSidebar({
+  runs,
+  selectedId,
+  page,
+  pageSize,
+  total,
+  onSelect,
+  onPrevious,
+  onNext,
+}: {
+  runs: WorkflowRun[];
+  selectedId: number | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  onSelect: (run: WorkflowRun) => void;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, (page - 1) * pageSize + runs.length);
   return (
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between px-1 text-sm">
-          <span className="font-semibold">Runs</span>
-          <span className="text-muted-foreground">{runs.length} shown</span>
+          <div>
+            <div className="font-semibold">Runs</div>
+            <div className="text-xs text-muted-foreground">
+              {start}-{end} of {total}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button size="icon" variant="outline" className="h-8 w-8" disabled={page <= 1} onClick={onPrevious} aria-label="Previous runs page">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="outline" className="h-8 w-8" disabled={page >= totalPages} onClick={onNext} aria-label="Next runs page">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div className="divide-y rounded-md border">
           {runs.map((run) => (
@@ -660,6 +694,10 @@ function RunSidebar({ runs, selectedId, onSelect }: { runs: WorkflowRun[]; selec
           ))}
         </div>
         {runs.length === 0 && <EmptyPanel text="No runs in this view." />}
+        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+          <span>Page {page} / {totalPages}</span>
+          <span>{pageSize} per page</span>
+        </div>
       </CardContent>
     </Card>
   );
@@ -752,6 +790,7 @@ function RunDetail({
   view,
   onViewChange,
   onCandidateUpdate,
+  onRunAction,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
   events: WorkflowEvent[];
@@ -759,6 +798,7 @@ function RunDetail({
   view: RunDetailView;
   onViewChange: (view: RunDetailView) => void;
   onCandidateUpdate: () => Promise<void>;
+  onRunAction: () => Promise<void>;
 }) {
   if (!run) {
     return <EmptyPanel text="Select a run to inspect execution by node." />;
@@ -777,7 +817,10 @@ function RunDetail({
               {run.triggerType} {run.triggerReason ? `· ${run.triggerReason}` : ""} · {run.createdAt}
             </p>
           </div>
-          <RunMetrics run={run} />
+          <div className="space-y-2">
+            <RunMetrics run={run} />
+            <RunActions run={run} onRunAction={onRunAction} />
+          </div>
         </div>
         <SegmentedNav>
           <ViewButton active={view === "overview"} onClick={() => onViewChange("overview")} icon={<Activity className="h-4 w-4" />}>
@@ -1364,6 +1407,42 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
       <Metric icon={<ListChecks className="h-3.5 w-3.5" />} label="nodes" value={`${run.completedNodeRuns}/${run.nodeRunCount}`} />
       <Metric icon={<Database className="h-3.5 w-3.5" />} label="jobs" value={`${run.completedJobs}/${run.jobCount}`} />
       <Metric icon={<Activity className="h-3.5 w-3.5" />} label="review" value={`${reviewCount(run)}`} />
+    </div>
+  );
+}
+
+function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
+  const cancellable = ["queued", "running"].includes(run.status);
+  const retryable = !cancellable && ["local_library_scan", "metadata_sync"].includes(run.workflowCode);
+  if (!cancellable && !retryable) {
+    return null;
+  }
+  return (
+    <div className="flex justify-end gap-2">
+      {cancellable && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={async () => {
+            await api.cancelWorkflowRun(run.id);
+            await onRunAction();
+          }}
+        >
+          Cancel
+        </Button>
+      )}
+      {retryable && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={async () => {
+            await api.retryWorkflowRun(run.id);
+            await onRunAction();
+          }}
+        >
+          Retry
+        </Button>
+      )}
     </div>
   );
 }

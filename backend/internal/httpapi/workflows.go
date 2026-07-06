@@ -762,6 +762,133 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	run, err := s.loadWorkflowRunTx(r.Context(), tx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if run.Status != "queued" && run.Status != "running" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "only queued or running workflow runs can be cancelled"})
+		return
+	}
+	summary := mergeJSONObjects(run.SummaryJSON, map[string]any{"cancelled": true, "cancel_reason": "manual"})
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE workflow_node_run
+		SET status = 'cancelled',
+			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+			AND status IN ('queued', 'running')
+	`, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE workflow_run
+		SET status = 'cancelled',
+			summary_json = ?,
+			finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, mustJSON(summary), id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := workflow.InsertEvent(r.Context(), tx, id, workflow.EventSpec{
+		Level:   "warn",
+		Type:    "run.cancelled",
+		Message: "Run cancelled manually",
+		Detail:  map[string]any{"previous_status": run.Status},
+	}); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, workflowRunActionResult{RunID: id, Status: "cancelled", Message: "run cancelled"})
+}
+
+func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	run, err := s.loadWorkflowRun(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if run.Status == "queued" || run.Status == "running" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "running workflow runs cannot be retried"})
+		return
+	}
+	var newRunID int64
+	switch run.WorkflowCode {
+	case "local_library_scan":
+		result, err := s.runLocalScan(r.Context(), "manual", "retry_run")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		newRunID = result.RunID
+	case "metadata_sync":
+		result, err := s.runDLsiteMetadataSync(r.Context(), "manual", "retry_run")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		newRunID = result.RunID
+	default:
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "retry is not implemented for this workflow type yet"})
+		return
+	}
+	if err := s.recordWorkflowRunEvent(r.Context(), id, "info", "run.retry_requested", "Retry started", map[string]any{"new_run_id": newRunID}); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, workflowRunActionResult{RunID: id, Status: "retried", Message: "retry started", NewRunID: &newRunID})
+}
+
+func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	recovered, err := s.markStaleWorkflowRuns(r.Context(), "manual recovery")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, workflowRunActionResult{Status: "recovered", Message: "stale runs marked failed", Recovered: recovered})
+}
+
 func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (workflowDefinitionPayload, bool) {
 	var payload workflowDefinitionPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -776,10 +903,22 @@ func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (wo
 }
 
 func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunRecord, error) {
+	return s.loadWorkflowRunFrom(ctx, s.db, id)
+}
+
+type workflowRunQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *Server) loadWorkflowRunTx(ctx context.Context, tx *sql.Tx, id int64) (workflowRunRecord, error) {
+	return s.loadWorkflowRunFrom(ctx, tx, id)
+}
+
+func (s *Server) loadWorkflowRunFrom(ctx context.Context, db workflowRunQuerier, id int64) (workflowRunRecord, error) {
 	var item workflowRunRecord
 	var definitionID sql.NullInt64
 	var triggerID sql.NullInt64
-	err := s.db.QueryRowContext(ctx, workflowRunSelectSQL()+`
+	err := db.QueryRowContext(ctx, workflowRunSelectSQL()+`
 		FROM workflow_run AS run
 		WHERE run.id = ?
 	`, id).Scan(
@@ -811,6 +950,18 @@ func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunReco
 	item.DefinitionID = nullableInt64(definitionID)
 	item.TriggerID = nullableInt64(triggerID)
 	return item, err
+}
+
+func (s *Server) recordWorkflowRunEvent(ctx context.Context, runID int64, level string, eventType string, message string, detail any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{Level: level, Type: eventType, Message: message, Detail: detail}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func workflowRunSelectSQL() string {
@@ -1097,4 +1248,86 @@ func normalizeOptionalString(value *string) any {
 		return nil
 	}
 	return trimmed
+}
+
+func mergeJSONObjects(raw string, patch map[string]any) map[string]any {
+	result := map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &result)
+	}
+	for key, value := range patch {
+		result[key] = value
+	}
+	return result
+}
+
+func (s *Server) markStaleWorkflowRuns(ctx context.Context, reason string) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, display_name, status
+		FROM workflow_run
+		WHERE status IN ('queued', 'running')
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return 0, err
+	}
+	type staleRun struct {
+		id          int64
+		displayName string
+		status      string
+	}
+	staleRuns := []staleRun{}
+	for rows.Next() {
+		var run staleRun
+		if err := rows.Scan(&run.id, &run.displayName, &run.status); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		staleRuns = append(staleRuns, run)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, run := range staleRuns {
+		summary := mustJSON(map[string]any{"error": reason, "recovered_stale": true})
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE workflow_node_run
+			SET status = 'failed',
+				error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END,
+				finished_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ?
+				AND status IN ('queued', 'running')
+		`, reason, run.id); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE workflow_run
+			SET status = 'failed',
+				summary_json = ?,
+				finished_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, summary, run.id); err != nil {
+			return 0, err
+		}
+		if err := workflow.InsertEvent(ctx, tx, run.id, workflow.EventSpec{
+			Level:   "warn",
+			Type:    "run.recovered_stale",
+			Message: "Stale run marked failed",
+			Detail:  map[string]any{"previous_status": run.status, "reason": reason},
+		}); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int64(len(staleRuns)), nil
 }

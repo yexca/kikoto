@@ -74,6 +74,14 @@ type workflowCandidateRecord struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+type workflowRunActionResult struct {
+	RunID     int64  `json:"runId"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	NewRunID  *int64 `json:"newRunId,omitempty"`
+	Recovered int64  `json:"recovered,omitempty"`
+}
+
 type workflowRunDetailRecord struct {
 	workflowRunRecord
 	NodeRuns []workflowNodeRunRecord `json:"nodeRuns"`
