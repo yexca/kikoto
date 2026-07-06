@@ -242,6 +242,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
@@ -270,6 +274,11 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				WHERE media_item.work_id = work.id
 					AND media_file_location.availability = 'available'
 			) AS available_location_types,
+			(
+				SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+				FROM work_source_presence AS presence
+				WHERE presence.work_id = work.id
+			) AS source_presence,
 			(
 				SELECT snapshot_json
 				FROM metadata_snapshot
@@ -308,6 +317,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		var item libraryWorkSummary
 		var snapshot sql.NullString
 		var availableLocationTypes sql.NullString
+		var sourcePresence sql.NullString
 		var partyLink sql.NullString
 		var favorite int
 		if err := rows.Scan(
@@ -318,6 +328,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			&item.TrackCount,
 			&item.AvailableLocations,
 			&availableLocationTypes,
+			&sourcePresence,
 			&snapshot,
 			&partyLink,
 			&item.ListeningStatus,
@@ -327,6 +338,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item.Favorite = favorite != 0
+		item.SourcePresence = parseSourcePresenceSummary(sourcePresence.String)
 		metadata := parseDLsiteSnapshot(snapshot.String)
 		familyMediaCode := item.PrimaryCode
 		progressWorkID := item.ID
@@ -363,6 +375,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				item.AvailableLocations = availableLocations
 				item.Availability = availability
 			}
+			item.SourcePresence = s.sourcePresenceForCode(r.Context(), familyMediaCode)
 			if workID, ok := s.workIDForCode(r.Context(), familyMediaCode); ok {
 				progressWorkID = workID
 			}
@@ -435,26 +448,32 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 }
 
 type libraryWorkSummary struct {
-	ID                 int64               `json:"id"`
-	PrimaryCode        string              `json:"primaryCode"`
-	Title              string              `json:"title"`
-	CreatedAt          string              `json:"createdAt"`
-	UpdatedAt          string              `json:"updatedAt"`
-	ReleaseDate        *string             `json:"releaseDate"`
-	CoverURL           string              `json:"coverUrl"`
-	DLsiteURL          string              `json:"dlsiteUrl"`
-	Circle             string              `json:"circle"`
-	CircleExternalID   string              `json:"circleExternalId"`
-	Rating             *float64            `json:"rating"`
-	Sales              *int64              `json:"sales"`
-	Tags               []string            `json:"tags"`
-	VoiceActors        []string            `json:"voiceActors"`
-	TrackCount         int64               `json:"trackCount"`
-	AvailableLocations int64               `json:"availableLocations"`
-	Availability       []string            `json:"availability"`
-	Progress           workProgressSummary `json:"progress"`
-	ListeningStatus    string              `json:"listeningStatus"`
-	Favorite           bool                `json:"favorite"`
+	ID                 int64                `json:"id"`
+	PrimaryCode        string               `json:"primaryCode"`
+	Title              string               `json:"title"`
+	CreatedAt          string               `json:"createdAt"`
+	UpdatedAt          string               `json:"updatedAt"`
+	ReleaseDate        *string              `json:"releaseDate"`
+	CoverURL           string               `json:"coverUrl"`
+	DLsiteURL          string               `json:"dlsiteUrl"`
+	Circle             string               `json:"circle"`
+	CircleExternalID   string               `json:"circleExternalId"`
+	Rating             *float64             `json:"rating"`
+	Sales              *int64               `json:"sales"`
+	Tags               []string             `json:"tags"`
+	VoiceActors        []string             `json:"voiceActors"`
+	TrackCount         int64                `json:"trackCount"`
+	AvailableLocations int64                `json:"availableLocations"`
+	Availability       []string             `json:"availability"`
+	SourcePresence     []sourcePresenceItem `json:"sourcePresence"`
+	Progress           workProgressSummary  `json:"progress"`
+	ListeningStatus    string               `json:"listeningStatus"`
+	Favorite           bool                 `json:"favorite"`
+}
+
+type sourcePresenceItem struct {
+	Type         string `json:"type"`
+	Availability string `json:"availability"`
 }
 
 type workDetail struct {
@@ -577,7 +596,7 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 	case "local":
 		return stringSliceContainsFold(work.Availability, "local")
 	case "tracked":
-		return hasRemoteAvailabilityValue(work.Availability) || work.Favorite || work.ListeningStatus != "none" || work.Progress.MediaItemID != nil
+		return workHasSourcePresenceType(work, "tracked")
 	default:
 		return true
 	}
@@ -745,8 +764,13 @@ func stringSliceContainsSubstringFold(values []string, needle string) bool {
 	return false
 }
 
-func hasRemoteAvailabilityValue(values []string) bool {
-	return stringSliceContainsFold(values, "remote") || stringSliceContainsFold(values, "cache") || stringSliceContainsFold(values, "cached")
+func workHasSourcePresenceType(work libraryWorkSummary, presenceType string) bool {
+	for _, presence := range work.SourcePresence {
+		if strings.EqualFold(presence.Type, presenceType) {
+			return true
+		}
+	}
+	return false
 }
 
 func numericListTokenValue(value string) float64 {
@@ -799,6 +823,46 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 		return 0, 0, nil, false
 	}
 	return trackCount, availableLocations, availabilityBadges(locationTypes.String), true
+}
+
+func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
+	var raw sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT GROUP_CONCAT(DISTINCT presence.presence_type || ':' || presence.availability)
+		FROM work_source_presence AS presence
+		INNER JOIN work ON work.id = presence.work_id
+		WHERE UPPER(work.primary_code) = UPPER(?)
+	`, code).Scan(&raw); err != nil {
+		return nil
+	}
+	return parseSourcePresenceSummary(raw.String)
+}
+
+func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	items := []sourcePresenceItem{}
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		presenceType, availability, ok := strings.Cut(strings.TrimSpace(part), ":")
+		presenceType = strings.TrimSpace(presenceType)
+		availability = strings.TrimSpace(availability)
+		if !ok || presenceType == "" {
+			continue
+		}
+		if availability == "" {
+			availability = "unknown"
+		}
+		key := strings.ToLower(presenceType + ":" + availability)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		items = append(items, sourcePresenceItem{Type: presenceType, Availability: availability})
+	}
+	return items
 }
 
 func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {

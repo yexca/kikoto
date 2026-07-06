@@ -16,9 +16,15 @@ export type Work = {
   trackCount: number;
   availableLocations: number;
   availability: string[];
+  sourcePresence: SourcePresenceItem[] | null;
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+};
+
+export type SourcePresenceItem = {
+  type: string;
+  availability: string;
 };
 
 export type WorkProgressSummary = {
