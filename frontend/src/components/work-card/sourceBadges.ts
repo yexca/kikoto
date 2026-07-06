@@ -34,13 +34,16 @@ export function sourcePresenceBadges(
       });
       continue;
     }
-    if (type === "remote") {
+    if (type === "source") {
       const sourceName = item.fileSourceName || item.fileSourceCode || "remote source";
       add({
-        key: `source:remote:${item.fileSourceId ?? sourceName}`,
+        key: `source:${item.fileSourceId ?? sourceName}`,
         label: sourceName,
         variant: availabilityLabel === "available" ? "outline" : "warning",
       });
+      continue;
+    }
+    if (type === "remote") {
       continue;
     }
     if (type) {
@@ -79,21 +82,25 @@ export function circleSourceBadges({
   }
 
   if (cache) badges.push({ key: "source:cache", label: "Cache", variant: "secondary" });
-  if (badges.length === 0 && remote) {
-    badges.push({ key: "source:remote:legacy", label: "Remote", variant: "outline", title: "Legacy remote availability" });
-  }
   return sortSourceBadges(dedupeBadges(badges));
 }
 
 function availabilityBadges(availability: string[]): WorkCardBadge[] {
-  return availability.map((item) => {
+  const badges: WorkCardBadge[] = [];
+  for (const item of availability) {
     const normalized = item.toLowerCase();
-    if (normalized === "local") return { key: "source:local", label: "Local", variant: "secondary" };
-    if (normalized === "cache" || normalized === "cached") return { key: "source:cache", label: "Cache", variant: "secondary" };
-    if (normalized === "remote") return { key: "source:remote:legacy", label: "Remote", variant: "outline", title: "Legacy remote availability" };
-    if (normalized === "missing") return { key: "source:missing", label: "Missing", variant: "warning" };
-    return { key: `source:${normalized}`, label: item, variant: "outline" };
-  });
+    if (normalized === "remote") continue;
+    if (normalized === "local") {
+      badges.push({ key: "source:local", label: "Local", variant: "secondary" });
+    } else if (normalized === "cache" || normalized === "cached") {
+      badges.push({ key: "source:cache", label: "Cache", variant: "secondary" });
+    } else if (normalized === "missing") {
+      badges.push({ key: "source:missing", label: "Missing", variant: "warning" });
+    } else {
+      badges.push({ key: `source:${normalized}`, label: item, variant: "outline" });
+    }
+  }
+  return badges;
 }
 
 function normalizePresenceType(type: string) {
@@ -126,5 +133,6 @@ function sourceBadgeRank(badge: WorkCardBadge) {
   if (key.startsWith("source:remote")) return 2;
   if (key.startsWith("source:cache")) return 3;
   if (key.startsWith("source:missing")) return 4;
+  if (key.startsWith("source:")) return 2;
   return 5;
 }
