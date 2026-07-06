@@ -685,8 +685,9 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 24
 	}
+	plan := planRemoteSourceQuery(r.URL.Query().Get("q"))
 	client := kikoeruClientForSource(source)
-	remotePage, err := client.ListWorks(r.Context(), page, pageSize, r.URL.Query().Get("q"))
+	remotePage, err := client.ListWorks(r.Context(), page, pageSize, plan.PushdownQuery)
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
@@ -697,6 +698,9 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if len(plan.PostFilterTokens) > 0 {
+		works = filterRemoteWorkSummaries(works, plan.PostFilterTokens)
 	}
 	total := remotePage.Pagination.TotalCount
 	if total == 0 {
@@ -777,10 +781,19 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
-	sources, err := s.loadRemoteSourcesForAvailability(r.Context())
+	response, err := s.checkWorkSourceAvailability(r.Context(), code, "detail_view", "work_detail_source_tabs")
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) checkWorkSourceAvailability(ctx context.Context, code string, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
+	if err != nil {
+		return sourceAvailabilityResponse{}, err
 	}
 	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	results := make([]sourceAvailabilitySummary, 0, len(sources))
@@ -792,22 +805,20 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		if !isKikoeruSourceType(source.SourceType) {
 			result.Status = "unavailable"
 			result.Error = "source is not a supported kikoeru source"
-			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
-				writeError(w, err)
-				return
+			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
+				return sourceAvailabilityResponse{}, err
 			}
 			results = append(results, result)
 			continue
 		}
 		if !source.Enabled {
-			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
-				writeError(w, err)
-				return
+			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
+				return sourceAvailabilityResponse{}, err
 			}
 			results = append(results, result)
 			continue
 		}
-		remoteWork, err := s.checkRemoteWorkAvailability(r.Context(), source, code)
+		remoteWork, err := s.checkRemoteWorkAvailability(ctx, source, code)
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
 			result.Status = "error"
@@ -815,15 +826,14 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 			if isNotFoundLikeError(err) {
 				result.Status = "not_found"
 			}
-			_ = s.updateSourceHealth(r.Context(), source.ID, "unavailable")
-			if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, code); err != nil {
-				writeError(w, err)
-				return
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
+				return sourceAvailabilityResponse{}, err
 			}
 			results = append(results, result)
 			continue
 		}
-		_ = s.updateSourceHealth(r.Context(), source.ID, "healthy")
+		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
 		workCode := normalizedRemoteWorkCode(remoteWork)
 		if workCode == "" {
 			workCode = code
@@ -833,20 +843,18 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		result.PrimaryCode = workCode
 		result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
 		result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
-		if err := s.attachSourceAvailabilityFlags(r.Context(), &result, source.ID, workCode); err != nil {
-			writeError(w, err)
-			return
+		if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, workCode); err != nil {
+			return sourceAvailabilityResponse{}, err
 		}
 		results = append(results, result)
 	}
-	runID, err := s.recordSourceAvailabilityWorkflow(r.Context(), code, checkedAt, results)
+	runID, err := s.recordSourceAvailabilityWorkflow(ctx, code, checkedAt, results, triggerType, triggerReason)
 	if err != nil {
-		writeError(w, err)
-		return
+		return sourceAvailabilityResponse{}, err
 	}
-	writeJSON(w, http.StatusOK, sourceAvailabilityResponse{
+	return sourceAvailabilityResponse{
 		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
-	})
+	}, nil
 }
 
 func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
@@ -1251,9 +1259,17 @@ func (s *Server) workHasSourcePresence(ctx context.Context, workID int64, source
 	return s.db.QueryRowContext(ctx, query, args...).Scan(&found) == nil
 }
 
-func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code string, checkedAt string, results []sourceAvailabilitySummary) (int64, error) {
+func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code string, checkedAt string, results []sourceAvailabilitySummary, triggerType string, triggerReason string) (int64, error) {
 	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
 		return 0, err
+	}
+	triggerType = strings.TrimSpace(triggerType)
+	if triggerType == "" {
+		triggerType = "manual"
+	}
+	triggerReason = strings.TrimSpace(triggerReason)
+	if triggerReason == "" {
+		triggerReason = "source_availability_check"
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1291,7 +1307,7 @@ func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code stri
 	if err := s.recordAvailabilityPresence(ctx, tx, code, results); err != nil {
 		return 0, err
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "source_availability_check", "Check source availability", "succeeded", "detail_view", "work_detail_source_tabs", input, summary)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "source_availability_check", "Check source availability", "succeeded", triggerType, triggerReason, input, summary)
 	if err != nil {
 		return 0, err
 	}
@@ -1386,6 +1402,129 @@ func sourceAvailabilityMatchSummary(results []sourceAvailabilitySummary) map[str
 		}
 	}
 	return map[string]any{"has_local": hasLocal, "has_cache": hasCache, "has_remote": hasRemote}
+}
+
+type remoteSourceQueryPlan struct {
+	PushdownQuery    string
+	PushdownToken    *listSearchToken
+	PostFilterTokens []listSearchToken
+}
+
+func planRemoteSourceQuery(query string) remoteSourceQueryPlan {
+	tokens := parseListSearchTokens(query)
+	if len(tokens) == 0 {
+		return remoteSourceQueryPlan{}
+	}
+	pushdownIndex := -1
+	bestRank := 999
+	for index, token := range tokens {
+		rank := remoteSourcePushdownRank(token)
+		if rank < bestRank {
+			bestRank = rank
+			pushdownIndex = index
+		}
+	}
+	plan := remoteSourceQueryPlan{}
+	for index, token := range tokens {
+		if index == pushdownIndex {
+			pushdown := remoteSourcePushdownQuery(token)
+			if pushdown != "" {
+				plan.PushdownQuery = pushdown
+				copyToken := token
+				plan.PushdownToken = &copyToken
+				continue
+			}
+		}
+		plan.PostFilterTokens = append(plan.PostFilterTokens, token)
+	}
+	return plan
+}
+
+func remoteSourcePushdownRank(token listSearchToken) int {
+	switch token.Kind {
+	case "code":
+		return 1
+	case "circle", "voice_actor", "tag":
+		return 2
+	case "text":
+		return 3
+	case "rating_min", "sales_min", "duration_min", "duration_max", "age", "language":
+		return 4
+	default:
+		return 999
+	}
+}
+
+func remoteSourcePushdownQuery(token listSearchToken) string {
+	switch token.Kind {
+	case "circle":
+		return "$circle:" + token.Value + "$"
+	case "voice_actor":
+		return "$va:" + token.Value + "$"
+	case "tag":
+		return "$tag:" + token.Value + "$"
+	case "rating_min":
+		return "$rate:" + token.Value + "$"
+	case "sales_min":
+		return "$sell:" + token.Value + "$"
+	case "duration_min":
+		return "$duration:" + token.Value + "$"
+	case "duration_max":
+		return "$-duration:" + token.Value + "$"
+	case "age":
+		return "$age:" + token.Value + "$"
+	case "language":
+		return "$lang:" + token.Value + "$"
+	case "code", "text":
+		return token.Value
+	default:
+		return ""
+	}
+}
+
+func filterRemoteWorkSummaries(works []remoteWorkSummary, tokens []listSearchToken) []remoteWorkSummary {
+	result := make([]remoteWorkSummary, 0, len(works))
+	for _, work := range works {
+		if remoteWorkSummaryMatchesTokens(work, tokens) {
+			result = append(result, work)
+		}
+	}
+	return result
+}
+
+func remoteWorkSummaryMatchesTokens(work remoteWorkSummary, tokens []listSearchToken) bool {
+	for _, token := range tokens {
+		if !remoteWorkSummaryMatchesToken(work, token) {
+			return false
+		}
+	}
+	return true
+}
+
+func remoteWorkSummaryMatchesToken(work remoteWorkSummary, token listSearchToken) bool {
+	needle := strings.ToLower(strings.TrimSpace(token.Value))
+	if needle == "" {
+		return true
+	}
+	switch token.Kind {
+	case "code":
+		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
+	case "circle":
+		return strings.Contains(strings.ToLower(work.Circle), needle)
+	case "tag":
+		return stringSliceContainsSubstringFold(work.Tags, needle)
+	case "exclude_tag":
+		return !stringSliceContainsSubstringFold(work.Tags, needle)
+	case "rating_min":
+		return work.Rating != nil && *work.Rating >= numericListTokenValue(needle)
+	case "sales_min":
+		return work.Sales != nil && float64(*work.Sales) >= numericListTokenValue(needle)
+	case "voice_actor", "duration_min", "duration_max", "age", "language":
+		return true
+	default:
+		return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate}, needle) ||
+			stringSliceContainsSubstringFold(work.Tags, needle)
+	}
 }
 
 func (s *Server) remoteWorkSummaries(ctx context.Context, works []kikoeru.Work) ([]remoteWorkSummary, error) {

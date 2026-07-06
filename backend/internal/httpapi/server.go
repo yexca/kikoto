@@ -593,7 +593,7 @@ type listSearchToken struct {
 func parseListSearchTokens(query string) []listSearchToken {
 	tokens := []listSearchToken{}
 	rest := strings.TrimSpace(query)
-	wrappedPattern := regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|rate|sell|age|lang):([^$]+)\$`)
+	wrappedPattern := regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
 	rest = wrappedPattern.ReplaceAllStringFunc(rest, func(match string) string {
 		parts := wrappedPattern.FindStringSubmatch(match)
 		if len(parts) == 3 {
@@ -603,7 +603,19 @@ func parseListSearchTokens(query string) []listSearchToken {
 		}
 		return " "
 	})
-	for _, part := range splitListSearchParts(rest) {
+	parts := splitListSearchParts(rest)
+	for index := 0; index < len(parts); index++ {
+		part := strings.TrimSpace(parts[index])
+		if part == "" {
+			continue
+		}
+		if key, ok := strings.CutSuffix(part, ":"); ok && index+1 < len(parts) {
+			if token, matched := listSearchTokenFromKey(key, parts[index+1]); matched {
+				tokens = append(tokens, token)
+				index++
+				continue
+			}
+		}
 		if key, value, ok := strings.Cut(part, ":"); ok {
 			if token, matched := listSearchTokenFromKey(key, value); matched {
 				tokens = append(tokens, token)
@@ -656,8 +668,14 @@ func listSearchTokenFromKey(key string, value string) (listSearchToken, bool) {
 		return listSearchToken{Kind: "rating_min", Value: value}, true
 	case "sell", "sales":
 		return listSearchToken{Kind: "sales_min", Value: value}, true
-	case "age", "lang", "language":
-		return listSearchToken{Kind: "text", Value: value}, true
+	case "duration":
+		return listSearchToken{Kind: "duration_min", Value: value}, true
+	case "-duration":
+		return listSearchToken{Kind: "duration_max", Value: value}, true
+	case "age":
+		return listSearchToken{Kind: "age", Value: value}, true
+	case "lang", "language":
+		return listSearchToken{Kind: "language", Value: value}, true
 	default:
 		return listSearchToken{}, false
 	}
@@ -683,6 +701,10 @@ func workMatchesListToken(work libraryWorkSummary, token listSearchToken) bool {
 		return work.Rating != nil && *work.Rating >= numericListTokenValue(needle)
 	case "sales_min":
 		return work.Sales != nil && float64(*work.Sales) >= numericListTokenValue(needle)
+	case "age":
+		return stringSliceContainsSubstringFold(append([]string{work.PrimaryCode, work.Title}, work.Tags...), needle)
+	case "language":
+		return stringSliceContainsSubstringFold(append([]string{work.Title}, work.Tags...), needle)
 	default:
 		values := []string{work.PrimaryCode, work.Title, work.Circle, work.CircleExternalID}
 		if work.ReleaseDate != nil {
@@ -2773,15 +2795,16 @@ type remoteBulkWorkflowResult struct {
 }
 
 type startupLibraryRefreshResult struct {
-	RunID          int64    `json:"runId"`
-	Status         string   `json:"status"`
-	LocalScanRunID int64    `json:"localScanRunId"`
-	MetadataRunID  int64    `json:"metadataRunId"`
-	DetectedWorks  int      `json:"detectedWorks"`
-	SyncedWorks    int      `json:"syncedWorks"`
-	SkippedWorks   int      `json:"skippedWorks"`
-	FailedWorks    int      `json:"failedWorks"`
-	Failures       []string `json:"failures"`
+	RunID                 int64    `json:"runId"`
+	Status                string   `json:"status"`
+	LocalScanRunID        int64    `json:"localScanRunId"`
+	MetadataRunID         int64    `json:"metadataRunId"`
+	DetectedWorks         int      `json:"detectedWorks"`
+	AvailabilityWorkCodes []string `json:"availabilityWorkCodes"`
+	SyncedWorks           int      `json:"syncedWorks"`
+	SkippedWorks          int      `json:"skippedWorks"`
+	FailedWorks           int      `json:"failedWorks"`
+	Failures              []string `json:"failures"`
 }
 
 func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
@@ -2919,14 +2942,19 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	}
 	result.LocalScanRunID = scanResult.RunID
 	result.DetectedWorks = scanResult.DetectedWorks
+	result.AvailabilityWorkCodes = scanResult.NewWorkCodes
 	if err := s.updateStartupChildNode(ctx, scanNodeID, "succeeded", map[string]any{
 		"child_run_id":      scanResult.RunID,
 		"detected_works":    scanResult.DetectedWorks,
 		"scanned_files":     scanResult.ScannedFiles,
 		"updated_locations": scanResult.UpdatedLocations,
 		"skipped_locations": scanResult.SkippedLocations,
+		"new_work_codes":    scanResult.NewWorkCodes,
 	}, nil); err != nil {
 		return startupLibraryRefreshResult{}, err
+	}
+	if len(scanResult.NewWorkCodes) > 0 {
+		go s.runStartupAvailabilityChecks(context.Background(), scanResult.NewWorkCodes)
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
 		return startupLibraryRefreshResult{}, err
@@ -2962,6 +2990,20 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	return result, nil
 }
 
+func (s *Server) runStartupAvailabilityChecks(ctx context.Context, codes []string) {
+	seen := map[string]bool{}
+	for _, rawCode := range codes {
+		code := strings.ToUpper(strings.TrimSpace(rawCode))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		_, _ = s.checkWorkSourceAvailability(checkCtx, code, "startup", "new_local_work_detected")
+		cancel()
+	}
+}
+
 func (s *Server) updateStartupChildNode(ctx context.Context, nodeID int64, status string, output map[string]any, runErr error) error {
 	errorMessage := ""
 	if runErr != nil {
@@ -2975,13 +3017,14 @@ func (s *Server) updateStartupChildNode(ctx context.Context, nodeID int64, statu
 func (s *Server) finishStartupLibraryRefresh(ctx context.Context, runID int64, scanNodeID int64, metadataNodeID int64, result startupLibraryRefreshResult, status string, runErr error) error {
 	result.Status = status
 	output := map[string]any{
-		"local_scan_run_id": result.LocalScanRunID,
-		"metadata_run_id":   result.MetadataRunID,
-		"detected_works":    result.DetectedWorks,
-		"synced_works":      result.SyncedWorks,
-		"skipped_works":     result.SkippedWorks,
-		"failed_works":      result.FailedWorks,
-		"failures":          result.Failures,
+		"local_scan_run_id":       result.LocalScanRunID,
+		"metadata_run_id":         result.MetadataRunID,
+		"detected_works":          result.DetectedWorks,
+		"availability_work_codes": result.AvailabilityWorkCodes,
+		"synced_works":            result.SyncedWorks,
+		"skipped_works":           result.SkippedWorks,
+		"failed_works":            result.FailedWorks,
+		"failures":                result.Failures,
 	}
 	if runErr != nil {
 		output["error"] = runErr.Error()
@@ -3105,14 +3148,15 @@ func dlsiteLanguageFallbacks(language string) []string {
 }
 
 type localScanResult struct {
-	RunID            int64  `json:"runId"`
-	JobID            int64  `json:"jobId"`
-	FileSourceID     int64  `json:"fileSourceId"`
-	Status           string `json:"status"`
-	DetectedWorks    int    `json:"detectedWorks"`
-	ScannedFiles     int    `json:"scannedFiles"`
-	UpdatedLocations int    `json:"updatedLocations"`
-	SkippedLocations int    `json:"skippedLocations"`
+	RunID            int64    `json:"runId"`
+	JobID            int64    `json:"jobId"`
+	FileSourceID     int64    `json:"fileSourceId"`
+	Status           string   `json:"status"`
+	DetectedWorks    int      `json:"detectedWorks"`
+	ScannedFiles     int      `json:"scannedFiles"`
+	UpdatedLocations int      `json:"updatedLocations"`
+	SkippedLocations int      `json:"skippedLocations"`
+	NewWorkCodes     []string `json:"newWorkCodes"`
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
@@ -3168,12 +3212,17 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 
 	updatedLocations := 0
 	skippedLocations := 0
+	newWorkCodes := []string{}
 	seenLocationPaths := map[string]bool{}
 	seenWorkIDs := map[int64]bool{}
 	for _, folder := range workFolders {
+		_, existedBefore := s.workIDForCode(ctx, folder.Code)
 		workID, err := upsertDetectedWork(ctx, tx, folder)
 		if err != nil {
 			return localScanResult{}, err
+		}
+		if !existedBefore {
+			newWorkCodes = append(newWorkCodes, folder.Code)
 		}
 		seenWorkIDs[workID] = true
 		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
@@ -3299,6 +3348,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 			"updated_locations": updatedLocations,
 			"skipped_locations": skippedLocations,
 			"missing_locations": missingLocations,
+			"new_work_codes":    newWorkCodes,
 		},
 	}); err != nil {
 		return localScanResult{}, err
@@ -3306,6 +3356,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 	runSummary["updated_locations"] = updatedLocations
 	runSummary["skipped_locations"] = skippedLocations
 	runSummary["missing_locations"] = missingLocations
+	runSummary["new_work_codes"] = newWorkCodes
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), runID); err != nil {
 		return localScanResult{}, err
 	}
@@ -3323,6 +3374,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 		ScannedFiles:     scanSummary.ScannedFiles,
 		UpdatedLocations: updatedLocations,
 		SkippedLocations: skippedLocations,
+		NewWorkCodes:     newWorkCodes,
 	}, nil
 }
 

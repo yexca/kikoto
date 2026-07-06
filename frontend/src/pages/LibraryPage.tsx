@@ -2,9 +2,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Check,
   CircleUserRound,
   Clock3,
   Database,
+  Edit3,
   Trash2,
   Eye,
   FileAudio,
@@ -23,6 +25,7 @@ import {
   MoreHorizontal,
   Pause,
   Play,
+  Plus,
   RefreshCw,
   Search,
   Star,
@@ -67,6 +70,8 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 ];
 const localWorkPageSizeOptions = [24, 48] as const;
 type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
+const librarySearchDebounceMs = 400;
+const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
@@ -84,6 +89,21 @@ type SearchTokenKind =
   | "age"
   | "language";
 type SearchToken = { kind: SearchTokenKind; value: string };
+type SearchTokenDraft = { kind: SearchTokenKind; value: string };
+const editableSearchTokenKinds: { value: SearchTokenKind; label: string }[] = [
+  { value: "text", label: "Text" },
+  { value: "code", label: "Code" },
+  { value: "circle", label: "Circle" },
+  { value: "voice_actor", label: "Voice actor" },
+  { value: "tag", label: "Tag" },
+  { value: "exclude_tag", label: "Not tag" },
+  { value: "rating_min", label: "Rating >=" },
+  { value: "sales_min", label: "Sales >=" },
+  { value: "duration_min", label: "Duration >=" },
+  { value: "duration_max", label: "Duration <=" },
+  { value: "age", label: "Age" },
+  { value: "language", label: "Language" },
+];
 
 export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
@@ -98,15 +118,30 @@ export function LibraryPage() {
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState("");
+  const [tokenEditor, setTokenEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft } | null>(null);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
   const [workTotal, setWorkTotal] = useState(0);
   const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
-  const remoteSearchQuery = useMemo(() => compileRemoteSearchQuery(searchTokens), [searchTokens]);
-  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(searchTokens), [searchTokens]);
+  const debouncedSearchTokens = useMemo(() => parseSearchTokens(debouncedSearchQuery), [debouncedSearchQuery]);
+  const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
+  const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
+  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
   const workScope = activeTab.kind === "local" ? "local" : activeTab.kind === "tracked" ? "tracked" : "all";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedRemoteSearchQuery(searchQuery), remoteSearchDebounceMs);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     if (activeTab.kind === "source") return;
@@ -195,7 +230,7 @@ export function LibraryPage() {
 
   useEffect(() => {
     setWorkPage(1);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", searchQuery, statusFilter, workPageSize]);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", librarySearchQuery, statusFilter, workPageSize]);
 
   useEffect(() => {
     if (activeTab.kind !== "source") return;
@@ -272,6 +307,35 @@ export function LibraryPage() {
     setIsAPIAvailable(true);
   };
 
+  const updateSearchTokens = (tokens: SearchToken[]) => {
+    setSearchQuery(tokens.map(formatSearchToken).join(" "));
+  };
+
+  const removeSearchToken = (index: number) => {
+    updateSearchTokens(searchTokens.filter((_token, tokenIndex) => tokenIndex !== index));
+    setTokenEditor(null);
+  };
+
+  const openAddTokenEditor = () => {
+    setTokenEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
+  };
+
+  const openEditTokenEditor = (token: SearchToken, index: number) => {
+    setTokenEditor({ mode: "edit", index, draft: { kind: token.kind, value: token.value } });
+  };
+
+  const saveTokenEditor = () => {
+    if (!tokenEditor) return;
+    const token = normalizeSearchTokenDraft(tokenEditor.draft);
+    if (!token) return;
+    if (tokenEditor.mode === "add") {
+      updateSearchTokens([...searchTokens, token]);
+    } else if (tokenEditor.index !== null) {
+      updateSearchTokens(searchTokens.map((item, index) => (index === tokenEditor.index ? token : item)));
+    }
+    setTokenEditor(null);
+  };
+
   if (selectedRemoteTarget !== null) {
     return (
       <RemoteWorkDetailView
@@ -324,6 +388,13 @@ export function LibraryPage() {
               <X className="h-4 w-4" />
             </button>
           )}
+          <button
+            className="rounded-sm text-muted-foreground hover:text-foreground"
+            onClick={openAddTokenEditor}
+            aria-label="Add search condition"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
           <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
@@ -353,18 +424,29 @@ export function LibraryPage() {
       {searchTokens.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {searchTokens.map((token, index) => (
-            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1">
-              {searchTokenLabel(token)}
+            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1.5">
+              <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => openEditTokenEditor(token, index)}>
+                <Edit3 className="h-3 w-3" />
+                {searchTokenLabel(token)}
+              </button>
               <button
                 className="rounded-sm text-muted-foreground hover:text-foreground"
                 aria-label={`Remove ${searchTokenLabel(token)}`}
-                onClick={() => setSearchQuery(searchQueryWithoutToken(searchTokens, index))}
+                onClick={() => removeSearchToken(index)}
               >
                 <X className="h-3 w-3" />
               </button>
             </Badge>
           ))}
         </div>
+      )}
+      {tokenEditor && (
+        <SearchTokenEditor
+          editor={tokenEditor}
+          onChange={(draft) => setTokenEditor((current) => current ? { ...current, draft } : current)}
+          onCancel={() => setTokenEditor(null)}
+          onSave={saveTokenEditor}
+        />
       )}
 
       <LibraryTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
@@ -1260,6 +1342,56 @@ function WorkPagination({
         />
         <Button variant="outline" size="sm" onClick={goToJumpPage}>
           Go
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SearchTokenEditor({
+  editor,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  editor: { mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft };
+  onChange: (draft: SearchTokenDraft) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const value = editor.draft.value;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm sm:flex-row sm:items-center">
+      <select
+        className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-40"
+        value={editor.draft.kind}
+        onChange={(event) => onChange({ ...editor.draft, kind: event.target.value as SearchTokenKind })}
+        aria-label="Search token type"
+      >
+        {editableSearchTokenKinds.map((kind) => (
+          <option key={kind.value} value={kind.value}>
+            {kind.label}
+          </option>
+        ))}
+      </select>
+      <input
+        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+        value={value}
+        onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") onSave();
+          if (event.key === "Escape") onCancel();
+        }}
+        placeholder="Value"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={!value.trim()} onClick={onSave}>
+          <Check className="h-4 w-4" />
+          {editor.mode === "add" ? "Add" : "Save"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onCancel}>
+          <X className="h-4 w-4" />
+          Cancel
         </Button>
       </div>
     </div>
@@ -3795,9 +3927,20 @@ function parseSearchTokens(query: string): SearchToken[] {
     if (token) tokens.push(token);
     return " ";
   });
-  for (const rawPart of splitSearchParts(rest)) {
+  const parts = splitSearchParts(rest);
+  for (let index = 0; index < parts.length; index++) {
+    const rawPart = parts[index];
     const part = rawPart.trim();
     if (!part) continue;
+    const pendingPrefix = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):$/i);
+    if (pendingPrefix && index + 1 < parts.length) {
+      const token = searchTokenFromKeyValue(pendingPrefix[1], parts[index + 1]);
+      if (token) {
+        tokens.push(token);
+        index += 1;
+        continue;
+      }
+    }
     const prefixed = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
     if (prefixed) {
       const token = searchTokenFromKeyValue(prefixed[1], prefixed[2]);
@@ -3865,38 +4008,13 @@ function searchTokenFromKeyValue(key: string, rawValue: string): SearchToken | n
   }
 }
 
-function compileRemoteSearchQuery(tokens: SearchToken[]) {
-  const primary = tokens.find((token) => remoteSourceSupportsToken(token));
-  if (!primary) {
-    return tokens
-      .filter((token) => token.kind === "text" || token.kind === "code")
-      .map((token) => token.value)
-      .join(" ");
+function normalizeSearchTokenDraft(draft: SearchTokenDraft): SearchToken | null {
+  const value = draft.value.trim();
+  if (!value) return null;
+  if (draft.kind === "code") {
+    return { kind: "code", value: value.toUpperCase() };
   }
-  switch (primary.kind) {
-    case "circle":
-      return `$circle:${primary.value}$`;
-    case "voice_actor":
-      return `$va:${primary.value}$`;
-    case "tag":
-      return `$tag:${primary.value}$`;
-    case "duration_min":
-      return `$duration:${primary.value}$`;
-    case "duration_max":
-      return `$-duration:${primary.value}$`;
-    case "rating_min":
-      return `$rate:${primary.value}$`;
-    case "sales_min":
-      return `$sell:${primary.value}$`;
-    case "age":
-      return `$age:${primary.value}$`;
-    case "language":
-      return `$lang:${primary.value}$`;
-    case "code":
-    case "text":
-    default:
-      return primary.value;
-  }
+  return { kind: draft.kind, value };
 }
 
 function compileLibrarySearchQuery(tokens: SearchToken[]) {
@@ -3927,22 +4045,34 @@ function compileLibrarySearchQuery(tokens: SearchToken[]) {
   }).join(" ");
 }
 
-function remoteSourceSupportsToken(token: SearchToken) {
+function formatRemoteSearchQuery(tokens: SearchToken[]) {
+  return tokens.map(formatRemoteSearchToken).join(" ");
+}
+
+function formatRemoteSearchToken(token: SearchToken) {
   switch (token.kind) {
-    case "text":
-    case "code":
     case "circle":
+      return `$circle:${token.value}$`;
     case "voice_actor":
+      return `$va:${token.value}$`;
     case "tag":
+      return `$tag:${token.value}$`;
+    case "exclude_tag":
+      return `$-tag:${token.value}$`;
     case "duration_min":
+      return `$duration:${token.value}$`;
     case "duration_max":
+      return `$-duration:${token.value}$`;
     case "rating_min":
+      return `$rate:${token.value}$`;
     case "sales_min":
+      return `$sell:${token.value}$`;
     case "age":
+      return `$age:${token.value}$`;
     case "language":
-      return true;
+      return `$lang:${token.value}$`;
     default:
-      return false;
+      return formatSearchToken(token);
   }
 }
 
