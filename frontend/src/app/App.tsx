@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, LogOut, Moon, Search, Shield } from "lucide-react";
+import { Bell, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Search, Shield } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { navItems, type PageID } from "@/app/navigation";
@@ -18,6 +18,7 @@ import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 
 const mobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
+const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
 function AuthenticatedApp() {
   const auth = useAuth();
   const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
     [auth],
@@ -55,6 +57,14 @@ function AuthenticatedApp() {
     setPage(id);
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
+
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
   }
@@ -65,24 +75,48 @@ function AuthenticatedApp() {
 
   return (
     <PlayerProvider>
-      <div className="min-h-screen bg-background pb-20 lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:pb-0">
+      <div
+        className={cn(
+          "min-h-screen bg-background pb-20 lg:grid lg:pb-0",
+          sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
+        )}
+      >
         <aside className="sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
-          <div className="flex h-16 items-center border-b px-5">
-            <div className="text-xl font-bold">Kikoto</div>
+          <div className={cn("flex h-16 items-center border-b", sidebarCollapsed ? "justify-center px-3" : "px-5")}>
+            <div className="flex min-w-0 items-center gap-2">
+              <img src="/kikoto-icon.svg" alt="" className="h-8 w-8 shrink-0" />
+              {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
+            </div>
           </div>
-          <nav className="min-h-0 flex-1 overflow-y-auto p-3">
+          <nav className={cn("min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
             {visibleNavItems.map((item) => (
               <Button
                 key={item.id}
-                className={cn("mb-1 w-full justify-start", page === item.id && "bg-muted")}
+                className={cn("mb-1 w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start", page === item.id && "bg-muted")}
                 variant="ghost"
+                size={sidebarCollapsed ? "icon" : "default"}
+                title={sidebarCollapsed ? item.label : undefined}
+                aria-label={sidebarCollapsed ? item.label : undefined}
                 onClick={() => openPage(item.id)}
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                {!sidebarCollapsed && item.label}
               </Button>
             ))}
           </nav>
+          <div className={cn("border-t", sidebarCollapsed ? "p-2" : "p-3")}>
+            <Button
+              variant="ghost"
+              size={sidebarCollapsed ? "icon" : "default"}
+              className={cn("w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start")}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : undefined}
+              onClick={toggleSidebar}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              {!sidebarCollapsed && "Collapse"}
+            </Button>
+          </div>
         </aside>
 
         <main className="min-w-0">
