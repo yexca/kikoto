@@ -141,6 +141,20 @@ func (c *Client) ListWorks(ctx context.Context, page int, pageSize int, keyword 
 	return result, nil
 }
 
+func (c *Client) PopularWorks(ctx context.Context, page int, pageSize int) (WorksPage, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	var result WorksPage
+	if err := c.postJSON(ctx, "/api/recommender/popular", map[string]int{"page": page, "pageSize": pageSize}, &result); err != nil {
+		return WorksPage{}, err
+	}
+	return result, nil
+}
+
 func (c *Client) WorkInfo(ctx context.Context, code string) (Work, json.RawMessage, error) {
 	var raw json.RawMessage
 	if err := c.get(ctx, "/api/workInfo/"+url.PathEscape(strings.TrimSpace(code)), nil, &raw); err != nil {
@@ -241,6 +255,32 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 		}
 		*value = string(bytes)
 		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c *Client) postJSON(ctx context.Context, path string, payload any, target any) error {
+	if c.baseURL == "" {
+		return fmt.Errorf("remote source API URL is not configured")
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
 }

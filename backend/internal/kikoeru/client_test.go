@@ -72,6 +72,39 @@ func TestListWorksFallsBackWithoutSortParamsForNumber178(t *testing.T) {
 	}
 }
 
+func TestPopularWorksPostsRecommenderRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/recommender/popular" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var payload struct {
+			Page     int `json:"page"`
+			PageSize int `json:"pageSize"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if payload.Page != 1 || payload.PageSize != 100 {
+			t.Fatalf("payload = %+v, want page 1 pageSize 100", payload)
+		}
+		writeTestJSON(t, w, WorksPage{
+			Works:      []Work{{Title: "popular", SourceID: "RJ00000001"}},
+			Pagination: Pagination{Page: 1, PageSize: 100, TotalCount: 100},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+	page, err := client.PopularWorks(context.Background(), 1, 100)
+	if err != nil {
+		t.Fatalf("PopularWorks() error = %v", err)
+	}
+	if len(page.Works) != 1 || WorkCode(page.Works[0]) != "RJ00000001" {
+		t.Fatalf("works = %+v", page.Works)
+	}
+}
+
 func newSortRejectingWorksServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
