@@ -114,6 +114,7 @@ export function LibraryPage() {
   const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
+  const [selectedWorkPreview, setSelectedWorkPreview] = useState<Work | null>(null);
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [isAPIAvailable, setIsAPIAvailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
@@ -198,6 +199,7 @@ export function LibraryPage() {
     }
     const work = works.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
     if (work) {
+      setSelectedWorkPreview(work);
       api.getWork(work.id).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
           void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
@@ -207,6 +209,7 @@ export function LibraryPage() {
       }).catch(() => setSelectedWork(null));
       return;
     }
+    setSelectedWorkPreview(null);
     if (works.length > 0) {
       void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
     }
@@ -241,6 +244,7 @@ export function LibraryPage() {
     const path = `/${work.primaryCode}`;
     window.history.pushState({}, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
+    setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
   };
 
@@ -357,11 +361,16 @@ export function LibraryPage() {
       <WorkDetailView
         code={selectedCode}
         work={selectedWork}
+        workPreview={selectedWorkPreview}
         sources={sources}
         autoSyncRemoteGlobal={settings?.autoSyncRemote ?? false}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onFavoriteChange={updateWorkFavorite}
+        onWorkReload={async (workID) => {
+          const detail = await api.getWork(workID);
+          setSelectedWork(detail);
+        }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
     );
@@ -1149,15 +1158,28 @@ function WorkCardMedia({
 type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
 
 function sourceBadgesForWork(work: Work): CardBadge[] {
+  if (workHasTrackedPresence(work) && !workHasDirectoryAvailability(work)) {
+    const presenceBadges = sourceBadgesForPresence(work.sourcePresence ?? [], { hideTracked: true });
+    presenceBadges.push({ value: "unforked", variant: "warning" });
+    if (presenceBadges.length > 0) return presenceBadges;
+  }
   const presenceBadges = sourceBadgesForPresence(work.sourcePresence ?? []);
   if (presenceBadges.length > 0) return presenceBadges;
   return sourceBadgesForAvailability(work.availability);
 }
 
-function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>): CardBadge[] {
+function workHasTrackedPresence(work: Work) {
+  return (work.sourcePresence ?? []).some((item) => item.type === "tracked");
+}
+
+function workHasDirectoryAvailability(work: Work) {
+  return work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item));
+}
+
+function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>, options: { hideTracked?: boolean } = {}): CardBadge[] {
   const order = ["local", "tracked", "cache", "remote"];
   return [...sourcePresence]
-    .filter((item) => item.type && item.type !== "location")
+    .filter((item) => item.type && item.type !== "location" && !(options.hideTracked && item.type === "tracked"))
     .sort((a, b) => {
       const left = order.indexOf(a.type);
       const right = order.indexOf(b.type);
@@ -1759,26 +1781,30 @@ function RemoteWorkDetailView({
 function WorkDetailView({
   code,
   work,
+  workPreview,
   sources,
   autoSyncRemoteGlobal,
   onBack,
   onStatusChange,
   onFavoriteChange,
+  onWorkReload,
   onWorksChanged,
 }: {
   code: string;
   work: WorkDetail | null;
+  workPreview: Work | null;
   sources: LibrarySource[];
   autoSyncRemoteGlobal: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
+  onWorkReload: (workID: number) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
-  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources), [work, remoteSources]);
+  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []), [work, remoteSources]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
@@ -1795,27 +1821,49 @@ function WorkDetailView({
   const [activeEditionCode, setActiveEditionCode] = useState("");
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
+  const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code) : work?.primaryCode || code;
   const localDirectoryWork = activeEdition ?? work;
-  const tree = useMemo(
-    () => {
-      if (selectedRemoteSource && !selectedRemoteDetail) return emptyTree();
-      return selectedRemoteDetail ? buildRemoteTree(selectedRemoteDetail.tracks) : buildTree(localDirectoryWork?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "");
-    },
-    [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail],
-  );
+  const [tree, setTree] = useState<TreeNode>(() => emptyTree());
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
   const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
   const player = usePlayer();
-  const directoryTitle = selectedRemoteSource?.source.displayName ?? selectedSource?.label ?? "Directory";
-  const directoryDescription = selectedRemoteSource
+  const directoryTitle = "Directory";
+  const directoryDescription = selectedTrackedPresence
+    ? "Tracked source directory has not been forked yet."
+    : selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : "File locations are grouped by local, cache, and remote source.";
   const favoriteSelected = favoriteLists.some((list) => list.selected);
+  const isDetailLoading = !work;
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsDirectoryLoading(true);
+    const timer = window.setTimeout(() => {
+      const nextTree =
+        selectedRemoteSource && !selectedRemoteDetail
+          ? emptyTree()
+          : selectedTrackedPresence
+            ? emptyTree()
+            : selectedRemoteDetail
+              ? buildRemoteTree(selectedRemoteDetail.tracks)
+              : buildTree(localDirectoryWork?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "");
+      if (!cancelled) {
+        setTree(nextTree);
+        setIsDirectoryLoading(false);
+      }
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail, selectedRemoteSource, selectedTrackedPresence]);
 
   useEffect(() => {
     if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
@@ -2006,6 +2054,23 @@ function WorkDetailView({
     }
   };
 
+  const forkTrackedSource = async (remote: RemoteSourceAvailability) => {
+    if (!work?.primaryCode) return;
+    setIsSyncingDetail(true);
+    setMessage("");
+    try {
+      const result = await api.syncRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
+      setMessage(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
+      await onWorkReload(result.workId);
+      await onWorksChanged();
+      setActiveSourceKey(`${remote.source.id}:remote_stream`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Fork failed.");
+    } finally {
+      setIsSyncingDetail(false);
+    }
+  };
+
   const updateFavoriteLists = async (listID: number, selected: boolean) => {
     if (!work) return;
     const nextIDs = new Set(favoriteLists.filter((list) => list.selected).map((list) => list.id));
@@ -2046,7 +2111,7 @@ function WorkDetailView({
     );
   };
 
-  if (!work) {
+  if (!work && !workPreview) {
     return (
       <div className="space-y-4">
         <Button variant="outline" size="sm" onClick={onBack}>
@@ -2060,6 +2125,8 @@ function WorkDetailView({
     );
   }
 
+  const hero = detailHeroModel(code, work, workPreview);
+
   return (
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
@@ -2068,31 +2135,32 @@ function WorkDetailView({
       </Button>
 
       <DetailHero
-        coverUrl={work.coverUrl}
-        fallbackCode={work.primaryCode}
-        code={work.primaryCode}
-        title={work.title}
-        circle={work.circle}
-        circleExternalId={work.circleExternalId}
+        coverUrl={hero.coverUrl}
+        fallbackCode={hero.primaryCode}
+        code={hero.primaryCode}
+        title={hero.title}
+        circle={hero.circle}
+        circleExternalId={hero.circleExternalId}
         ratingLabel="DL rating"
-        rating={work.rating}
-        ratingCount={work.ratingCount}
-        sales={work.sales}
-        series={work.series}
-        baseCode={work.baseCode}
-        metadataLanguage={work.metadataLanguage}
-        translations={work.translations ?? []}
-        activeVersionCode={activeEditionCode || work.primaryCode}
+        rating={hero.rating}
+        ratingCount={hero.ratingCount}
+        sales={hero.sales}
+        series={hero.series}
+        baseCode={work?.baseCode}
+        metadataLanguage={work?.metadataLanguage}
+        translations={work?.translations ?? []}
+        activeVersionCode={activeEditionCode || hero.primaryCode}
         onVersionSelect={(translation) => void selectEdition(translation)}
-        dlsiteFetchedAt={work.dlsiteFetchedAt}
-        releaseDate={work.releaseDate ?? "Unknown"}
-        ageRating={work.ageRating}
-        durationSeconds={work.durationSeconds}
-        voiceActors={work.voiceActors}
-        voiceCredits={work.voiceCredits ?? []}
-        tags={work.tags}
+        dlsiteFetchedAt={hero.dlsiteFetchedAt}
+        releaseDate={hero.releaseDate ?? "Unknown"}
+        ageRating={hero.ageRating}
+        durationSeconds={hero.durationSeconds}
+        voiceActors={hero.voiceActors}
+        voiceCredits={work?.voiceCredits ?? []}
+        tags={hero.tags}
+        loading={isDetailLoading}
         actions={
-          <DetailActionBar
+          work ? <DetailActionBar
             canPlay={allTracks.length > 0}
             busy={isSyncingDetail || isSaving}
             listeningStatus={work.listeningStatus}
@@ -2111,7 +2179,7 @@ function WorkDetailView({
             syncLabel="Sync"
             showSync
             showFetch={Boolean(selectedRemoteDetail)}
-          />
+          /> : <DetailSkeletonActions />
         }
       />
 
@@ -2122,7 +2190,7 @@ function WorkDetailView({
         activeKey={activeSourceKey}
         onActiveKeyChange={changeSourceKey}
         checkingLabel={isCheckingSources ? "Checking sources..." : ""}
-        sourceSummary={(
+        sourceSummary={work ? (
           <SourceAvailabilitySummary
             tabs={sourceTabs}
             remoteSources={remoteSources}
@@ -2131,7 +2199,7 @@ function WorkDetailView({
             checkedAt={sourceCheckedAt}
             onRefresh={() => void refreshSourceAvailability()}
           />
-        )}
+        ) : <DirectorySkeletonSummary />}
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
@@ -2148,7 +2216,15 @@ function WorkDetailView({
             onSave={() => void planRemoteSave()}
           />
         ) : null}
-        loadingMessage={selectedRemoteSource && !selectedRemoteSource.detail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
+        emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence ? (
+          <TrackedUnforkedPanel
+            presence={selectedTrackedPresence}
+            remoteSources={remoteSources}
+            busy={isSyncingDetail}
+            onFork={(remote) => void forkTrackedSource(remote)}
+          />
+        ) : undefined}
+        loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
         onPreview={setPreview}
         onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
@@ -2191,6 +2267,7 @@ function DetailHero({
   voiceActors,
   voiceCredits,
   tags,
+  loading = false,
   actions,
 }: {
   coverUrl: string;
@@ -2216,6 +2293,7 @@ function DetailHero({
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   tags: string[];
+  loading?: boolean;
   actions?: ReactNode;
 }) {
   const codeLabel = code || fallbackCode || "Remote";
@@ -2241,6 +2319,7 @@ function DetailHero({
           <div className="space-y-1.5">
             <Badge variant="secondary" className="w-fit">{codeLabel}</Badge>
             <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+            {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {circleExternalId ? (
@@ -2305,6 +2384,57 @@ function DetailHero({
   );
 }
 
+function DetailSkeletonActions() {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
+      <div className="h-9 w-28 animate-pulse rounded-md bg-muted" />
+      <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />
+    </div>
+  );
+}
+
+function DirectorySkeletonSummary() {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="flex flex-wrap gap-2">
+        <div className="h-7 w-28 animate-pulse rounded-full bg-muted" />
+        <div className="h-7 w-36 animate-pulse rounded-full bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+function DirectorySkeleton() {
+  return (
+    <div className="space-y-2">
+      <div className="h-10 animate-pulse rounded-md bg-muted" />
+      <div className="h-10 animate-pulse rounded-md bg-muted" />
+      <div className="h-10 animate-pulse rounded-md bg-muted" />
+    </div>
+  );
+}
+
+function detailHeroModel(code: string, work: WorkDetail | null, preview: Work | null) {
+  return {
+    primaryCode: work?.primaryCode ?? preview?.primaryCode ?? code,
+    title: work?.title ?? preview?.title ?? code,
+    coverUrl: work?.coverUrl ?? preview?.coverUrl ?? "",
+    circle: work?.circle ?? preview?.circle ?? "",
+    circleExternalId: work?.circleExternalId ?? preview?.circleExternalId ?? "",
+    rating: work?.rating ?? preview?.rating ?? null,
+    ratingCount: work?.ratingCount ?? null,
+    sales: work?.sales ?? preview?.sales ?? null,
+    series: work?.series ?? "",
+    dlsiteFetchedAt: work?.dlsiteFetchedAt ?? "",
+    releaseDate: work?.releaseDate ?? preview?.releaseDate ?? null,
+    ageRating: work?.ageRating ?? "",
+    durationSeconds: work?.durationSeconds ?? null,
+    voiceActors: work?.voiceActors ?? preview?.voiceActors ?? [],
+    tags: work?.tags ?? preview?.tags ?? [],
+  };
+}
+
 function SourceAvailabilitySummary({
   tabs,
   remoteSources,
@@ -2324,7 +2454,7 @@ function SourceAvailabilitySummary({
   const unforkedSources = trackedUnforkedSources(sourcePresence, remoteSources);
   if (localTabs.length === 0 && remoteSources.length === 0 && unforkedSources.length === 0 && !checking) return null;
   return (
-    <div className="mb-4 rounded-md border bg-background p-3">
+    <div className="rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {localTabs.map((tab) => (
@@ -2391,6 +2521,38 @@ function SourceStatusBadge({ remote }: { remote: RemoteSourceAvailability }) {
   );
 }
 
+function TrackedUnforkedPanel({
+  presence,
+  remoteSources,
+  busy,
+  onFork,
+}: {
+  presence: NonNullable<WorkDetail["sourcePresence"]>[number];
+  remoteSources: RemoteSourceAvailability[];
+  busy: boolean;
+  onFork: (remote: RemoteSourceAvailability) => void;
+}) {
+  const sourceName = presence.fileSourceName || presence.fileSourceCode || "Tracked source";
+  const candidates = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <div className="font-medium">{sourceName} is unforked</div>
+      <p className="mt-1 text-amber-900">
+        This work is tracked, but no tracked directory tree has been forked yet.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {candidates.length > 0 ? candidates.map((remote) => (
+          <Button key={remote.source.id} variant="outline" size="sm" disabled={busy} onClick={() => onFork(remote)}>
+            Fork from {remote.source.displayName}
+          </Button>
+        )) : (
+          <Badge variant="warning">No browsable remote source</Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function sourceStatusMeta(summary: SourceAvailabilitySource) {
   if (summary.status === "available") {
     return { label: summary.hasCache ? "available + cache" : "available", dotClass: "bg-emerald-500" };
@@ -2440,6 +2602,7 @@ function SourceDirectoryPanel({
   selectionPanel,
   selectionModal,
   loadingMessage,
+  emptyState,
   onPlayFolder,
   onPreview,
   onDeleteCache,
@@ -2461,6 +2624,7 @@ function SourceDirectoryPanel({
   selectionPanel?: ReactNode;
   selectionModal?: ReactNode;
   loadingMessage?: string;
+  emptyState?: ReactNode;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
   onDeleteCache?: (target: MediaDeleteTarget) => void;
@@ -2468,36 +2632,36 @@ function SourceDirectoryPanel({
 }) {
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] lg:items-end">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-sm text-muted-foreground lg:text-right">{description}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex gap-2 overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-2">
+          <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto rounded-md border bg-card p-1">
             {tabs.map((source) => (
               <button
                 key={source.key}
-                className={`h-8 shrink-0 rounded-md px-3 text-xs font-medium ${
-                  source.key === activeKey ? "bg-primary text-primary-foreground" : "border bg-card text-muted-foreground hover:bg-muted"
+                className={`h-7 shrink-0 rounded px-2.5 text-xs font-medium ${
+                  source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                 }`}
                 onClick={() => onActiveKeyChange(source.key)}
               >
                 {source.label}
               </button>
             ))}
-            {checkingLabel && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">{checkingLabel}</span>}
           </div>
-          <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
+          {checkingLabel && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">{checkingLabel}</span>}
         </div>
+        {sourceSummary}
       </div>
       <Card>
         <CardContent className="p-4">
           {toolbar}
-          {sourceSummary}
           {loadingMessage && <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">{loadingMessage}</div>}
           {selectionPanel}
-          {directoryMode === "browse" ? (
+          {emptyState ? emptyState : directoryMode === "browse" ? (
             <DirectoryBrowser
               root={root}
               currentLocationId={currentLocationId}
@@ -2937,7 +3101,8 @@ type SourceTabInfo = {
   key: string;
   label: string;
   fileSourceId: number | null;
-  kind?: "local" | "remote";
+  kind?: "local" | "remote" | "tracked";
+  presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
 };
 
 type RemoteSourceAvailability = {
@@ -2952,7 +3117,11 @@ function emptyTree(): TreeNode {
   return { name: "", path: "", children: new Map(), files: [] };
 }
 
-function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailability[] = []): SourceTabInfo[] {
+function buildSourceTabs(
+  items: MediaItem[],
+  remoteSources: RemoteSourceAvailability[] = [],
+  sourcePresence: NonNullable<WorkDetail["sourcePresence"]> = [],
+): SourceTabInfo[] {
   const sources = new Map<number, SourceTabInfo>();
   for (const item of items) {
     for (const location of item.locations) {
@@ -2975,6 +3144,16 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
   }
   const tabs = Array.from(sources.values());
   const baseTabs = tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null, kind: "local" as const }];
+  for (const presence of sourcePresence) {
+    if (presence.type !== "tracked") continue;
+    baseTabs.push({
+      key: trackedSourceTabKey(presence),
+      label: "Tracked",
+      fileSourceId: null,
+      kind: "tracked",
+      presence,
+    });
+  }
   for (const remote of remoteSources) {
     if (!remoteSourceCanBrowse(remote.summary)) continue;
     baseTabs.push({
@@ -2990,6 +3169,10 @@ function buildSourceTabs(items: MediaItem[], remoteSources: RemoteSourceAvailabi
 function trackedUnforkedSources(sourcePresence: NonNullable<WorkDetail["sourcePresence"]>, remoteSources: RemoteSourceAvailability[]) {
   if (remoteSources.some((remote) => remoteSourceCanBrowse(remote.summary))) return [];
   return sourcePresence.filter((presence) => presence.type === "tracked");
+}
+
+function trackedSourceTabKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
+  return `tracked:${presence.fileSourceId ?? 0}:${presence.remoteId ?? ""}:${presence.sourceUrl ?? ""}`;
 }
 
 function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {
