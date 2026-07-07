@@ -2511,7 +2511,7 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
 		}
-		_, _ = s.enforceRemoteCacheLimits(ctx, source.ID, cacheLocationID)
+		_, _ = s.runCacheLimitCleanup(ctx, source.ID, cacheLocationID)
 		cacheDownloads++
 		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
 	}
