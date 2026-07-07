@@ -373,7 +373,8 @@ export function LibraryPage() {
         setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths);
+      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths);
+      setTrackedFetchSelection((current) => current ? { ...current, message: `Fetch queued as workflow run #${result.runId}.` } : current);
       setTrackedFetchSelection(null);
       await refreshCurrentWorksPage();
     } finally {
@@ -930,8 +931,8 @@ function RemoteSourcePanel({
         return;
       }
       const result = await api.fetchRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths);
-      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onSynced(result.workId);
+      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
+      await onSynced(0);
       setSaveSelection(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Fetch failed.");
@@ -1771,7 +1772,7 @@ function RemoteWorkDetailView({
         return;
       }
       const result = await api.fetchRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
-      setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
+      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
       setSavePlanMessage("");
@@ -2164,7 +2165,7 @@ function WorkDetailView({
         return;
       }
       const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
-      setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
+      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
       setSavePlanMessage("");

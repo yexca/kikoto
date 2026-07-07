@@ -615,7 +615,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         return;
       }
       const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
-      setToast({ kind: "success", message: `Fetched ${result.primaryCode} through workflow run #${result.runId}.` });
+      setToast({ kind: "success", message: `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.` });
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
     } catch (error) {

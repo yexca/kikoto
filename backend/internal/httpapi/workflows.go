@@ -1215,6 +1215,17 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE workflow_job
+		SET status = 'cancelled',
+			error_message = CASE WHEN error_message <> '' THEN error_message ELSE 'cancelled manually' END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+			AND status IN ('queued', 'running')
+	`, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE workflow_run
 		SET status = 'cancelled',
 			summary_json = ?,
@@ -1721,6 +1732,16 @@ func (s *Server) markStaleWorkflowRuns(ctx context.Context, reason string) (int6
 			SET status = 'failed',
 				error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END,
 				finished_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ?
+				AND status IN ('queued', 'running')
+		`, reason, run.id); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE workflow_job
+			SET status = 'failed',
+				error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END,
+				updated_at = CURRENT_TIMESTAMP
 			WHERE workflow_run_id = ?
 				AND status IN ('queued', 'running')
 		`, reason, run.id); err != nil {

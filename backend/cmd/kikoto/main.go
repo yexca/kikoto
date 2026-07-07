@@ -44,6 +44,7 @@ func main() {
 			slog.Error("run startup workflows", "error", err)
 		}
 	}()
+	go server.StartJobRunner(context.Background())
 
 	if err := http.ListenAndServe(cfg.HTTPAddr, server.Routes()); err != nil {
 		slog.Error("http server stopped", "error", err)
