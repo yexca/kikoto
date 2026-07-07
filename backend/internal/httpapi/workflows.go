@@ -904,11 +904,10 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 	if err != nil {
 		return localCandidateCleanupResult{}, err
 	}
-	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "select", NodeType: "select_media_items", DisplayName: "Select local locations", Position: 1, Status: "succeeded",
 		Input: input, Output: map[string]any{"locations": len(locationIDs)},
-	})
-	if err != nil {
+	}); err != nil {
 		return localCandidateCleanupResult{}, err
 	}
 	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
@@ -926,7 +925,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 		return localCandidateCleanupResult{}, err
 	}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: selectNodeID, WorkerType: "local_location_cleanup", Status: "running", Payload: input, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
+		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "running", Payload: input, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
 	}); err != nil {
 		return localCandidateCleanupResult{}, err
 	}
