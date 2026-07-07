@@ -18,7 +18,7 @@ const emptyRemoteSource = {
   sourceType: "kikoeru_compatible",
   priority: 30,
   enabled: true,
-  config: { autoSyncOnInterest: false, cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}` },
+  config: { cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}` },
   endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "" },
   healthStatus: "unknown",
   lastCheckedAt: null,
@@ -30,7 +30,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("local");
   const [localScanDepth, setLocalScanDepth] = useState(2);
-  const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
   const [remoteDelayBase, setRemoteDelayBase] = useState(0.5);
@@ -60,7 +59,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       .then((next) => {
         setSettings(next);
         setLocalScanDepth(next.localScanDepth);
-        setAutoSyncRemote(next.autoSyncRemote);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
         setRemoteDelayBase(next.remoteDelayBaseSeconds);
@@ -84,7 +82,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
     }
     const next = await api.updateSettings({
       localScanDepth,
-      autoSyncRemote: cacheEnabled ? true : autoSyncRemote,
       cacheEnabled,
       cacheLimitGb,
       remoteSaveTemplate: saveTemplate,
@@ -96,7 +93,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       dlsiteMetadataLanguage,
     });
     setSettings(next);
-    setAutoSyncRemote(next.autoSyncRemote);
     setCacheEnabled(next.cacheEnabled);
     setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
     setMessage("Settings saved.");
@@ -186,7 +182,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         <RemoteSourceSettings
           settings={settings}
           remoteSources={remoteSources}
-          autoSyncRemote={autoSyncRemote}
           cacheEnabled={cacheEnabled}
           cacheLimitGb={cacheLimitGb}
           remoteDelayBase={remoteDelayBase}
@@ -196,11 +191,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           saveSuffix={saveSuffix}
           saveTemplate={saveTemplate}
           saveSuffixError={saveSuffixError}
-          onAutoSyncChange={setAutoSyncRemote}
-          onCacheEnabledChange={(value) => {
-            setCacheEnabled(value);
-            if (value) setAutoSyncRemote(true);
-          }}
+          onCacheEnabledChange={setCacheEnabled}
           onCacheLimitChange={setCacheLimitGb}
           onRemoteDelayBaseChange={setRemoteDelayBase}
           onRemoteDelayRandomChange={setRemoteDelayRandom}
@@ -374,7 +365,6 @@ function LocalLibrarySettings({
 function RemoteSourceSettings({
   settings,
   remoteSources,
-  autoSyncRemote,
   cacheEnabled,
   cacheLimitGb,
   remoteDelayBase,
@@ -384,7 +374,6 @@ function RemoteSourceSettings({
   saveSuffix,
   saveTemplate,
   saveSuffixError,
-  onAutoSyncChange,
   onCacheEnabledChange,
   onCacheLimitChange,
   onRemoteDelayBaseChange,
@@ -399,7 +388,6 @@ function RemoteSourceSettings({
 }: {
   settings: AppSettings | null;
   remoteSources: FileSource[];
-  autoSyncRemote: boolean;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   remoteDelayBase: number;
@@ -409,7 +397,6 @@ function RemoteSourceSettings({
   saveSuffix: string;
   saveTemplate: string;
   saveSuffixError: string;
-  onAutoSyncChange: (value: boolean) => void;
   onCacheEnabledChange: (value: boolean) => void;
   onCacheLimitChange: (value: number) => void;
   onRemoteDelayBaseChange: (value: number) => void;
@@ -434,15 +421,11 @@ function RemoteSourceSettings({
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Auto sync</span>
-              <input type="checkbox" checked={autoSyncRemote || cacheEnabled} disabled={cacheEnabled} onChange={(event) => onAutoSyncChange(event.target.checked)} />
-            </label>
-            <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Auto cache</span>
+              <span className="font-medium">Cache remote playback</span>
               <input type="checkbox" checked={cacheEnabled} onChange={(event) => onCacheEnabledChange(event.target.checked)} />
             </label>
             <label className="grid gap-1 text-sm">
-              <span className="font-medium">Limit GB</span>
+              <span className="font-medium">Total limit GB</span>
               <input
                 className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
                 type="number"
@@ -663,28 +646,11 @@ function SourceModal({
               <input type="checkbox" checked={source.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
             </label>
             <label className="flex items-center justify-between gap-3">
-              <span className="font-medium">Auto sync on interest</span>
-              <input
-                type="checkbox"
-                checked={source.config.autoSyncOnInterest ?? false}
-                disabled={source.config.cacheEnabled ?? false}
-                onChange={(event) => patch({ config: { ...source.config, autoSyncOnInterest: event.target.checked } })}
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3">
               <span className="font-medium">Cache this source</span>
               <input
                 type="checkbox"
                 checked={source.config.cacheEnabled ?? false}
-                onChange={(event) =>
-                  patch({
-                    config: {
-                      ...source.config,
-                      cacheEnabled: event.target.checked,
-                      autoSyncOnInterest: event.target.checked ? true : source.config.autoSyncOnInterest,
-                    },
-                  })
-                }
+                onChange={(event) => patch({ config: { ...source.config, cacheEnabled: event.target.checked } })}
               />
             </label>
           </div>

@@ -286,7 +286,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [markConfirm, setMarkConfirm] = useState<{ work: CircleCatalogWork; status: ListeningStatus } | null>(null);
   const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
-  const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -349,10 +348,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       }
     };
   }, [externalId, loadCircleDetail]);
-
-  useEffect(() => {
-    api.getRuntimeSettings().then((settings) => setAutoSyncRemote(settings.autoSyncRemote || settings.cacheEnabled)).catch(() => setAutoSyncRemote(false));
-  }, []);
 
   const circle = detail ?? emptyCircleDetail(externalId);
   const filteredWorks = useMemo(() => {
@@ -464,11 +459,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const updateCatalogWorkStatus = async (work: CircleCatalogWork, status: ListeningStatus) => {
     if (work.workId === null) {
       if (!circleWorkRemoteTarget(work)) return;
-      if (!autoSyncRemote) {
-        setMarkConfirm({ work, status });
-        return;
-      }
-      await syncAndMarkCatalogWork(work, status);
+      setMarkConfirm({ work, status });
       return;
     }
     try {
@@ -1123,7 +1114,7 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <h3 className="text-base font-semibold">Track before mark</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be tracked before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+          {workCode} will be tracked before the mark is saved.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>

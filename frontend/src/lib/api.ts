@@ -165,7 +165,6 @@ export type FileSource = {
   priority: number;
   enabled: boolean;
   config: {
-    autoSyncOnInterest?: boolean;
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
     saveRootTemplate?: string;
@@ -186,18 +185,15 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
-  autoSyncOnInterest: boolean;
   cacheEnabled: boolean;
 };
 
 export type RuntimeSettings = {
-  autoSyncRemote: boolean;
   cacheEnabled: boolean;
 };
 
 export type AppSettings = {
   localScanDepth: number;
-  autoSyncRemote: boolean;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   remoteSaveTemplate: string;
@@ -988,7 +984,6 @@ export const api = {
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateSettings: (payload: {
     localScanDepth?: number;
-    autoSyncRemote?: boolean;
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
     remoteSaveTemplate?: string;

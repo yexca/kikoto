@@ -96,7 +96,6 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 
 type appSettingsResponse struct {
 	LocalScanDepth         int                 `json:"localScanDepth"`
-	AutoSyncRemote         bool                `json:"autoSyncRemote"`
 	CacheEnabled           bool                `json:"cacheEnabled"`
 	CacheLimitGB           int                 `json:"cacheLimitGb"`
 	RemoteSaveTemplate     string              `json:"remoteSaveTemplate"`
@@ -125,11 +124,10 @@ type fileSourceSummary struct {
 }
 
 type fileSourceConfig struct {
-	AutoSyncOnInterest *bool  `json:"autoSyncOnInterest,omitempty"`
-	CacheEnabled       *bool  `json:"cacheEnabled,omitempty"`
-	CacheLimitGB       *int   `json:"cacheLimitGb,omitempty"`
-	SaveRootTemplate   string `json:"saveRootTemplate,omitempty"`
-	ScanDepth          *int   `json:"scanDepth,omitempty"`
+	CacheEnabled     *bool  `json:"cacheEnabled,omitempty"`
+	CacheLimitGB     *int   `json:"cacheLimitGb,omitempty"`
+	SaveRootTemplate string `json:"saveRootTemplate,omitempty"`
+	ScanDepth        *int   `json:"scanDepth,omitempty"`
 }
 
 type fileSourceEndpoint struct {
@@ -148,13 +146,12 @@ type remoteWorksResponse struct {
 }
 
 type librarySource struct {
-	ID                 int64  `json:"id"`
-	Code               string `json:"code"`
-	DisplayName        string `json:"displayName"`
-	SourceType         string `json:"sourceType"`
-	Enabled            bool   `json:"enabled"`
-	AutoSyncOnInterest bool   `json:"autoSyncOnInterest"`
-	CacheEnabled       bool   `json:"cacheEnabled"`
+	ID           int64  `json:"id"`
+	Code         string `json:"code"`
+	DisplayName  string `json:"displayName"`
+	SourceType   string `json:"sourceType"`
+	Enabled      bool   `json:"enabled"`
+	CacheEnabled bool   `json:"cacheEnabled"`
 }
 
 type remoteWorkSummary struct {
@@ -368,10 +365,8 @@ func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
 		return
 	}
-	cacheEnabled := s.settingBool(r, "remote_cache_enabled", false)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"autoSyncRemote": cacheEnabled || s.settingBool(r, "remote_auto_sync_enabled", false),
-		"cacheEnabled":   cacheEnabled,
+		"cacheEnabled": s.settingBool(r, "remote_cache_enabled", false),
 	})
 }
 
@@ -381,7 +376,6 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload struct {
 		LocalScanDepth         *int     `json:"localScanDepth"`
-		AutoSyncRemote         *bool    `json:"autoSyncRemote"`
 		CacheEnabled           *bool    `json:"cacheEnabled"`
 		CacheLimitGB           *int     `json:"cacheLimitGb"`
 		RemoteSaveTemplate     *string  `json:"remoteSaveTemplate"`
@@ -414,27 +408,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if payload.CacheEnabled != nil {
-		if *payload.CacheEnabled {
-			if err := upsertSetting(r, tx, "remote_auto_sync_enabled", true); err != nil {
-				writeError(w, err)
-				return
-			}
-		}
 		if err := upsertSetting(r, tx, "remote_cache_enabled", *payload.CacheEnabled); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if payload.AutoSyncRemote != nil {
-		cacheWillBeEnabled := s.settingBool(r, "remote_cache_enabled", false)
-		if payload.CacheEnabled != nil {
-			cacheWillBeEnabled = *payload.CacheEnabled
-		}
-		if !*payload.AutoSyncRemote && cacheWillBeEnabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "auto sync must stay enabled while automatic cache is enabled"})
-			return
-		}
-		if err := upsertSetting(r, tx, "remote_auto_sync_enabled", *payload.AutoSyncRemote); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -557,7 +531,6 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 		}
 		var config fileSourceConfig
 		_ = json.Unmarshal([]byte(configJSON), &config)
-		source.AutoSyncOnInterest = config.AutoSyncOnInterest != nil && *config.AutoSyncOnInterest
 		source.CacheEnabled = config.CacheEnabled != nil && *config.CacheEnabled
 		sources = append(sources, source)
 	}
@@ -2533,10 +2506,12 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
 		}
-		if _, err := s.upsertCacheLocation(ctx, mediaItemID, source.ID, item.CachePath, "", item.SizeBytes, nil, written); err != nil {
+		cacheLocationID, err := s.upsertCacheLocation(ctx, mediaItemID, source.ID, item.CachePath, "", item.SizeBytes, nil, written)
+		if err != nil {
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
 		}
+		_, _ = s.enforceRemoteCacheLimits(ctx, source.ID, cacheLocationID)
 		cacheDownloads++
 		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
 	}
@@ -3645,7 +3620,6 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	}
 	return appSettingsResponse{
 		LocalScanDepth:         s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		AutoSyncRemote:         s.settingBool(r, "remote_auto_sync_enabled", false) || s.settingBool(r, "remote_cache_enabled", false),
 		CacheEnabled:           s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:           s.settingInt(r, "remote_cache_limit_gb", 20),
 		RemoteSaveTemplate:     s.settingString(r, "remote_save_root_template", "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"),

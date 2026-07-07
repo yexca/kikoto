@@ -93,7 +93,7 @@ function RemoteFetchTreeNode({
   onChange: (paths: Set<string>) => void;
   depth?: number;
 }) {
-  const [open, setOpen] = useState(depth < 1);
+  const [open, setOpen] = useState(false);
   const isFolder = node.children.length > 0;
   const childLeaves = isFolder ? flattenLeafPaths(node.children) : [node.path];
   const selectedCount = childLeaves.filter((path) => selectedPaths.has(path)).length;

@@ -1675,6 +1675,7 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 	if cacheID, ok, err := s.findAvailableCacheLocation(ctx, mediaItemID, sourceID, cacheRelPath); err != nil {
 		return mediaCacheResult{}, err
 	} else if ok {
+		_, _ = s.enforceRemoteCacheLimits(ctx, sourceID, cacheID)
 		return mediaCacheResult{LocationID: cacheID, CachePath: cacheRelPath, Status: "succeeded", AlreadyDone: true}, nil
 	}
 
@@ -1756,6 +1757,22 @@ func (s *Server) runRemoteMediaCache(ctx context.Context, remoteLocationID int64
 	if err := s.finishMediaCacheRun(ctx, runID, cacheNodeID, jobID, "succeeded", cacheRelPath, "", written); err != nil {
 		return mediaCacheResult{}, err
 	}
+	if cleanup, err := s.enforceRemoteCacheLimits(ctx, sourceID, cacheLocationID); err == nil && cleanup.Removed > 0 {
+		_, _ = s.db.ExecContext(ctx, `
+			UPDATE workflow_run
+			SET summary_json = ?
+			WHERE id = ?
+		`, mustJSON(map[string]any{
+			"cache_path":            cacheRelPath,
+			"bytes":                 written,
+			"limit_cleanup_removed": cleanup.Removed,
+			"limit_cleanup_freed":   cleanup.FreedBytes,
+			"total_cache_after":     cleanup.TotalAfterBytes,
+			"source_cache_after":    cleanup.SourceAfterBytes,
+			"total_limit_gb":        cleanup.TotalLimitGB,
+			"source_limit_gb":       cleanup.SourceLimitGB,
+		}), runID)
+	}
 	_ = sourceName
 	return mediaCacheResult{RunID: runID, JobID: jobID, LocationID: cacheLocationID, CachePath: cacheRelPath, Status: "succeeded"}, nil
 }
@@ -1780,6 +1797,11 @@ func (s *Server) findAvailableCacheLocation(ctx context.Context, mediaItemID int
 	if _, err := os.Stat(filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(path))); err != nil {
 		return 0, false, nil
 	}
+	_, _ = s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET last_checked_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, id)
 	return id, true, nil
 }
 
@@ -1883,6 +1905,178 @@ func (s *Server) finishMediaCacheRun(ctx context.Context, runID int64, nodeID in
 	return nil
 }
 
+type remoteCacheLimitResult struct {
+	Removed          int   `json:"removed"`
+	FreedBytes       int64 `json:"freedBytes"`
+	TotalAfterBytes  int64 `json:"totalAfterBytes"`
+	SourceAfterBytes int64 `json:"sourceAfterBytes"`
+	TotalLimitGB     int   `json:"totalLimitGb"`
+	SourceLimitGB    int   `json:"sourceLimitGb"`
+}
+
+type cacheLimitCandidate struct {
+	ID       int64
+	SourceID int64
+	Path     string
+	Size     int64
+}
+
+func (s *Server) enforceRemoteCacheLimits(ctx context.Context, sourceID int64, keepLocationID int64) (remoteCacheLimitResult, error) {
+	totalLimitGB := s.settingIntContext(ctx, "remote_cache_limit_gb", 20)
+	sourceLimitGB := s.cacheLimitGBForSource(ctx, sourceID)
+	result := remoteCacheLimitResult{TotalLimitGB: totalLimitGB, SourceLimitGB: sourceLimitGB}
+	if totalLimitGB <= 0 && sourceLimitGB <= 0 {
+		return result, nil
+	}
+
+	if sourceLimitGB > 0 {
+		removed, freed, err := s.trimCacheScope(ctx, sourceID, gbToBytes(sourceLimitGB), keepLocationID)
+		if err != nil {
+			return result, err
+		}
+		result.Removed += removed
+		result.FreedBytes += freed
+	}
+	if totalLimitGB > 0 {
+		removed, freed, err := s.trimCacheScope(ctx, 0, gbToBytes(totalLimitGB), keepLocationID)
+		if err != nil {
+			return result, err
+		}
+		result.Removed += removed
+		result.FreedBytes += freed
+	}
+	result.TotalAfterBytes, _ = s.cacheScopeSize(ctx, 0)
+	result.SourceAfterBytes, _ = s.cacheScopeSize(ctx, sourceID)
+	return result, nil
+}
+
+func (s *Server) cacheLimitGBForSource(ctx context.Context, sourceID int64) int {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT config_json FROM file_source WHERE id = ?", sourceID).Scan(&raw); err != nil {
+		return 0
+	}
+	var config fileSourceConfig
+	if err := json.Unmarshal([]byte(raw), &config); err != nil || config.CacheLimitGB == nil {
+		return 0
+	}
+	return *config.CacheLimitGB
+}
+
+func (s *Server) trimCacheScope(ctx context.Context, sourceID int64, limitBytes int64, keepLocationID int64) (int, int64, error) {
+	currentBytes, err := s.cacheScopeSize(ctx, sourceID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if currentBytes <= limitBytes {
+		return 0, 0, nil
+	}
+	candidates, err := s.cacheCleanupCandidates(ctx, sourceID)
+	if err != nil {
+		return 0, 0, err
+	}
+	removed := 0
+	var freed int64
+	for _, candidate := range candidates {
+		if currentBytes <= limitBytes {
+			break
+		}
+		if candidate.ID == keepLocationID {
+			continue
+		}
+		bytes, deleted, err := s.clearCacheLocation(ctx, candidate.ID, candidate.Path)
+		if err != nil {
+			return removed, freed, err
+		}
+		_ = deleted
+		if bytes <= 0 {
+			bytes = candidate.Size
+		}
+		currentBytes -= bytes
+		freed += bytes
+		removed++
+	}
+	return removed, freed, nil
+}
+
+func (s *Server) cacheScopeSize(ctx context.Context, sourceID int64) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(COALESCE(size_bytes, 0)), 0)
+		FROM media_file_location
+		WHERE location_type = 'cache'
+			AND availability = 'available'
+	`
+	args := []any{}
+	if sourceID > 0 {
+		query += " AND file_source_id = ?"
+		args = append(args, sourceID)
+	}
+	var size int64
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&size); err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
+func (s *Server) cacheCleanupCandidates(ctx context.Context, sourceID int64) ([]cacheLimitCandidate, error) {
+	query := `
+		SELECT id, file_source_id, path, COALESCE(size_bytes, 0)
+		FROM media_file_location
+		WHERE location_type = 'cache'
+			AND availability = 'available'
+	`
+	args := []any{}
+	if sourceID > 0 {
+		query += " AND file_source_id = ?"
+		args = append(args, sourceID)
+	}
+	query += " ORDER BY COALESCE(last_checked_at, '1970-01-01') ASC, id ASC"
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []cacheLimitCandidate{}
+	for rows.Next() {
+		var item cacheLimitCandidate
+		if err := rows.Scan(&item.ID, &item.SourceID, &item.Path, &item.Size); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Server) clearCacheLocation(ctx context.Context, cacheLocationID int64, cachePath string) (int64, bool, error) {
+	targetPath, err := safeCachePath(s.cfg.CacheRoot, cachePath)
+	if err != nil {
+		return 0, false, err
+	}
+	var bytes int64
+	if info, err := os.Stat(targetPath); err == nil {
+		bytes = info.Size()
+	}
+	deleted := false
+	if err := os.Remove(targetPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return bytes, false, err
+		}
+	} else {
+		deleted = true
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'unavailable',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+			AND location_type = 'cache'
+	`, cacheLocationID)
+	return bytes, deleted, err
+}
+
+func gbToBytes(value int) int64 {
+	return int64(value) * 1024 * 1024 * 1024
+}
+
 type mediaCacheDeleteResult struct {
 	RunID      int64  `json:"runId"`
 	LocationID int64  `json:"locationId"`
@@ -1957,23 +2151,8 @@ func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64
 		return mediaCacheDeleteResult{}, err
 	}
 
-	deleted := false
-	targetPath := filepath.Join(s.cfg.CacheRoot, filepath.FromSlash(cachePath))
-	if err := os.Remove(targetPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			_ = s.finishMediaCacheCleanup(ctx, runID, cleanupNodeID, "failed", cacheLocationID, cachePath, false, err.Error())
-			return mediaCacheDeleteResult{}, err
-		}
-	} else {
-		deleted = true
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE media_file_location
-		SET availability = 'unavailable',
-			last_checked_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-			AND location_type = 'cache'
-	`, cacheLocationID); err != nil {
+	_, deleted, err := s.clearCacheLocation(ctx, cacheLocationID, cachePath)
+	if err != nil {
 		_ = s.finishMediaCacheCleanup(ctx, runID, cleanupNodeID, "failed", cacheLocationID, cachePath, deleted, err.Error())
 		return mediaCacheDeleteResult{}, err
 	}

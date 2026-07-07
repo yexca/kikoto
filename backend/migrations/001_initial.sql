@@ -266,6 +266,12 @@ CREATE TABLE media_item (
   fingerprint TEXT NOT NULL DEFAULT ''
 );
 
+CREATE INDEX idx_media_item_work
+  ON media_item(work_id, parent_id, kind, track_no, title);
+
+CREATE INDEX idx_media_item_fingerprint
+  ON media_item(fingerprint);
+
 CREATE TABLE media_file_location (
   id INTEGER PRIMARY KEY,
   media_item_id INTEGER NOT NULL REFERENCES media_item(id) ON DELETE CASCADE,
@@ -280,6 +286,18 @@ CREATE TABLE media_file_location (
   availability TEXT NOT NULL DEFAULT 'unknown',
   last_checked_at TEXT
 );
+
+CREATE INDEX idx_media_file_location_item_source_type
+  ON media_file_location(media_item_id, file_source_id, location_type, path);
+
+CREATE INDEX idx_media_file_location_source_type_availability
+  ON media_file_location(file_source_id, location_type, availability, last_checked_at);
+
+CREATE INDEX idx_media_file_location_path_lookup
+  ON media_file_location(file_source_id, location_type, path, size_bytes, availability);
+
+CREATE INDEX idx_media_file_location_cache_lru
+  ON media_file_location(location_type, availability, file_source_id, last_checked_at);
 
 CREATE TABLE work_source_presence (
   work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
