@@ -353,6 +353,18 @@ export type RemoteWorkSaveResult = {
   plan: RemoteWorkSaveSummary;
 };
 
+export type WorkSourceUntrackResult = {
+  workId: number;
+  sourceId: number;
+  status: string;
+  clearedCaches: number;
+  deletedFiles: number;
+  cachePaths: string[];
+  trackedCleared: boolean;
+  workPreserved: boolean;
+  localPreserved: boolean;
+};
+
 export type WorkflowRun = {
   id: number;
   workflowCode: string;
@@ -891,6 +903,8 @@ export const api = {
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
+  untrackWorkSource: (workId: number, sourceId: number) =>
+    deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),

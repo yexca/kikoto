@@ -99,6 +99,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
+	mux.HandleFunc("DELETE /api/works/{id}/tracked-sources/{sourceId}", s.untrackWorkSource)
 	mux.HandleFunc("GET /api/workflow-definitions", s.listWorkflowDefinitions)
 	mux.HandleFunc("GET /api/workflow-node-types", s.listWorkflowNodeTypes)
 	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
@@ -536,6 +537,7 @@ func libraryListWhere(scope string, status string) (string, []any) {
 			FROM work_source_presence AS scope_presence
 			WHERE scope_presence.work_id = work.id
 				AND scope_presence.presence_type = 'tracked'
+				AND scope_presence.availability = 'available'
 		)`)
 	case "no_source":
 		clauses = append(clauses, libraryNoSourceWhereClause())
@@ -802,7 +804,7 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 	case "local":
 		return stringSliceContainsFold(work.Availability, "local")
 	case "tracked":
-		return workHasSourcePresenceType(work, "tracked")
+		return workHasAvailableSourcePresenceType(work, "tracked")
 	case "no_source":
 		return len(work.SourcePresence) == 0 && len(work.Availability) == 0
 	default:
@@ -1001,9 +1003,9 @@ func stringSliceContainsSubstringFold(values []string, needle string) bool {
 	return false
 }
 
-func workHasSourcePresenceType(work libraryWorkSummary, presenceType string) bool {
+func workHasAvailableSourcePresenceType(work libraryWorkSummary, presenceType string) bool {
 	for _, presence := range work.SourcePresence {
-		if strings.EqualFold(presence.Type, presenceType) {
+		if strings.EqualFold(presence.Type, presenceType) && strings.EqualFold(presence.Availability, "available") {
 			return true
 		}
 	}

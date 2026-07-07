@@ -322,20 +322,25 @@ export function WorkCardListButton({
   workId,
   active,
   disabled,
+  ensureWorkId,
   onSaved,
 }: {
   workId: number | null;
   active: boolean;
   disabled?: boolean;
-  onSaved?: (favorite: boolean) => void;
+  ensureWorkId?: () => Promise<number | null>;
+  onSaved?: (favorite: boolean, workId: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [resolvedWorkId, setResolvedWorkId] = useState<number | null>(null);
   const [lists, setLists] = useState<FavoriteList[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
+  const effectiveWorkId = workId ?? resolvedWorkId;
 
   useEffect(() => {
     if (!open) return;
@@ -356,11 +361,11 @@ export function WorkCardListButton({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !workId) return;
+    if (!open || !effectiveWorkId) return;
     let cancelled = false;
     setLoading(true);
     setError("");
-    Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(workId)])
+    Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(effectiveWorkId)])
       .then(([allLists, workLists]) => {
         if (cancelled) return;
         setLists(allLists);
@@ -375,7 +380,7 @@ export function WorkCardListButton({
     return () => {
       cancelled = true;
     };
-  }, [open, workId]);
+  }, [open, effectiveWorkId]);
 
   const toggle = (listID: number, checked: boolean) => {
     setSelected((items) => {
@@ -387,12 +392,12 @@ export function WorkCardListButton({
   };
 
   const save = async () => {
-    if (!workId) return;
+    if (!effectiveWorkId) return;
     setSaving(true);
     setError("");
     try {
-      const result = await api.setWorkFavoriteLists(workId, Array.from(selected));
-      onSaved?.(result.favorite);
+      const result = await api.setWorkFavoriteLists(effectiveWorkId, Array.from(selected));
+      onSaved?.(result.favorite, effectiveWorkId);
       setOpen(false);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be saved.");
@@ -405,10 +410,26 @@ export function WorkCardListButton({
     <div className="relative" ref={ref}>
       <WorkCardActionButton
         title={active ? "Favorite lists" : "Add to list"}
-        disabled={disabled || !workId}
+        disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((value) => !value);
+          if (effectiveWorkId) {
+            setOpen((value) => !value);
+            return;
+          }
+          if (!ensureWorkId) return;
+          setResolving(true);
+          setError("");
+          ensureWorkId()
+            .then((nextWorkId) => {
+              if (!nextWorkId) return;
+              setResolvedWorkId(nextWorkId);
+              setOpen(true);
+            })
+            .catch((nextError) => {
+              setError(nextError instanceof Error ? nextError.message : "Work could not be tracked.");
+            })
+            .finally(() => setResolving(false));
         }}
       >
         <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />

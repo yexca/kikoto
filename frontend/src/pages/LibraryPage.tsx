@@ -33,6 +33,7 @@ import {
   Search,
   Star,
   Tags,
+  Unlink,
   X,
   UserRound,
 } from "lucide-react";
@@ -146,6 +147,10 @@ export function LibraryPage() {
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
   const [workTotal, setWorkTotal] = useState(0);
+  const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
+  const [isUntracking, setIsUntracking] = useState(false);
+  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
   const skipNextLibraryEffect = useRef(false);
@@ -330,6 +335,44 @@ export function LibraryPage() {
       items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
     );
     setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
+  };
+
+  const untrackWorkSource = async () => {
+    if (!untrackTarget?.source.fileSourceId) return;
+    setIsUntracking(true);
+    try {
+      await api.untrackWorkSource(untrackTarget.work.id, untrackTarget.source.fileSourceId);
+      setUntrackTarget(null);
+      await refreshCurrentWorksPage();
+    } finally {
+      setIsUntracking(false);
+    }
+  };
+
+  const openTrackedFetchSelection = async (work: Work, presence: SourcePresenceItem) => {
+    if (!presence.fileSourceId) return;
+    const source = sources.find((item) => item.id === presence.fileSourceId);
+    if (!source) return;
+    setIsTrackedFetching(true);
+    try {
+      const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
+      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))) });
+    } finally {
+      setIsTrackedFetching(false);
+    }
+  };
+
+  const fetchTrackedSelection = async () => {
+    if (!trackedFetchSelection) return;
+    setIsTrackedFetching(true);
+    try {
+      const paths = Array.from(trackedFetchSelection.selectedPaths);
+      await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths);
+      setTrackedFetchSelection(null);
+      await refreshCurrentWorksPage();
+    } finally {
+      setIsTrackedFetching(false);
+    }
   };
 
   const activeRemoteSourceState =
@@ -582,6 +625,12 @@ export function LibraryPage() {
           autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
           onTagOpen={addTagSearchToken}
+          onWorkStateChanged={(primaryCode, patch) => {
+            setRemoteResult((current) => current ? {
+              ...current,
+              works: current.works.map((item) => item.primaryCode === primaryCode ? { ...item, ...patch } : item),
+            } : current);
+          }}
           onSynced={async (workId) => {
             if (workId <= 0) {
               await refreshCurrentWorksPage();
@@ -600,12 +649,14 @@ export function LibraryPage() {
                 work={work}
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
-                onFavoriteChange={updateWorkFavorite}
                 onFavoriteSaved={(workID, favorite) => {
                   setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                   setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                 }}
                 onTagOpen={addTagSearchToken}
+                onUntrack={activeTab.kind === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
+                onFetch={activeTab.kind === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                isFetchBusy={isTrackedFetching}
               />
             ))}
             {visibleWorks.length === 0 && (
@@ -631,6 +682,29 @@ export function LibraryPage() {
             />
           )}
         </div>
+      )}
+      {untrackTarget && (
+        <UntrackConfirmModal
+          work={untrackTarget.work}
+          source={untrackTarget.source}
+          disabled={isUntracking}
+          onClose={() => {
+            if (!isUntracking) setUntrackTarget(null);
+          }}
+          onConfirm={() => void untrackWorkSource()}
+        />
+      )}
+      {trackedFetchSelection && (
+        <RemoteSaveSelectionPanel
+          root={buildRemoteTree(trackedFetchSelection.detail.tracks)}
+          selectedPaths={trackedFetchSelection.selectedPaths}
+          onChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          disabled={isTrackedFetching}
+          onClose={() => {
+            if (!isTrackedFetching) setTrackedFetchSelection(null);
+          }}
+          onSave={() => void fetchTrackedSelection()}
+        />
       )}
     </div>
   );
@@ -710,6 +784,7 @@ function RemoteSourcePanel({
   autoSyncRemote,
   onOpenPreview,
   onTagOpen,
+  onWorkStateChanged,
   onSynced,
 }: {
   source: LibrarySource;
@@ -721,6 +796,7 @@ function RemoteSourcePanel({
   autoSyncRemote: boolean;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
+  onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite">>) => void;
   onSynced: (workID: number) => Promise<void>;
 }) {
   const isLoading = result === null;
@@ -881,17 +957,18 @@ function RemoteSourcePanel({
     }
   };
 
-  const favoriteRemoteWork = async (work: RemoteWork, favorite: boolean) => {
-    if (!work.primaryCode) return;
+  const ensureRemoteWorkForList = async (work: RemoteWork) => {
+    if (work.workId) return work.workId;
+    if (!work.primaryCode) return null;
     setIsSyncingCode(work.primaryCode);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "favorite_remote");
-      await api.updateWorkUserState(result.workId, { favorite });
-      setMessage(`${favorite ? "Favorited" : "Removed favorite from"} ${result.primaryCode}.`);
-      await onSynced(result.workId);
+      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "list_remote");
+      setMessage(`Tracked ${result.primaryCode} for list selection.`);
+      return result.workId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Favorite update failed.");
+      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      return null;
     } finally {
       setIsSyncingCode(null);
     }
@@ -983,11 +1060,15 @@ function RemoteSourcePanel({
               isBusy={isSyncingCode === work.primaryCode}
               onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
-              onFetch={() => void syncWork(work, "manual_fetch")}
-              onFavorite={(favorite) => void favoriteRemoteWork(work, favorite)}
+              onFetch={() => void syncWork(work, "manual_track")}
               onTagOpen={onTagOpen}
               onMark={(status) => void markRemoteWork(work, status)}
               onSave={() => void openSaveSelection(work)}
+              onEnsureWork={() => ensureRemoteWorkForList(work)}
+              onListSaved={(workId, favorite) => {
+                onWorkStateChanged(work.primaryCode, { workId, favorite });
+                void onSynced(0);
+              }}
             />
           ))}
         </section>
@@ -1024,18 +1105,23 @@ function WorkCard({
   work,
   onOpen,
   onStatusChange,
-  onFavoriteChange,
   onFavoriteSaved,
   onTagOpen,
+  onUntrack,
+  onFetch,
+  isFetchBusy,
 }: {
   work: Work;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-  onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
   onFavoriteSaved: (workID: number, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
+  onUntrack?: (source: SourcePresenceItem) => void;
+  onFetch?: (source: SourcePresenceItem) => void;
+  isFetchBusy?: boolean;
 }) {
   const view = libraryWorkCardView(work);
+  const trackedSource = trackedSourceForWork(work);
 
   return (
     <WorkCardShell
@@ -1049,6 +1135,29 @@ function WorkCard({
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
           right={(
             <>
+              {onUntrack && trackedSource && (
+                <WorkCardActionButton
+                  title="Untrack source"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onUntrack(trackedSource);
+                  }}
+                >
+                  <Unlink className="h-4 w-4" />
+                </WorkCardActionButton>
+              )}
+              {onUntrack && (
+                <WorkCardActionButton
+                  title="Fetch"
+                  disabled={!trackedSource || isFetchBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (trackedSource) onFetch?.(trackedSource);
+                  }}
+                >
+                  <HardDriveDownload className="h-4 w-4" />
+                </WorkCardActionButton>
+              )}
               <WorkCardListButton workId={work.id} active={work.favorite} onSaved={(favorite) => onFavoriteSaved(work.id, favorite)} />
               <WorkCardQuickMarkButton value={work.listeningStatus} onChange={(status) => void onStatusChange(work.id, status)} />
             </>
@@ -1069,10 +1178,11 @@ function RemoteWorkCard({
   onSelectedChange,
   onOpen,
   onFetch,
-  onFavorite,
   onTagOpen,
   onMark,
   onSave,
+  onEnsureWork,
+  onListSaved,
 }: {
   work: RemoteWork;
   source: LibrarySource;
@@ -1083,10 +1193,11 @@ function RemoteWorkCard({
   onSelectedChange: (checked: boolean) => void;
   onOpen: () => void;
   onFetch: () => void;
-  onFavorite: (favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onMark: (status: ListeningStatus) => void;
   onSave: () => void;
+  onEnsureWork: () => Promise<number | null>;
+  onListSaved: (workId: number, favorite: boolean) => void;
 }) {
   const view = remoteWorkCardView(work, source);
 
@@ -1113,16 +1224,6 @@ function RemoteWorkCard({
               <GitBranchPlus className="h-4 w-4" />
             </WorkCardActionButton>
             <WorkCardActionButton
-              title={work.favorite ? "Favorite" : "Add favorite"}
-              disabled={isBusy || !work.primaryCode}
-              onClick={(event) => {
-                event.stopPropagation();
-                onFavorite(!work.favorite);
-              }}
-            >
-              <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
-            </WorkCardActionButton>
-            <WorkCardActionButton
               title="Fetch"
               disabled={isBusy || !work.primaryCode}
               onClick={(event) => {
@@ -1132,6 +1233,13 @@ function RemoteWorkCard({
             >
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
+            <WorkCardListButton
+              workId={work.workId}
+              active={work.favorite}
+              disabled={isBusy || !work.primaryCode}
+              ensureWorkId={onEnsureWork}
+              onSaved={(favorite, workId) => onListSaved(workId, favorite)}
+            />
             <WorkCardQuickMarkButton value="none" disabled={isBusy || !work.primaryCode} onChange={onMark} />
             </>
           )}
@@ -1200,6 +1308,40 @@ function RemoteStateConfirmModal({
   );
 }
 
+function UntrackConfirmModal({
+  work,
+  source,
+  disabled,
+  onClose,
+  onConfirm,
+}: {
+  work: Work;
+  source: SourcePresenceItem;
+  disabled: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const sourceName = source.fileSourceName || source.fileSourceCode || "this source";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h3 className="text-base font-semibold">Untrack source</h3>
+        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+          <p>{work.primaryCode} will be removed from tracked works for {sourceName}.</p>
+          <p>Work information, marks, lists, metadata, and local files will be kept.</p>
+          <p>Cached files for this work under /cache will be deleted and their cache locations will be marked unavailable.</p>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={disabled} onClick={onClose}>Cancel</Button>
+          <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={disabled} onClick={onConfirm}>
+            {disabled ? "Untracking" : "Untrack"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function libraryWorkCardView(work: Work): WorkCardViewModel {
   return {
     code: work.primaryCode,
@@ -1215,6 +1357,10 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     userTags: [],
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
   };
+}
+
+function trackedSourceForWork(work: Work) {
+  return (work.sourcePresence ?? []).find((item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId);
 }
 
 function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardViewModel {
@@ -1276,7 +1422,7 @@ function sourceBadgesForWork(work: Work): CardBadge[] {
 }
 
 function workHasTrackedPresence(work: Work) {
-  return (work.sourcePresence ?? []).some((item) => item.type === "tracked");
+  return (work.sourcePresence ?? []).some((item) => item.type === "tracked" && item.availability === "available");
 }
 
 function workHasDirectoryAvailability(work: Work) {
