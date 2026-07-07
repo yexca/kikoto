@@ -330,14 +330,6 @@ export function LibraryPage() {
     setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
   };
 
-  const updateWorkFavorite = async (workID: number, favorite: boolean) => {
-    const result = await api.updateWorkUserState(workID, { favorite });
-    setWorks((items) =>
-      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
-    );
-    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
-  };
-
   const untrackWorkSource = async () => {
     if (!untrackTarget?.source.fileSourceId) return;
     setIsUntracking(true);
@@ -517,7 +509,6 @@ export function LibraryPage() {
         sources={sources}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
-        onFavoriteChange={updateWorkFavorite}
         onWorkReload={async (workID) => {
           const detail = await api.getWork(workID);
           setSelectedWork(detail);
@@ -1686,15 +1677,6 @@ function RemoteWorkDetailView({
     await onWorksChanged();
   };
 
-  const updateRemoteFavorite = async (favorite: boolean) => {
-    if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? await syncForUserState("detail_favorite_interest");
-    if (!workID) return;
-    const result = await api.updateWorkUserState(workID, { favorite });
-    setMessage(result.favorite ? `Added ${detail.primaryCode} to favorites.` : `Removed ${detail.primaryCode} from favorites.`);
-    await onWorksChanged();
-  };
-
   const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   const saveSelected = async () => {
     if (!detail?.primaryCode || selectedPaths.length === 0) return;
@@ -1792,16 +1774,22 @@ function RemoteWorkDetailView({
           <DetailActionBar
             canPlay={remotePlayableTracks.length > 0}
             busy={isFetching || isSaving}
+            mode="remote_source"
             listeningStatus="none"
             favorite={false}
+            listWorkId={detail.workId}
+            onEnsureListWork={() => syncForUserState("detail_list_remote")}
+            onListSaved={async () => {
+              await onWorksChanged();
+            }}
             onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
             onMark={(status) => void updateRemoteMark(status)}
-            onFavorite={() => void updateRemoteFavorite(true)}
             onSync={() => void fetchWork("manual_track")}
+            onTrack={() => void fetchWork("manual_track")}
             onFetch={() => setIsSaveSelectionOpen(true)}
             dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
             syncLabel="Track"
-            showSync
+            showSync={false}
             showFetch
           />
         }
@@ -1857,7 +1845,6 @@ function WorkDetailView({
   sources,
   onBack,
   onStatusChange,
-  onFavoriteChange,
   onWorkReload,
   onWorksChanged,
 }: {
@@ -1867,7 +1854,6 @@ function WorkDetailView({
   sources: LibrarySource[];
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-  onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
   onWorkReload: (workID: number) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
@@ -1888,12 +1874,15 @@ function WorkDetailView({
   const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
   const [savePlanMessage, setSavePlanMessage] = useState("");
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
-  const [favoriteMenuOpen, setFavoriteMenuOpen] = useState(false);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
+  const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
   const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
+  const selectedTrackedForked = trackedPresenceForked(selectedTrackedPresence, work?.mediaItems ?? []);
+  const selectedTrackedSourceID = trackedPresenceSourceID(selectedTrackedPresence);
+  const selectedTrackedRemoteSource = remoteSourceForTrackedPresence(selectedTrackedPresence, remoteSources);
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code) : work?.primaryCode || code;
@@ -1909,7 +1898,9 @@ function WorkDetailView({
   const workHasNoLinkedSource = Boolean(work && workHasNoSource(work));
   const showNoSourceDirectory = workHasNoLinkedSource && !selectedRemoteSource && !selectedTrackedPresence;
   const directoryDescription = selectedTrackedPresence
-    ? "Tracked source directory has not been forked yet."
+    ? selectedTrackedForked
+      ? "Browsing the forked tracked source directory."
+      : "Tracked source directory has not been forked yet."
     : selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : workHasNoLinkedSource
@@ -1917,6 +1908,14 @@ function WorkDetailView({
     : "File locations are grouped by local, cache, and remote source.";
   const favoriteSelected = favoriteLists.some((list) => list.selected);
   const isDetailLoading = !work;
+  const actionMode: DetailActionMode = selectedRemoteSource
+    ? "remote_source"
+    : selectedTrackedPresence
+      ? selectedTrackedForked ? "tracked_forked" : "tracked_unforked"
+      : "local";
+  const forkSources = availableForkSources(remoteSources);
+  const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;
+  const canTrackRemote = Boolean(selectedRemoteSource?.detail?.primaryCode && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote);
 
   useEffect(() => {
     let cancelled = false;
@@ -1925,11 +1924,15 @@ function WorkDetailView({
       const nextTree =
         selectedRemoteSource && !selectedRemoteDetail
           ? emptyTree()
-          : selectedTrackedPresence
+          : selectedTrackedPresence && !selectedTrackedForked
             ? emptyTree()
             : selectedRemoteDetail
               ? buildRemoteTree(selectedRemoteDetail.tracks)
-              : buildTree(localDirectoryWork?.mediaItems ?? [], selectedSource?.fileSourceId ?? null, localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "");
+              : buildTree(
+                localDirectoryWork?.mediaItems ?? [],
+                selectedTrackedForked ? selectedTrackedSourceID : selectedSource?.fileSourceId ?? null,
+                localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
+              );
       if (!cancelled) {
         setTree(nextTree);
         setIsDirectoryLoading(false);
@@ -1939,7 +1942,7 @@ function WorkDetailView({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail, selectedRemoteSource, selectedTrackedPresence]);
+  }, [localDirectoryWork, work?.primaryCode, selectedSource, selectedRemoteDetail, selectedRemoteSource, selectedTrackedPresence, selectedTrackedForked, selectedTrackedSourceID]);
 
   useEffect(() => {
     if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
@@ -2121,6 +2124,73 @@ function WorkDetailView({
     }
   };
 
+  const trackSelectedRemoteSource = async () => {
+    if (!selectedRemoteSource?.detail?.primaryCode) return;
+    setIsSyncingDetail(true);
+    setMessage("");
+    try {
+      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
+      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      await onWorkReload(result.workId);
+      await onWorksChanged();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Track failed.");
+    } finally {
+      setIsSyncingDetail(false);
+    }
+  };
+
+  const ensureSelectedRemoteSourceWork = async (reason: string) => {
+    if (!work || !selectedRemoteSource?.detail?.primaryCode) return null;
+    if (selectedRemoteSource.summary.workId) return selectedRemoteSource.summary.workId;
+    if (selectedRemoteSource.summary.hasRemote) return work.id;
+    setIsSyncingDetail(true);
+    setMessage("");
+    try {
+      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, reason);
+      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      setRemoteSources((items) => items.map((item) => item.source.id === selectedRemoteSource.source.id
+        ? { ...item, summary: { ...item.summary, workId: result.workId, hasRemote: true } }
+        : item));
+      await onWorkReload(result.workId);
+      await onWorksChanged();
+      return result.workId;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Track failed.");
+      return null;
+    } finally {
+      setIsSyncingDetail(false);
+    }
+  };
+
+  const markDetailWork = async (status: ListeningStatus) => {
+    if (!work) return;
+    if (!selectedRemoteSource) {
+      await onStatusChange(work.id, status);
+      return;
+    }
+    const workID = await ensureSelectedRemoteSourceWork("detail_mark_interest");
+    if (!workID) return;
+    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+    setMessage(`Marked ${selectedRemoteSource.detail?.primaryCode ?? work.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
+    if (workID === work.id) await onWorkReload(work.id);
+    await onWorksChanged();
+  };
+
+  const ensureDetailListWork = async () => {
+    if (!work) return null;
+    if (!selectedRemoteSource) return work.id;
+    return ensureSelectedRemoteSourceWork("detail_list_remote");
+  };
+
+  const favoriteSaved = async (_favorite: boolean, savedWorkID: number) => {
+    if (work && savedWorkID === work.id) {
+      const lists = await api.getWorkFavoriteLists(work.id);
+      setFavoriteLists(lists);
+    }
+    await onWorksChanged();
+  };
+
   const refreshSourceAvailability = async () => {
     if (!work?.primaryCode) return;
     setIsCheckingSources(true);
@@ -2158,17 +2228,12 @@ function WorkDetailView({
     }
   };
 
-  const updateFavoriteLists = async (listID: number, selected: boolean) => {
-    if (!work) return;
-    const nextIDs = new Set(favoriteLists.filter((list) => list.selected).map((list) => list.id));
-    if (selected) {
-      nextIDs.add(listID);
-    } else {
-      nextIDs.delete(listID);
+  const requestForkSource = (remote: RemoteSourceAvailability) => {
+    if (selectedTrackedForked || selectedRemoteSource?.summary.hasRemote) {
+      setReforkTarget({ current: currentForkSource, next: remote });
+      return;
     }
-    const result = await api.setWorkFavoriteLists(work.id, Array.from(nextIDs));
-    setFavoriteLists(result.lists);
-    await onWorksChanged();
+    void forkTrackedSource(remote);
   };
 
   const selectEdition = async (translation: WorkDetail["translations"][number]) => {
@@ -2250,17 +2315,21 @@ function WorkDetailView({
           work ? <DetailActionBar
             canPlay={allTracks.length > 0}
             busy={isSyncingDetail || isSaving}
+            mode={actionMode}
             listeningStatus={work.listeningStatus}
             favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
-            favoriteLists={favoriteLists}
-            favoriteMenuOpen={favoriteMenuOpen}
-            onFavoriteMenuOpenChange={setFavoriteMenuOpen}
-            onPlay={playAll}
+            listWorkId={selectedRemoteSource && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote ? null : work.id}
+            onEnsureListWork={ensureDetailListWork}
+            onListSaved={favoriteSaved}
+            onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
             onResume={resumeTrack ? resumePlayback : undefined}
-            onMark={(status) => void onStatusChange(work.id, status)}
-            onFavorite={() => void onFavoriteChange(work.id, !work.favorite)}
-            onFavoriteListChange={(listID, selected) => void updateFavoriteLists(listID, selected)}
+            onMark={(status) => void markDetailWork(status)}
             onSync={() => void syncDetailMetadata()}
+            onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
+            trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
+            forkSources={forkSources}
+            currentForkSource={currentForkSource}
+            onFork={(remote) => requestForkSource(remote)}
             onFetch={selectedRemoteDetail ? () => setIsSaveSelectionOpen(true) : undefined}
             dlsiteUrl={work.dlsiteUrl}
             syncLabel="Sync"
@@ -2309,12 +2378,12 @@ function WorkDetailView({
             onSave={() => void planRemoteSave()}
           />
         ) : null}
-        emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence ? (
+        emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence && !selectedTrackedForked ? (
           <TrackedUnforkedPanel
             presence={selectedTrackedPresence}
             remoteSources={remoteSources}
             busy={isSyncingDetail}
-            onFork={(remote) => void forkTrackedSource(remote)}
+            onFork={(remote) => requestForkSource(remote)}
           />
         ) : showNoSourceDirectory ? (
           <NoSourceDirectoryPanel
@@ -2337,6 +2406,19 @@ function WorkDetailView({
           deleting={isDeleting}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => void (deleteTarget.kind === "cache" ? deleteCache() : deleteLocal())}
+        />
+      )}
+      {reforkTarget && (
+        <ReforkConfirmModal
+          currentName={reforkTarget.current?.source.displayName ?? "the current fork"}
+          nextName={reforkTarget.next.source.displayName}
+          busy={isSyncingDetail}
+          onClose={() => setReforkTarget(null)}
+          onConfirm={() => {
+            const next = reforkTarget.next;
+            setReforkTarget(null);
+            void forkTrackedSource(next);
+          }}
         />
       )}
     </div>
@@ -2907,17 +2989,21 @@ function SourceDirectoryToolbar({
 function DetailActionBar({
   canPlay,
   busy,
+  mode,
   listeningStatus,
   favorite,
-  favoriteLists = [],
-  favoriteMenuOpen = false,
+  listWorkId,
+  onEnsureListWork,
+  onListSaved,
   onPlay,
   onResume,
   onMark,
-  onFavorite,
-  onFavoriteListChange,
-  onFavoriteMenuOpenChange,
   onSync,
+  onTrack,
+  trackDisabled,
+  forkSources = [],
+  currentForkSource,
+  onFork,
   onFetch,
   dlsiteUrl,
   syncLabel,
@@ -2926,103 +3012,125 @@ function DetailActionBar({
 }: {
   canPlay: boolean;
   busy: boolean;
+  mode: DetailActionMode;
   listeningStatus: ListeningStatus;
   favorite: boolean;
-  favoriteLists?: FavoriteList[];
-  favoriteMenuOpen?: boolean;
+  listWorkId: number | null;
+  onEnsureListWork?: () => Promise<number | null>;
+  onListSaved?: (favorite: boolean, workID: number) => void;
   onPlay: () => void;
   onResume?: () => void;
   onMark: (status: ListeningStatus) => void;
-  onFavorite: () => void;
-  onFavoriteListChange?: (listID: number, selected: boolean) => void;
-  onFavoriteMenuOpenChange?: (open: boolean) => void;
   onSync?: () => void;
+  onTrack?: () => void;
+  trackDisabled?: boolean;
+  forkSources?: RemoteSourceAvailability[];
+  currentForkSource?: RemoteSourceAvailability | null;
+  onFork?: (remote: RemoteSourceAvailability) => void;
   onFetch?: () => void;
   dlsiteUrl: string;
   syncLabel: string;
   showSync?: boolean;
   showFetch?: boolean;
 }) {
-  const favoriteMenuRef = useRef<HTMLDivElement | null>(null);
+  const [forkMenuOpen, setForkMenuOpen] = useState(false);
+  const forkMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!favoriteMenuOpen) return;
+    if (!forkMenuOpen) return;
     const close = (event: globalThis.MouseEvent) => {
       const target = event.target as Node | null;
-      if (target && favoriteMenuRef.current?.contains(target)) return;
-      onFavoriteMenuOpenChange?.(false);
+      if (target && forkMenuRef.current?.contains(target)) return;
+      setForkMenuOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [favoriteMenuOpen, onFavoriteMenuOpenChange]);
+  }, [forkMenuOpen]);
 
   return (
     <>
-      <Button size="sm" disabled={!canPlay || busy} onClick={onPlay}>
-        <Play className="h-4 w-4" />
-        Play
-      </Button>
-      {onResume && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={onResume}>
-          <Clock3 className="h-4 w-4" />
-          Resume
+      {mode !== "tracked_unforked" && (
+        <>
+          <Button size="icon" className="h-8 w-8" disabled={!canPlay || busy} onClick={onPlay} title="Play" aria-label="Play">
+            <Play className="h-4 w-4" />
+          </Button>
+          {onResume && (
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onResume} title="Resume" aria-label="Resume">
+              <Clock3 className="h-4 w-4" />
+            </Button>
+          )}
+          <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} onChange={onMark} />
+          <WorkCardListButton
+            workId={listWorkId}
+            active={favorite}
+            disabled={busy}
+            ensureWorkId={onEnsureListWork}
+            onSaved={onListSaved}
+          />
+        </>
+      )}
+      {mode === "local" && showSync && onSync && (
+        <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onSync} title={syncLabel} aria-label={syncLabel}>
+          <RefreshCw className="h-4 w-4" />
         </Button>
       )}
-      <select
-        className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
-        value={listeningStatus}
-        disabled={busy}
-        onChange={(event) => onMark(event.target.value as ListeningStatus)}
-        aria-label="Listening mark"
-      >
-        {listeningStatusOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <div className="relative" ref={favoriteMenuRef}>
+      {mode === "remote_source" && onTrack && (
         <Button
-          variant={favorite ? "default" : "outline"}
-          size="sm"
-          disabled={busy}
-          onClick={() => favoriteLists.length > 0 && onFavoriteListChange ? onFavoriteMenuOpenChange?.(!favoriteMenuOpen) : onFavorite()}
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          disabled={busy || trackDisabled}
+          onClick={onTrack}
+          title={trackDisabled ? "Already tracked" : "Track remote work"}
+          aria-label={trackDisabled ? "Already tracked" : "Track remote work"}
         >
-          <Star className={`h-4 w-4 ${favorite ? "fill-current" : ""}`} />
-          Favorite
-          {favoriteLists.length > 0 && <ChevronDown className="h-3.5 w-3.5" />}
+          <GitBranchPlus className="h-4 w-4" />
         </Button>
-        {favoriteMenuOpen && favoriteLists.length > 0 && onFavoriteListChange && (
-          <div className="absolute right-0 z-30 mt-2 w-56 rounded-md border bg-popover p-1 text-sm shadow-lg">
-            {favoriteLists.map((list) => (
-              <label key={list.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
-                <input
-                  type="checkbox"
-                  checked={Boolean(list.selected)}
-                  onChange={(event) => onFavoriteListChange(list.id, event.target.checked)}
-                />
-                <span className="min-w-0 flex-1 truncate">{list.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-      {showSync && onSync && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={onSync}>
-          <RefreshCw className="h-4 w-4" />
-          {syncLabel}
-        </Button>
+      )}
+      {(mode === "tracked_forked" || mode === "remote_source") && onFork && (
+        <div className="relative" ref={forkMenuRef}>
+          <Button
+            variant="outline"
+            size="icon"
+            className="relative h-8 w-8"
+            disabled={busy || forkSources.length === 0}
+            onClick={() => setForkMenuOpen((open) => !open)}
+            title={mode === "tracked_forked" ? "Switch fork source" : "Fork remote source"}
+            aria-label={mode === "tracked_forked" ? "Switch fork source" : "Fork remote source"}
+          >
+            <GitBranchPlus className="h-4 w-4" />
+            {forkSources.length > 0 && <ChevronDown className="absolute bottom-0.5 right-0.5 h-3 w-3" />}
+          </Button>
+          {forkMenuOpen && (
+            <div className="absolute right-0 z-30 mt-2 w-60 rounded-md border bg-popover p-1 text-sm shadow-lg">
+              {forkSources.map((remote) => {
+                const active = currentForkSource?.source.id === remote.source.id;
+                return (
+                  <button
+                    key={remote.source.id}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                    onClick={() => {
+                      setForkMenuOpen(false);
+                      onFork(remote);
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{remote.source.displayName}</span>
+                    {active && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
       {showFetch && onFetch && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={onFetch}>
+        <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onFetch} title="Fetch remote files" aria-label="Fetch remote files">
           <HardDriveDownload className="h-4 w-4" />
-          Fetch
         </Button>
       )}
       {dlsiteUrl && (
-        <Button variant="outline" size="sm" asChild>
-          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
+        <Button variant="outline" size="icon" className="h-8 w-8" asChild title="Open DLsite">
+          <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label="Open DLsite">
             <ExternalLink className="h-4 w-4" />
-            DLsite
           </a>
         </Button>
       )}
@@ -3249,6 +3357,13 @@ type RemoteSourceAvailability = {
   error?: string;
 };
 
+type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" | "remote_source";
+
+type ReforkTarget = {
+  current: RemoteSourceAvailability | null;
+  next: RemoteSourceAvailability;
+};
+
 function emptyTree(): TreeNode {
   return { name: "", path: "", children: new Map(), files: [] };
 }
@@ -3310,6 +3425,30 @@ function buildSourceTabs(
 function trackedUnforkedSources(sourcePresence: NonNullable<WorkDetail["sourcePresence"]>, remoteSources: RemoteSourceAvailability[]) {
   if (remoteSources.some((remote) => remoteSourceCanBrowse(remote.summary))) return [];
   return sourcePresence.filter((presence) => presence.type === "tracked");
+}
+
+function trackedPresenceSourceID(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null) {
+  return presence?.fileSourceId ?? null;
+}
+
+function trackedPresenceForked(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, items: MediaItem[]) {
+  const sourceID = trackedPresenceSourceID(presence);
+  if (!sourceID) return false;
+  return items.some((item) => item.locations.some((location) =>
+    location.fileSourceId === sourceID
+    && location.locationType === "remote_stream"
+    && location.availability === "available",
+  ));
+}
+
+function availableForkSources(remoteSources: RemoteSourceAvailability[]) {
+  return remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
+}
+
+function remoteSourceForTrackedPresence(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, remoteSources: RemoteSourceAvailability[]) {
+  const sourceID = trackedPresenceSourceID(presence);
+  if (!sourceID) return null;
+  return remoteSources.find((remote) => remote.source.id === sourceID) ?? null;
 }
 
 function trackedSourceTabKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
@@ -3713,6 +3852,48 @@ function ConfirmMediaDeleteModal({
           <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting}>
             <Trash2 className="h-4 w-4" />
             {deleting ? "Deleting" : isLocal ? "Delete local" : "Delete cache"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReforkConfirmModal({
+  currentName,
+  nextName,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  currentName: string;
+  nextName: string;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
+      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b p-4">
+          <div>
+            <h3 className="text-base font-semibold">Switch fork source</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Choose a different remote source for this tracked directory.</p>
+          </div>
+          <IconButton title="Close" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="space-y-3 p-4 text-sm">
+          <div className="rounded-md border bg-muted px-3 py-2 text-muted-foreground">
+            {currentName} will be replaced by {nextName}. Cached files for the current fork should be cleaned when backend reFork cleanup is added.
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4">
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={onConfirm} disabled={busy}>
+            <GitBranchPlus className="h-4 w-4" />
+            Switch fork
           </Button>
         </div>
       </div>
