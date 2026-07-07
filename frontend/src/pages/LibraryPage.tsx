@@ -55,12 +55,14 @@ import {
   type RemoteWorksResponse,
   type RemoteWork,
   type RemoteWorkDetail,
+  type RemoteWorkSavePlan,
   type SourceAvailabilitySource,
   type SourcePresenceItem,
   type VoiceCredit,
   type Work,
   type WorkDetail,
 } from "@/lib/api";
+import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -148,7 +150,7 @@ export function LibraryPage() {
   const [workTotal, setWorkTotal] = useState(0);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
-  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
@@ -355,7 +357,7 @@ export function LibraryPage() {
     setIsTrackedFetching(true);
     try {
       const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
-      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))) });
+      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), plan: null, message: "" });
     } finally {
       setIsTrackedFetching(false);
     }
@@ -366,6 +368,11 @@ export function LibraryPage() {
     setIsTrackedFetching(true);
     try {
       const paths = Array.from(trackedFetchSelection.selectedPaths);
+      const plan = await api.planRemoteSourceWorkFetch(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        return;
+      }
       await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths);
       setTrackedFetchSelection(null);
       await refreshCurrentWorksPage();
@@ -697,7 +704,9 @@ export function LibraryPage() {
         <RemoteSaveSelectionPanel
           root={buildRemoteTree(trackedFetchSelection.detail.tracks)}
           selectedPaths={trackedFetchSelection.selectedPaths}
-          onChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          plan={trackedFetchSelection.plan}
+          message={trackedFetchSelection.message}
+          onChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
           disabled={isTrackedFetching}
           onClose={() => {
             if (!isTrackedFetching) setTrackedFetchSelection(null);
@@ -804,7 +813,7 @@ function RemoteSourcePanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
-  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [markTarget, setMarkTarget] = useState<{ work: RemoteWork; status: ListeningStatus } | null>(null);
   const [message, setMessage] = useState("");
   const { page, pageSize } = viewState;
@@ -906,7 +915,7 @@ function RemoteSourcePanel({
     try {
       const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
       const root = buildRemoteTree(detail.tracks);
-      setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)) });
+      setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)), plan: null, message: "" });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Remote directory failed.");
     } finally {
@@ -920,6 +929,11 @@ function RemoteSourcePanel({
     setIsSyncingCode(saveSelection.work.primaryCode);
     setMessage("");
     try {
+      const plan = await api.planRemoteSourceWorkFetch(source.id, saveSelection.detail.primaryCode, paths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setSaveSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        return;
+      }
       const result = await api.fetchRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths);
       setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
@@ -1083,7 +1097,9 @@ function RemoteSourcePanel({
         <RemoteSaveSelectionPanel
           root={buildRemoteTree(saveSelection.detail.tracks)}
           selectedPaths={saveSelection.selectedPaths}
-          onChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          plan={saveSelection.plan}
+          message={saveSelection.message}
+          onChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
           disabled={isSyncingCode === saveSelection.work.primaryCode}
           onClose={() => setSaveSelection(null)}
           onSave={() => void fetchSingleSelection()}
@@ -1659,6 +1675,8 @@ function RemoteWorkDetailView({
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
+  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [savePlanMessage, setSavePlanMessage] = useState("");
   const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
   const [markTarget, setMarkTarget] = useState<ListeningStatus | null>(null);
@@ -1672,6 +1690,8 @@ function RemoteWorkDetailView({
     setDetail(null);
     setMessage("");
     setSelectedSavePaths(new Set());
+    setSavePlan(null);
+    setSavePlanMessage("");
     api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
       setMessage(error instanceof Error ? error.message : "Remote preview failed.");
     });
@@ -1679,6 +1699,8 @@ function RemoteWorkDetailView({
 
   useEffect(() => {
     setSelectedSavePaths(new Set(remoteFilePaths));
+    setSavePlan(null);
+    setSavePlanMessage("");
   }, [remoteFilePaths]);
 
   const fetchWork = async (reason: string) => {
@@ -1751,10 +1773,19 @@ function RemoteWorkDetailView({
     if (!detail?.primaryCode || selectedPaths.length === 0) return;
     setIsSaving(true);
     setMessage("");
+    setSavePlanMessage("");
     try {
+      const plan = await api.planRemoteSourceWorkFetch(source.id, detail.primaryCode, selectedPaths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setSavePlan(plan);
+        setSavePlanMessage(formatRemoteFetchPlanConflict(plan));
+        return;
+      }
       const result = await api.fetchRemoteSourceWork(source.id, detail.primaryCode, selectedPaths);
       setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
+      setSavePlan(null);
+      setSavePlanMessage("");
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
@@ -1865,7 +1896,13 @@ function RemoteWorkDetailView({
           <RemoteSaveSelectionPanel
             root={tree}
             selectedPaths={selectedSavePaths}
-            onChange={setSelectedSavePaths}
+            plan={savePlan}
+            message={savePlanMessage}
+            onChange={(paths) => {
+              setSelectedSavePaths(paths);
+              setSavePlan(null);
+              setSavePlanMessage("");
+            }}
             disabled={isSaving}
             onClose={() => setIsSaveSelectionOpen(false)}
             onSave={() => void saveSelected()}
@@ -1939,6 +1976,8 @@ function WorkDetailView({
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingDetail, setIsSyncingDetail] = useState(false);
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
+  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [savePlanMessage, setSavePlanMessage] = useState("");
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [favoriteMenuOpen, setFavoriteMenuOpen] = useState(false);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
@@ -2037,6 +2076,8 @@ function WorkDetailView({
 
   useEffect(() => {
     setSelectedSavePaths(new Set(remoteFilePaths));
+    setSavePlan(null);
+    setSavePlanMessage("");
   }, [remoteFilePaths]);
 
   useEffect(() => {
@@ -2127,10 +2168,19 @@ function WorkDetailView({
     if (!selectedRemoteSource?.detail || selectedPaths.length === 0) return;
     setIsSaving(true);
     setMessage("");
+    setSavePlanMessage("");
     try {
+      const plan = await api.planRemoteSourceWorkFetch(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setSavePlan(plan);
+        setSavePlanMessage(formatRemoteFetchPlanConflict(plan));
+        return;
+      }
       const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths);
       setMessage(`Fetched ${result.savedFiles} files through workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
+      setSavePlan(null);
+      setSavePlanMessage("");
       await onWorksChanged();
       openRemoteLocal(result.workId);
     } catch (error) {
@@ -2338,7 +2388,13 @@ function WorkDetailView({
           <RemoteSaveSelectionPanel
             root={tree}
             selectedPaths={selectedSavePaths}
-            onChange={setSelectedSavePaths}
+            plan={savePlan}
+            message={savePlanMessage}
+            onChange={(paths) => {
+              setSelectedSavePaths(paths);
+              setSavePlan(null);
+              setSavePlanMessage("");
+            }}
             disabled={isSaving}
             onClose={() => setIsSaveSelectionOpen(false)}
             onSave={() => void planRemoteSave()}
@@ -3551,6 +3607,8 @@ function RemoteSaveSelectionPanel({
   root,
   selectedPaths,
   disabled,
+  plan,
+  message,
   onClose,
   onSave,
   onChange,
@@ -3558,12 +3616,14 @@ function RemoteSaveSelectionPanel({
   root: TreeNode;
   selectedPaths: Set<string>;
   disabled: boolean;
+  plan?: RemoteWorkSavePlan | null;
+  message?: string;
   onClose: () => void;
   onSave: () => void;
   onChange: (paths: Set<string>) => void;
 }) {
   const allPaths = remoteSelectablePaths(root);
-  const planByPath = useMemo(() => new Map<string, never>(), []);
+  const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
   const setAll = () => onChange(new Set(allPaths));
   const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.sourcePath)));
   const clear = () => onChange(new Set());
@@ -3581,6 +3641,8 @@ function RemoteSaveSelectionPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Badge variant="secondary">{selectedPaths.size} / {allPaths.length} files</Badge>
+          {plan && plan.summary.conflict > 0 && <Badge variant="outline" className="border-destructive/40 text-destructive">{plan.summary.conflict} conflicts</Badge>}
+          {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} to fetch</Badge>}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
@@ -3598,6 +3660,7 @@ function RemoteSaveSelectionPanel({
             isRoot
           />
         </div>
+        {message && <div className="border-t bg-destructive/10 px-3 py-2 text-sm text-destructive">{message}</div>}
         <div className="flex flex-wrap justify-end gap-2 border-t p-3">
           <Button variant="outline" onClick={onClose} disabled={disabled}>
             Cancel
@@ -3624,7 +3687,7 @@ function RemoteSaveSelectionNode({
   node: TreeNode;
   depth: number;
   selectedPaths: Set<string>;
-  planByPath: Map<string, { status: string }>;
+  planByPath: Map<string, { status: string; targetConflict: boolean; targetConflictReason: string }>;
   disabled: boolean;
   isRoot?: boolean;
   onChange: (paths: Set<string>) => void;
@@ -3682,7 +3745,14 @@ function RemoteSaveSelectionNode({
             />
             {fileIcon(file)}
             <span className="min-w-0 flex-1 truncate">{file.title}</span>
-            {plan && <span className="text-xs text-muted-foreground">{plan.status}</span>}
+            {plan && (
+              <span
+                className={plan.targetConflict ? "max-w-48 truncate text-xs text-destructive" : "text-xs text-muted-foreground"}
+                title={plan.targetConflictReason || plan.status}
+              >
+                {plan.status}
+              </span>
+            )}
           </label>
         );
       })}

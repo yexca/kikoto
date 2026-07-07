@@ -34,7 +34,8 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
-import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail } from "@/lib/api";
+import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
+import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const TRANSLATION_CIRCLE_ID = "RG60289";
@@ -284,7 +285,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [markConfirm, setMarkConfirm] = useState<{ work: CircleCatalogWork; status: ListeningStatus } | null>(null);
-  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [autoSyncRemote, setAutoSyncRemote] = useState(false);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
@@ -603,7 +604,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setToast(null);
     try {
       const detail = await api.getRemoteSourceWork(target.sourceId, work.primaryCode);
-      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)) });
+      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
     } catch (error) {
       setToast(toastFromError(error, "Remote directory failed."));
     } finally {
@@ -616,7 +617,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      const paths = Array.from(fetchSelection.selectedPaths);
+      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        return;
+      }
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
       setToast({ kind: "success", message: `Fetched ${result.primaryCode} through workflow run #${result.runId}.` });
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
@@ -996,7 +1003,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           tracks={fetchSelection.detail.tracks}
           selectedPaths={fetchSelection.selectedPaths}
           disabled={isBulkSaving}
-          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          plan={fetchSelection.plan}
+          message={fetchSelection.message}
+          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
           onClose={() => setFetchSelection(null)}
           onFetch={() => void fetchSingleSelection()}
         />

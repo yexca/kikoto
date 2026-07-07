@@ -301,14 +301,18 @@ type remoteWorkSavePlan struct {
 }
 
 type remoteWorkSavePlanItem struct {
-	Path       string `json:"path"`
-	Kind       string `json:"kind"`
-	SizeBytes  *int64 `json:"sizeBytes"`
-	Action     string `json:"action"`
-	Status     string `json:"status"`
-	SourcePath string `json:"sourcePath"`
-	CachePath  string `json:"cachePath"`
-	TargetPath string `json:"targetPath"`
+	Path                 string `json:"path"`
+	Kind                 string `json:"kind"`
+	SizeBytes            *int64 `json:"sizeBytes"`
+	Action               string `json:"action"`
+	Status               string `json:"status"`
+	SourcePath           string `json:"sourcePath"`
+	CachePath            string `json:"cachePath"`
+	TargetPath           string `json:"targetPath"`
+	TargetExists         bool   `json:"targetExists"`
+	TargetConflict       bool   `json:"targetConflict"`
+	TargetConflictReason string `json:"targetConflictReason"`
+	TargetSizeBytes      *int64 `json:"targetSizeBytes"`
 }
 
 type remoteWorkSaveSummary struct {
@@ -317,6 +321,7 @@ type remoteWorkSaveSummary struct {
 	CacheHit      int `json:"cacheHit"`
 	CacheDownload int `json:"cacheDownload"`
 	Promote       int `json:"promote"`
+	Conflict      int `json:"conflict"`
 }
 
 type remoteWorkSaveResult struct {
@@ -331,6 +336,17 @@ type remoteWorkSaveResult struct {
 	CachedFiles   int                   `json:"cachedFiles"`
 	PromotedFiles int                   `json:"promotedFiles"`
 	Plan          remoteWorkSaveSummary `json:"plan"`
+}
+
+type remoteWorkSaveConflictError struct {
+	Summary remoteWorkSaveSummary
+}
+
+func (err remoteWorkSaveConflictError) Error() string {
+	if err.Summary.Conflict == 1 {
+		return "fetch plan has 1 target conflict; review the selected files before fetching"
+	}
+	return fmt.Sprintf("fetch plan has %d target conflicts; review the selected files before fetching", err.Summary.Conflict)
 }
 
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -1078,6 +1094,11 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.runRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths)
 	if err != nil {
+		var conflict remoteWorkSaveConflictError
+		if errors.As(err, &conflict) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -2296,6 +2317,7 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 	selected := normalizeSelectedRemotePaths(selectedPaths)
 	files := flattenRemoteSaveFiles(tracks)
 	items := make([]remoteWorkSavePlanItem, 0, len(files))
+	seenTargets := map[string]string{}
 	for _, file := range files {
 		if len(selected) > 0 && !selectedRemotePathMatches(selected, file.Path) {
 			continue
@@ -2313,6 +2335,45 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 			SourcePath: firstNonEmpty(file.DownloadURL, file.StreamURL),
 			CachePath:  cacheRelPath,
 			TargetPath: filepath.ToSlash(targetRelPath),
+		}
+		if info, err := os.Stat(targetAbsPath); err == nil {
+			if info.IsDir() {
+				item.TargetExists = true
+				item.TargetConflict = true
+				item.TargetConflictReason = "target is a directory"
+				item.Action = "conflict"
+				item.Status = "target_conflict"
+			} else {
+				size := info.Size()
+				item.TargetExists = true
+				item.TargetSizeBytes = &size
+				if file.SizeBytes == nil || size == *file.SizeBytes {
+					item.Action = "skip"
+					item.Status = "local_exists"
+				} else {
+					item.TargetConflict = true
+					item.TargetConflictReason = "target exists with a different size"
+					item.Action = "conflict"
+					item.Status = "target_conflict"
+				}
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			item.TargetConflict = true
+			item.TargetConflictReason = err.Error()
+			item.Action = "conflict"
+			item.Status = "target_conflict"
+		}
+		if previous, exists := seenTargets[item.TargetPath]; exists && !item.TargetConflict {
+			item.TargetConflict = true
+			item.TargetConflictReason = "multiple remote files resolve to the same target path: " + previous
+			item.Action = "conflict"
+			item.Status = "duplicate_target"
+		} else {
+			seenTargets[item.TargetPath] = file.Path
+		}
+		if item.Action != "" {
+			items = append(items, item)
+			continue
 		}
 		if existingFileMatches(targetAbsPath, file.SizeBytes) {
 			item.Action = "skip"
@@ -2349,6 +2410,9 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
+	}
+	if plan.Summary.Conflict > 0 {
+		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
 	}
 	rawWork, _ := json.Marshal(remoteWork)
 	rawTracks, _ := json.Marshal(tracks)
@@ -2499,6 +2563,14 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 		if existingFileMatches(targetAbsPath, item.SizeBytes) {
 			_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)+index+1, len(plan.Items)*2)
 			continue
+		}
+		if info, err := os.Stat(targetAbsPath); err == nil {
+			reason := fmt.Sprintf("target already exists with size %d: %s", info.Size(), item.TargetPath)
+			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", reason, len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
+			return remoteWorkSaveResult{}, errors.New(reason)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
+			return remoteWorkSaveResult{}, err
 		}
 		if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0o755); err != nil {
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
@@ -2793,6 +2865,8 @@ func summarizeRemoteSavePlan(items []remoteWorkSavePlanItem) remoteWorkSaveSumma
 		case "cache_download":
 			summary.CacheDownload++
 			summary.Promote++
+		case "conflict":
+			summary.Conflict++
 		}
 	}
 	return summary
