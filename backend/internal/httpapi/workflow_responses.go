@@ -82,6 +82,17 @@ type workflowRunActionResult struct {
 	Recovered int64  `json:"recovered,omitempty"`
 }
 
+type localCandidateCleanupResult struct {
+	RunID       int64    `json:"runId"`
+	CandidateID int64    `json:"candidateId"`
+	Action      string   `json:"action"`
+	Status      string   `json:"status"`
+	Deleted     int      `json:"deleted"`
+	Marked      int      `json:"marked"`
+	Failed      int      `json:"failed"`
+	Failures    []string `json:"failures"`
+}
+
 type workflowRunDetailRecord struct {
 	workflowRunRecord
 	NodeRuns []workflowNodeRunRecord `json:"nodeRuns"`

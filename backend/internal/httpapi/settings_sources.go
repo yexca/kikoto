@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -2628,6 +2629,9 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(rawWork) + len(rawTracks)}), runID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
+	if err := s.insertFetchCleanupCandidate(ctx, runID, workID, localSourceID, workCode, plan.Items); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
 	return remoteWorkSaveResult{
 		RunID:         runID,
 		JobID:         jobID,
@@ -3040,6 +3044,91 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, workID int64, localSourceID int64, workCode string, items []remoteWorkSavePlanItem) error {
+	targets := map[string]bool{}
+	for _, item := range items {
+		if item.TargetPath != "" {
+			targets[filepath.ToSlash(item.TargetPath)] = true
+		}
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			location.id,
+			location.media_item_id,
+			location.path,
+			location.size_bytes,
+			item.title,
+			item.kind
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = ?
+			AND location.file_source_id = ?
+			AND location.location_type = 'local'
+			AND location.availability = 'available'
+		ORDER BY location.path ASC
+	`, workID, localSourceID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	candidates := []map[string]any{}
+	locationIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		var mediaItemID int64
+		var path string
+		var size sql.NullInt64
+		var title string
+		var kind string
+		if err := rows.Scan(&id, &mediaItemID, &path, &size, &title, &kind); err != nil {
+			return err
+		}
+		if targets[filepath.ToSlash(path)] {
+			continue
+		}
+		locationIDs = append(locationIDs, id)
+		item := map[string]any{
+			"location_id":   id,
+			"media_item_id": mediaItemID,
+			"path":          filepath.ToSlash(path),
+			"title":         title,
+			"kind":          kind,
+		}
+		if size.Valid {
+			item["size_bytes"] = size.Int64
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+		VALUES (?, 'local_fetch_merge_cleanup', ?, 'pending', ?)
+	`, runID, workCode, mustJSON(map[string]any{
+		"work_id":                workID,
+		"work_code":              workCode,
+		"local_source_id":        localSourceID,
+		"candidate_locations":    candidates,
+		"candidate_location_ids": locationIDs,
+		"fetched_targets":        sortedStringKeys(targets),
+		"message":                "Fetch completed while other local files for this work still exist. Review before deleting or hiding old local files.",
+	}))
+	return err
+}
+
+func sortedStringKeys(values map[string]bool) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkDetail, error) {

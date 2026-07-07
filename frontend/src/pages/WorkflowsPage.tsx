@@ -947,41 +947,7 @@ function RunItems({
           <div className="text-sm font-semibold">Candidates</div>
           <div className="divide-y rounded-md border">
             {candidates.map((candidate) => (
-              <div key={candidate.id} className="grid gap-2 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{candidate.externalKey || candidate.type}</div>
-                    <div className="text-xs text-muted-foreground">{candidate.type} · updated {candidate.updatedAt}</div>
-                  </div>
-                  <StatusBadge status={candidate.status} />
-                </div>
-                <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />
-                {hasNonEmptyJSON(candidate.decisionJson) && <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />}
-                {candidateNeedsReview(candidate) && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
-                        await onCandidateUpdate();
-                      }}
-                    >
-                      Mark resolved
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
-                        await onCandidateUpdate();
-                      }}
-                    >
-                      Ignore
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <CandidateReviewCard key={candidate.id} candidate={candidate} onCandidateUpdate={onCandidateUpdate} />
             ))}
           </div>
         </div>
@@ -1002,6 +968,101 @@ function RunItems({
         ))}
         {interestingNodes.length === 0 && <div className="p-3 text-sm text-muted-foreground">No reviewable items recorded for this run.</div>}
       </div>
+    </div>
+  );
+}
+
+function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: WorkflowCandidate; onCandidateUpdate: () => Promise<void> }) {
+  const payload = parseJSONRecord(candidate.payloadJson);
+  const cleanupLocations = candidate.type === "local_fetch_merge_cleanup" ? localCleanupLocations(payload) : [];
+  const duplicateFolders = candidate.type === "local_duplicate_work_folder" ? localDuplicateFolders(payload) : [];
+  const needsReview = candidateNeedsReview(candidate);
+  const cleanup = async (action: "mark_unavailable" | "delete_files") => {
+    if (cleanupLocations.length === 0) return;
+    if (action === "delete_files") {
+      const confirmed = window.confirm("Delete the selected old local files from disk and mark their locations unavailable? This will not delete the work metadata.");
+      if (!confirmed) return;
+    }
+    await api.cleanupLocalWorkflowCandidate(candidate.id, {
+      action,
+      locationIds: cleanupLocations.map((location) => location.locationId),
+    });
+    await onCandidateUpdate();
+  };
+  return (
+    <div className="grid gap-2 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{candidate.externalKey || candidate.type}</div>
+          <div className="text-xs text-muted-foreground">{candidate.type} · updated {candidate.updatedAt}</div>
+        </div>
+        <StatusBadge status={candidate.status} />
+      </div>
+
+      {candidate.type === "local_fetch_merge_cleanup" && (
+        <div className="rounded-md border bg-muted/40 p-2 text-xs">
+          <div className="mb-1 font-medium">Old local locations</div>
+          {cleanupLocations.length > 0 ? cleanupLocations.slice(0, 8).map((location) => (
+            <div key={location.locationId} className="flex gap-2 py-0.5">
+              <span className="w-12 shrink-0 text-muted-foreground">#{location.locationId}</span>
+              <span className="min-w-0 flex-1 truncate">{location.path}</span>
+              {location.sizeBytes !== null && <span className="shrink-0 text-muted-foreground">{formatBytes(location.sizeBytes)}</span>}
+            </div>
+          )) : <div className="text-muted-foreground">No selectable local locations in this candidate.</div>}
+          {cleanupLocations.length > 8 && <div className="pt-1 text-muted-foreground">+{cleanupLocations.length - 8} more</div>}
+        </div>
+      )}
+
+      {candidate.type === "local_duplicate_work_folder" && (
+        <div className="rounded-md border bg-muted/40 p-2 text-xs">
+          <div className="mb-1 font-medium">Duplicate local folders</div>
+          {duplicateFolders.map((folder) => (
+            <div key={folder.relPath} className="grid gap-0.5 py-1">
+              <div className="truncate">{folder.relPath}</div>
+              <div className="text-muted-foreground">{folder.files} files · {folder.audioFiles} audio · {formatBytes(folder.sizeBytes)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {candidate.type !== "local_fetch_merge_cleanup" && candidate.type !== "local_duplicate_work_folder" && (
+        <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />
+      )}
+      {hasNonEmptyJSON(candidate.decisionJson) && <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />}
+      {needsReview && (
+        <div className="flex flex-wrap gap-2">
+          {candidate.type === "local_fetch_merge_cleanup" && cleanupLocations.length > 0 && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => void cleanup("mark_unavailable")}>
+                Hide old locations
+              </Button>
+              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => void cleanup("delete_files")}>
+                Delete old files
+              </Button>
+            </>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
+              await onCandidateUpdate();
+            }}
+          >
+            Mark resolved
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
+              await onCandidateUpdate();
+            }}
+          >
+            Ignore
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1859,6 +1920,67 @@ function reviewCount(run: WorkflowRun) {
 
 function candidateNeedsReview(candidate: WorkflowCandidate) {
   return !["accepted", "rejected", "ignored", "resolved"].includes(candidate.status);
+}
+
+type LocalCleanupLocation = { locationId: number; path: string; sizeBytes: number | null };
+type LocalDuplicateFolder = { relPath: string; files: number; audioFiles: number; sizeBytes: number | null };
+
+function parseJSONRecord(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLocation[] {
+  const locations = Array.isArray(payload.candidate_locations) ? payload.candidate_locations : [];
+  return locations.flatMap((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const record = raw as Record<string, unknown>;
+    const locationId = numberValue(record.location_id);
+    const path = stringValue(record.path);
+    if (!locationId || !path) return [];
+    return [{ locationId, path, sizeBytes: nullableNumberValue(record.size_bytes) }];
+  });
+}
+
+function localDuplicateFolders(payload: Record<string, unknown>): LocalDuplicateFolder[] {
+  const folders = Array.isArray(payload.folders) ? payload.folders : [];
+  return folders.flatMap((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const record = raw as Record<string, unknown>;
+    const relPath = stringValue(record.rel_path);
+    if (!relPath) return [];
+    return [{
+      relPath,
+      files: numberValue(record.files) ?? 0,
+      audioFiles: numberValue(record.audio_files) ?? 0,
+      sizeBytes: nullableNumberValue(record.size_bytes),
+    }];
+  });
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nullableNumberValue(value: unknown) {
+  const number = numberValue(value);
+  return number === null ? null : number;
+}
+
+function formatBytes(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 
 function nodeSubtitle(type: string, nodeTypes: WorkflowNodeType[]) {
