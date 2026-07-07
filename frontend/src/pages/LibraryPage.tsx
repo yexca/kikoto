@@ -131,7 +131,7 @@ export function LibraryPage() {
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
-  const [settings, setSettings] = useState<{ autoSyncRemote: boolean; cacheEnabled: boolean } | null>(null);
+  const [settings, setSettings] = useState<{ cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<Work | null>(null);
@@ -497,7 +497,6 @@ export function LibraryPage() {
       <RemoteWorkDetailView
         source={selectedRemoteTarget.source}
         code={selectedRemoteTarget.code}
-        autoSyncRemote={(settings?.autoSyncRemote ?? false) || selectedRemoteTarget.source.autoSyncOnInterest || selectedRemoteTarget.source.cacheEnabled}
         onBack={backToLibrary}
         onOpenLocal={(workID) => {
           const work = works.find((item) => item.id === workID);
@@ -515,7 +514,6 @@ export function LibraryPage() {
         work={selectedWork}
         workPreview={selectedWorkPreview}
         sources={sources}
-        autoSyncRemoteGlobal={settings?.autoSyncRemote ?? false}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onFavoriteChange={updateWorkFavorite}
@@ -628,7 +626,6 @@ export function LibraryPage() {
           onPageSizeChange={(value) => {
             updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
           }}
-          autoSyncRemote={(settings?.autoSyncRemote ?? false) || activeTab.source.autoSyncOnInterest || activeTab.source.cacheEnabled}
           onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
           onTagOpen={addTagSearchToken}
           onWorkStateChanged={(primaryCode, patch) => {
@@ -789,7 +786,6 @@ function RemoteSourcePanel({
   searchTokens,
   onPageChange,
   onPageSizeChange,
-  autoSyncRemote,
   onOpenPreview,
   onTagOpen,
   onWorkStateChanged,
@@ -801,7 +797,6 @@ function RemoteSourcePanel({
   searchTokens: SearchToken[];
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
-  autoSyncRemote: boolean;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
   onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite">>) => void;
@@ -823,9 +818,9 @@ function RemoteSourcePanel({
       setMessage("This remote work has no stable work code.");
       return;
     }
-    if (!autoSyncRemote && reason !== "manual_fetch") {
+    if (reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be tracked before Kikoto can mark it. You can enable Auto sync in Settings.",
+        "This work needs to be tracked before Kikoto can update local state for it.",
       );
       if (!confirmed) return;
     }
@@ -947,11 +942,7 @@ function RemoteSourcePanel({
 
   const markRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     if (!work.primaryCode) return;
-    if (!autoSyncRemote) {
-      setMarkTarget({ work, status });
-      return;
-    }
-    await syncAndMarkRemoteWork(work, status);
+    setMarkTarget({ work, status });
   };
 
   const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
@@ -1285,7 +1276,7 @@ function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: st
       <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <h3 className="text-base font-semibold">Track before mark</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be tracked before the mark is saved. You can enable Auto sync in Settings to skip this prompt.
+          {workCode} will be tracked before the mark is saved.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
@@ -1654,14 +1645,12 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
 function RemoteWorkDetailView({
   source,
   code,
-  autoSyncRemote,
   onBack,
   onOpenLocal,
   onWorksChanged,
 }: {
   source: LibrarySource;
   code: string;
-  autoSyncRemote: boolean;
   onBack: () => void;
   onOpenLocal: (workID: number) => void;
   onWorksChanged: () => Promise<void>;
@@ -1705,9 +1694,9 @@ function RemoteWorkDetailView({
 
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
-    if (!autoSyncRemote && reason !== "manual_fetch") {
+    if (reason !== "manual_fetch") {
       const confirmed = window.confirm(
-        "This work needs to be tracked before Kikoto can mark it. You can enable Auto sync in Settings.",
+        "This work needs to be tracked before Kikoto can update local state for it.",
       );
       if (!confirmed) return;
     }
@@ -1744,7 +1733,7 @@ function RemoteWorkDetailView({
 
   const updateRemoteMark = async (status: ListeningStatus, forceSync = false) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? (autoSyncRemote || forceSync ? await syncForUserState("detail_mark_interest") : null);
+    const workID = detail.workId ?? (forceSync ? await syncForUserState("detail_mark_interest") : null);
     if (!workID) {
       setMarkTarget(status);
       return;
@@ -1757,7 +1746,7 @@ function RemoteWorkDetailView({
 
   const updateRemoteFavorite = async (favorite: boolean, forceSync = false) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? (autoSyncRemote || forceSync ? await syncForUserState("detail_favorite_interest") : null);
+    const workID = detail.workId ?? (forceSync ? await syncForUserState("detail_favorite_interest") : null);
     if (!workID) {
       setFavoriteTarget(favorite);
       return;
@@ -1929,7 +1918,7 @@ function RemoteWorkDetailView({
       {favoriteTarget !== null && (
         <RemoteStateConfirmModal
           title="Track before favorite"
-          description={`${detail.primaryCode} will be tracked before the favorite is saved. You can enable Auto sync in Settings to skip this prompt.`}
+          description={`${detail.primaryCode} will be tracked before the favorite is saved.`}
           confirmLabel="Track and favorite"
           onClose={() => setFavoriteTarget(null)}
           onConfirm={() => void updateRemoteFavorite(favoriteTarget, true)}
@@ -1944,7 +1933,6 @@ function WorkDetailView({
   work,
   workPreview,
   sources,
-  autoSyncRemoteGlobal,
   onBack,
   onStatusChange,
   onFavoriteChange,
@@ -1955,7 +1943,6 @@ function WorkDetailView({
   work: WorkDetail | null;
   workPreview: Work | null;
   sources: LibrarySource[];
-  autoSyncRemoteGlobal: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;

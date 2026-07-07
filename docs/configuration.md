@@ -45,14 +45,14 @@ In dev mode, the frontend opens as the root super administrator without a login 
 The Settings page currently manages:
 
 - Local scan depth.
-- Remote auto sync on user interest.
 - Remote auto cache on play.
-- Cache size limit.
+- Total and per-source cache size limits.
 - Remote fetch path template.
 - Local and compatible remote file sources.
 
-When automatic remote cache is enabled, automatic remote sync is also enabled
-because caching requires stable local work and media item records first.
+Remote-only user actions ask for confirmation before tracking the work. Remote
+cache materialization creates or reuses stable work and media item records only
+when caching or fetching needs concrete file locations.
 
 Remote sources can be seeded on first startup for container deployments. Keep
 real source details in a mounted config file, not in `.env`. The repository
