@@ -281,7 +281,7 @@ export function LibraryPage() {
 
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
-    window.history.pushState({}, "", path);
+    window.history.pushState({ returnTo: pathForLibraryTab(activeTab), returnLabel: "Back to library" }, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
@@ -291,13 +291,14 @@ export function LibraryPage() {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
     setSelectedRemoteTarget({ source, code });
-    window.history.pushState({}, "", `/${encodeURIComponent(code)}?source=${source.id}`);
+    window.history.pushState({ returnTo: pathForLibraryTab(activeTab), returnLabel: "Back to library" }, "", `/${encodeURIComponent(code)}?source=${source.id}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
   const backToLibrary = () => {
-    window.history.pushState({}, "", pathForLibraryTab(activeTab));
+    const returnTarget = detailReturnTarget(pathForLibraryTab(activeTab));
+    window.history.pushState({}, "", returnTarget.path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
@@ -2333,7 +2334,7 @@ function WorkDetailView({
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
         <ChevronLeft className="h-4 w-4" />
-        Back to library
+        {detailReturnTarget("library").label}
       </Button>
 
       <DetailHero
@@ -4404,8 +4405,19 @@ function languageLabel(value: string) {
 function openWorkCodeRoute(code: string) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
-  window.history.pushState({}, "", `/${cleanCode}`);
+  window.history.pushState({ returnTo: window.location.pathname, returnLabel: "Back" }, "", `/${cleanCode}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function detailReturnTarget(fallbackPath: string) {
+  const state = window.history.state as { returnTo?: unknown; returnLabel?: unknown } | null;
+  const path = typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : fallbackPath;
+  const label = typeof state?.returnLabel === "string" && state.returnLabel.trim() ? state.returnLabel : "Back";
+  return { path, label };
+}
+
+function isInternalReturnPath(path: string) {
+  return path.startsWith("/") && !path.startsWith("//");
 }
 
 async function resolveAndOpenWork(
@@ -4418,7 +4430,7 @@ async function resolveAndOpenWork(
     const work = await api.getWork(resolved.workId);
     setSelectedWork(work);
     if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
-      window.history.replaceState({}, "", `/${resolved.resolvedCode}`);
+      window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}`);
       setSelectedCode(resolved.resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
