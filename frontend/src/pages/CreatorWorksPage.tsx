@@ -246,7 +246,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [markConfirm, setMarkConfirm] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; status: ListeningStatus } | null>(null);
   const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
 
   useEffect(() => {
@@ -350,8 +349,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const updateWorkMark = async (work: VoiceKnownWork | VoiceRemoteWork, status: ListeningStatus) => {
     const workId = "workId" in work ? work.workId : null;
     if (!workId) {
-      if (!voiceWorkRemoteTarget(work)) return;
-      setMarkConfirm({ work, status });
+      await syncAndMarkVoiceWork(work, status);
       return;
     }
     try {
@@ -371,10 +369,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
+      const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
       setMessage(`Tracked and marked ${syncResult.primaryCode}.`);
-      setMarkConfirm(null);
       await refreshDetail();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Listening mark update failed.");
@@ -386,7 +383,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const trackVoiceWorkForState = async (work: VoiceKnownWork | VoiceRemoteWork, reason: string) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return null;
-    const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, reason);
+    const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
   };
 
@@ -518,7 +515,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     if (!target) return;
     setIsBulkBusy(true);
     try {
-      const result = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
+      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
       setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await refreshDetail();
     } catch (error) {
@@ -728,13 +725,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
       </section>
       {saveConfirm && <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />}
-      {markConfirm && (
-        <RemoteMarkConfirmModal
-          workCode={markConfirm.work.primaryCode}
-          onClose={() => setMarkConfirm(null)}
-          onConfirm={() => void syncAndMarkVoiceWork(markConfirm.work, markConfirm.status)}
-        />
-      )}
       {fetchSelection && (
         <RemoteFetchDialog
           title={`${fetchSelection.code} · ${fetchSelection.work.title}`}
@@ -1070,23 +1060,6 @@ function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClos
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onConfirm}>Fetch</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: string; onClose: () => void; onConfirm: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Track before mark</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be tracked before the mark is saved.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
         </div>
       </div>
     </div>
