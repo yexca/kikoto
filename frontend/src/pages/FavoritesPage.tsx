@@ -186,7 +186,7 @@ export function FavoritesPage() {
   const allPagedWorksSelected = pagedWorks.length > 0 && pagedWorks.every((work) => selectedWorkIDs.has(work.id));
 
   const openWork = (work: Work) => {
-    window.history.pushState({}, "", `/${work.primaryCode}`);
+    window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites" }, "", `/${work.primaryCode}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   };
 

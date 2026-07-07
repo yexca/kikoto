@@ -468,7 +468,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       await syncAndMarkCatalogWork(work, status);
       return;
     }
-    if (!work.local && !work.remote) return;
     try {
       const result = await api.updateWorkUserState(work.workId, { listeningStatus: status });
       setDetail((current) => current ? {
@@ -1437,6 +1436,9 @@ function preferredDirectoryTarget(work: CircleCatalogWork) {
   if (remote?.sourceId) {
     return { code: work.primaryCode, sourceId: remote.sourceId };
   }
+  if (work.workId !== null) {
+    return { code: work.primaryCode, sourceId: null };
+  }
   return null;
 }
 
@@ -1456,8 +1458,12 @@ function isTranslationCircle(externalId: string) {
 
 function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }) {
   const path = target.sourceId ? `/${encodeURIComponent(target.code)}?source=${target.sourceId}` : `/${encodeURIComponent(target.code)}`;
-  window.history.pushState({}, "", path);
+  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back to circle" }, "", path);
   window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function currentCircleReturnPath() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
 function dlsiteMakerURL(externalId: string) {

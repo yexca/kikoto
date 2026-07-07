@@ -1355,12 +1355,16 @@ function navigateToVoicesList() {
 
 function openWorkRoute(work: VoiceKnownWork | VoiceRemoteWork) {
   if ("workId" in work && work.workId) {
-    window.history.pushState({}, "", `/${encodeURIComponent(work.primaryCode)}`);
+    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices" }, "", `/${encodeURIComponent(work.primaryCode)}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
     return;
   }
   if ("sourceId" in work && work.primaryCode) {
-    window.history.pushState({}, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
+    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices" }, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   }
+}
+
+function currentVoiceReturnPath() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
