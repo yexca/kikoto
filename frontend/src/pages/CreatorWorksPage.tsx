@@ -33,6 +33,8 @@ import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
+  WorkCardListButton,
+  WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
   cardDate,
@@ -717,6 +719,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onSave={() => void saveSingleWork(work)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
               onFavoriteChange={(favorite) => void updateWorkFavorite(work, favorite)}
+              onFavoriteSaved={(favorite) => {
+                setDetail((current) => current ? {
+                  ...current,
+                  works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
+                } : current);
+              }}
             />
           ))}
           {pageWorks.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
@@ -746,7 +754,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteChange: (favorite: boolean) => void }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteChange, onFavoriteSaved }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteChange: (favorite: boolean) => void; onFavoriteSaved: (favorite: boolean) => void }) {
   const isKnown = "local" in work;
   const local = "local" in work ? work.local : work.hasLocal;
   const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
@@ -760,27 +768,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
   const isUnavailable = !local && !remote && !cache;
   const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
-  const [isMarkOpen, setIsMarkOpen] = useState(false);
-  const markMenuRef = useRef<HTMLDivElement | null>(null);
   const view = voiceWorkCardView(work);
-
-  useEffect(() => {
-    if (!isMarkOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (markMenuRef.current?.contains(target)) return;
-      setIsMarkOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMarkOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isMarkOpen]);
 
   return (
     <WorkCardShell
@@ -807,33 +795,17 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title={favorite ? "Remove favorite" : "Add favorite"} disabled={!workId && !voiceWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onFavoriteChange(!favorite);
-            }}>
-              <Heart className={favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
-            </WorkCardActionButton>
-            <div className="relative min-w-0" ref={markMenuRef}>
-            <WorkCardActionButton
-              title={`Mark: ${listeningStatusLabel(listeningMark)}`}
+            <WorkCardListButton
+              workId={workId}
+              active={favorite}
+              disabled={!workId}
+              onSaved={onFavoriteSaved}
+            />
+            <WorkCardQuickMarkButton
+              value={normalizeListeningStatus(listeningMark)}
               disabled={isUnavailable && !voiceWorkRemoteTarget(work)}
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsMarkOpen((value) => !value);
-              }}
-            >
-              <ListChecks className={listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-            </WorkCardActionButton>
-            {isMarkOpen && (
-              <MarkMenu
-                value={normalizeListeningStatus(listeningMark)}
-                onChange={(next) => {
-                  setIsMarkOpen(false);
-                  onStatusChange(next);
-                }}
-              />
-            )}
-          </div>
+              onChange={onStatusChange}
+            />
             </>
           )}
         />
