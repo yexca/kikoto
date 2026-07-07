@@ -24,8 +24,9 @@ export function sourcePresenceBadges(
       continue;
     }
     if (type === "tracked") {
+      if (availabilityLabel !== "available") continue;
       const sourceName = item.fileSourceName || item.fileSourceCode || "";
-      const unforked = availabilityLabel !== "available" || !hasPlayableAvailability(availability);
+      const unforked = !hasPlayableAvailability(availability);
       add({
         key: `source:tracked:${item.fileSourceId ?? (sourceName || "unknown")}`,
         label: unforked ? "Unforked" : "Tracked",
