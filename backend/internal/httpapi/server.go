@@ -117,6 +117,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/{id}/retry", s.retryWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/recover-stale", s.recoverStaleWorkflowRuns)
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
+	mux.HandleFunc("POST /api/workflow-candidates/{id}/local-cleanup", s.cleanupLocalWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
@@ -3786,6 +3787,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 		"detected_works":    scanSummary.DetectedWorks,
 		"scanned_files":     scanSummary.ScannedFiles,
 		"ambiguous_folders": scanSummary.AmbiguousFolders,
+		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
 	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", triggerType, triggerReason, runInput, runSummary)
 	if err != nil {
@@ -3917,9 +3919,13 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 			"detected_works": scanSummary.DetectedWorks,
 		},
 		Output: map[string]any{
-			"matched_works": scanSummary.DetectedWorks,
+			"matched_works":    scanSummary.DetectedWorks,
+			"duplicate_groups": len(scanSummary.DuplicateGroups),
 		},
 	}); err != nil {
+		return localScanResult{}, err
+	}
+	if err := insertLocalDuplicateCandidates(ctx, tx, runID, scanSummary.DuplicateGroups); err != nil {
 		return localScanResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
@@ -3999,6 +4005,57 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 	}
 
 	return selectID(ctx, tx, "SELECT id FROM file_source WHERE code = ?", "main_local_library")
+}
+
+func localDuplicateGroupSummaries(groups []localfs.DuplicateGroup) []map[string]any {
+	summaries := make([]map[string]any, 0, len(groups))
+	for _, group := range groups {
+		summaries = append(summaries, map[string]any{
+			"code":    group.Code,
+			"folders": localDuplicateFolderSummaries(group.Folders),
+		})
+	}
+	return summaries
+}
+
+func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]any {
+	summaries := make([]map[string]any, 0, len(folders))
+	for _, folder := range folders {
+		var totalSize int64
+		audioFiles := 0
+		for _, file := range folder.Files {
+			totalSize += file.SizeBytes
+			if localFileKind(file.WorkRelPath) == "audio" {
+				audioFiles++
+			}
+		}
+		summaries = append(summaries, map[string]any{
+			"code":        folder.Code,
+			"title":       folder.Title,
+			"rel_path":    filepath.ToSlash(folder.RelPath),
+			"depth":       folder.Depth,
+			"files":       len(folder.Files),
+			"audio_files": audioFiles,
+			"size_bytes":  totalSize,
+		})
+	}
+	return summaries
+}
+
+func insertLocalDuplicateCandidates(ctx context.Context, tx *sql.Tx, runID int64, groups []localfs.DuplicateGroup) error {
+	for _, group := range groups {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+			VALUES (?, 'local_duplicate_work_folder', ?, 'pending', ?)
+		`, runID, group.Code, mustJSON(map[string]any{
+			"code":    group.Code,
+			"folders": localDuplicateFolderSummaries(group.Folders),
+			"message": "Multiple local folders were detected for the same work code. Review before deleting or hiding any files.",
+		})); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func upsertDetectedWork(ctx context.Context, tx *sql.Tx, folder localfs.WorkFolder) (int64, error) {

@@ -33,6 +33,12 @@ type Summary struct {
 	DetectedWorks    int
 	ScannedFiles     int
 	AmbiguousFolders []string
+	DuplicateGroups  []DuplicateGroup
+}
+
+type DuplicateGroup struct {
+	Code    string
+	Folders []WorkFolder
 }
 
 type Options struct {
@@ -94,6 +100,7 @@ func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 
 	summary.CandidateFolders = len(candidates)
 	workFolders := chooseDeepest(candidates)
+	summary.DuplicateGroups = duplicateGroups(workFolders)
 	for i := range workFolders {
 		files, err := collectFiles(absRoot, workFolders[i].AbsPath)
 		if err != nil {
@@ -108,6 +115,30 @@ func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 	})
 	summary.DetectedWorks = len(workFolders)
 	return workFolders, summary, nil
+}
+
+func duplicateGroups(folders []WorkFolder) []DuplicateGroup {
+	byCode := map[string][]WorkFolder{}
+	for _, folder := range folders {
+		byCode[folder.Code] = append(byCode[folder.Code], folder)
+	}
+	groups := []DuplicateGroup{}
+	for code, items := range byCode {
+		if len(items) < 2 {
+			continue
+		}
+		sort.Slice(items, func(i, j int) bool {
+			if items[i].Depth == items[j].Depth {
+				return items[i].RelPath < items[j].RelPath
+			}
+			return items[i].Depth < items[j].Depth
+		})
+		groups = append(groups, DuplicateGroup{Code: code, Folders: items})
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].Code < groups[j].Code
+	})
+	return groups
 }
 
 func ExtractWorkCode(name string) (string, bool) {

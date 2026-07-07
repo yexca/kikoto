@@ -456,6 +456,17 @@ export type WorkflowRunActionResult = {
   recovered?: number;
 };
 
+export type LocalCandidateCleanupResult = {
+  runId: number;
+  candidateId: number;
+  action: string;
+  status: string;
+  deleted: number;
+  marked: number;
+  failed: number;
+  failures: string[];
+};
+
 export type WorkflowDefinition = {
   id: number;
   code: string;
@@ -1050,6 +1061,8 @@ export const api = {
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
   updateWorkflowCandidate: (id: number, payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string }) =>
     patchJSONBody<WorkflowCandidate>(`/api/workflow-candidates/${id}`, { status: payload.status, decisionJson: payload.decisionJson ?? "{}" }),
+  cleanupLocalWorkflowCandidate: (id: number, payload: { action: "mark_unavailable" | "delete_files"; locationIds?: number[] }) =>
+    postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
   cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
