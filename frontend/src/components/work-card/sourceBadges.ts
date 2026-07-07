@@ -74,7 +74,7 @@ export function circleSourceBadges({
 
   const availableSources = sourceTags.filter((source) => source.status === "available" || source.count > 0);
   for (const source of availableSources) {
-    if (source.key === "local" || source.key === "cache") continue;
+    if (source.key === "local" || source.key === "cache" || source.key === "remote") continue;
     if (source.sourceId !== null && source.sourceId !== undefined) {
       badges.push({
         key: `source:remote:${source.sourceId}`,

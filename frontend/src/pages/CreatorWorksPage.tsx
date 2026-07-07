@@ -748,7 +748,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
 function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteChange }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteChange: (favorite: boolean) => void }) {
   const isKnown = "local" in work;
-  const status = "importStatus" in work ? work.importStatus : "Known";
   const local = "local" in work ? work.local : work.hasLocal;
   const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
   const cache = "cache" in work ? work.cache : work.hasCache;
@@ -1160,10 +1159,7 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
     date: cardDate(voiceWorkReleaseDate(work), voiceWorkUpdatedAt(work)),
     progress: "progress" in work ? work.progress : null,
     userTags: [],
-    sourceBadges: [
-      { key: `status:${isKnown ? "known" : work.importStatus}`, label: isKnown ? "Known" : work.importStatus, variant: isKnown ? "secondary" : "outline" },
-      ...sourceBadges,
-    ],
+    sourceBadges,
   };
 }
 
