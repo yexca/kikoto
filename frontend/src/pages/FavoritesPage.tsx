@@ -197,14 +197,6 @@ export function FavoritesPage() {
     setWorks((items) => items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)));
   };
 
-  const updateWorkFavorite = async (workID: number, favorite: boolean) => {
-    const result = await api.updateWorkUserState(workID, { favorite });
-    setWorks((items) => items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)));
-    if (!favorite) {
-      setListWorkIDs((items) => Object.fromEntries(Object.entries(items).map(([listID, ids]) => [listID, ids.filter((id) => id !== workID)])));
-    }
-  };
-
   const clearFilters = () => {
     setQuery("");
     setStatusFilter("all");
@@ -507,7 +499,6 @@ export function FavoritesPage() {
                 }}
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
-                onFavoriteChange={updateWorkFavorite}
               />
             ))}
           </div>
@@ -610,7 +601,6 @@ function FavoriteWorkCard({
   onListsChanged,
   onOpen,
   onStatusChange,
-  onFavoriteChange,
 }: {
   work: Work;
   selected: boolean;
@@ -621,7 +611,6 @@ function FavoriteWorkCard({
   onListsChanged: () => Promise<void>;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-  onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
 }) {
   const view = favoriteWorkCardView(work);
 
