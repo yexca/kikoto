@@ -64,6 +64,8 @@ import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
+  WorkCardListButton,
+  WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
   cardDate,
@@ -599,6 +601,10 @@ export function LibraryPage() {
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
                 onFavoriteChange={updateWorkFavorite}
+                onFavoriteSaved={(workID, favorite) => {
+                  setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
+                  setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
+                }}
                 onTagOpen={addTagSearchToken}
               />
             ))}
@@ -1019,35 +1025,17 @@ function WorkCard({
   onOpen,
   onStatusChange,
   onFavoriteChange,
+  onFavoriteSaved,
   onTagOpen,
 }: {
   work: Work;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
+  onFavoriteSaved: (workID: number, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
 }) {
-  const [isMarkOpen, setIsMarkOpen] = useState(false);
-  const markMenuRef = useRef<HTMLDivElement | null>(null);
   const view = libraryWorkCardView(work);
-
-  useEffect(() => {
-    if (!isMarkOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (markMenuRef.current?.contains(target)) return;
-      setIsMarkOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMarkOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isMarkOpen]);
 
   return (
     <WorkCardShell
@@ -1061,35 +1049,8 @@ function WorkCard({
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
           right={(
             <>
-              <WorkCardActionButton
-                title={work.favorite ? "Remove favorite" : "Add favorite"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void onFavoriteChange(work.id, !work.favorite);
-                }}
-              >
-                <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
-              </WorkCardActionButton>
-          <div className="relative" ref={markMenuRef}>
-                <WorkCardActionButton
-              title={`Mark: ${listeningStatusLabel(work.listeningStatus)}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsMarkOpen((value) => !value);
-              }}
-            >
-              <ListChecks className={work.listeningStatus === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-                </WorkCardActionButton>
-            {isMarkOpen && (
-              <MarkMenu
-                value={work.listeningStatus}
-                onChange={(status) => {
-                  setIsMarkOpen(false);
-                  void onStatusChange(work.id, status);
-                }}
-              />
-            )}
-          </div>
+              <WorkCardListButton workId={work.id} active={work.favorite} onSaved={(favorite) => onFavoriteSaved(work.id, favorite)} />
+              <WorkCardQuickMarkButton value={work.listeningStatus} onChange={(status) => void onStatusChange(work.id, status)} />
             </>
           )}
         />
@@ -1127,27 +1088,7 @@ function RemoteWorkCard({
   onMark: (status: ListeningStatus) => void;
   onSave: () => void;
 }) {
-  const [isMarkOpen, setIsMarkOpen] = useState(false);
-  const markMenuRef = useRef<HTMLDivElement | null>(null);
   const view = remoteWorkCardView(work, source);
-
-  useEffect(() => {
-    if (!isMarkOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (markMenuRef.current?.contains(target)) return;
-      setIsMarkOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMarkOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isMarkOpen]);
 
   return (
     <WorkCardShell
@@ -1191,27 +1132,7 @@ function RemoteWorkCard({
             >
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <div className="relative" ref={markMenuRef}>
-              <WorkCardActionButton
-                title="Mark"
-                disabled={isBusy || !work.primaryCode}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setIsMarkOpen((value) => !value);
-                }}
-              >
-                <ListChecks className="h-4 w-4" />
-              </WorkCardActionButton>
-              {isMarkOpen && (
-                <MarkMenu
-                  value="none"
-                  onChange={(status) => {
-                    setIsMarkOpen(false);
-                    onMark(status);
-                  }}
-                />
-              )}
-            </div>
+            <WorkCardQuickMarkButton value="none" disabled={isBusy || !work.primaryCode} onChange={onMark} />
             </>
           )}
         />

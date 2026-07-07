@@ -1,10 +1,10 @@
-import { ChevronRight, ExternalLink, Star } from "lucide-react";
-import type { ReactNode } from "react";
+import { BookmarkPlus, Check, CheckCircle2, ChevronRight, Circle, ExternalLink, Headphones, ListMusic, PauseCircle, Repeat2, Star, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { assetURL, type WorkProgressSummary } from "@/lib/api";
+import { api, assetURL, type FavoriteList, type ListeningStatus, type WorkProgressSummary } from "@/lib/api";
 
 export type WorkCardBadge = {
   key?: string;
@@ -249,6 +249,200 @@ export function WorkCardActionButton({
   );
 }
 
+export function WorkCardQuickMarkButton({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: ListeningStatus;
+  disabled?: boolean;
+  onChange: (status: ListeningStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const current = quickMarkMeta(value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && ref.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <WorkCardActionButton
+        title={`Mark: ${current.label}`}
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        <current.icon className={`h-4 w-4 ${current.active ? current.className : "text-muted-foreground"}`} />
+      </WorkCardActionButton>
+      {open && (
+        <div className="absolute bottom-10 right-0 z-30 w-40 overflow-hidden rounded-md border border-border bg-card p-1 text-card-foreground shadow-2xl">
+          {quickMarkOptions.map((option) => {
+            const meta = quickMarkMeta(option.value);
+            return (
+              <button
+                key={option.value}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen(false);
+                  onChange(option.value);
+                }}
+              >
+                <meta.icon className={`h-3.5 w-3.5 ${option.value === value && meta.active ? meta.className : ""}`} />
+                <span className="min-w-0 flex-1">{option.label}</span>
+                {option.value === value && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WorkCardListButton({
+  workId,
+  active,
+  disabled,
+  onSaved,
+}: {
+  workId: number | null;
+  active: boolean;
+  disabled?: boolean;
+  onSaved?: (favorite: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [lists, setLists] = useState<FavoriteList[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && ref.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !workId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(workId)])
+      .then(([allLists, workLists]) => {
+        if (cancelled) return;
+        setLists(allLists);
+        setSelected(new Set(workLists.filter((list) => list.selected).map((list) => list.id)));
+      })
+      .catch((nextError) => {
+        if (!cancelled) setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, workId]);
+
+  const toggle = (listID: number, checked: boolean) => {
+    setSelected((items) => {
+      const next = new Set(items);
+      if (checked) next.add(listID);
+      else next.delete(listID);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (!workId) return;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await api.setWorkFavoriteLists(workId, Array.from(selected));
+      onSaved?.(result.favorite);
+      setOpen(false);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <WorkCardActionButton
+        title={active ? "Favorite lists" : "Add to list"}
+        disabled={disabled || !workId}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
+      </WorkCardActionButton>
+      {open && (
+        <div className="absolute bottom-10 right-0 z-30 w-56 rounded-md border border-border bg-card p-2 text-left text-card-foreground shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="text-sm font-semibold">Favorite lists</div>
+          <div className="mt-2 max-h-56 space-y-1.5 overflow-auto">
+            {loading ? (
+              <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">Loading lists...</div>
+            ) : lists.length > 0 ? lists.map((list) => (
+              <label key={list.id} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-sm hover:bg-muted">
+                <input type="checkbox" checked={selected.has(list.id)} onChange={(event) => toggle(list.id, event.target.checked)} />
+                <span className="min-w-0 flex-1 truncate">{list.name}</span>
+              </label>
+            )) : (
+              <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
+            )}
+            {error && <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">{error}</div>}
+          </div>
+          <div className="mt-2 flex justify-end gap-1">
+            <Button variant="ghost" size="icon" className="h-8 w-8" title="Cancel" aria-label="Cancel" onClick={() => setOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+            <Button size="icon" className="h-8 w-8" title={saving ? "Saving" : "Save"} aria-label={saving ? "Saving" : "Save"} disabled={loading || saving} onClick={() => void save()}>
+              <Check className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkCardDLsiteAction({ href }: { href: string }) {
   return (
     <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Open DLsite">
@@ -277,6 +471,32 @@ export function WorkCardSelection({
 
 export function dlsiteTagBadges(tags: string[]): WorkCardBadge[] {
   return tags.map((tag) => ({ key: `dlsite:${tag}`, label: tag, variant: "outline" }));
+}
+
+const quickMarkOptions: { value: ListeningStatus; label: string }[] = [
+  { value: "none", label: "Unmarked" },
+  { value: "want_to_listen", label: "Want" },
+  { value: "listening", label: "Listening" },
+  { value: "finished", label: "Finished" },
+  { value: "relisten", label: "Relisten" },
+  { value: "paused", label: "Paused" },
+];
+
+function quickMarkMeta(value: ListeningStatus) {
+  switch (value) {
+    case "want_to_listen":
+      return { label: "Want", icon: BookmarkPlus, active: true, className: "text-primary" };
+    case "listening":
+      return { label: "Listening", icon: Headphones, active: true, className: "text-primary" };
+    case "finished":
+      return { label: "Finished", icon: CheckCircle2, active: true, className: "text-emerald-600" };
+    case "relisten":
+      return { label: "Relisten", icon: Repeat2, active: true, className: "text-primary" };
+    case "paused":
+      return { label: "Paused", icon: PauseCircle, active: true, className: "text-amber-600" };
+    default:
+      return { label: "Unmarked", icon: Circle, active: false, className: "" };
+  }
 }
 
 export function cardDate(releaseDate?: string | null, updatedAt?: string | null): WorkCardDate | null {

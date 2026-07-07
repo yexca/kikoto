@@ -25,6 +25,8 @@ import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
+  WorkCardListButton,
+  WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
   cardDate,
@@ -876,6 +878,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                         onDeleteMissing={() => setDeleteTarget(work)}
                         onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                         onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
+                        onFavoriteSaved={(favorite) => {
+                          setDetail((current) => current ? {
+                            ...current,
+                            works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
+                          } : current);
+                        }}
                         onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
                       />
                     )) : (
@@ -939,6 +947,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                 onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
+                onFavoriteSaved={(favorite) => {
+                  setDetail((current) => current ? {
+                    ...current,
+                    works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
+                  } : current);
+                }}
                 onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
               />
             )) : (
@@ -1003,6 +1017,7 @@ function CatalogWorkCard({
   onDeleteMissing,
   onStatusChange,
   onFavoriteChange,
+  onFavoriteSaved,
   onSeriesOpen,
 }: {
   work: CircleCatalogWork;
@@ -1015,31 +1030,12 @@ function CatalogWorkCard({
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
   onFavoriteChange: (favorite: boolean) => void;
+  onFavoriteSaved: (favorite: boolean) => void;
   onSeriesOpen: () => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
   const isUnavailable = !work.local && !work.remote;
-  const [isMarkOpen, setIsMarkOpen] = useState(false);
-  const markMenuRef = useRef<HTMLDivElement | null>(null);
   const view = catalogWorkCardView(work);
-
-  useEffect(() => {
-    if (!isMarkOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (markMenuRef.current?.contains(target)) return;
-      setIsMarkOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsMarkOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isMarkOpen]);
 
   const openTarget = () => {
     if (directoryTarget) openWorkDirectoryRoute(directoryTarget);
@@ -1070,33 +1066,17 @@ function CatalogWorkCard({
             }}>
               <HardDriveDownload className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title={work.favorite ? "Remove favorite" : "Add favorite"} disabled={!work.workId && !circleWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onFavoriteChange(!work.favorite);
-            }}>
-              <Heart className={work.favorite ? "h-4 w-4 fill-current text-primary" : "h-4 w-4"} />
-            </WorkCardActionButton>
-            <div className="relative" ref={markMenuRef}>
-            <WorkCardActionButton
-              title={`Mark: ${listeningStatusLabel(work.listeningMark)}`}
+            <WorkCardListButton
+              workId={work.workId}
+              active={work.favorite}
+              disabled={!work.workId}
+              onSaved={onFavoriteSaved}
+            />
+            <WorkCardQuickMarkButton
+              value={normalizeListeningStatus(work.listeningMark)}
               disabled={isUnavailable && !circleWorkRemoteTarget(work)}
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsMarkOpen((value) => !value);
-              }}
-            >
-              <ListChecks className={work.listeningMark === "none" ? "h-4 w-4" : "h-4 w-4 text-primary"} />
-            </WorkCardActionButton>
-            {isMarkOpen && (
-              <MarkMenu
-                value={normalizeListeningStatus(work.listeningMark)}
-                onChange={(status) => {
-                  setIsMarkOpen(false);
-                  onStatusChange(status);
-                }}
-              />
-            )}
-          </div>
+              onChange={onStatusChange}
+            />
             {!work.dlsiteAvailable && (
               <WorkCardActionButton title="Delete missing catalog item" onClick={(event) => {
                 event.stopPropagation();

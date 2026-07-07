@@ -26,6 +26,8 @@ import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
+  WorkCardListButton,
+  WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
   cardDate,
@@ -498,18 +500,10 @@ export function FavoritesPage() {
                 onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
                 favoriteLists={favoriteLists}
                 isListSaving={isBulkUpdating}
-                onSaveLists={async (listIDs) => {
-                  setIsBulkUpdating(true);
-                  try {
-                    await api.setWorkFavoriteLists(work.id, listIDs);
-                    setWorks(await api.listWorks());
-                    await reloadFavoriteLists();
-                    setMessage(`Updated list membership for ${work.primaryCode}.`);
-                  } catch (error) {
-                    setMessage(error instanceof Error ? error.message : "List membership could not be saved.");
-                  } finally {
-                    setIsBulkUpdating(false);
-                  }
+                onListsChanged={async () => {
+                  setWorks(await api.listWorks());
+                  await reloadFavoriteLists();
+                  setMessage(`Updated list membership for ${work.primaryCode}.`);
                 }}
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
@@ -613,7 +607,7 @@ function FavoriteWorkCard({
   onSelectedChange,
   favoriteLists,
   isListSaving,
-  onSaveLists,
+  onListsChanged,
   onOpen,
   onStatusChange,
   onFavoriteChange,
@@ -624,12 +618,11 @@ function FavoriteWorkCard({
   onSelectedChange: (selected: boolean) => void;
   favoriteLists: FavoriteList[];
   isListSaving: boolean;
-  onSaveLists: (listIDs: number[]) => Promise<void>;
+  onListsChanged: () => Promise<void>;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteChange: (workID: number, favorite: boolean) => Promise<void>;
 }) {
-  const [isListPopoverOpen, setIsListPopoverOpen] = useState(false);
   const view = favoriteWorkCardView(work);
 
   return (
@@ -643,46 +636,13 @@ function FavoriteWorkCard({
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
           right={(
             <>
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
-              value={work.listeningStatus}
-              onChange={(event) => void onStatusChange(work.id, event.target.value as ListeningStatus)}
-              aria-label="Listening mark"
-            >
-              {listeningStatusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <WorkCardActionButton title="Remove favorite" onClick={(event) => {
-              event.stopPropagation();
-              void onFavoriteChange(work.id, false);
-            }}>
-              <Heart className="h-4 w-4 fill-current" />
-            </WorkCardActionButton>
-            <div className="relative">
-              <WorkCardActionButton title="Favorite lists" onClick={(event) => {
-                event.stopPropagation();
-                setIsListPopoverOpen((open) => !open);
-              }}>
-                <ListMusic className="h-4 w-4" />
-              </WorkCardActionButton>
-              {isListPopoverOpen && (
-                <ListMembershipPopover
-                  title={`${work.primaryCode} lists`}
-                  work={work}
-                  favoriteLists={favoriteLists}
-                  disabled={isListSaving}
-                  align="right"
-                  onClose={() => setIsListPopoverOpen(false)}
-                  onSave={async (listIDs) => {
-                    await onSaveLists(listIDs);
-                    setIsListPopoverOpen(false);
-                  }}
-                />
-              )}
-            </div>
+            <WorkCardListButton
+              workId={work.id}
+              active={work.favorite}
+              disabled={isListSaving}
+              onSaved={() => void onListsChanged()}
+            />
+            <WorkCardQuickMarkButton value={work.listeningStatus} onChange={(status) => void onStatusChange(work.id, status)} />
             </>
           )}
         />
