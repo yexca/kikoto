@@ -98,6 +98,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch", s.saveRemoteSourceWork)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/track", s.syncRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
 	mux.HandleFunc("DELETE /api/works/{id}/tracked-sources/{sourceId}", s.untrackWorkSource)

@@ -913,6 +913,8 @@ export const api = {
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
   fetchRemoteSourceWork: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
+  trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
+    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   untrackWorkSource: (workId: number, sourceId: number) =>

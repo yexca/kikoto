@@ -284,7 +284,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [markConfirm, setMarkConfirm] = useState<{ work: CircleCatalogWork; status: ListeningStatus } | null>(null);
   const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
@@ -458,8 +457,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   const updateCatalogWorkStatus = async (work: CircleCatalogWork, status: ListeningStatus) => {
     if (work.workId === null) {
-      if (!circleWorkRemoteTarget(work)) return;
-      setMarkConfirm({ work, status });
+      await syncAndMarkCatalogWork(work, status);
       return;
     }
     try {
@@ -479,7 +477,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     setToast(null);
     try {
-      const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
+      const syncResult = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
       setToast({ kind: "success", message: `Tracked and marked ${syncResult.primaryCode}.` });
       const next = await api.getCircle(externalId);
@@ -487,7 +485,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         ...next,
         works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item),
       });
-      setMarkConfirm(null);
     } catch (error) {
       setToast(toastFromError(error, "Mark update failed."));
     } finally {
@@ -498,7 +495,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const trackCatalogWorkForState = async (work: CircleCatalogWork, reason: string) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return null;
-    const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, reason);
+    const syncResult = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, reason);
     return syncResult.workId;
   };
 
@@ -630,7 +627,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const result = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
+      const result = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
       setToast({ kind: "success", message: `Tracked ${result.primaryCode} through workflow run #${result.runId}.` });
       setDetail(await api.getCircle(externalId));
     } catch (error) {
@@ -981,13 +978,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       {saveConfirm && (
         <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />
       )}
-      {markConfirm && (
-        <RemoteMarkConfirmModal
-          workCode={markConfirm.work.primaryCode}
-          onClose={() => setMarkConfirm(null)}
-          onConfirm={() => void syncAndMarkCatalogWork(markConfirm.work, markConfirm.status)}
-        />
-      )}
       {fetchSelection && (
         <RemoteFetchDialog
           title={`${fetchSelection.work.primaryCode} · ${fetchSelection.work.title}`}
@@ -1102,23 +1092,6 @@ function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClos
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onConfirm}>Fetch</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: string; onClose: () => void; onConfirm: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Track before mark</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be tracked before the mark is saved.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
         </div>
       </div>
     </div>

@@ -810,7 +810,6 @@ function RemoteSourcePanel({
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
-  const [markTarget, setMarkTarget] = useState<{ work: RemoteWork; status: ListeningStatus } | null>(null);
   const [message, setMessage] = useState("");
   const { page, pageSize } = viewState;
 
@@ -819,16 +818,10 @@ function RemoteSourcePanel({
       setMessage("This remote work has no stable work code.");
       return;
     }
-    if (reason !== "manual_fetch") {
-      const confirmed = window.confirm(
-        "This work needs to be tracked before Kikoto can update local state for it.",
-      );
-      if (!confirmed) return;
-    }
     setIsSyncingCode(work.primaryCode);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, reason);
       setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
       return result.workId;
@@ -943,18 +936,29 @@ function RemoteSourcePanel({
 
   const markRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     if (!work.primaryCode) return;
-    setMarkTarget({ work, status });
+    setIsSyncingCode(work.primaryCode);
+    setMessage("");
+    try {
+      const workId = work.workId ?? await syncWork(work, "mark_interest");
+      if (!workId) return;
+      await api.updateWorkUserState(workId, { listeningStatus: status });
+      setMessage(`Tracked and marked ${work.primaryCode}.`);
+      await onSynced(workId);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+    } finally {
+      setIsSyncingCode(null);
+    }
   };
 
   const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     setIsSyncingCode(work.primaryCode);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
+      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
       await api.updateWorkUserState(result.workId, { listeningStatus: status });
       setMessage(`Tracked and marked ${result.primaryCode}.`);
       await onSynced(result.workId);
-      setMarkTarget(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Mark update failed.");
     } finally {
@@ -968,7 +972,7 @@ function RemoteSourcePanel({
     setIsSyncingCode(work.primaryCode);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, work.primaryCode, "list_remote");
+      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "list_remote");
       setMessage(`Tracked ${result.primaryCode} for list selection.`);
       return result.workId;
     } catch (error) {
@@ -1095,13 +1099,6 @@ function RemoteSourcePanel({
           disabled={isSyncingCode === saveSelection.work.primaryCode}
           onClose={() => setSaveSelection(null)}
           onSave={() => void fetchSingleSelection()}
-        />
-      )}
-      {markTarget && (
-        <RemoteMarkConfirmModal
-          workCode={markTarget.work.primaryCode}
-          onClose={() => setMarkTarget(null)}
-          onConfirm={() => void syncAndMarkRemoteWork(markTarget.work, markTarget.status)}
         />
       )}
     </section>
@@ -1265,50 +1262,6 @@ function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClos
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onConfirm}>Fetch</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RemoteMarkConfirmModal({ workCode, onClose, onConfirm }: { workCode: string; onClose: () => void; onConfirm: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">Track before mark</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {workCode} will be tracked before the mark is saved.
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Track and mark</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RemoteStateConfirmModal({
-  title,
-  description,
-  confirmLabel,
-  onClose,
-  onConfirm,
-}: {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h3 className="text-base font-semibold">{title}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </div>
     </div>
@@ -1669,8 +1622,6 @@ function RemoteWorkDetailView({
   const [savePlanMessage, setSavePlanMessage] = useState("");
   const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
-  const [markTarget, setMarkTarget] = useState<ListeningStatus | null>(null);
-  const [favoriteTarget, setFavoriteTarget] = useState<boolean | null>(null);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
@@ -1695,17 +1646,11 @@ function RemoteWorkDetailView({
 
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
-    if (reason !== "manual_fetch") {
-      const confirmed = window.confirm(
-        "This work needs to be tracked before Kikoto can update local state for it.",
-      );
-      if (!confirmed) return;
-    }
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
-      setMessage(`Pulled ${result.primaryCode} through workflow run #${result.runId}.`);
+      const result = await api.trackRemoteSourceWork(source.id, detail.primaryCode, reason);
+      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
@@ -1720,7 +1665,7 @@ function RemoteWorkDetailView({
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(source.id, detail.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(source.id, detail.primaryCode, reason);
       await onWorksChanged();
       setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
       return result.workId;
@@ -1732,29 +1677,21 @@ function RemoteWorkDetailView({
     }
   };
 
-  const updateRemoteMark = async (status: ListeningStatus, forceSync = false) => {
+  const updateRemoteMark = async (status: ListeningStatus) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? (forceSync ? await syncForUserState("detail_mark_interest") : null);
-    if (!workID) {
-      setMarkTarget(status);
-      return;
-    }
+    const workID = detail.workId ?? await syncForUserState("detail_mark_interest");
+    if (!workID) return;
     const result = await api.updateWorkUserState(workID, { listeningStatus: status });
     setMessage(`Marked ${detail.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
-    setMarkTarget(null);
     await onWorksChanged();
   };
 
-  const updateRemoteFavorite = async (favorite: boolean, forceSync = false) => {
+  const updateRemoteFavorite = async (favorite: boolean) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? (forceSync ? await syncForUserState("detail_favorite_interest") : null);
-    if (!workID) {
-      setFavoriteTarget(favorite);
-      return;
-    }
+    const workID = detail.workId ?? await syncForUserState("detail_favorite_interest");
+    if (!workID) return;
     const result = await api.updateWorkUserState(workID, { favorite });
     setMessage(result.favorite ? `Added ${detail.primaryCode} to favorites.` : `Removed ${detail.primaryCode} from favorites.`);
-    setFavoriteTarget(null);
     await onWorksChanged();
   };
 
@@ -1860,10 +1797,10 @@ function RemoteWorkDetailView({
             onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
             onMark={(status) => void updateRemoteMark(status)}
             onFavorite={() => void updateRemoteFavorite(true)}
-            onSync={() => void fetchWork("manual_fetch")}
+            onSync={() => void fetchWork("manual_track")}
             onFetch={() => setIsSaveSelectionOpen(true)}
             dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
-            syncLabel="Sync"
+            syncLabel="Track"
             showSync
             showFetch
           />
@@ -1907,22 +1844,6 @@ function RemoteWorkDetailView({
           deleting={isDeletingCache}
           onCancel={() => setCacheDeleteTarget(null)}
           onConfirm={() => void deleteCache()}
-        />
-      )}
-      {markTarget && (
-        <RemoteMarkConfirmModal
-          workCode={detail.primaryCode}
-          onClose={() => setMarkTarget(null)}
-          onConfirm={() => void updateRemoteMark(markTarget, true)}
-        />
-      )}
-      {favoriteTarget !== null && (
-        <RemoteStateConfirmModal
-          title="Track before favorite"
-          description={`${detail.primaryCode} will be tracked before the favorite is saved.`}
-          confirmLabel="Track and favorite"
-          onClose={() => setFavoriteTarget(null)}
-          onConfirm={() => void updateRemoteFavorite(favoriteTarget, true)}
         />
       )}
     </div>
@@ -2184,8 +2105,8 @@ function WorkDetailView({
     setMessage("");
     try {
       if (selectedRemoteSource?.detail?.primaryCode) {
-        const result = await api.syncRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_fetch");
-        setMessage(`Synced ${result.primaryCode} through workflow run #${result.runId}.`);
+        const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
+        setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
         await onWorksChanged();
         openRemoteLocal(result.workId);
       } else {
@@ -2225,7 +2146,7 @@ function WorkDetailView({
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.syncRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
+      const result = await api.trackRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
       setMessage(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId);
       await onWorksChanged();
