@@ -503,7 +503,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         return;
       }
       const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
-      setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
+      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       await refreshDetail();
     } catch (error) {

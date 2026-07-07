@@ -29,6 +29,7 @@ type Server struct {
 	cfg                  config.Config
 	circleAutoRefreshMu  sync.Mutex
 	circleAutoRefreshing map[int64]bool
+	jobRunnerMu          sync.Mutex
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
