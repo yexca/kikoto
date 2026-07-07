@@ -391,27 +391,25 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const updateWorkFavorite = async (work: VoiceKnownWork | VoiceRemoteWork, favorite: boolean) => {
-    const workId = "workId" in work ? work.workId : null;
-    try {
-      const targetWorkId = workId ?? await trackVoiceWorkForState(work, "voice_favorite");
-      if (!targetWorkId) return;
-      const result = await api.updateWorkUserState(targetWorkId, { favorite });
-      setDetail((current) => current ? {
-        ...current,
-        works: current.works.map((item) => item.workId === targetWorkId ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
-      } : current);
-      await refreshDetail();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Favorite update failed.");
-    }
-  };
-
   const trackVoiceWorkForState = async (work: VoiceKnownWork | VoiceRemoteWork, reason: string) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return null;
     const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
+  };
+
+  const ensureVoiceWorkForList = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+    const workId = "workId" in work ? work.workId : null;
+    if (workId) return workId;
+    try {
+      const nextWorkId = await trackVoiceWorkForState(work, "voice_list");
+      if (!nextWorkId) return null;
+      await refreshDetail();
+      return nextWorkId;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Track for list failed.");
+      return null;
+    }
   };
 
   const toggleWorkSelection = (work: VoiceKnownWork | VoiceRemoteWork, checked: boolean) => {
@@ -718,13 +716,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onSync={() => void syncSingleWork(work)}
               onSave={() => void saveSingleWork(work)}
               onStatusChange={(status) => void updateWorkMark(work, status)}
-              onFavoriteChange={(favorite) => void updateWorkFavorite(work, favorite)}
               onFavoriteSaved={(favorite) => {
                 setDetail((current) => current ? {
                   ...current,
                   works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
                 } : current);
               }}
+              onEnsureWork={() => ensureVoiceWorkForList(work)}
             />
           ))}
           {pageWorks.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
@@ -754,7 +752,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteChange, onFavoriteSaved }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteChange: (favorite: boolean) => void; onFavoriteSaved: (favorite: boolean) => void }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteSaved, onEnsureWork }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteSaved: (favorite: boolean) => void; onEnsureWork: () => Promise<number | null> }) {
   const isKnown = "local" in work;
   const local = "local" in work ? work.local : work.hasLocal;
   const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
@@ -798,7 +796,8 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
             <WorkCardListButton
               workId={workId}
               active={favorite}
-              disabled={!workId}
+              disabled={!workId && !voiceWorkRemoteTarget(work)}
+              ensureWorkId={onEnsureWork}
               onSaved={onFavoriteSaved}
             />
             <WorkCardQuickMarkButton

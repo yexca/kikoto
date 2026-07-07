@@ -71,7 +71,6 @@ import {
   WorkCardShell,
   cardDate,
   dlsiteTagBadges,
-  type WorkCardBadge,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
@@ -1382,53 +1381,6 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
   };
 }
 
-function WorkCardMedia({
-  coverUrl,
-  code,
-  rating,
-}: {
-  coverUrl: string;
-  code: string;
-  rating: number | null;
-}) {
-  const codeText = code || "Remote";
-  return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-      {coverUrl ? (
-        <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" />
-      ) : (
-        <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{codeText.slice(0, 2)}</div>
-      )}
-      <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
-      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
-        <Star className="h-3.5 w-3.5 fill-current" />
-        {rating === null ? "No rating" : rating.toFixed(2)}
-      </div>
-    </div>
-  );
-}
-
-type CardBadge = { value: string; variant: "secondary" | "outline" | "warning" };
-
-function sourceBadgesForWork(work: Work): CardBadge[] {
-  if (workHasTrackedPresence(work) && !workHasDirectoryAvailability(work)) {
-    const presenceBadges = sourceBadgesForPresence(work.sourcePresence ?? [], { hideTracked: true });
-    presenceBadges.push({ value: "unforked", variant: "warning" });
-    if (presenceBadges.length > 0) return presenceBadges;
-  }
-  const presenceBadges = sourceBadgesForPresence(work.sourcePresence ?? []);
-  if (presenceBadges.length > 0) return presenceBadges;
-  return sourceBadgesForAvailability(work.availability);
-}
-
-function workHasTrackedPresence(work: Work) {
-  return (work.sourcePresence ?? []).some((item) => item.type === "tracked" && item.availability === "available");
-}
-
-function workHasDirectoryAvailability(work: Work) {
-  return work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item));
-}
-
 function workHasNoSource(work: { sourcePresence?: SourcePresenceItem[] | null; availability?: string[]; mediaItems?: MediaItem[] }) {
   const sourcePresence = work.sourcePresence ?? [];
   const hasPresence = sourcePresence.some((item) => item.type && item.type !== "location" && item.type !== "remote");
@@ -1436,100 +1388,6 @@ function workHasNoSource(work: { sourcePresence?: SourcePresenceItem[] | null; a
   if (work.availability && work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item.toLowerCase()))) return false;
   if ((work.mediaItems ?? []).some((item) => item.locations.some((location) => location.availability === "available"))) return false;
   return true;
-}
-
-function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>, options: { hideTracked?: boolean } = {}): CardBadge[] {
-  const order = ["local", "tracked", "source", "cache"];
-  return [...sourcePresence]
-    .filter((item) => item.type && item.type !== "location" && item.type !== "remote" && !(options.hideTracked && item.type === "tracked"))
-    .sort((a, b) => {
-      const left = order.indexOf(a.type);
-      const right = order.indexOf(b.type);
-      return (left === -1 ? order.length : left) - (right === -1 ? order.length : right);
-    })
-    .map((item) => {
-      const availability = item.availability || "unknown";
-      const sourceName = item.type === "source" ? (item.fileSourceName || item.fileSourceCode || "source") : item.type;
-      const label = availability === "available" ? sourceName : `${sourceName} ${availability}`;
-      const variant = availability !== "available" ? "warning" : item.type === "local" || item.type === "cache" ? "secondary" : "outline";
-      return { value: label, variant };
-    });
-}
-
-function sourceBadgesForAvailability(availability: string[]): CardBadge[] {
-  const order = ["local", "cache", "cached", "remote", "missing"];
-  return [...availability]
-    .sort((a, b) => {
-      const left = order.indexOf(a);
-      const right = order.indexOf(b);
-      return (left === -1 ? order.length : left) - (right === -1 ? order.length : right);
-    })
-    .map((item) => {
-      if (item === "remote") return null;
-      const label = item === "cache" || item === "cached" ? "cache" : item;
-      return { value: label, variant: item === "missing" ? "warning" : "secondary" };
-    })
-    .filter((badge): badge is CardBadge => badge !== null);
-}
-
-function WorkCardBody({
-  title,
-  circle,
-  circleExternalId,
-  releaseDate,
-  updatedAt,
-  rating,
-  sales,
-  tagBadges,
-  sourceBadges,
-  progress,
-}: {
-  title: string;
-  circle: string;
-  circleExternalId: string;
-  releaseDate: string | null;
-  updatedAt: string;
-  rating: number | null;
-  sales: number | null;
-  tagBadges: CardBadge[];
-  sourceBadges: CardBadge[];
-  progress?: Work["progress"];
-}) {
-  return (
-    <div className="flex min-h-52 flex-col gap-3 p-4">
-      <div className="space-y-1">
-        <h2 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{title}</h2>
-        <button
-          className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
-          onClick={(event) => {
-            event.stopPropagation();
-            openCircleRoute(circleExternalId || undefined);
-          }}
-        >
-          {circle}
-        </button>
-      </div>
-      <div className="flex min-h-6 flex-wrap gap-1.5">
-        {tagBadges.length > 0 ? tagBadges.map((badge) => (
-          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
-            {badge.value}
-          </Badge>
-        )) : <span className="text-xs text-muted-foreground">No tags</span>}
-      </div>
-      <div className="grid gap-1 text-xs text-muted-foreground">
-        <div className="truncate">Release {releaseDate || "unknown"} · Updated {updatedAt || "unknown"}</div>
-        <div className="truncate">DLsite rate {rating === null ? "unknown" : rating.toFixed(2)} · Sales {sales === null ? "unknown" : sales.toLocaleString()}</div>
-      </div>
-      {progress && <WorkProgress progress={progress} />}
-      <div className="mt-auto flex min-h-6 flex-wrap gap-1.5">
-        {sourceBadges.length > 0 ? sourceBadges.map((badge) => (
-          <Badge key={`${badge.value}:${badge.variant}`} variant={badge.variant}>
-            {badge.value}
-          </Badge>
-        )) : <Badge variant="warning">missing</Badge>}
-      </div>
-    </div>
-  );
 }
 
 function WorkProgress({ progress }: { progress: Work["progress"] }) {

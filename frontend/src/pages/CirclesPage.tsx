@@ -503,26 +503,25 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     }
   };
 
-  const updateCatalogWorkFavorite = async (work: CircleCatalogWork, favorite: boolean) => {
-    try {
-      const workId = work.workId ?? await trackCatalogWorkForState(work, "circle_favorite");
-      if (!workId) return;
-      const result = await api.updateWorkUserState(workId, { favorite });
-      const next = await api.getCircle(externalId);
-      setDetail({
-        ...next,
-        works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite: result.favorite, listeningMark: result.listeningStatus } : item),
-      });
-    } catch (error) {
-      setToast(toastFromError(error, "Favorite update failed."));
-    }
-  };
-
   const trackCatalogWorkForState = async (work: CircleCatalogWork, reason: string) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return null;
     const syncResult = await api.syncRemoteSourceWork(target.sourceId, work.primaryCode, reason);
     return syncResult.workId;
+  };
+
+  const ensureCatalogWorkForList = async (work: CircleCatalogWork) => {
+    if (work.workId) return work.workId;
+    try {
+      const workId = await trackCatalogWorkForState(work, "circle_list");
+      if (!workId) return null;
+      const next = await api.getCircle(externalId);
+      setDetail(next);
+      return workId;
+    } catch (error) {
+      setToast(toastFromError(error, "Track for list failed."));
+      return null;
+    }
   };
 
   const toggleWorkSelection = (work: CircleCatalogWork, checked: boolean) => {
@@ -877,13 +876,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                         onSave={() => void saveSingleWork(work)}
                         onDeleteMissing={() => setDeleteTarget(work)}
                         onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
-                        onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
                         onFavoriteSaved={(favorite) => {
                           setDetail((current) => current ? {
                             ...current,
                             works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
                           } : current);
                         }}
+                        onEnsureWork={() => ensureCatalogWorkForList(work)}
                         onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
                       />
                     )) : (
@@ -946,13 +945,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onSave={() => void saveSingleWork(work)}
                 onDeleteMissing={() => setDeleteTarget(work)}
                 onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
-                onFavoriteChange={(favorite) => void updateCatalogWorkFavorite(work, favorite)}
                 onFavoriteSaved={(favorite) => {
                   setDetail((current) => current ? {
                     ...current,
                     works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
                   } : current);
                 }}
+                onEnsureWork={() => ensureCatalogWorkForList(work)}
                 onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
               />
             )) : (
@@ -1016,8 +1015,8 @@ function CatalogWorkCard({
   onSave,
   onDeleteMissing,
   onStatusChange,
-  onFavoriteChange,
   onFavoriteSaved,
+  onEnsureWork,
   onSeriesOpen,
 }: {
   work: CircleCatalogWork;
@@ -1029,8 +1028,8 @@ function CatalogWorkCard({
   onSave: () => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
-  onFavoriteChange: (favorite: boolean) => void;
   onFavoriteSaved: (favorite: boolean) => void;
+  onEnsureWork: () => Promise<number | null>;
   onSeriesOpen: () => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
@@ -1069,7 +1068,8 @@ function CatalogWorkCard({
             <WorkCardListButton
               workId={work.workId}
               active={work.favorite}
-              disabled={!work.workId}
+              disabled={!circleWorkRemoteTarget(work) && !work.workId}
+              ensureWorkId={onEnsureWork}
               onSaved={onFavoriteSaved}
             />
             <WorkCardQuickMarkButton
