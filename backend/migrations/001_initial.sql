@@ -556,6 +556,9 @@ CREATE TABLE workflow_job (
   error_message TEXT NOT NULL DEFAULT '',
   progress_current INTEGER NOT NULL DEFAULT 0,
   progress_total INTEGER NOT NULL DEFAULT 0,
+  locked_by TEXT NOT NULL DEFAULT '',
+  locked_at TEXT,
+  heartbeat_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

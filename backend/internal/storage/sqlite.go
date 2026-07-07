@@ -88,7 +88,7 @@ func Migrate(db *sql.DB, dir string) error {
 }
 
 func ensureCurrentSchema(db *sql.DB) error {
-	_, err := db.Exec(`
+	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS workflow_event (
 			id INTEGER PRIMARY KEY,
 			workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
@@ -104,6 +104,25 @@ func ensureCurrentSchema(db *sql.DB) error {
 			ON workflow_event(workflow_run_id, created_at, id);
 		CREATE INDEX IF NOT EXISTS idx_workflow_event_level
 			ON workflow_event(level, created_at);
-	`)
-	return err
+	`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "workflow_job", "locked_by", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "workflow_job", "locked_at", "TEXT"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "workflow_job", "heartbeat_at", "TEXT"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func addColumnIfMissing(db *sql.DB, table string, column string, definition string) error {
+	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return err
+	}
+	return nil
 }

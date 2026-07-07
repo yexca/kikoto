@@ -1174,7 +1174,7 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	cacheResult, err := s.runRemoteMediaCache(r.Context(), locationID)
+	cacheResult, err := s.enqueueRemoteMediaCache(r.Context(), locationID)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -2670,7 +2670,17 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"locations": syncedLocations}), syncNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'succeeded',
+			progress_current = ?,
+			progress_total = ?,
+			locked_by = '',
+			locked_at = NULL,
+			heartbeat_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(rawWork) + len(rawTracks)}), runID); err != nil {
@@ -2943,7 +2953,17 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"promoted": promoted}), promoteNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'succeeded',
+			progress_current = ?,
+			progress_total = ?,
+			locked_by = '',
+			locked_at = NULL,
+			heartbeat_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", syncNodeID); err != nil {
@@ -3233,6 +3253,7 @@ func updateWorkflowJobProgress(ctx context.Context, db *sql.DB, jobID int64, cur
 		UPDATE workflow_job
 		SET progress_current = ?,
 			progress_total = ?,
+			heartbeat_at = CASE WHEN status = 'running' THEN CURRENT_TIMESTAMP ELSE heartbeat_at END,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, current, total, jobID)
@@ -3244,7 +3265,18 @@ func finishWorkflowRunSimple(ctx context.Context, db *sql.DB, runID int64, nodeI
 	if _, err := db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, errorMessage, nodeID); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, "UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", status, current, total, errorMessage, jobID); err != nil {
+	if _, err := db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = ?,
+			progress_current = ?,
+			progress_total = ?,
+			error_message = ?,
+			locked_by = '',
+			locked_at = NULL,
+			heartbeat_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, current, total, errorMessage, jobID); err != nil {
 		return err
 	}
 	_, err := db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, output, runID)

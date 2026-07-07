@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 )
@@ -16,16 +17,18 @@ type workflowJobRecord struct {
 	NodeRunID   int64
 	WorkerType  string
 	PayloadJSON string
+	LockedBy    string
 }
 
 func (s *Server) StartJobRunner(ctx context.Context) {
 	s.jobRunnerMu.Lock()
 	defer s.jobRunnerMu.Unlock()
 
+	runnerID := workflowJobRunnerID()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := s.runNextQueuedWorkflowJob(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := s.runNextQueuedWorkflowJob(ctx, runnerID); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("run queued workflow job", "error", err)
 		}
 		select {
@@ -36,24 +39,28 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	}
 }
 
-func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
-	job, ok, err := s.claimNextQueuedWorkflowJob(ctx)
+func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) error {
+	job, ok, err := s.claimNextQueuedWorkflowJob(ctx, runnerID)
 	if err != nil || !ok {
 		return err
 	}
+	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
+	defer stopHeartbeat()
 	switch job.WorkerType {
 	case "remote_work_fetch":
-		return s.executeRemoteWorkFetchJob(ctx, job)
+		return s.executeRemoteWorkFetchJob(jobCtx, job)
+	case "remote_media_cache":
+		return s.executeRemoteMediaCacheJob(jobCtx, job)
 	default:
 		message := "unsupported workflow job type: " + job.WorkerType
-		if err := s.failClaimedWorkflowJob(ctx, job, message); err != nil {
+		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {
 			return err
 		}
 		return errors.New(message)
 	}
 }
 
-func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context) (workflowJobRecord, bool, error) {
+func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return workflowJobRecord{}, false, err
@@ -79,10 +86,13 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context) (workflowJobRec
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET status = 'running',
+			locked_by = ?,
+			locked_at = CURRENT_TIMESTAMP,
+			heartbeat_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 			AND status = 'queued'
-	`, job.ID)
+	`, runnerID, job.ID)
 	if err != nil {
 		return workflowJobRecord{}, false, err
 	}
@@ -114,6 +124,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context) (workflowJobRec
 	if err := tx.Commit(); err != nil {
 		return workflowJobRecord{}, false, err
 	}
+	job.LockedBy = runnerID
 	return job, true, nil
 }
 
@@ -131,6 +142,9 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 		UPDATE workflow_job
 		SET status = 'failed',
 			error_message = ?,
+			locked_by = '',
+			locked_at = NULL,
+			heartbeat_at = NULL,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, message, job.ID); err != nil {
@@ -156,6 +170,39 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Server) startWorkflowJobHeartbeat(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc) {
+	jobCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-jobCtx.Done():
+				return
+			case <-ticker.C:
+				_, _ = s.db.ExecContext(context.Background(), `
+					UPDATE workflow_job
+					SET heartbeat_at = CURRENT_TIMESTAMP,
+						updated_at = CURRENT_TIMESTAMP
+					WHERE id = ?
+						AND status = 'running'
+						AND locked_by = ?
+				`, job.ID, job.LockedBy)
+			}
+		}
+	}()
+	return jobCtx, cancel
+}
+
+func workflowJobRunnerID() string {
+	hostname, _ := os.Hostname()
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		hostname = "unknown-host"
+	}
+	return hostname + ":" + time.Now().UTC().Format("20060102T150405.000000000")
 }
 
 func decodeWorkflowJobPayload[T any](raw string, out *T) error {
