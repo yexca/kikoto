@@ -42,7 +42,8 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
-import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteWorkDetail, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 
 type CreatorKind = "circle" | "voice";
@@ -246,7 +247,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [markConfirm, setMarkConfirm] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; status: ListeningStatus } | null>(null);
-  const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string> } | null>(null);
+  const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [autoSyncRemote, setAutoSyncRemote] = useState(false);
 
   useEffect(() => {
@@ -491,7 +492,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setMessage("");
     try {
       const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
-      setFetchSelection({ work, sourceId: target.sourceId, code: target.code, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)) });
+      setFetchSelection({ work, sourceId: target.sourceId, code: target.code, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Remote directory failed.");
     } finally {
@@ -504,7 +505,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, Array.from(fetchSelection.selectedPaths));
+      const paths = Array.from(fetchSelection.selectedPaths);
+      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      if (hasRemoteFetchConflicts(plan)) {
+        setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        return;
+      }
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
       setMessage(`Fetched ${result.primaryCode} through workflow run #${result.runId}.`);
       setFetchSelection(null);
       await refreshDetail();
@@ -743,7 +750,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           tracks={fetchSelection.detail.tracks}
           selectedPaths={fetchSelection.selectedPaths}
           disabled={isBulkBusy}
-          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths } : current)}
+          plan={fetchSelection.plan}
+          message={fetchSelection.message}
+          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
           onClose={() => setFetchSelection(null)}
           onFetch={() => void fetchSingleSelection()}
         />

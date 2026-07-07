@@ -318,6 +318,7 @@ export type RemoteWorkSaveSummary = {
   cacheHit: number;
   cacheDownload: number;
   promote: number;
+  conflict: number;
 };
 
 export type RemoteWorkSavePlanItem = {
@@ -329,6 +330,10 @@ export type RemoteWorkSavePlanItem = {
   sourcePath: string;
   cachePath: string;
   targetPath: string;
+  targetExists: boolean;
+  targetConflict: boolean;
+  targetConflictReason: string;
+  targetSizeBytes: number | null;
 };
 
 export type RemoteWorkSavePlan = {
