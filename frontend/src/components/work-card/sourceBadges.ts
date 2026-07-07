@@ -52,6 +52,9 @@ export function sourcePresenceBadges(
   }
 
   if (badges.length > 0) return sortSourceBadges(badges);
+  if (items.length === 0 && !hasPlayableAvailability(availability)) {
+    return [{ key: "source:no-source", label: "No source", variant: "warning" }];
+  }
   return sortSourceBadges(availabilityBadges(availability));
 }
 
@@ -133,6 +136,7 @@ function sourceBadgeRank(badge: WorkCardBadge) {
   if (key.startsWith("source:remote")) return 2;
   if (key.startsWith("source:cache")) return 3;
   if (key.startsWith("source:missing")) return 4;
+  if (key.startsWith("source:no-source")) return 4;
   if (key.startsWith("source:")) return 2;
   return 5;
 }

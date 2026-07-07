@@ -537,6 +537,8 @@ func libraryListWhere(scope string, status string) (string, []any) {
 			WHERE scope_presence.work_id = work.id
 				AND scope_presence.presence_type = 'tracked'
 		)`)
+	case "no_source":
+		clauses = append(clauses, libraryNoSourceWhereClause())
 	}
 	if status != "" && status != "all" {
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
@@ -801,9 +803,40 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 		return stringSliceContainsFold(work.Availability, "local")
 	case "tracked":
 		return workHasSourcePresenceType(work, "tracked")
+	case "no_source":
+		return len(work.SourcePresence) == 0 && len(work.Availability) == 0
 	default:
 		return true
 	}
+}
+
+func libraryNoSourceWhereClause() string {
+	return `NOT EXISTS (
+			SELECT 1
+			FROM work_source_presence AS scope_presence
+			WHERE scope_presence.work_id = work.id
+				OR scope_presence.work_id IN (
+					SELECT sibling.work_id
+					FROM work_edition AS current_edition
+					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+					WHERE current_edition.work_id = work.id
+				)
+		)
+		AND NOT EXISTS (
+			SELECT 1
+			FROM media_file_location AS scope_location
+			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
+			WHERE (
+					scope_item.work_id = work.id
+					OR scope_item.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+				)
+				AND scope_location.availability = 'available'
+		)`
 }
 
 func workMatchesListQuery(work libraryWorkSummary, query string) bool {
