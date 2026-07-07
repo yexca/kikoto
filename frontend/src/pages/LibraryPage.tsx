@@ -7,6 +7,7 @@ import {
   Clock3,
   Database,
   GitBranchPlus,
+  CloudOff,
   Edit3,
   Trash2,
   Eye,
@@ -54,6 +55,7 @@ import {
   type RemoteWork,
   type RemoteWorkDetail,
   type SourceAvailabilitySource,
+  type SourcePresenceItem,
   type VoiceCredit,
   type Work,
   type WorkDetail,
@@ -151,7 +153,7 @@ export function LibraryPage() {
   const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
   const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
-  const workScope = activeTab.kind === "local" ? "local" : activeTab.kind === "tracked" ? "tracked" : "all";
+  const workScope = activeTab.kind === "local" ? "local" : activeTab.kind === "tracked" ? "tracked" : activeTab.kind === "no_source" ? "no_source" : "all";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
@@ -604,6 +606,8 @@ export function LibraryPage() {
                 <CardContent className="p-5 text-sm text-muted-foreground">
                   {activeTab.kind === "tracked"
                     ? "No tracked works match this view."
+                    : activeTab.kind === "no_source"
+                    ? "No works without sources match this view."
                     : "No local works match this view."}
                 </CardContent>
               </Card>
@@ -625,7 +629,7 @@ export function LibraryPage() {
   );
 }
 
-type LibraryTab = { kind: "local" } | { kind: "tracked" } | { kind: "source"; source: LibrarySource };
+type LibraryTab = { kind: "local" } | { kind: "tracked" } | { kind: "no_source" } | { kind: "source"; source: LibrarySource };
 
 function LibraryTabs({
   activeTab,
@@ -655,6 +659,9 @@ function LibraryTabs({
           {source.displayName}
         </TabButton>
       ))}
+      <TabButton active={activeTab.kind === "no_source"} onClick={() => onChange({ kind: "no_source" })} icon={<CloudOff className="h-4 w-4" />}>
+        No source
+      </TabButton>
     </div>
   );
 }
@@ -1354,6 +1361,15 @@ function workHasDirectoryAvailability(work: Work) {
   return work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item));
 }
 
+function workHasNoSource(work: { sourcePresence?: SourcePresenceItem[] | null; availability?: string[]; mediaItems?: MediaItem[] }) {
+  const sourcePresence = work.sourcePresence ?? [];
+  const hasPresence = sourcePresence.some((item) => item.type && item.type !== "location" && item.type !== "remote");
+  if (hasPresence) return false;
+  if (work.availability && work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item.toLowerCase()))) return false;
+  if ((work.mediaItems ?? []).some((item) => item.locations.some((location) => location.availability === "available"))) return false;
+  return true;
+}
+
 function sourceBadgesForPresence(sourcePresence: NonNullable<Work["sourcePresence"]>, options: { hideTracked?: boolean } = {}): CardBadge[] {
   const order = ["local", "tracked", "source", "cache"];
   return [...sourcePresence]
@@ -2016,10 +2032,14 @@ function WorkDetailView({
   const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
   const player = usePlayer();
   const directoryTitle = "Directory";
+  const workHasNoLinkedSource = Boolean(work && workHasNoSource(work));
+  const showNoSourceDirectory = workHasNoLinkedSource && !selectedRemoteSource && !selectedTrackedPresence;
   const directoryDescription = selectedTrackedPresence
     ? "Tracked source directory has not been forked yet."
     : selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
+    : workHasNoLinkedSource
+    ? "No local, cached, tracked, or remote source is currently linked to this work."
     : "File locations are grouped by local, cache, and remote source.";
   const favoriteSelected = favoriteLists.some((list) => list.selected);
   const isDetailLoading = !work;
@@ -2386,7 +2406,7 @@ function WorkDetailView({
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
         currentLocationId={player.currentTrack?.locationId ?? null}
-        emptyLabel={selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+        emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
         selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
           <RemoteSaveSelectionPanel
@@ -2404,6 +2424,13 @@ function WorkDetailView({
             remoteSources={remoteSources}
             busy={isSyncingDetail}
             onFork={(remote) => void forkTrackedSource(remote)}
+          />
+        ) : showNoSourceDirectory ? (
+          <NoSourceDirectoryPanel
+            checking={isCheckingSources}
+            checkedAt={sourceCheckedAt}
+            remoteSources={remoteSources}
+            onRefresh={() => void refreshSourceAvailability()}
           />
         ) : undefined}
         loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
@@ -2730,6 +2757,42 @@ function TrackedUnforkedPanel({
         )) : (
           <Badge variant="warning">No browsable remote source</Badge>
         )}
+      </div>
+    </div>
+  );
+}
+
+function NoSourceDirectoryPanel({
+  checking,
+  checkedAt,
+  remoteSources,
+  onRefresh,
+}: {
+  checking: boolean;
+  checkedAt: string;
+  remoteSources: RemoteSourceAvailability[];
+  onRefresh: () => void;
+}) {
+  const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <div className="font-medium">No source linked</div>
+      <p className="mt-1 text-amber-900">
+        This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.
+      </p>
+      {availableSources.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {availableSources.map((remote) => (
+            <Badge key={remote.source.id} variant="outline">{remote.source.displayName} available</Badge>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
+          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
+          Refresh sources
+        </Button>
+        {!checking && checkedAt && <span className="text-xs text-amber-900">Checked {formatDateTime(checkedAt)}</span>}
       </div>
     </div>
   );
@@ -3283,7 +3346,7 @@ type SourceTabInfo = {
   key: string;
   label: string;
   fileSourceId: number | null;
-  kind?: "local" | "remote" | "tracked";
+  kind?: "local" | "remote" | "tracked" | "no_source";
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
 };
 
@@ -3325,7 +3388,12 @@ function buildSourceTabs(
     }
   }
   const tabs = Array.from(sources.values());
-  const baseTabs = tabs.length > 0 ? tabs : [{ key: "local", label: "Local", fileSourceId: null, kind: "local" as const }];
+  const hasPresence = sourcePresence.some((presence) => presence.type && presence.type !== "location" && presence.type !== "remote");
+  const baseTabs = tabs.length > 0
+    ? tabs
+    : hasPresence
+      ? [{ key: "local", label: "Local", fileSourceId: null, kind: "local" as const }]
+      : [{ key: "no-source", label: "No source", fileSourceId: null, kind: "no_source" as const }];
   for (const presence of sourcePresence) {
     if (presence.type !== "tracked") continue;
     baseTabs.push({
@@ -4700,6 +4768,9 @@ function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTa
   if (path === "/tracked" || path === "/library/tracked") {
     return { kind: "tracked" };
   }
+  if (path === "/no-source" || path === "/library/no-source") {
+    return { kind: "no_source" };
+  }
   if (path === "/" || path === "/library") {
     return { kind: "local" };
   }
@@ -4725,6 +4796,8 @@ function pathForLibraryTab(tab: LibraryTab) {
   switch (tab.kind) {
     case "tracked":
       return "/tracked";
+    case "no_source":
+      return "/no-source";
     case "source":
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
     default:
