@@ -315,7 +315,6 @@ export function PlayerDock() {
   const [lyricsError, setLyricsError] = useState("");
   const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(null);
   const miniDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
-  const suppressMiniClickRef = useRef(false);
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
@@ -358,6 +357,7 @@ export function PlayerDock() {
     );
     window.dispatchEvent(new Event("kikoto:navigation"));
   };
+  const miniActions = miniActionLayout(miniPosition);
 
   if (dockMode === "mini") {
     return (
@@ -365,6 +365,7 @@ export function PlayerDock() {
         className="group fixed z-40 touch-none"
         style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "76px", right: "12px" }}
         onPointerDown={(event) => {
+          if ((event.target as HTMLElement | null)?.closest("[data-mini-action]")) return;
           const rect = event.currentTarget.getBoundingClientRect();
           miniDragRef.current = {
             pointerId: event.pointerId,
@@ -388,7 +389,6 @@ export function PlayerDock() {
           setMiniPosition({ x: nextX, y: nextY });
         }}
         onPointerUp={(event) => {
-          if (miniDragRef.current?.moved) suppressMiniClickRef.current = true;
           miniDragRef.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
         }}
@@ -397,47 +397,52 @@ export function PlayerDock() {
           className="relative h-[92px] w-[92px] animate-player-enter cursor-grab rounded-full border border-primary/20 bg-card shadow-xl shadow-primary/15 ring-4 ring-primary/10 transition-all duration-300 ease-out active:cursor-grabbing"
         >
           <MiniProgress progress={progress} />
-          <button
-            className="absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background shadow-inner"
-            onClick={(event) => {
-              if (suppressMiniClickRef.current) {
-                suppressMiniClickRef.current = false;
-                event.preventDefault();
-                return;
-              }
-              player.togglePlay();
-            }}
-            onDoubleClick={() => setDockMode("compact")}
-            aria-label={player.isPlaying ? "Pause" : "Play"}
-            title="Double-click to expand"
+          <div
+            className="pointer-events-none absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background shadow-inner"
+            aria-hidden="true"
           >
             <CoverImage track={track} className="h-full w-full rounded-full" />
-            <span className="absolute inset-0 grid place-items-center bg-background/30 opacity-0 backdrop-blur-[1px] transition-opacity hover:opacity-100">
-              {player.isPlaying ? <Pause className="h-5 w-5 drop-shadow" /> : <Play className="h-5 w-5 drop-shadow" />}
-            </span>
-          </button>
-          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-            <Button
-              className="pointer-events-auto h-8 w-8 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-md transition-all duration-200 group-hover:-translate-x-8 group-hover:opacity-100"
-              size="icon"
-              variant="secondary"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setDockMode("full")}
-              aria-label="Open full player"
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              className="pointer-events-auto h-8 w-8 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-md transition-all duration-200 group-hover:translate-x-8 group-hover:opacity-100"
-              size="icon"
-              variant="secondary"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setDockMode("compact")}
-              aria-label="Open compact player"
-            >
-              <Minimize2 className="h-3.5 w-3.5" />
-            </Button>
           </div>
+          <button
+            data-mini-action
+            className="absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:opacity-100 active:scale-95 dark:border-white/10 dark:bg-background/62"
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              player.togglePlay();
+            }}
+            aria-label={player.isPlaying ? "Pause" : "Play"}
+            title={player.isPlaying ? "Pause" : "Play"}
+          >
+            {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </button>
+          <Button
+            data-mini-action
+            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 ${miniActions.compactClass}`}
+            size="icon"
+            variant="secondary"
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={() => setDockMode("compact")}
+            aria-label="Open compact player"
+            title="Compact"
+          >
+            <Minimize2 className="h-4 w-4" />
+          </Button>
+          <Button
+            data-mini-action
+            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 ${miniActions.fullClass}`}
+            size="icon"
+            variant="secondary"
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={() => setDockMode("full")}
+            aria-label="Open full player"
+            title="Full"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     );
@@ -447,8 +452,8 @@ export function PlayerDock() {
     return (
       <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
         <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-muted" />
-          <div className="absolute bottom-0 left-0 h-1 rounded-r-full bg-primary transition-[width] duration-300" style={{ width: `${progress}%` }} />
+          <div className="absolute inset-0 bg-muted/35" />
+          <div className="absolute inset-y-0 left-0 bg-primary/18 transition-[width] duration-300" style={{ width: `${progress}%` }} />
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
@@ -664,6 +669,23 @@ function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; secon
       <span className="absolute text-[8px] font-bold leading-none">{seconds}</span>
     </span>
   );
+}
+
+function miniActionLayout(position: { x: number; y: number } | null) {
+  const fallbackX = typeof window === "undefined" ? 9999 : window.innerWidth - 104;
+  const fallbackY = typeof window === "undefined" ? 9999 : window.innerHeight - 168;
+  const centerX = (position?.x ?? fallbackX) + 46;
+  const centerY = (position?.y ?? fallbackY) + 46;
+  const horizontalToLeft = typeof window === "undefined" ? true : centerX > window.innerWidth / 2;
+  const verticalToTop = typeof window === "undefined" ? true : centerY > window.innerHeight / 2;
+  return {
+    compactClass: horizontalToLeft
+      ? "left-0 top-1/2 -translate-x-[calc(100%+10px)] -translate-y-1/2"
+      : "right-0 top-1/2 translate-x-[calc(100%+10px)] -translate-y-1/2",
+    fullClass: verticalToTop
+      ? "left-1/2 top-0 -translate-x-1/2 -translate-y-[calc(100%+10px)]"
+      : "bottom-0 left-1/2 -translate-x-1/2 translate-y-[calc(100%+10px)]",
+  };
 }
 
 function SeekBar({

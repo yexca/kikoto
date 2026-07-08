@@ -2135,7 +2135,6 @@ function WorkDetailView({
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
@@ -2324,33 +2323,25 @@ function WorkDetailView({
     );
   };
 
-  const deleteLocal = async () => {
-    if (!deleteTarget || deleteTarget.kind !== "local") return;
+  const deleteMediaTargets = async (targets: MediaDeleteTarget[]) => {
+    if (targets.length === 0) return;
     setIsDeleting(true);
     setMessage("");
+    let deleted = 0;
     try {
-      const result = await api.deleteMediaLocalLocation(deleteTarget.locationId);
-      toast.success(`Deleted local file through workflow run #${result.runId}.`);
-      setDeleteTarget(null);
+      for (const target of targets) {
+        if (target.kind === "cache") {
+          await api.deleteMediaCacheLocation(target.locationId);
+        } else {
+          await api.deleteMediaLocalLocation(target.locationId);
+        }
+        deleted += 1;
+      }
+      toast.success(`Deleted ${deleted} file ${deleted === 1 ? "location" : "locations"}.`);
       await onWorksChanged();
     } catch (error) {
-      toast.notify(toastFromError(error, "Local delete failed."));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const deleteCache = async () => {
-    if (!deleteTarget || deleteTarget.kind !== "cache") return;
-    setIsDeleting(true);
-    setMessage("");
-    try {
-      const result = await api.deleteMediaCacheLocation(deleteTarget.locationId);
-      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
-      setDeleteTarget(null);
+      toast.notify(toastFromError(error, deleted > 0 ? `Deleted ${deleted} before the next delete failed.` : "Delete failed."));
       await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Cache delete failed."));
     } finally {
       setIsDeleting(false);
     }
@@ -2695,16 +2686,10 @@ function WorkDetailView({
           root={tree}
           emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
           onClose={() => setIsManageOpen(false)}
-          onDeleteCache={setDeleteTarget}
-          onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
-        />
-      )}
-      {deleteTarget && (
-        <ConfirmMediaDeleteModal
-          target={deleteTarget}
           deleting={isDeleting}
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => void (deleteTarget.kind === "cache" ? deleteCache() : deleteLocal())}
+          onDeleteTargets={deleteMediaTargets}
+          allowCacheDelete
+          allowLocalDelete={!selectedRemoteSource}
         />
       )}
       {reforkTarget && (
@@ -4537,15 +4522,39 @@ function DirectoryManagerModal({
   root,
   emptyLabel,
   onClose,
-  onDeleteCache,
-  onDeleteLocal,
+  deleting = false,
+  onDeleteTargets,
+  allowCacheDelete,
+  allowLocalDelete,
 }: {
   root: TreeNode;
   emptyLabel: string;
   onClose: () => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+  deleting?: boolean;
+  onDeleteTargets?: (targets: MediaDeleteTarget[]) => void;
+  allowCacheDelete?: boolean;
+  allowLocalDelete?: boolean;
 }) {
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const targets = useMemo(() => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), [root, allowCacheDelete, allowLocalDelete]);
+  const selectedTargets = useMemo(() => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))), [targets, selectedKeys]);
+  const allSelected = targets.length > 0 && selectedTargets.length === targets.length;
+  const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
+  const toggleTarget = (target: MediaDeleteTarget, selected: boolean) => {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      const key = mediaDeleteTargetKey(target);
+      if (selected) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+  const confirmDelete = () => {
+    onDeleteTargets?.(selectedTargets);
+    setConfirming(false);
+    setSelectedKeys(new Set());
+  };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
       <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -4562,11 +4571,33 @@ function DirectoryManagerModal({
           <DirectoryManager
             root={root}
             emptyLabel={emptyLabel}
-            onDeleteCache={onDeleteCache}
-            onDeleteLocal={onDeleteLocal}
+            selectedKeys={selectedKeys}
+            allowCacheDelete={allowCacheDelete}
+            allowLocalDelete={allowLocalDelete}
+            onToggleTarget={toggleTarget}
           />
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={toggleAll}>
+              {allSelected ? "Clear" : "Select all"}
+            </Button>
+            <span className="text-xs text-muted-foreground">{selectedTargets.length} selected / {targets.length} deletable</span>
+          </div>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" disabled={selectedTargets.length === 0 || deleting} onClick={() => setConfirming(true)}>
+            <Trash2 className="h-4 w-4" />
+            {deleting ? "Deleting" : "Delete selected"}
+          </Button>
+        </div>
       </div>
+      {confirming && (
+        <ConfirmMediaBatchDeleteModal
+          targets={selectedTargets}
+          deleting={deleting}
+          onCancel={() => setConfirming(false)}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }
@@ -4574,13 +4605,17 @@ function DirectoryManagerModal({
 function DirectoryManager({
   root,
   emptyLabel,
-  onDeleteCache,
-  onDeleteLocal,
+  selectedKeys,
+  allowCacheDelete,
+  allowLocalDelete,
+  onToggleTarget,
 }: {
   root: TreeNode;
   emptyLabel: string;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+  selectedKeys: Set<string>;
+  allowCacheDelete?: boolean;
+  allowLocalDelete?: boolean;
+  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
   const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
   if (!hasFiles) {
@@ -4591,8 +4626,10 @@ function DirectoryManager({
       <DirectoryManagerNode
         node={root}
         depth={0}
-        onDeleteCache={onDeleteCache}
-        onDeleteLocal={onDeleteLocal}
+        selectedKeys={selectedKeys}
+        allowCacheDelete={allowCacheDelete}
+        allowLocalDelete={allowLocalDelete}
+        onToggleTarget={onToggleTarget}
         isRoot
       />
     </div>
@@ -4603,14 +4640,18 @@ function DirectoryManagerNode({
   node,
   depth,
   isRoot,
-  onDeleteCache,
-  onDeleteLocal,
+  selectedKeys,
+  allowCacheDelete,
+  allowLocalDelete,
+  onToggleTarget,
 }: {
   node: TreeNode;
   depth: number;
   isRoot?: boolean;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+  selectedKeys: Set<string>;
+  allowCacheDelete?: boolean;
+  allowLocalDelete?: boolean;
+  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
   const [open, setOpen] = useState(isRoot);
   const folders = sortedFolders(node);
@@ -4638,8 +4679,10 @@ function DirectoryManagerNode({
               key={folder.path || folder.name}
               node={folder}
               depth={isRoot ? 0 : depth + 1}
-              onDeleteCache={onDeleteCache}
-              onDeleteLocal={onDeleteLocal}
+              selectedKeys={selectedKeys}
+              allowCacheDelete={allowCacheDelete}
+              allowLocalDelete={allowLocalDelete}
+              onToggleTarget={onToggleTarget}
             />
           ))}
           {files.map((file) => (
@@ -4647,8 +4690,10 @@ function DirectoryManagerNode({
             key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
             file={file}
             depth={isRoot ? 0 : depth + 1}
-            onDeleteCache={onDeleteCache}
-            onDeleteLocal={onDeleteLocal}
+            selectedKeys={selectedKeys}
+            allowCacheDelete={allowCacheDelete}
+            allowLocalDelete={allowLocalDelete}
+            onToggleTarget={onToggleTarget}
           />
           ))}
         </>
@@ -4660,16 +4705,19 @@ function DirectoryManagerNode({
 function ManagedFileRow({
   file,
   depth,
-  onDeleteCache,
-  onDeleteLocal,
+  selectedKeys,
+  allowCacheDelete,
+  allowLocalDelete,
+  onToggleTarget,
 }: {
   file: TreeTrack;
   depth: number;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+  selectedKeys: Set<string>;
+  allowCacheDelete?: boolean;
+  allowLocalDelete?: boolean;
+  onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
-  const canDeleteCache = file.cacheAvailable && file.cacheLocationId !== null && Boolean(onDeleteCache);
-  const canDeleteLocal = file.localAvailable && file.localLocationId !== null && Boolean(onDeleteLocal);
+  const targets = mediaDeleteTargetsForFile(file, { allowCacheDelete, allowLocalDelete });
   const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
   return (
     <div
@@ -4687,46 +4735,97 @@ function ManagedFileRow({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 md:justify-end">
-        {canDeleteCache && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              onDeleteCache?.({
-                kind: "cache",
-                locationId: file.cacheLocationId!,
-                title: file.title,
-                path: file.cachePath,
-              })
-            }
-          >
-            <Trash2 className="h-4 w-4" />
-            Cache
-          </Button>
-        )}
-        {canDeleteLocal && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              onDeleteLocal?.({
-                kind: "local",
-                locationId: file.localLocationId!,
-                title: file.title,
-                path: file.localPath,
-              })
-            }
-          >
-            <Trash2 className="h-4 w-4" />
-            Local
-          </Button>
-        )}
-        {!canDeleteCache && !canDeleteLocal && (
+        {targets.map((target) => {
+          const key = mediaDeleteTargetKey(target);
+          return (
+            <label key={key} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs hover:bg-muted">
+              <input
+                type="checkbox"
+                checked={selectedKeys.has(key)}
+                onChange={(event) => onToggleTarget(target, event.target.checked)}
+              />
+              <span>{target.kind === "cache" ? "Cache" : "Local"}</span>
+            </label>
+          );
+        })}
+        {targets.length === 0 && (
           <span className="inline-flex h-8 items-center text-xs text-muted-foreground">No file action</span>
         )}
       </div>
     </div>
   );
+}
+
+function ConfirmMediaBatchDeleteModal({
+  targets,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  targets: MediaDeleteTarget[];
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const localCount = targets.filter((target) => target.kind === "local").length;
+  const cacheCount = targets.filter((target) => target.kind === "cache").length;
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/55 p-4" onMouseDown={onCancel}>
+      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b p-4">
+          <div>
+            <h3 className="text-base font-semibold">Confirm delete</h3>
+            <p className="mt-1 text-sm text-muted-foreground">This is the second confirmation before deleting selected file locations.</p>
+          </div>
+          <IconButton title="Close" onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="space-y-3 p-4 text-sm">
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
+            Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}{localCount > 0 ? `, including ${localCount} local` : ""}{cacheCount > 0 ? ` and ${cacheCount} cache` : ""}.
+          </div>
+          <div className="max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {targets.slice(0, 10).map((target) => (
+              <div key={mediaDeleteTargetKey(target)} className="flex gap-2 py-0.5">
+                <span className="w-12 shrink-0 font-medium">{target.kind}</span>
+                <span className="min-w-0 flex-1 truncate">{target.path}</span>
+              </div>
+            ))}
+            {targets.length > 10 && <div className="pt-1">...and {targets.length - 10} more</div>}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4">
+          <Button variant="outline" onClick={onCancel} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting || targets.length === 0}>
+            <Trash2 className="h-4 w-4" />
+            {deleting ? "Deleting" : "Delete selected"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function directoryManageTargets(root: TreeNode, options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean }) {
+  return sortedFilesDeep(root).flatMap((file) => mediaDeleteTargetsForFile(file, options));
+}
+
+function mediaDeleteTargetsForFile(file: TreeTrack, options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean }) {
+  const targets: MediaDeleteTarget[] = [];
+  if (options.allowCacheDelete && file.cacheAvailable && file.cacheLocationId !== null) {
+    targets.push({ kind: "cache", locationId: file.cacheLocationId, title: file.title, path: file.cachePath });
+  }
+  if (options.allowLocalDelete && file.localAvailable && file.localLocationId !== null) {
+    targets.push({ kind: "local", locationId: file.localLocationId, title: file.title, path: file.localPath });
+  }
+  return targets;
+}
+
+function mediaDeleteTargetKey(target: MediaDeleteTarget) {
+  return `${target.kind}:${target.locationId}`;
 }
 
 function folderNameHasPriority(name: string) {
