@@ -50,6 +50,12 @@ export type WorksPage = {
   total: number;
 };
 
+export type FavoriteWorksPage = WorksPage & {
+  shelfTotal: number;
+  listCounts: Record<string, number>;
+  statusCounts: Record<string, number>;
+};
+
 export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales";
 export type SortDirection = "asc" | "desc";
 
@@ -909,6 +915,10 @@ export const api = {
   listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc") =>
     getJSON<WorksPage>(
       `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+    ),
+  listFavoriteWorksPage: (page = 1, pageSize = 24, query = "", listId: number | "all" = "all", status = "all", availability = "all") =>
+    getJSON<FavoriteWorksPage>(
+      `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),

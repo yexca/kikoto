@@ -3920,37 +3920,55 @@ function DirectoryTree({
   onDeleteLocal?: (target: MediaDeleteTarget) => void;
   emptyLabel?: string;
 }) {
-  const folders = sortedFolders(root);
-  if (folders.length === 0 && root.files.length === 0) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root));
+  const [visibleLimit, setVisibleLimit] = useState(160);
+  useEffect(() => {
+    setExpandedPaths(initialExpandedTreePaths(root));
+    setVisibleLimit(160);
+  }, [root]);
+  const rows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
+  const visibleRows = rows.slice(0, visibleLimit);
+  const toggleFolder = (path: string) => {
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+  if (rows.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
   }
   return (
     <div className="space-y-2">
-      {sortedFiles(root).map((file) => (
-        <TreeFile
-          key={file.locationId}
-          file={file}
-          files={playableFiles(root.files)}
-          depth={0}
-          isActive={file.locationId === currentLocationId}
-          onPlayFolder={onPlayFolder}
-          onPreview={onPreview}
-          onDeleteCache={onDeleteCache}
-          onDeleteLocal={onDeleteLocal}
-        />
-      ))}
-      {folders.map((node) => (
-        <TreeFolder
-          key={node.path}
-          node={node}
-          depth={0}
-          currentLocationId={currentLocationId}
-          onPlayFolder={onPlayFolder}
-          onPreview={onPreview}
-          onDeleteCache={onDeleteCache}
-          onDeleteLocal={onDeleteLocal}
-        />
-      ))}
+      <div className="space-y-1">
+        {visibleRows.map((row) => row.type === "folder" ? (
+          <TreeFolderRow
+            key={`folder:${row.node.path}`}
+            node={row.node}
+            depth={row.depth}
+            expanded={expandedPaths.has(row.node.path)}
+            onToggle={() => toggleFolder(row.node.path)}
+          />
+        ) : (
+          <TreeFile
+            key={`file:${row.file.locationId}`}
+            file={row.file}
+            files={playableFiles(row.parent.files)}
+            depth={row.depth}
+            isActive={row.file.locationId === currentLocationId}
+            onPlayFolder={onPlayFolder}
+            onPreview={onPreview}
+            onDeleteCache={onDeleteCache}
+            onDeleteLocal={onDeleteLocal}
+          />
+        ))}
+      </div>
+      {visibleRows.length < rows.length && (
+        <Button variant="outline" size="sm" className="w-full" onClick={() => setVisibleLimit((value) => value + 160)}>
+          Show more files ({rows.length - visibleRows.length} remaining)
+        </Button>
+      )}
     </div>
   );
 }
@@ -4420,73 +4438,34 @@ function DirectoryBrowser({
   );
 }
 
-function TreeFolder({
+function TreeFolderRow({
   node,
   depth,
-  currentLocationId,
-  onPlayFolder,
-  onPreview,
-  onDeleteCache,
-  onDeleteLocal,
+  expanded,
+  onToggle,
 }: {
   node: TreeNode;
   depth: number;
-  currentLocationId: number | null;
-  onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
-  onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
-  const [isOpen, setIsOpen] = useState(depth === 0 || folderNameHasPriority(node.name));
-  const childFolders = sortedFolders(node);
   const playable = playableFiles(node.files);
   const filesLabel = playable.length > 0 ? `${playable.length} audio` : node.files.length > 0 ? `${node.files.length} files` : "";
   return (
-    <div className="space-y-1">
-      <button
-        className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
-        style={{ paddingLeft: depth * 14 + 8 }}
-        onClick={() => setIsOpen((value) => !value)}
-      >
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        )}
-        <Folder className="h-4 w-4 shrink-0 text-primary" />
-        <span className="truncate">{node.name}</span>
-        {filesLabel && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{filesLabel}</span>}
-      </button>
-      {isOpen && (
-        <>
-          {childFolders.map((child) => (
-            <TreeFolder
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              currentLocationId={currentLocationId}
-              onPlayFolder={onPlayFolder}
-              onPreview={onPreview}
-              onDeleteCache={onDeleteCache}
-              onDeleteLocal={onDeleteLocal}
-            />
-          ))}
-          {sortedFiles(node).map((file) => (
-            <TreeFile
-              key={file.locationId}
-              file={file}
-              files={playable}
-              depth={depth + 1}
-              isActive={file.locationId === currentLocationId}
-              onPlayFolder={onPlayFolder}
-              onPreview={onPreview}
-              onDeleteCache={onDeleteCache}
-              onDeleteLocal={onDeleteLocal}
-            />
-          ))}
-        </>
+    <button
+      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
+      style={{ paddingLeft: depth * 14 + 8 }}
+      onClick={onToggle}
+    >
+      {expanded ? (
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      ) : (
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
       )}
-    </div>
+      <Folder className="h-4 w-4 shrink-0 text-primary" />
+      <span className="truncate">{node.name}</span>
+      {filesLabel && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{filesLabel}</span>}
+    </button>
   );
 }
 
@@ -4740,6 +4719,49 @@ function sortedFolders(node: TreeNode) {
 
 function sortedFiles(node: TreeNode) {
   return [...node.files].sort((a, b) => naturalCompare(a.title, b.title));
+}
+
+type VisibleTreeRow =
+  | { type: "folder"; node: TreeNode; depth: number }
+  | { type: "file"; file: TreeTrack; parent: TreeNode; depth: number };
+
+function initialExpandedTreePaths(root: TreeNode) {
+  const paths = new Set<string>();
+  for (const folder of sortedFolders(root)) {
+    if (folderNameHasPriority(folder.name) || folderContainsActiveAudio(folder)) {
+      paths.add(folder.path);
+      for (const child of sortedFolders(folder)) {
+        if (folderNameHasPriority(child.name)) paths.add(child.path);
+      }
+    }
+  }
+  return paths;
+}
+
+function folderContainsActiveAudio(node: TreeNode) {
+  if (playableFiles(node.files).length > 0) return true;
+  return sortedFolders(node).some((child) => folderNameHasPriority(child.name) && playableFiles(child.files).length > 0);
+}
+
+function flattenVisibleTreeRows(root: TreeNode, expandedPaths: Set<string>) {
+  const rows: VisibleTreeRow[] = [];
+  for (const file of sortedFiles(root)) {
+    rows.push({ type: "file", file, parent: root, depth: 0 });
+  }
+  const visit = (node: TreeNode, depth: number) => {
+    rows.push({ type: "folder", node, depth });
+    if (!expandedPaths.has(node.path)) return;
+    for (const file of sortedFiles(node)) {
+      rows.push({ type: "file", file, parent: node, depth: depth + 1 });
+    }
+    for (const child of sortedFolders(node)) {
+      visit(child, depth + 1);
+    }
+  };
+  for (const folder of sortedFolders(root)) {
+    visit(folder, 0);
+  }
+  return rows;
 }
 
 function playableFiles(files: TreeTrack[]) {

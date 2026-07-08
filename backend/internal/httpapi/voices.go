@@ -186,10 +186,6 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	summaries, err := s.loadVoiceSummaries(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, err)
@@ -206,10 +202,6 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
-		return
-	}
-	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
