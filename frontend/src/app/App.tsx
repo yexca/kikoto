@@ -1,21 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { navItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
-import { LibraryPage } from "@/pages/LibraryPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { WorkflowsPage } from "@/pages/WorkflowsPage";
 import { LoginPage } from "@/pages/LoginPage";
-import { UsersPage } from "@/pages/UsersPage";
-import { FavoritesPage } from "@/pages/FavoritesPage";
-import { CreatorWorksPage } from "@/pages/CreatorWorksPage";
-import { CirclesPage } from "@/pages/CirclesPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { CommandPalette } from "@/app/CommandPalette";
+
+const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
+const UsersPage = lazy(() => import("@/pages/UsersPage").then((module) => ({ default: module.UsersPage })));
+const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
+const CreatorWorksPage = lazy(() => import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })));
+const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
 
 const mobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
@@ -154,19 +155,21 @@ function AuthenticatedApp() {
             </div>
           </header>
 
-          <div className="px-4 py-5 lg:px-6">
-            {page === "library" && <LibraryPage />}
-            {page === "favorites" && <FavoritesPage />}
-            {page === "circles" && <CirclesPage />}
-            {page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-            {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
-            {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-            {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-            {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-            {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
-              <PlaceholderPage title={activeItem?.label ?? "Page"} />
-            )}
-          </div>
+          <Suspense fallback={<PageLoading />}>
+            <div className="px-4 py-5 lg:px-6">
+              {page === "library" && <LibraryPage />}
+              {page === "favorites" && <FavoritesPage />}
+              {page === "circles" && <CirclesPage />}
+              {page === "voice-actors" && <CreatorWorksPage kind="voice" />}
+              {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
+              {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+              {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+              {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
+              {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
+                <PlaceholderPage title={activeItem?.label ?? "Page"} />
+              )}
+            </div>
+          </Suspense>
         </main>
 
         <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur lg:hidden">
@@ -201,6 +204,10 @@ function AuthenticatedApp() {
       </div>
     </PlayerProvider>
   );
+}
+
+function PageLoading() {
+  return <div className="px-4 py-5 text-sm text-muted-foreground lg:px-6">Loading page...</div>;
 }
 
 function pageFromPath(path: string): PageID {
