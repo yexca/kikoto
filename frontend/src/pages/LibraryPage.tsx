@@ -1879,6 +1879,7 @@ function RemoteWorkDetailView({
   const [isSaving, setIsSaving] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
@@ -1891,6 +1892,20 @@ function RemoteWorkDetailView({
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
   const player = usePlayer();
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getRuntimeSettings()
+      .then((settings) => {
+        if (!cancelled) setDirectoryRoutingRules(settings.directoryRoutingRules ?? defaultDirectoryRoutingRules);
+      })
+      .catch(() => {
+        if (!cancelled) setDirectoryRoutingRules(defaultDirectoryRoutingRules);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setDetail(null);
@@ -2076,7 +2091,7 @@ function RemoteWorkDetailView({
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
-        directoryRoutingRules={defaultDirectoryRoutingRules}
+        directoryRoutingRules={directoryRoutingRules}
         currentLocationId={player.currentTrack?.locationId ?? null}
         emptyLabel="No remote files detected."
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
@@ -3171,6 +3186,7 @@ function SourceDirectoryPanel({
       onPreview={onPreview}
     />
   );
+  const routeSummary = useMemo(() => directoryRouteSummary(root, directoryRoutingRules), [root, directoryRoutingRules]);
   return (
     <section className="space-y-3 pb-28 lg:pb-8">
       <div className="space-y-3">
@@ -3198,6 +3214,7 @@ function SourceDirectoryPanel({
           </div>
           {checkingLabel && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">{checkingLabel}</span>}
         </div>
+        {routeSummary && <DirectoryRouteSummary summary={routeSummary} />}
         {sourceSummary}
       </div>
       <Card>
@@ -3236,6 +3253,25 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
         <FolderTree className="h-3.5 w-3.5" />
         Tree
       </button>
+    </div>
+  );
+}
+
+function DirectoryRouteSummary({ summary }: { summary: DirectoryRouteMatch }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
+      <span className="font-medium text-muted-foreground">Default folder</span>
+      <Badge variant="secondary" className="max-w-full truncate">{summary.pathLabel}</Badge>
+      {summary.positiveMatches.length > 0 ? (
+        <span className="min-w-0 text-muted-foreground">
+          matched {summary.positiveMatches.join(" + ")}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">fallback: most playable audio</span>
+      )}
+      {summary.negativeMatches.length > 0 && (
+        <span className="text-muted-foreground">excluded {summary.negativeMatches.join(" + ")}</span>
+      )}
     </div>
   );
 }
@@ -4894,9 +4930,17 @@ type DirectoryCandidate = {
   node: TreeNode;
   path: string[];
   score: number;
+  positiveMatches: string[];
+  negativeMatches: string[];
   audioCount: number;
   durationSeconds: number;
   order: number;
+};
+
+type DirectoryRouteMatch = {
+  pathLabel: string;
+  positiveMatches: string[];
+  negativeMatches: string[];
 };
 
 function recommendedDirectoryPath(root: TreeNode, rules: DirectoryRoutingRule[]) {
@@ -4915,16 +4959,29 @@ function recommendedDirectoryCandidate(root: TreeNode, rules: DirectoryRoutingRu
   )[0];
 }
 
+function directoryRouteSummary(root: TreeNode, rules: DirectoryRoutingRule[]): DirectoryRouteMatch | null {
+  const candidate = recommendedDirectoryCandidate(root, rules);
+  if (!candidate) return null;
+  return {
+    pathLabel: candidate.path.length > 0 ? `/${candidate.path.join("/")}` : "/",
+    positiveMatches: candidate.positiveMatches,
+    negativeMatches: candidate.negativeMatches,
+  };
+}
+
 function directoryCandidates(root: TreeNode, rules: DirectoryRoutingRule[]) {
   const candidates: DirectoryCandidate[] = [];
   let order = 0;
   const visit = (node: TreeNode, path: string[]) => {
     const playable = playableFiles(node.files);
     if (playable.length > 0) {
+      const match = scoreDirectoryCandidate(node, path, playable, rules);
       candidates.push({
         node,
         path,
-        score: scoreDirectoryCandidate(node, path, playable, rules),
+        score: match.score,
+        positiveMatches: match.positiveMatches,
+        negativeMatches: match.negativeMatches,
         audioCount: playable.length,
         durationSeconds: playable.reduce((sum, file) => sum + (file.durationSeconds ?? 0), 0),
         order,
@@ -4948,18 +5005,24 @@ function scoreDirectoryCandidate(node: TreeNode, path: string[], files: TreeTrac
     ...files.map((file) => file.baseName),
   ].join(" / "));
   let score = 0;
+  const positiveMatches: string[] = [];
+  const negativeMatches: string[] = [];
   const enabledRules = rules.filter((rule) => rule.enabled && rule.aliases.length > 0);
   enabledRules.forEach((rule, index) => {
     const weight = Number.isFinite(rule.weight) ? Math.max(1, rule.weight) : Math.max(1, 40 - index * 10);
-    if (rule.aliases.some((alias) => directoryTextMatches(text, alias))) {
+    const alias = rule.aliases.find((alias) => directoryTextMatches(text, alias));
+    if (alias) {
       score += weight;
+      positiveMatches.push(alias);
     }
-    if (rule.negativeAliases.some((alias) => directoryTextMatches(text, alias))) {
+    const negativeAlias = rule.negativeAliases.find((alias) => directoryTextMatches(text, alias));
+    if (negativeAlias) {
       score -= Math.ceil(weight * 0.9);
+      negativeMatches.push(negativeAlias);
     }
   });
   score += Math.min(10, files.length);
-  return score;
+  return { score, positiveMatches, negativeMatches };
 }
 
 function normalizeDirectoryMatchText(value: string) {
