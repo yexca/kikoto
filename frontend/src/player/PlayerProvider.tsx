@@ -1,9 +1,10 @@
 import {
   Captions,
+  CircleDot,
   ListMusic,
   ListOrdered,
   Maximize2,
-  Minimize2,
+  PanelBottom,
   Pause,
   Play,
   Repeat,
@@ -428,7 +429,7 @@ export function PlayerDock() {
             aria-label="Open compact player"
             title="Compact"
           >
-            <Minimize2 className="h-4 w-4" />
+            <PanelBottom className="h-4 w-4" />
           </Button>
           <Button
             data-mini-action
@@ -452,8 +453,7 @@ export function PlayerDock() {
     return (
       <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
         <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
-          <div className="absolute inset-0 bg-muted/35" />
-          <div className="absolute inset-y-0 left-0 bg-primary/18 transition-[width] duration-300" style={{ width: `${progress}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300" style={{ width: `${progress}%` }} />
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
@@ -463,7 +463,7 @@ export function PlayerDock() {
               </div>
             </button>
             <Button className="h-9 w-9 rounded-full border-primary/15 bg-card/80" size="icon" variant="outline" onClick={() => setDockMode("mini")} aria-label="Mini player">
-              <Minimize2 className="h-4 w-4" />
+              <CircleDot className="h-4 w-4" />
             </Button>
             <Button className="h-11 w-11 rounded-full shadow-lg shadow-primary/25" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
               {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
