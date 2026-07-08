@@ -50,6 +50,9 @@ export type WorksPage = {
   total: number;
 };
 
+export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales";
+export type SortDirection = "asc" | "desc";
+
 export type WorkDetail = {
   id: number;
   primaryCode: string;
@@ -901,9 +904,9 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all") =>
+  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc") =>
     getJSON<WorksPage>(
-      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
