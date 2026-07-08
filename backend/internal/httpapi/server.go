@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -128,7 +129,54 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
-	return withCORS(s.authMiddleware(mux))
+	apiHandler := withCORS(s.authMiddleware(mux))
+	if strings.TrimSpace(s.cfg.StaticDir) == "" {
+		return apiHandler
+	}
+	return s.staticAppHandler(apiHandler)
+}
+
+func (s *Server) staticAppHandler(apiHandler http.Handler) http.Handler {
+	staticRoot := strings.TrimSpace(s.cfg.StaticDir)
+	indexPath := filepath.Join(staticRoot, "index.html")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/api/") {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+
+		requestPath := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
+		relPath := strings.TrimPrefix(requestPath, "/")
+		candidate, err := safeStaticPath(staticRoot, relPath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			http.ServeFile(w, r, candidate)
+			return
+		}
+		http.ServeFile(w, r, indexPath)
+	})
+}
+
+func safeStaticPath(root string, relPath string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(filepath.Join(absRoot, filepath.FromSlash(relPath)))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes static root")
+	}
+	return absPath, nil
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
