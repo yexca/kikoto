@@ -16,7 +16,6 @@ import {
   CloudOff,
   Edit3,
   Trash2,
-  Eye,
   FileAudio,
   FileText,
   Filter,
@@ -56,6 +55,7 @@ import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
   api,
   assetURL,
+  mediaDownloadURL,
   type LibrarySource,
   type LibrarySort,
   type SortDirection,
@@ -1037,7 +1037,7 @@ function RemoteSourcePanel({
   };
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3 pb-28 lg:pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
@@ -1884,8 +1884,7 @@ function RemoteWorkDetailView({
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
   const [savePlanMessage, setSavePlanMessage] = useState("");
-  const [cacheDeleteTarget, setCacheDeleteTarget] = useState<MediaDeleteTarget | null>(null);
-  const [isDeletingCache, setIsDeletingCache] = useState(false);
+  const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
@@ -1991,24 +1990,6 @@ function RemoteWorkDetailView({
     }
   };
 
-  const deleteCache = async () => {
-    if (!cacheDeleteTarget) return;
-    setIsDeletingCache(true);
-    setMessage("");
-    try {
-      const result = await api.deleteMediaCacheLocation(cacheDeleteTarget.locationId);
-      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
-      setCacheDeleteTarget(null);
-      const refreshed = await api.getRemoteSourceWork(source.id, code);
-      setDetail(refreshed);
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Cache delete failed."));
-    } finally {
-      setIsDeletingCache(false);
-    }
-  };
-
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!detail || tracks.length === 0) return;
     player.playQueue(
@@ -2085,6 +2066,7 @@ function RemoteWorkDetailView({
       <SourceDirectoryPanel
         title={detail.sourceName}
         description={`Previewing remote files from ${detail.sourceName}; fetch before local marks or saves.`}
+        statsLabel={formatTreeStats(directoryStats)}
         tabs={remoteTabs}
         activeKey={remoteSourceTabKey(source.id)}
         onActiveKeyChange={() => undefined}
@@ -2111,16 +2093,7 @@ function RemoteWorkDetailView({
           />
         ) : null}
         onPlayFolder={playRemoteTracks}
-        onDeleteCache={setCacheDeleteTarget}
       />
-      {cacheDeleteTarget && (
-        <ConfirmMediaDeleteModal
-          target={cacheDeleteTarget}
-          deleting={isDeletingCache}
-          onCancel={() => setCacheDeleteTarget(null)}
-          onConfirm={() => void deleteCache()}
-        />
-      )}
     </div>
   );
 }
@@ -2152,8 +2125,6 @@ function WorkDetailView({
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [selectedLocalSavePaths, setSelectedLocalSavePaths] = useState<Set<string>>(new Set());
@@ -2179,6 +2150,7 @@ function WorkDetailView({
   const [tree, setTree] = useState<TreeNode>(() => emptyTree());
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
+  const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
   const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
@@ -2196,6 +2168,7 @@ function WorkDetailView({
     : workHasNoLinkedSource
     ? "No local, cached, tracked, or remote source is currently linked to this work."
     : "File locations are grouped by local, cache, and remote source.";
+  const sourceStatsLabel = formatTreeStats(directoryStats);
   const favoriteSelected = favoriteLists.some((list) => list.selected);
   const isDetailLoading = !work;
   const actionMode: DetailActionMode = selectedRemoteSource
@@ -2337,38 +2310,6 @@ function WorkDetailView({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
       locationId,
     );
-  };
-
-  const deleteLocal = async () => {
-    if (!deleteTarget || deleteTarget.kind !== "local") return;
-    setIsDeleting(true);
-    setMessage("");
-    try {
-      const result = await api.deleteMediaLocalLocation(deleteTarget.locationId);
-      toast.success(`Deleted local file through workflow run #${result.runId}.`);
-      setDeleteTarget(null);
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Local delete failed."));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const deleteCache = async () => {
-    if (!deleteTarget || deleteTarget.kind !== "cache") return;
-    setIsDeleting(true);
-    setMessage("");
-    try {
-      const result = await api.deleteMediaCacheLocation(deleteTarget.locationId);
-      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
-      setDeleteTarget(null);
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Cache delete failed."));
-    } finally {
-      setIsDeleting(false);
-    }
   };
 
   const planRemoteSave = async () => {
@@ -2582,6 +2523,7 @@ function WorkDetailView({
   }
 
   const hero = detailHeroModel(code, work, workPreview);
+  const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
 
   return (
     <div className="space-y-5">
@@ -2610,7 +2552,7 @@ function WorkDetailView({
         dlsiteFetchedAt={hero.dlsiteFetchedAt}
         releaseDate={hero.releaseDate ?? "Unknown"}
         ageRating={hero.ageRating}
-        durationSeconds={hero.durationSeconds}
+        durationSeconds={displayDurationSeconds}
         voiceActors={hero.voiceActors}
         voiceCredits={work?.voiceCredits ?? []}
         tags={hero.tags}
@@ -2646,6 +2588,7 @@ function WorkDetailView({
       <SourceDirectoryPanel
         title={directoryTitle}
         description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
+        statsLabel={sourceStatsLabel}
         tabs={sourceTabs}
         activeKey={activeSourceKey}
         onActiveKeyChange={changeSourceKey}
@@ -2700,18 +2643,8 @@ function WorkDetailView({
         loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
         onPreview={setPreview}
-        onDeleteCache={selectedRemoteDetail ? setDeleteTarget : undefined}
-        onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
       />
       {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
-      {deleteTarget && (
-        <ConfirmMediaDeleteModal
-          target={deleteTarget}
-          deleting={isDeleting}
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => void (deleteTarget.kind === "cache" ? deleteCache() : deleteLocal())}
-        />
-      )}
       {reforkTarget && (
         <ReforkConfirmModal
           currentName={reforkTarget.current?.source.displayName ?? "the current fork"}
@@ -3110,6 +3043,7 @@ function sourceStatusTitle(summary: SourceAvailabilitySource, known: string[]) {
 function SourceDirectoryPanel({
   title,
   description,
+  statsLabel,
   tabs,
   activeKey,
   onActiveKeyChange,
@@ -3127,11 +3061,10 @@ function SourceDirectoryPanel({
   emptyState,
   onPlayFolder,
   onPreview,
-  onDeleteCache,
-  onDeleteLocal,
 }: {
   title: string;
   description: string;
+  statsLabel?: string;
   tabs: SourceTabInfo[];
   activeKey: string;
   onActiveKeyChange: (key: string) => void;
@@ -3149,14 +3082,15 @@ function SourceDirectoryPanel({
   emptyState?: ReactNode;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3 pb-28 lg:pb-8">
       <div className="space-y-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] lg:items-end">
-          <h3 className="text-lg font-semibold">{title}</h3>
+          <div>
+            <h3 className="text-lg font-semibold">{title}</h3>
+            {statsLabel && <p className="mt-1 text-xs text-muted-foreground">{statsLabel}</p>}
+          </div>
           <p className="text-sm text-muted-foreground lg:text-right">{description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -3190,8 +3124,6 @@ function SourceDirectoryPanel({
               emptyLabel={emptyLabel}
               onPlayFolder={onPlayFolder}
               onPreview={onPreview}
-              onDeleteCache={onDeleteCache}
-              onDeleteLocal={onDeleteLocal}
             />
           ) : (
             <DirectoryTree
@@ -3200,8 +3132,6 @@ function SourceDirectoryPanel({
               emptyLabel={emptyLabel}
               onPlayFolder={onPlayFolder}
               onPreview={onPreview}
-              onDeleteCache={onDeleteCache}
-              onDeleteLocal={onDeleteLocal}
             />
           )}
         </CardContent>
@@ -3628,6 +3558,7 @@ type TreeTrack = {
   downloadUrl: string;
   assetUrl: string;
   sizeBytes: number | null;
+  durationSeconds: number | null;
   availability: string;
   cacheLocationId: number | null;
   cachePath: string;
@@ -3796,6 +3727,7 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       downloadUrl: location.downloadUrl,
       assetUrl: location.locationType === "local" ? `/api/media/${location.id}/asset` : location.downloadUrl,
       sizeBytes: location.sizeBytes,
+      durationSeconds: location.durationSeconds ?? item.durationSeconds,
       availability: location.availability,
       cacheLocationId: location.locationType === "cache" && location.availability === "available" ? location.id : null,
       cachePath: location.locationType === "cache" ? location.path : "",
@@ -3850,6 +3782,7 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         downloadUrl: node.downloadUrl,
         assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
         sizeBytes: node.sizeBytes,
+        durationSeconds: node.durationSeconds,
         availability: hasCache ? "available" : node.streamUrl || node.downloadUrl ? "remote" : "metadata",
         cacheLocationId: node.cacheLocationId,
         cachePath: node.cachePath,
@@ -3908,16 +3841,12 @@ function DirectoryTree({
   currentLocationId,
   onPlayFolder,
   onPreview,
-  onDeleteCache,
-  onDeleteLocal,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
   emptyLabel?: string;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root));
@@ -3959,8 +3888,6 @@ function DirectoryTree({
             isActive={row.file.locationId === currentLocationId}
             onPlayFolder={onPlayFolder}
             onPreview={onPreview}
-            onDeleteCache={onDeleteCache}
-            onDeleteLocal={onDeleteLocal}
           />
         ))}
       </div>
@@ -4358,16 +4285,12 @@ function DirectoryBrowser({
   currentLocationId,
   onPlayFolder,
   onPreview,
-  onDeleteCache,
-  onDeleteLocal,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
   emptyLabel?: string;
 }) {
   const [path, setPath] = useState<string[]>([]);
@@ -4429,8 +4352,6 @@ function DirectoryBrowser({
             isActive={file.locationId === currentLocationId}
             onPlayFolder={onPlayFolder}
             onPreview={onPreview}
-            onDeleteCache={onDeleteCache}
-            onDeleteLocal={onDeleteLocal}
           />
         ))}
       </div>
@@ -4450,7 +4371,8 @@ function TreeFolderRow({
   onToggle: () => void;
 }) {
   const playable = playableFiles(node.files);
-  const filesLabel = playable.length > 0 ? `${playable.length} audio` : node.files.length > 0 ? `${node.files.length} files` : "";
+  const stats = treeStats(node);
+  const filesLabel = formatFolderStats(stats, playable.length);
   return (
     <button
       className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
@@ -4476,8 +4398,6 @@ function TreeFile({
   isActive,
   onPlayFolder,
   onPreview,
-  onDeleteCache,
-  onDeleteLocal,
 }: {
   file: TreeTrack;
   files: TreeTrack[];
@@ -4485,13 +4405,12 @@ function TreeFile({
   isActive: boolean;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   const canPlay = Boolean(onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
-  const canOpen = canPlay || canPreview;
+  const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
+  const canOpen = canPlay || canPreview || canDownload;
   const openFile = () => {
     if (canPlay) {
       onPlayFolder?.(files, file.locationId);
@@ -4499,9 +4418,12 @@ function TreeFile({
     }
     if (preview) {
       onPreview?.(preview);
+      return;
+    }
+    if (canDownload) {
+      window.open(mediaDownloadURL(file.locationId), "_blank", "noopener,noreferrer");
     }
   };
-  const [confirmingDelete, setConfirmingDelete] = useState<"cache" | "local" | null>(null);
   return (
     <div
       role={canOpen ? "button" : undefined}
@@ -4523,83 +4445,9 @@ function TreeFile({
         {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
         <span className="truncate">{file.title}</span>
       </span>
-      <span className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
-        {file.localAvailable && <Badge variant="outline">Local</Badge>}
-        {file.cacheAvailable && <Badge variant="outline">Cached</Badge>}
-        {preview && onPreview && (
-          <IconButton title={preview.kind === "image" ? "Preview image" : "Preview text"} onClick={() => onPreview(preview)}>
-            <Eye className="h-4 w-4" />
-          </IconButton>
-        )}
-        {file.cacheAvailable && file.cacheLocationId !== null && onDeleteCache && (
-          <div
-            className="relative"
-            onMouseLeave={() => setConfirmingDelete(null)}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setConfirmingDelete(null);
-            }}
-          >
-            <IconButton title="Delete cache" onClick={() => setConfirmingDelete((value) => (value === "cache" ? null : "cache"))}>
-              <Trash2 className="h-4 w-4" />
-            </IconButton>
-            {confirmingDelete === "cache" && (
-              <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border bg-popover p-2 text-xs shadow-lg">
-                <div className="mb-2 text-muted-foreground">Delete cached file?</div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 w-full"
-                  onClick={() =>
-                    onDeleteCache({
-                      kind: "cache",
-                      locationId: file.cacheLocationId!,
-                      title: file.title,
-                      path: file.cachePath,
-                    })
-                  }
-                >
-                  Continue
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-        {file.localAvailable && file.localLocationId !== null && onDeleteLocal && (
-          <div
-            className="relative"
-            onMouseLeave={() => setConfirmingDelete(null)}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setConfirmingDelete(null);
-            }}
-          >
-            <IconButton title="Delete local file" onClick={() => setConfirmingDelete((value) => (value === "local" ? null : "local"))}>
-              <Trash2 className="h-4 w-4" />
-            </IconButton>
-            {confirmingDelete === "local" && (
-              <div className="absolute right-0 z-20 mt-2 w-48 rounded-md border bg-popover p-2 text-xs shadow-lg">
-                <div className="mb-2 text-muted-foreground">Delete local file?</div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 w-full"
-                  onClick={() =>
-                    onDeleteLocal({
-                      kind: "local",
-                      locationId: file.localLocationId!,
-                      title: file.title,
-                      path: file.localPath,
-                    })
-                  }
-                >
-                  Continue
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-        <span className="text-xs text-muted-foreground">
-          {formatBytes(file.sizeBytes)} · {file.availability}
-        </span>
+      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" onClick={(event) => event.stopPropagation()}>
+        {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
+        <span>{formatBytes(file.sizeBytes)}</span>
       </span>
     </div>
   );
@@ -4778,11 +4626,53 @@ function nodeAtPath(root: TreeNode, path: string[]) {
 }
 
 function folderSummary(node: TreeNode) {
-  const folderCount = node.children.size;
-  const fileCount = node.files.length;
-  if (folderCount > 0 && fileCount > 0) return `${folderCount} folders, ${fileCount} files`;
-  if (folderCount > 0) return `${folderCount} folders`;
-  return `${fileCount} files`;
+  const stats = treeStats(node);
+  return formatFolderStats(stats, playableFiles(node.files).length);
+}
+
+type TreeStats = {
+  files: number;
+  audio: number;
+  sizeBytes: number;
+  knownSizeFiles: number;
+  durationSeconds: number;
+  knownDurationAudio: number;
+};
+
+function treeStats(node: TreeNode): TreeStats {
+  const stats: TreeStats = { files: 0, audio: 0, sizeBytes: 0, knownSizeFiles: 0, durationSeconds: 0, knownDurationAudio: 0 };
+  const visit = (cursor: TreeNode) => {
+    for (const file of cursor.files) {
+      stats.files += 1;
+      if (file.kind === "audio") stats.audio += 1;
+      if (file.sizeBytes !== null && file.sizeBytes >= 0) {
+        stats.sizeBytes += file.sizeBytes;
+        stats.knownSizeFiles += 1;
+      }
+      if (file.kind === "audio" && file.durationSeconds !== null && file.durationSeconds > 0) {
+        stats.durationSeconds += file.durationSeconds;
+        stats.knownDurationAudio += 1;
+      }
+    }
+    for (const child of cursor.children.values()) visit(child);
+  };
+  visit(node);
+  return stats;
+}
+
+function formatTreeStats(stats: TreeStats) {
+  const parts = [
+    stats.audio > 0 ? `${stats.audio} audio` : stats.files > 0 ? `${stats.files} files` : "",
+    stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "",
+    stats.knownDurationAudio > 0 ? formatDuration(stats.durationSeconds) : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "";
+}
+
+function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
+  const countLabel = directPlayableCount > 0 ? `${directPlayableCount} audio` : stats.files > 0 ? `${stats.files} files` : "";
+  const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
+  return [countLabel, sizeLabel].filter(Boolean).join(" · ");
 }
 
 function naturalCompare(a: string, b: string) {
