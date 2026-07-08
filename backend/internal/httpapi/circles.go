@@ -107,15 +107,6 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			party.id,
@@ -186,14 +177,6 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
 	if err != nil {
 		writeError(w, err)
@@ -226,14 +209,6 @@ func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
-		return
-	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	if err := s.syncPartiesFromDLsiteSnapshots(r.Context()); err != nil {
@@ -275,14 +250,6 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.Rating != nil && (*payload.Rating < 0 || *payload.Rating > 5) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rating must be between 0 and 5"})
-		return
-	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
@@ -329,10 +296,6 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
-		return
-	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
@@ -400,10 +363,6 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return
 	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	providerID, err := s.metadataProviderID(r.Context(), "dlsite", "DLsite")
 	if err != nil {
 		writeError(w, err)
@@ -424,119 +383,6 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 	}
 	deleted, _ := result.RowsAffected()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
-}
-
-func (s *Server) ensureCircleSchema(ctx context.Context) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS party (
-			id INTEGER PRIMARY KEY,
-			party_type TEXT NOT NULL DEFAULT 'circle',
-			display_name TEXT NOT NULL,
-			sort_name TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_external_id (
-			id INTEGER PRIMARY KEY,
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
-			id_type TEXT NOT NULL,
-			external_id TEXT NOT NULL,
-			url TEXT NOT NULL DEFAULT '',
-			is_primary INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(provider_id, id_type, external_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_metadata_snapshot (
-			id INTEGER PRIMARY KEY,
-			party_id INTEGER REFERENCES party(id) ON DELETE SET NULL,
-			provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
-			external_id TEXT NOT NULL,
-			snapshot_json TEXT NOT NULL,
-			fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_catalog_item (
-			id INTEGER PRIMARY KEY,
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
-			primary_code TEXT NOT NULL,
-			title TEXT NOT NULL DEFAULT '',
-			release_date TEXT,
-			url TEXT NOT NULL DEFAULT '',
-			catalog_status TEXT NOT NULL DEFAULT 'imported',
-			dlsite_available INTEGER NOT NULL DEFAULT 1,
-			raw_json TEXT NOT NULL DEFAULT '{}',
-			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(party_id, provider_id, primary_code)
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_series (
-			id INTEGER PRIMARY KEY,
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
-			title_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			url TEXT NOT NULL DEFAULT '',
-			declared_works INTEGER NOT NULL DEFAULT 0,
-			raw_json TEXT NOT NULL DEFAULT '{}',
-			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(party_id, provider_id, title_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_series_work (
-			series_id INTEGER NOT NULL REFERENCES party_series(id) ON DELETE CASCADE,
-			primary_code TEXT NOT NULL,
-			position INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(series_id, primary_code)
-		)`,
-		`CREATE TABLE IF NOT EXISTS party_catalog_refresh_state (
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			provider_code TEXT NOT NULL,
-			last_success_at TEXT,
-			last_attempt_at TEXT,
-			last_mode TEXT NOT NULL DEFAULT '',
-			last_status TEXT NOT NULL DEFAULT '',
-			last_run_id INTEGER,
-			last_error TEXT NOT NULL DEFAULT '',
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(party_id, provider_code)
-		)`,
-		`CREATE TABLE IF NOT EXISTS work_party (
-			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			role TEXT NOT NULL DEFAULT 'circle',
-			provider_id INTEGER REFERENCES metadata_provider(id),
-			source TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(work_id, party_id, role)
-		)`,
-		`CREATE TABLE IF NOT EXISTS user_party_state (
-			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
-			party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
-			rating INTEGER,
-			note TEXT NOT NULL DEFAULT '',
-			favorite INTEGER NOT NULL DEFAULT 0,
-			last_viewed_at TEXT,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(user_id, party_id)
-		)`,
-	}
-	for _, statement := range statements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE party_catalog_item ADD COLUMN dlsite_available INTEGER NOT NULL DEFAULT 1"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS idx_work_party_party ON work_party(party_id, role)"); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS idx_party_series_party ON party_series(party_id, provider_id)"); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
@@ -1985,9 +1831,6 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
 	release := nullableStringFromText(normalizeDateText(remoteWork.Release))
 	if err := s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), true); err != nil {
-		return err
-	}
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

@@ -109,45 +109,5 @@ func Migrate(db *sql.DB, dir string) error {
 		}
 	}
 
-	return ensureCurrentSchema(db)
-}
-
-func ensureCurrentSchema(db *sql.DB) error {
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS workflow_event (
-			id INTEGER PRIMARY KEY,
-			workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE,
-			workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL,
-			workflow_job_id INTEGER REFERENCES workflow_job(id) ON DELETE SET NULL,
-			level TEXT NOT NULL DEFAULT 'info',
-			event_type TEXT NOT NULL,
-			message TEXT NOT NULL,
-			detail_json TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE INDEX IF NOT EXISTS idx_workflow_event_run
-			ON workflow_event(workflow_run_id, created_at, id);
-		CREATE INDEX IF NOT EXISTS idx_workflow_event_level
-			ON workflow_event(level, created_at);
-	`); err != nil {
-		return err
-	}
-	if err := addColumnIfMissing(db, "workflow_job", "locked_by", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := addColumnIfMissing(db, "workflow_job", "locked_at", "TEXT"); err != nil {
-		return err
-	}
-	if err := addColumnIfMissing(db, "workflow_job", "heartbeat_at", "TEXT"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func addColumnIfMissing(db *sql.DB, table string, column string, definition string) error {
-	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
-	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return err
-	}
 	return nil
 }

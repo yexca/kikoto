@@ -163,22 +163,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
 		return
 	}
-	if passwordHashNeedsUpgrade(passwordHash) {
-		upgradedHash, err := hashPassword(password)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if _, err := s.db.ExecContext(r.Context(), `
-			UPDATE user_password_credential
-			SET password_hash = ?,
-				updated_at = CURRENT_TIMESTAMP
-			WHERE user_id = ?
-		`, upgradedHash, userID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
 
 	sessionID, err := newSessionID()
 	if err != nil {
@@ -260,15 +244,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -2967,16 +2943,7 @@ func workCodeShard(workCode string) (string, string) {
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
-	if err := s.ensureCircleSchema(ctx); err != nil {
-		return workDetail{}, err
-	}
-	if err := s.ensureVoiceSchema(ctx); err != nil {
-		return workDetail{}, err
-	}
 	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
-		return workDetail{}, err
-	}
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
 		return workDetail{}, err
 	}
 	var work workDetail
@@ -4141,9 +4108,6 @@ func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID
 }
 
 func (s *Server) localWorkCodesNeedingRemoteAvailability(ctx context.Context, sourceID int64, staleAfter time.Duration, limit int) ([]string, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return nil, err
-	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -4388,9 +4352,6 @@ type localScanResult struct {
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return localScanResult{}, err
-	}
 	scanDepth := s.configuredLocalScanDepth(ctx)
 
 	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
@@ -5253,11 +5214,6 @@ func (s *Server) coverURL(primaryCode string) string {
 		if _, err := os.Stat(path); err == nil {
 			return "/api/assets/covers/" + file
 		}
-		legacyFile := code + extension
-		legacyPath := filepath.Join(s.cfg.CacheRoot, "cover", legacyFile)
-		if _, err := os.Stat(legacyPath); err == nil {
-			return "/api/assets/covers/" + legacyFile
-		}
 	}
 	return ""
 }
@@ -5282,9 +5238,6 @@ func coverAssetRelativePath(code string, extension string) string {
 }
 
 func (s *Server) manualCoverURL(primaryCode string) string {
-	if err := s.ensureWorkManualOverrideSchema(context.Background()); err != nil {
-		return ""
-	}
 	var assetPath string
 	if err := s.db.QueryRowContext(context.Background(), `
 		SELECT override.asset_path
