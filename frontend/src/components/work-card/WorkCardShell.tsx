@@ -248,7 +248,7 @@ export function WorkCardActionButton({
 }) {
   return (
     <Button
-      variant="ghost"
+      variant={showLabel ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
       className={showLabel ? "h-8" : "h-8 w-8"}
       title={title}
