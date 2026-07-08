@@ -65,6 +65,7 @@ const fallbackNodeTypes: WorkflowNodeType[] = [
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
+const activityViews: ActivityView[] = ["running", "review", "failed", "completed", "logs"];
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -130,7 +131,7 @@ export function WorkflowsPage({
   canSyncMetadata: boolean;
 }) {
   const [workflowView, setWorkflowView] = useState<WorkflowView>("definitions");
-  const [activityView, setActivityView] = useState<ActivityView>("running");
+  const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [runDetailView, setRunDetailView] = useState<RunDetailView>("overview");
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
@@ -178,6 +179,23 @@ export function WorkflowsPage({
   useEffect(() => {
     refreshRuns(runPage, activityView, runQuery);
   }, [activityView, runPage]);
+
+  useEffect(() => {
+    if (surface !== "activity") return;
+    const syncView = () => {
+      const next = activityViewFromLocation();
+      setActivityView(next);
+      setRunPage(1);
+      setSelectedRunID(null);
+      setRunDetailView(next === "logs" ? "logs" : next === "review" ? "items" : "overview");
+    };
+    window.addEventListener("popstate", syncView);
+    window.addEventListener("kikoto:navigation", syncView);
+    return () => {
+      window.removeEventListener("popstate", syncView);
+      window.removeEventListener("kikoto:navigation", syncView);
+    };
+  }, [surface]);
 
   const userDefinitions = definitions.filter((definition) => definition.scope === "user");
   const systemDefinitions = definitions.filter((definition) => definition.scope === "system");
@@ -378,19 +396,19 @@ export function WorkflowsPage({
       ) : (
         <>
           <SegmentedNav>
-            <ViewButton active={activityView === "running"} onClick={() => switchActivityView("running", setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<Activity className="h-4 w-4" />}>
+            <ViewButton active={activityView === "running"} onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<Activity className="h-4 w-4" />}>
               Running
             </ViewButton>
-            <ViewButton active={activityView === "review"} onClick={() => switchActivityView("review", setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileJson className="h-4 w-4" />}>
+            <ViewButton active={activityView === "review"} onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileJson className="h-4 w-4" />}>
               Review
             </ViewButton>
-            <ViewButton active={activityView === "failed"} onClick={() => switchActivityView("failed", setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<AlertCircle className="h-4 w-4" />}>
+            <ViewButton active={activityView === "failed"} onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<AlertCircle className="h-4 w-4" />}>
               Failed
             </ViewButton>
-            <ViewButton active={activityView === "completed"} onClick={() => switchActivityView("completed", setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<ListChecks className="h-4 w-4" />}>
+            <ViewButton active={activityView === "completed"} onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<ListChecks className="h-4 w-4" />}>
               Completed
             </ViewButton>
-            <ViewButton active={activityView === "logs"} onClick={() => switchActivityView("logs", setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileText className="h-4 w-4" />}>
+            <ViewButton active={activityView === "logs"} onClick={() => switchActivityView("logs", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileText className="h-4 w-4" />}>
               Logs
             </ViewButton>
           </SegmentedNav>
@@ -1903,15 +1921,25 @@ function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
 
 function switchActivityView(
   view: ActivityView,
+  surface: Surface,
   setActivityView: (view: ActivityView) => void,
   setRunPage: (page: number) => void,
   setSelectedRunID: (id: number | null) => void,
   setRunDetailView: (view: RunDetailView) => void,
 ) {
+  if (surface === "activity") {
+    const path = view === "running" ? "/activity" : `/activity?view=${encodeURIComponent(view)}`;
+    window.history.pushState({}, "", path);
+  }
   setActivityView(view);
   setRunPage(1);
   setSelectedRunID(null);
   setRunDetailView(view === "logs" ? "logs" : view === "review" ? "items" : "overview");
+}
+
+function activityViewFromLocation(): ActivityView {
+  const value = new URLSearchParams(window.location.search).get("view");
+  return activityViews.includes(value as ActivityView) ? value as ActivityView : "running";
 }
 
 function reviewCount(run: WorkflowRun) {

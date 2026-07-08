@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Search, Shield } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { navItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { LibraryPage } from "@/pages/LibraryPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { WorkflowsPage } from "@/pages/WorkflowsPage";
@@ -15,6 +14,8 @@ import { CreatorWorksPage } from "@/pages/CreatorWorksPage";
 import { CirclesPage } from "@/pages/CirclesPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
+import { HeaderActions } from "@/app/HeaderActions";
+import { CommandPalette } from "@/app/CommandPalette";
 
 const mobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
@@ -32,6 +33,7 @@ function AuthenticatedApp() {
   const auth = useAuth();
   const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
     [auth],
@@ -52,9 +54,13 @@ function AuthenticatedApp() {
   const openPage = (id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
-    window.history.pushState({}, "", item.path);
+    openPath(item.path);
+  };
+
+  const openPath = (path: string, state?: unknown) => {
+    window.history.pushState(state ?? {}, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
-    setPage(id);
+    setPage(pageFromPath(new URL(path, window.location.origin).pathname));
   };
 
   const toggleSidebar = () => {
@@ -64,6 +70,17 @@ function AuthenticatedApp() {
       return next;
     });
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
@@ -126,27 +143,14 @@ function AuthenticatedApp() {
                 <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">{activeItem?.label ?? "Library"}</h1>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="hidden items-center gap-1 sm:inline-flex">
-                  <Shield className="h-3 w-3" />
-                  {auth.user.role}
-                  {auth.user.devMode ? " dev" : ""}
-                </Badge>
-                <Button variant="outline" size="icon" aria-label="Search">
-                  <Search className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" aria-label="Job activity">
-                  <Bell className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" aria-label="Theme">
-                  <Moon className="h-4 w-4" />
-                </Button>
-                {!auth.user.devMode && (
-                  <Button variant="outline" size="icon" aria-label="Sign out" onClick={() => void auth.logout()}>
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+              <HeaderActions
+                user={auth.user}
+                hasPermission={auth.hasPermission}
+                onLogout={() => void auth.logout()}
+                onOpenPage={openPage}
+                onOpenPath={openPath}
+                onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+              />
             </div>
           </header>
 
@@ -187,6 +191,13 @@ function AuthenticatedApp() {
           </nav>
         </footer>
         <PlayerDock />
+        <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          hasPermission={auth.hasPermission}
+          onOpenPage={openPage}
+          onOpenPath={openPath}
+        />
       </div>
     </PlayerProvider>
   );
