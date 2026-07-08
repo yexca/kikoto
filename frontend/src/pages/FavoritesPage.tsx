@@ -17,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,9 +77,12 @@ export function FavoritesPage() {
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
   const [activeList, setActiveList] = useState<"all" | number>("all");
-  const [listWorkIDs, setListWorkIDs] = useState<Record<number, number[]>>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(24);
+  const [totalWorks, setTotalWorks] = useState(0);
+  const [shelfTotal, setShelfTotal] = useState(0);
+  const [listCounts, setListCounts] = useState<Record<string, number>>({});
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -89,32 +92,16 @@ export function FavoritesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
-  const [areListCountsLoading, setAreListCountsLoading] = useState(true);
+  const requestSeq = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setAreListCountsLoading(true);
-    api.listWorks()
-      .then((workItems) => {
-        if (cancelled) return;
-        setWorks(workItems);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setWorks([]);
-        toast.notify(toastFromError(error, "Favorites could not be loaded."));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
     api.listFavoriteLists()
       .then((lists) => {
         if (!cancelled) setFavoriteLists(lists);
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
-        if (!cancelled) setAreListCountsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -122,82 +109,43 @@ export function FavoritesPage() {
   }, []);
 
   useEffect(() => {
+    const seq = ++requestSeq.current;
+    setIsLoading(true);
+    api.listFavoriteWorksPage(page, pageSize, query, activeList, statusFilter, availabilityFilter)
+      .then((result) => {
+        if (seq !== requestSeq.current) return;
+        setWorks(result.works);
+        setTotalWorks(result.total);
+        setShelfTotal(result.shelfTotal);
+        setListCounts(result.listCounts);
+        setStatusCounts(result.statusCounts);
+      })
+      .catch((error) => {
+        if (seq !== requestSeq.current) return;
+        setWorks([]);
+        setTotalWorks(0);
+        toast.notify(toastFromError(error, "Favorites could not be loaded."));
+      })
+      .finally(() => {
+        if (seq === requestSeq.current) setIsLoading(false);
+      });
+  }, [activeList, availabilityFilter, page, pageSize, query, statusFilter]);
+
+  useEffect(() => {
     setPage(1);
   }, [query, statusFilter, availabilityFilter, activeList, pageSize]);
 
   useEffect(() => {
-    if (activeList === "all" || listWorkIDs[activeList]) return;
-    let cancelled = false;
-    api.listFavoriteListWorkIDs(activeList)
-      .then((result) => {
-        if (!cancelled) setListWorkIDs((items) => ({ ...items, [result.listId]: result.workIds }));
-      })
-      .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "Favorite list could not be loaded."));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeList, listWorkIDs]);
+    setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => works.some((work) => work.id === id))));
+  }, [works]);
 
-  useEffect(() => {
-    const unloadedLists = favoriteLists.filter((list) => !listWorkIDs[list.id]);
-    if (unloadedLists.length === 0) return;
-    let cancelled = false;
-    setAreListCountsLoading(true);
-    Promise.all(unloadedLists.map((list) => api.listFavoriteListWorkIDs(list.id)))
-      .then((results) => {
-        if (cancelled) return;
-        setListWorkIDs((items) => ({
-          ...items,
-          ...Object.fromEntries(results.map((result) => [result.listId, result.workIds])),
-        }));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setAreListCountsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [favoriteLists, listWorkIDs]);
-
-  const shelfWorks = useMemo(() => works.filter((work) => work.favorite || work.listeningStatus !== "none" || Boolean(work.progress.mediaItemId)), [works]);
-  const favoriteWorks = useMemo(() => works.filter((work) => work.favorite), [works]);
-  const statusCounts = useMemo(() => countByStatus(shelfWorks), [shelfWorks]);
-  const listCounts = useMemo(() => estimateListCounts(favoriteLists, favoriteWorks.length, listWorkIDs), [favoriteLists, favoriteWorks.length, listWorkIDs]);
-
-  const filteredWorks = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const activeListIDs = activeList === "all" ? null : new Set(listWorkIDs[activeList] ?? []);
-    return shelfWorks.filter((work) => {
-      if (activeListIDs && !activeListIDs.has(work.id)) return false;
-      if (statusFilter !== "all" && work.listeningStatus !== statusFilter) return false;
-      if (availabilityFilter !== "all" && !hasAvailability(work, availabilityFilter)) return false;
-      if (!normalizedQuery) return true;
-      const haystack = [
-        work.primaryCode,
-        work.title,
-        work.circle,
-        ...work.tags,
-        ...work.voiceActors,
-      ].join(" ").toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [activeList, availabilityFilter, listWorkIDs, query, shelfWorks, statusFilter]);
-
-  useEffect(() => {
-    setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => filteredWorks.some((work) => work.id === id))));
-  }, [filteredWorks]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredWorks.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const pagedWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const hasActiveFilters = query.trim() || statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all";
   const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
-  const selectedWorks = filteredWorks.filter((work) => selectedWorkIDs.has(work.id));
-  const allPagedWorksSelected = pagedWorks.length > 0 && pagedWorks.every((work) => selectedWorkIDs.has(work.id));
+  const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
+  const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
 
   const openWork = (work: Work) => {
     window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites" }, "", `/${work.primaryCode}`);
@@ -219,8 +167,12 @@ export function FavoritesPage() {
   const reloadFavoriteLists = async () => {
     const lists = await api.listFavoriteLists();
     setFavoriteLists(lists);
-    const results = await Promise.all(lists.map((list) => api.listFavoriteListWorkIDs(list.id)));
-    setListWorkIDs(Object.fromEntries(results.map((result) => [result.listId, result.workIds])));
+    const result = await api.listFavoriteWorksPage(currentPage, pageSize, query, activeList, statusFilter, availabilityFilter);
+    setWorks(result.works);
+    setTotalWorks(result.total);
+    setShelfTotal(result.shelfTotal);
+    setListCounts(result.listCounts);
+    setStatusCounts(result.statusCounts);
     return lists;
   };
 
@@ -244,7 +196,6 @@ export function FavoritesPage() {
     await api.deleteFavoriteList(deleteListTarget.id);
     setDeleteListTarget(null);
     setActiveList("all");
-    setWorks(await api.listWorks());
     await reloadFavoriteLists();
     toast.success("Favorite list deleted.");
   };
@@ -275,7 +226,7 @@ export function FavoritesPage() {
   const togglePagedSelection = (selected: boolean) => {
     setSelectedWorkIDs((ids) => {
       const next = new Set(ids);
-      for (const work of pagedWorks) {
+      for (const work of works) {
         if (selected) next.add(work.id);
         else next.delete(work.id);
       }
@@ -291,7 +242,6 @@ export function FavoritesPage() {
       for (const work of targetWorks) {
         await api.setWorkFavoriteLists(work.id, targetListIDs);
       }
-      setWorks(await api.listWorks());
       await reloadFavoriteLists();
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
@@ -346,9 +296,9 @@ export function FavoritesPage() {
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         {isLoading ? <FavoriteMetricSkeletons /> : (
           <>
-            <MetricCard label="Shelf Works" value={shelfWorks.length} icon={Heart} />
+            <MetricCard label="Shelf Works" value={shelfTotal} icon={Heart} />
             {statusTabs.slice(1).map((tab) => (
-              <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value as ListeningStatus] ?? 0} icon={tab.icon} />
+              <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value] ?? 0} icon={tab.icon} />
             ))}
           </>
         )}
@@ -361,7 +311,7 @@ export function FavoritesPage() {
         >
           <ListMusic className="h-4 w-4" />
           All Shelf
-          <span className="text-xs opacity-80">{shelfWorks.length}</span>
+          <span className="text-xs opacity-80">{shelfTotal}</span>
         </button>}
         {favoriteLists.map((list) => (
           <button
@@ -372,7 +322,7 @@ export function FavoritesPage() {
           >
             <ListMusic className="h-4 w-4" />
             <span className="max-w-48 truncate">{list.name}</span>
-            <span className="text-xs opacity-80">{areListCountsLoading && !listWorkIDs[list.id] ? "..." : listCounts.get(list.id) ?? 0}</span>
+            <span className="text-xs opacity-80">{listCounts[String(list.id)] ?? 0}</span>
           </button>
         ))}
         <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")} disabled={isLoading}>
@@ -422,7 +372,7 @@ export function FavoritesPage() {
       <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Filter className="h-4 w-4" />
-          Showing {filteredWorks.length} of {shelfWorks.length} shelf works
+          Showing {totalWorks} of {shelfTotal} shelf works
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
@@ -460,7 +410,7 @@ export function FavoritesPage() {
             <input
               type="checkbox"
               checked={allPagedWorksSelected}
-              disabled={pagedWorks.length === 0}
+              disabled={works.length === 0}
               onChange={(event) => togglePagedSelection(event.target.checked)}
             />
             {selectedWorks.length} selected
@@ -494,10 +444,10 @@ export function FavoritesPage() {
 
       {isLoading ? (
         <FavoriteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
-      ) : pagedWorks.length > 0 ? (
+      ) : works.length > 0 ? (
         <>
           <div className={workGridClassName(mobileColumns, desktopColumns)}>
-            {pagedWorks.map((work) => (
+            {works.map((work) => (
               <FavoriteWorkCard
                 key={work.id}
                 work={work}
@@ -507,7 +457,6 @@ export function FavoritesPage() {
                 favoriteLists={favoriteLists}
                 isListSaving={isBulkUpdating}
                 onListsChanged={async () => {
-                  setWorks(await api.listWorks());
                   await reloadFavoriteLists();
                   toast.success(`Updated list membership for ${work.primaryCode}.`);
                 }}
@@ -520,7 +469,7 @@ export function FavoritesPage() {
             <Pagination
               page={currentPage}
               totalPages={totalPages}
-              totalItems={filteredWorks.length}
+              totalItems={totalWorks}
               onPageChange={setPage}
             />
           )}
@@ -989,34 +938,6 @@ function ListMembershipPopover({
 
 function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
-}
-
-function countByStatus(works: Work[]) {
-  const counts: Record<ListeningStatus, number> = {
-    none: 0,
-    want_to_listen: 0,
-    listening: 0,
-    finished: 0,
-    relisten: 0,
-    paused: 0,
-  };
-  for (const work of works) counts[work.listeningStatus] += 1;
-  return counts;
-}
-
-function hasAvailability(work: Work, filter: AvailabilityFilter) {
-  if (filter === "all") return true;
-  return work.availability.some((item) => item.toLowerCase().includes(filter));
-}
-
-function estimateListCounts(lists: FavoriteList[], favoriteCount: number, listWorkIDs: Record<number, number[]>) {
-  const counts = new Map<number, number>();
-  if (lists.length === 1) counts.set(lists[0].id, favoriteCount);
-  for (const list of lists) {
-    const workIDs = listWorkIDs[list.id];
-    if (workIDs) counts.set(list.id, workIDs.length);
-  }
-  return counts;
 }
 
 function formatTime(seconds: number) {

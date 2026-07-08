@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -21,6 +22,16 @@ type favoriteListResponse struct {
 	Description string `json:"description"`
 	SortOrder   int64  `json:"sortOrder"`
 	Selected    bool   `json:"selected,omitempty"`
+}
+
+type favoriteWorksResponse struct {
+	Works        []libraryWorkSummary `json:"works"`
+	Page         int                  `json:"page"`
+	PageSize     int                  `json:"pageSize"`
+	Total        int                  `json:"total"`
+	ShelfTotal   int                  `json:"shelfTotal"`
+	ListCounts   map[int64]int        `json:"listCounts"`
+	StatusCounts map[string]int       `json:"statusCounts"`
 }
 
 func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +124,205 @@ func (s *Server) listFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, lists)
+}
+
+func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
+	page := queryInt(r, "page", 1)
+	pageSize := queryInt(r, "pageSize", 24)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 24
+	}
+	listID := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("listId")); raw != "" && raw != "all" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || parsed <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list id"})
+			return
+		}
+		listID = parsed
+	}
+	where, args := favoriteWorksWhere(
+		strings.TrimSpace(r.URL.Query().Get("status")),
+		strings.TrimSpace(r.URL.Query().Get("availability")),
+		strings.TrimSpace(r.URL.Query().Get("q")),
+		user.ID,
+		listID,
+	)
+	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
+	countArgs := append([]any{user.ID}, args...)
+	var total int
+	if err := s.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
+		writeError(w, err)
+		return
+	}
+	shelfWhere, shelfArgs := favoriteWorksWhere("all", "all", "", user.ID, 0)
+	shelfCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + shelfWhere
+	shelfCountArgs := append([]any{user.ID}, shelfArgs...)
+	var shelfTotal int
+	if err := s.db.QueryRowContext(r.Context(), shelfCountQuery, shelfCountArgs...).Scan(&shelfTotal); err != nil {
+		writeError(w, err)
+		return
+	}
+	offset := (page - 1) * pageSize
+	query := libraryListSelectSQL(where, "recent", "desc") + " LIMIT ? OFFSET ?"
+	queryArgs := append([]any{user.ID}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
+	rows, err := s.db.QueryContext(r.Context(), query, queryArgs...)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer rows.Close()
+	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	listCounts, err := s.loadFavoriteListCounts(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	statusCounts, err := s.loadFavoriteStatusCounts(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, favoriteWorksResponse{
+		Works: works, Page: page, PageSize: pageSize, Total: total, ShelfTotal: shelfTotal, ListCounts: listCounts, StatusCounts: statusCounts,
+	})
+}
+
+func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64) (string, []any) {
+	clauses := []string{`(
+		COALESCE(user_work_state.favorite, 0) = 1
+		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
+		OR EXISTS (
+			SELECT 1
+			FROM user_media_progress AS shelf_progress
+			INNER JOIN media_item AS shelf_item ON shelf_item.id = shelf_progress.media_item_id
+			WHERE shelf_progress.user_id = ?
+				AND shelf_item.work_id = work.id
+		)
+	)`}
+	args := []any{userID}
+	if listID > 0 {
+		clauses = append(clauses, `EXISTS (
+			SELECT 1
+			FROM favorite_list_item AS selected_item
+			INNER JOIN favorite_list AS selected_list ON selected_list.id = selected_item.list_id
+			WHERE selected_item.work_id = work.id
+				AND selected_list.user_id = ?
+				AND selected_list.id = ?
+		)`)
+		args = append(args, userID, listID)
+	}
+	if status != "" && status != "all" {
+		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
+		args = append(args, status)
+	}
+	switch strings.ToLower(strings.TrimSpace(availability)) {
+	case "local":
+		clauses = append(clauses, favoriteAvailabilityExists("'local'", false))
+	case "cache":
+		clauses = append(clauses, favoriteAvailabilityExists("'cache'", false))
+	case "remote":
+		clauses = append(clauses, favoriteAvailabilityExists("'remote_stream','remote_download'", false))
+	case "missing":
+		clauses = append(clauses, favoriteAvailabilityExists("'local','cache','remote_stream','remote_download'", true))
+	}
+	searchWhere, searchArgs := librarySearchWhere(queryText)
+	if searchWhere != "" {
+		clauses = append(clauses, searchWhere)
+		args = append(args, searchArgs...)
+	}
+	clauses = append(clauses, `NOT EXISTS (
+		SELECT 1
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE edition.work_id = work.id
+			AND logical.canonical_work_id IS NOT NULL
+			AND logical.canonical_work_id <> work.id
+			AND edition.is_canonical = 0
+	)`)
+	return strings.Join(clauses, " AND "), args
+}
+
+func favoriteAvailabilityExists(locationTypes string, negated bool) string {
+	prefix := "EXISTS"
+	if negated {
+		prefix = "NOT EXISTS"
+	}
+	return prefix + ` (
+		SELECT 1
+		FROM media_file_location AS favorite_location
+		INNER JOIN media_item AS favorite_item ON favorite_item.id = favorite_location.media_item_id
+		WHERE favorite_item.work_id = work.id
+			AND favorite_location.availability = 'available'
+			AND favorite_location.location_type IN (` + locationTypes + `)
+	)`
+}
+
+func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT list.id, COUNT(item.work_id)
+		FROM favorite_list AS list
+		LEFT JOIN favorite_list_item AS item ON item.list_id = list.id
+		WHERE list.user_id = ?
+		GROUP BY list.id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[int64]int{}
+	for rows.Next() {
+		var listID int64
+		var count int
+		if err := rows.Scan(&listID, &count); err != nil {
+			return nil, err
+		}
+		counts[listID] = count
+	}
+	return counts, rows.Err()
+}
+
+func (s *Server) loadFavoriteStatusCounts(ctx context.Context, userID int64) (map[string]int, error) {
+	where, args := favoriteWorksWhere("all", "all", "", userID, 0)
+	query := `
+		SELECT COALESCE(user_work_state.listening_status, 'none'), COUNT(*)
+		FROM work
+		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
+		WHERE ` + where + `
+		GROUP BY COALESCE(user_work_state.listening_status, 'none')
+	`
+	queryArgs := append([]any{userID}, args...)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, err
+		}
+		counts[status] = count
+	}
+	return counts, rows.Err()
 }
 
 func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {

@@ -52,6 +52,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
+	mux.HandleFunc("GET /api/favorite-works", s.listFavoriteWorks)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
 	mux.HandleFunc("POST /api/favorite-lists", s.createFavoriteList)
 	mux.HandleFunc("PATCH /api/favorite-lists/{id}", s.updateFavoriteList)
@@ -249,7 +250,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
-	if pagedRequest && strings.TrimSpace(r.URL.Query().Get("q")) == "" {
+	if pagedRequest {
 		s.listWorksPageFast(w, r, user.ID)
 		return
 	}
@@ -472,6 +473,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
 	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	queryText := strings.TrimSpace(r.URL.Query().Get("q"))
 	sortKey := strings.TrimSpace(r.URL.Query().Get("sort"))
 	sortDirection := strings.TrimSpace(r.URL.Query().Get("direction"))
 	page := queryInt(r, "page", 1)
@@ -482,7 +484,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 24
 	}
-	where, args := libraryListWhere(scope, status)
+	where, args := libraryListWhere(scope, status, queryText)
 	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
 	countArgs := append([]any{userID}, args...)
 	var total int
@@ -559,7 +561,7 @@ func normalizeLibrarySort(sortKey string, direction string) (string, string) {
 	return sortKey, direction
 }
 
-func libraryListWhere(scope string, status string) (string, []any) {
+func libraryListWhere(scope string, status string, queryText string) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := []any{}
 	switch scope {
@@ -626,6 +628,11 @@ func libraryListWhere(scope string, status string) (string, []any) {
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
 		args = append(args, status)
 	}
+	searchWhere, searchArgs := librarySearchWhere(queryText)
+	if searchWhere != "" {
+		clauses = append(clauses, searchWhere)
+		args = append(args, searchArgs...)
+	}
 	clauses = append(clauses, `NOT EXISTS (
 		SELECT 1
 		FROM work_edition AS edition
@@ -636,6 +643,102 @@ func libraryListWhere(scope string, status string) (string, []any) {
 			AND edition.is_canonical = 0
 	)`)
 	return strings.Join(clauses, " AND "), args
+}
+
+func librarySearchWhere(queryText string) (string, []any) {
+	tokens := parseListSearchTokens(queryText)
+	if len(tokens) == 0 {
+		return "", nil
+	}
+	clauses := []string{}
+	args := []any{}
+	for _, token := range tokens {
+		needle := strings.TrimSpace(token.Value)
+		if needle == "" {
+			continue
+		}
+		like := "%" + strings.ToLower(needle) + "%"
+		switch token.Kind {
+		case "code":
+			clauses = append(clauses, "LOWER(work.primary_code) LIKE ?")
+			args = append(args, like)
+		case "circle":
+			clauses = append(clauses, `EXISTS (
+				SELECT 1
+				FROM work_party AS search_relation
+				INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
+				LEFT JOIN party_external_id AS search_external ON search_external.party_id = search_party.id
+				WHERE search_relation.work_id = work.id
+					AND search_relation.role = 'circle'
+					AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
+			)`)
+			args = append(args, like, like)
+		case "voice_actor":
+			clauses = append(clauses, `EXISTS (
+				SELECT 1
+				FROM work_credit AS search_credit
+				INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
+				WHERE search_credit.work_id = work.id
+					AND search_credit.role = 'voice_actor'
+					AND LOWER(search_person.display_name) LIKE ?
+			)`)
+			args = append(args, like)
+		case "tag":
+			clauses = append(clauses, latestSnapshotLikeClause(false))
+			args = append(args, like)
+		case "exclude_tag":
+			clauses = append(clauses, latestSnapshotLikeClause(true))
+			args = append(args, like)
+		case "rating_min":
+			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", numericListTokenValue(needle)))
+		case "sales_min":
+			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListTokenValue(needle)))
+		default:
+			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+latestSnapshotLikeClause(false)+`)`)
+			args = append(args, like, like, like)
+		}
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return "(" + strings.Join(clauses, " AND ") + ")", args
+}
+
+func latestSnapshotLikeClause(negated bool) string {
+	operator := "LIKE"
+	if negated {
+		operator = "NOT LIKE"
+	}
+	return `(LOWER(COALESCE((
+		SELECT snapshot_json
+		FROM metadata_snapshot AS search_snapshot
+		INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id
+		WHERE search_snapshot.work_id = work.id
+			AND search_provider.code = 'dlsite'
+		ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC
+		LIMIT 1
+	), '')) ` + operator + ` ?)`
+}
+
+func latestSnapshotNumericClause(kind string, operator string, value float64) string {
+	if operator != ">=" && operator != "<=" {
+		operator = ">="
+	}
+	path := "$.product.rate_average_2dp"
+	fallback := path
+	if kind == "sales" {
+		path = "$.dynamic.dl_count"
+		fallback = "$.product.sales_count"
+	}
+	return fmt.Sprintf(`COALESCE((
+		SELECT CAST(COALESCE(json_extract(search_snapshot.snapshot_json, '%s'), json_extract(search_snapshot.snapshot_json, '%s')) AS REAL)
+		FROM metadata_snapshot AS search_snapshot
+		INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id
+		WHERE search_snapshot.work_id = work.id
+			AND search_provider.code = 'dlsite'
+		ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC
+		LIMIT 1
+	), 0) %s %g`, path, fallback, operator, value)
 }
 
 func libraryListSelectSQL(where string, sortKey string, direction string) string {
@@ -4249,10 +4352,12 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return err
 	}
 	if enabled == 0 {
-		return nil
+		return s.syncVoiceCreditsFromSnapshots(ctx)
 	}
-	_, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup")
-	return err
+	if _, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup"); err != nil {
+		return err
+	}
+	return s.syncVoiceCreditsFromSnapshots(ctx)
 }
 
 func (s *Server) ensureStartupLibraryRefreshTrigger(ctx context.Context) error {
