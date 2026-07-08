@@ -199,6 +199,7 @@ export type LibrarySource = {
 
 export type RuntimeSettings = {
   cacheEnabled: boolean;
+  directoryRoutingRules: DirectoryRoutingRule[];
 };
 
 export type AppSettings = {
@@ -212,9 +213,19 @@ export type AppSettings = {
   remoteMaxBackoffSeconds: number;
   circleAutoRefreshDays: number;
   dlsiteMetadataLanguage: string;
+  directoryRoutingRules: DirectoryRoutingRule[];
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
+};
+
+export type DirectoryRoutingRule = {
+  id: string;
+  label: string;
+  weight: number;
+  aliases: string[];
+  negativeAliases: string[];
+  enabled: boolean;
 };
 
 export type RemoteWorksResponse = {
@@ -1026,6 +1037,7 @@ export const api = {
     remoteMaxBackoffSeconds?: number;
     circleAutoRefreshDays?: number;
     dlsiteMetadataLanguage?: string;
+    directoryRoutingRules?: DirectoryRoutingRule[];
   }) =>
     patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {

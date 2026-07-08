@@ -60,6 +60,7 @@ import {
   type LibrarySort,
   type SortDirection,
   type FavoriteList,
+  type DirectoryRoutingRule,
   type ListeningStatus,
   type MediaItem,
   type RemoteTrack,
@@ -2075,6 +2076,7 @@ function RemoteWorkDetailView({
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
+        directoryRoutingRules={defaultDirectoryRoutingRules}
         currentLocationId={player.currentTrack?.locationId ?? null}
         emptyLabel="No remote files detected."
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
@@ -2148,6 +2150,7 @@ function WorkDetailView({
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
+  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
   const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
@@ -2297,6 +2300,20 @@ function WorkDetailView({
       cancelled = true;
     };
   }, [work?.id, work?.favorite]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getRuntimeSettings()
+      .then((settings) => {
+        if (!cancelled) setDirectoryRoutingRules(settings.directoryRoutingRules ?? defaultDirectoryRoutingRules);
+      })
+      .catch(() => {
+        if (!cancelled) setDirectoryRoutingRules(defaultDirectoryRoutingRules);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!work || tracks.length === 0) return;
@@ -2642,6 +2659,7 @@ function WorkDetailView({
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
+        directoryRoutingRules={directoryRoutingRules}
         currentLocationId={player.currentTrack?.locationId ?? null}
         emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
@@ -3101,6 +3119,7 @@ function SourceDirectoryPanel({
   directoryMode,
   onDirectoryModeChange,
   root,
+  directoryRoutingRules,
   currentLocationId,
   emptyLabel,
   toolbar,
@@ -3122,6 +3141,7 @@ function SourceDirectoryPanel({
   directoryMode: DirectoryMode;
   onDirectoryModeChange: (mode: DirectoryMode) => void;
   root: TreeNode;
+  directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   emptyLabel: string;
   toolbar?: ReactNode;
@@ -3135,6 +3155,7 @@ function SourceDirectoryPanel({
   const content = emptyState ? emptyState : directoryMode === "browse" ? (
     <DirectoryBrowser
       root={root}
+      directoryRoutingRules={directoryRoutingRules}
       currentLocationId={currentLocationId}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
@@ -3143,6 +3164,7 @@ function SourceDirectoryPanel({
   ) : (
     <DirectoryTree
       root={root}
+      directoryRoutingRules={directoryRoutingRules}
       currentLocationId={currentLocationId}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
@@ -3902,23 +3924,25 @@ function collapseSingleChildFolders(node: TreeNode, isRoot = false): TreeNode {
 
 function DirectoryTree({
   root,
+  directoryRoutingRules,
   currentLocationId,
   onPlayFolder,
   onPreview,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
+  directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root));
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root, directoryRoutingRules));
   const [visibleLimit, setVisibleLimit] = useState(160);
   useEffect(() => {
-    setExpandedPaths(initialExpandedTreePaths(root));
+    setExpandedPaths(initialExpandedTreePaths(root, directoryRoutingRules));
     setVisibleLimit(160);
-  }, [root]);
+  }, [root, directoryRoutingRules]);
   const rows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
   const visibleRows = rows.slice(0, visibleLimit);
   const toggleFolder = (path: string) => {
@@ -4346,26 +4370,32 @@ function ReforkConfirmModal({
 
 function DirectoryBrowser({
   root,
+  directoryRoutingRules,
   currentLocationId,
   onPlayFolder,
   onPreview,
   emptyLabel = "No local files detected.",
 }: {
   root: TreeNode;
+  directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
-  const [path, setPath] = useState<string[]>([]);
+  const [path, setPath] = useState<string[]>(() => recommendedDirectoryPath(root, directoryRoutingRules));
   const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
   const folders = sortedFolders(current);
   const files = sortedFiles(current);
   useEffect(() => {
     if (!nodeAtPath(root, path)) {
-      setPath([]);
+      setPath(recommendedDirectoryPath(root, directoryRoutingRules));
     }
-  }, [root, path]);
+  }, [root, path, directoryRoutingRules]);
+
+  useEffect(() => {
+    setPath(recommendedDirectoryPath(root, directoryRoutingRules));
+  }, [root, directoryRoutingRules]);
 
   if (folders.length === 0 && files.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
@@ -4833,6 +4863,119 @@ function folderNameHasPriority(name: string) {
   return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
 }
 
+const defaultDirectoryRoutingRules: DirectoryRoutingRule[] = [
+  {
+    id: "main",
+    label: "Main story",
+    weight: 40,
+    aliases: ["本編", "本篇", "honhen", "main"],
+    negativeAliases: ["特典", "bonus", "おまけ"],
+    enabled: true,
+  },
+  {
+    id: "with_se",
+    label: "SEあり",
+    weight: 30,
+    aliases: ["SEあり", "SE有", "SE付き", "効果音あり", "with se"],
+    negativeAliases: ["SEなし", "SE無", "効果音なし", "without se"],
+    enabled: true,
+  },
+  {
+    id: "mp3",
+    label: "mp3",
+    weight: 20,
+    aliases: ["mp3"],
+    negativeAliases: ["wav", "flac"],
+    enabled: true,
+  },
+];
+
+type DirectoryCandidate = {
+  node: TreeNode;
+  path: string[];
+  score: number;
+  audioCount: number;
+  durationSeconds: number;
+  order: number;
+};
+
+function recommendedDirectoryPath(root: TreeNode, rules: DirectoryRoutingRule[]) {
+  return recommendedDirectoryCandidate(root, rules)?.path ?? [];
+}
+
+function recommendedDirectoryCandidate(root: TreeNode, rules: DirectoryRoutingRule[]) {
+  const candidates = directoryCandidates(root, rules);
+  if (candidates.length === 0) return null;
+  return candidates.sort((left, right) =>
+    right.score - left.score
+    || right.audioCount - left.audioCount
+    || right.durationSeconds - left.durationSeconds
+    || left.path.length - right.path.length
+    || left.order - right.order,
+  )[0];
+}
+
+function directoryCandidates(root: TreeNode, rules: DirectoryRoutingRule[]) {
+  const candidates: DirectoryCandidate[] = [];
+  let order = 0;
+  const visit = (node: TreeNode, path: string[]) => {
+    const playable = playableFiles(node.files);
+    if (playable.length > 0) {
+      candidates.push({
+        node,
+        path,
+        score: scoreDirectoryCandidate(node, path, playable, rules),
+        audioCount: playable.length,
+        durationSeconds: playable.reduce((sum, file) => sum + (file.durationSeconds ?? 0), 0),
+        order,
+      });
+      order += 1;
+    }
+    for (const child of sortedFolders(node)) {
+      visit(child, [...path, child.name]);
+    }
+  };
+  visit(root, []);
+  return candidates;
+}
+
+function scoreDirectoryCandidate(node: TreeNode, path: string[], files: TreeTrack[], rules: DirectoryRoutingRule[]) {
+  const text = normalizeDirectoryMatchText([
+    ...path,
+    node.name,
+    node.path,
+    ...files.map((file) => file.title),
+    ...files.map((file) => file.baseName),
+  ].join(" / "));
+  let score = 0;
+  const enabledRules = rules.filter((rule) => rule.enabled && rule.aliases.length > 0);
+  enabledRules.forEach((rule, index) => {
+    const weight = Number.isFinite(rule.weight) ? Math.max(1, rule.weight) : Math.max(1, 40 - index * 10);
+    if (rule.aliases.some((alias) => directoryTextMatches(text, alias))) {
+      score += weight;
+    }
+    if (rule.negativeAliases.some((alias) => directoryTextMatches(text, alias))) {
+      score -= Math.ceil(weight * 0.9);
+    }
+  });
+  score += Math.min(10, files.length);
+  return score;
+}
+
+function normalizeDirectoryMatchText(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[＿_\-.\[\]()【】]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function directoryTextMatches(text: string, alias: string) {
+  const normalized = normalizeDirectoryMatchText(alias);
+  return normalized !== "" && text.includes(normalized);
+}
+
 function remoteSelectableFiles(root: TreeNode) {
   const files: TreeTrack[] = [];
   const visit = (node: TreeNode) => {
@@ -4956,8 +5099,18 @@ type VisibleTreeRow =
   | { type: "folder"; node: TreeNode; depth: number }
   | { type: "file"; file: TreeTrack; parent: TreeNode; depth: number };
 
-function initialExpandedTreePaths(root: TreeNode) {
+function initialExpandedTreePaths(root: TreeNode, rules: DirectoryRoutingRule[]) {
   const paths = new Set<string>();
+  const recommended = recommendedDirectoryCandidate(root, rules);
+  if (recommended) {
+    let cursor: TreeNode | null = root;
+    for (const part of recommended.path) {
+      cursor = cursor?.children.get(part) ?? null;
+      if (!cursor) break;
+      paths.add(cursor.path);
+    }
+    return paths;
+  }
   for (const folder of sortedFolders(root)) {
     if (folderNameHasPriority(folder.name) || folderContainsActiveAudio(folder)) {
       paths.add(folder.path);
