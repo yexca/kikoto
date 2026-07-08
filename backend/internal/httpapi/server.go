@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -4513,6 +4514,7 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 	if err != nil {
 		return localScanResult{}, err
 	}
+	probeLocalAudioDurations(ctx, workFolders)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -4594,6 +4596,9 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 				return localScanResult{}, err
 			}
 			if exists {
+				if err := refreshLocalDurationIfMissing(ctx, tx, fileSourceID, file); err != nil {
+					return localScanResult{}, err
+				}
 				skippedLocations++
 				continue
 			}
@@ -4798,6 +4803,53 @@ func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]an
 	return summaries
 }
 
+func probeLocalAudioDurations(ctx context.Context, folders []localfs.WorkFolder) {
+	for folderIndex := range folders {
+		for fileIndex := range folders[folderIndex].Files {
+			file := &folders[folderIndex].Files[fileIndex]
+			if localFileKind(file.WorkRelPath) != "audio" {
+				continue
+			}
+			duration, ok := probeAudioDurationSeconds(ctx, file.AbsPath)
+			if ok {
+				file.DurationSeconds = &duration
+			}
+		}
+	}
+}
+
+func probeAudioDurationSeconds(ctx context.Context, path string) (int64, bool) {
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(
+		probeCtx,
+		"ffprobe",
+		"-v",
+		"error",
+		"-show_entries",
+		"format=duration",
+		"-of",
+		"json",
+		path,
+	).Output()
+	if err != nil {
+		return 0, false
+	}
+	var payload struct {
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return 0, false
+	}
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(payload.Format.Duration), 64)
+	if err != nil || seconds <= 0 {
+		return 0, false
+	}
+	return int64(seconds + 0.5), true
+}
+
 func insertLocalDuplicateCandidates(ctx context.Context, tx *sql.Tx, runID int64, groups []localfs.DuplicateGroup) error {
 	for _, group := range groups {
 		if _, err := tx.ExecContext(ctx, `
@@ -4837,6 +4889,7 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 	if trackNo > 0 {
 		trackNoValue = trackNo
 	}
+	durationValue := nullableDuration(file.DurationSeconds)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_item (
 			work_id,
@@ -4847,11 +4900,11 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			size_bytes,
 			fingerprint
 		)
-		SELECT ?, ?, ?, ?, NULL, ?, ?
+		SELECT ?, ?, ?, ?, ?, ?, ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
-	`, workID, kind, file.Title, trackNoValue, file.SizeBytes, fingerprint, fingerprint); err != nil {
+	`, workID, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint, fingerprint); err != nil {
 		return 0, err
 	}
 
@@ -4860,9 +4913,10 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 		SET kind = ?,
 			title = ?,
 			track_no = ?,
+			duration_seconds = COALESCE(?, duration_seconds),
 			size_bytes = ?
 		WHERE fingerprint = ?
-	`, kind, file.Title, trackNoValue, file.SizeBytes, fingerprint); err != nil {
+	`, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint); err != nil {
 		return 0, err
 	}
 
@@ -4870,6 +4924,7 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 }
 
 func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {
+	durationValue := nullableDuration(file.DurationSeconds)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
@@ -4881,7 +4936,7 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			availability,
 			last_checked_at
 		)
-		SELECT ?, ?, 'local', ?, ?, NULL, 'available', CURRENT_TIMESTAMP
+		SELECT ?, ?, 'local', ?, ?, ?, 'available', CURRENT_TIMESTAMP
 		WHERE NOT EXISTS (
 			SELECT 1
 			FROM media_file_location
@@ -4890,20 +4945,21 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 				AND location_type = 'local'
 				AND path = ?
 		)
-	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, mediaItemID, fileSourceID, file.RelPath); err != nil {
+	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
+			duration_seconds = COALESCE(?, duration_seconds),
 			availability = 'available',
 			last_checked_at = CURRENT_TIMESTAMP
 		WHERE media_item_id = ?
 			AND file_source_id = ?
 			AND location_type = 'local'
 			AND path = ?
-	`, file.SizeBytes, mediaItemID, fileSourceID, file.RelPath); err != nil {
+	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
 
@@ -4915,6 +4971,47 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND location_type = 'local'
 			AND path = ?
 	`, mediaItemID, fileSourceID, file.RelPath)
+}
+
+func refreshLocalDurationIfMissing(ctx context.Context, tx *sql.Tx, fileSourceID int64, file localfs.LocalFile) error {
+	if file.DurationSeconds == nil {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET duration_seconds = COALESCE(duration_seconds, ?)
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+			AND path = ?
+			AND size_bytes = ?
+			AND availability = 'available'
+			AND duration_seconds IS NULL
+	`, *file.DurationSeconds, fileSourceID, file.RelPath, file.SizeBytes)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE media_item
+		SET duration_seconds = COALESCE(duration_seconds, ?)
+		WHERE id IN (
+			SELECT media_item_id
+			FROM media_file_location
+			WHERE file_source_id = ?
+				AND location_type = 'local'
+				AND path = ?
+				AND size_bytes = ?
+				AND availability = 'available'
+		)
+			AND duration_seconds IS NULL
+	`, *file.DurationSeconds, fileSourceID, file.RelPath, file.SizeBytes)
+	return err
+}
+
+func nullableDuration(value *int64) any {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	return *value
 }
 
 func localLocationExists(ctx context.Context, tx *sql.Tx, fileSourceID int64, file localfs.LocalFile) (bool, error) {
