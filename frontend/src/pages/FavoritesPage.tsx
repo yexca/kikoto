@@ -89,24 +89,32 @@ export function FavoritesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
+  const [areListCountsLoading, setAreListCountsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    Promise.all([api.listWorks(), api.listFavoriteLists()])
-      .then(([workItems, lists]) => {
+    setAreListCountsLoading(true);
+    api.listWorks()
+      .then((workItems) => {
         if (cancelled) return;
         setWorks(workItems);
-        setFavoriteLists(lists);
       })
       .catch((error) => {
         if (cancelled) return;
         setWorks([]);
-        setFavoriteLists([]);
         toast.notify(toastFromError(error, "Favorites could not be loaded."));
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
+      });
+    api.listFavoriteLists()
+      .then((lists) => {
+        if (!cancelled) setFavoriteLists(lists);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
+        if (!cancelled) setAreListCountsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -136,6 +144,7 @@ export function FavoritesPage() {
     const unloadedLists = favoriteLists.filter((list) => !listWorkIDs[list.id]);
     if (unloadedLists.length === 0) return;
     let cancelled = false;
+    setAreListCountsLoading(true);
     Promise.all(unloadedLists.map((list) => api.listFavoriteListWorkIDs(list.id)))
       .then((results) => {
         if (cancelled) return;
@@ -144,7 +153,10 @@ export function FavoritesPage() {
           ...Object.fromEntries(results.map((result) => [result.listId, result.workIds])),
         }));
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setAreListCountsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -332,21 +344,25 @@ export function FavoritesPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Shelf Works" value={shelfWorks.length} icon={Heart} />
-        {statusTabs.slice(1).map((tab) => (
-          <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value as ListeningStatus] ?? 0} icon={tab.icon} />
-        ))}
+        {isLoading ? <FavoriteMetricSkeletons /> : (
+          <>
+            <MetricCard label="Shelf Works" value={shelfWorks.length} icon={Heart} />
+            {statusTabs.slice(1).map((tab) => (
+              <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value as ListeningStatus] ?? 0} icon={tab.icon} />
+            ))}
+          </>
+        )}
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <button
+        {isLoading ? <FavoriteListTabSkeletons /> : <button
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === "all" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
           onClick={() => setActiveList("all")}
         >
           <ListMusic className="h-4 w-4" />
           All Shelf
           <span className="text-xs opacity-80">{shelfWorks.length}</span>
-        </button>
+        </button>}
         {favoriteLists.map((list) => (
           <button
             key={list.id}
@@ -356,10 +372,10 @@ export function FavoritesPage() {
           >
             <ListMusic className="h-4 w-4" />
             <span className="max-w-48 truncate">{list.name}</span>
-            <span className="text-xs opacity-80">{listCounts.get(list.id) ?? 0}</span>
+            <span className="text-xs opacity-80">{areListCountsLoading && !listWorkIDs[list.id] ? "..." : listCounts.get(list.id) ?? 0}</span>
           </button>
         ))}
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")} disabled={isLoading}>
           <Plus className="h-4 w-4" />
           New list
         </Button>
@@ -477,7 +493,7 @@ export function FavoritesPage() {
       )}
 
       {isLoading ? (
-        <div className="grid min-h-60 place-items-center rounded-lg border bg-card text-sm text-muted-foreground">Loading favorites...</div>
+        <FavoriteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
       ) : pagedWorks.length > 0 ? (
         <>
           <div className={workGridClassName(mobileColumns, desktopColumns)}>
@@ -587,6 +603,53 @@ function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
   const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
   const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
   return `grid gap-4 ${mobileClass} ${desktopClass}`;
+}
+
+function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function FavoriteMetricSkeletons() {
+  return (
+    <>
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="rounded-lg border bg-card p-3">
+          <FavoriteSkeletonLine className="h-4 w-20" />
+          <FavoriteSkeletonLine className="mt-3 h-7 w-12" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function FavoriteListTabSkeletons() {
+  return (
+    <>
+      {Array.from({ length: 4 }, (_, index) => (
+        <FavoriteSkeletonLine key={index} className="h-9 w-28 shrink-0" />
+      ))}
+    </>
+  );
+}
+
+function FavoriteWorkGridSkeleton({ mobileColumns, desktopColumns }: { mobileColumns: 1 | 2; desktopColumns: 4 | 6 | 8 }) {
+  return (
+    <div className={workGridClassName(mobileColumns, desktopColumns)}>
+      {Array.from({ length: 12 }, (_, index) => (
+        <div key={index} className="overflow-hidden rounded-lg border bg-card">
+          <FavoriteSkeletonLine className="aspect-[4/5] rounded-none" />
+          <div className="space-y-2 p-3">
+            <FavoriteSkeletonLine className="h-4 w-3/4" />
+            <FavoriteSkeletonLine className="h-3 w-1/2" />
+            <div className="flex gap-2 pt-2">
+              <FavoriteSkeletonLine className="h-6 w-16" />
+              <FavoriteSkeletonLine className="h-6 w-20" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function FavoriteWorkCard({

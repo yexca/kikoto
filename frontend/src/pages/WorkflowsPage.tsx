@@ -153,14 +153,21 @@ export function WorkflowsPage({
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
+  const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
+  const [isRunsLoading, setIsRunsLoading] = useState(true);
+  const [isRunDetailLoading, setIsRunDetailLoading] = useState(false);
 
   const refresh = () => {
-    api.listWorkflowDefinitions().then(setDefinitions).catch(() => setDefinitions([]));
-    api.listWorkflowNodeTypes().then(setNodeTypes).catch(() => setNodeTypes(fallbackNodeTypes));
-    api.listWorkflowTriggers().then(setTriggers).catch(() => setTriggers([]));
+    setIsWorkflowMetaLoading(true);
+    Promise.all([
+      api.listWorkflowDefinitions().then(setDefinitions).catch(() => setDefinitions([])),
+      api.listWorkflowNodeTypes().then(setNodeTypes).catch(() => setNodeTypes(fallbackNodeTypes)),
+      api.listWorkflowTriggers().then(setTriggers).catch(() => setTriggers([])),
+    ]).finally(() => setIsWorkflowMetaLoading(false));
   };
 
   const refreshRuns = (page = runPage, view = activityView, query = runQuery) => {
+    setIsRunsLoading(true);
     api
       .listWorkflowRuns(page, runsPage.pageSize, view, query)
       .then((next) => {
@@ -170,7 +177,8 @@ export function WorkflowsPage({
       .catch(() => {
         setRunsPage({ runs: [], page, pageSize: runsPage.pageSize, total: 0 });
         setRuns([]);
-      });
+      })
+      .finally(() => setIsRunsLoading(false));
   };
 
   useEffect(() => {
@@ -232,12 +240,19 @@ export function WorkflowsPage({
       setSelectedRun(null);
       setSelectedRunEvents([]);
       setSelectedRunCandidates([]);
+      setIsRunDetailLoading(false);
       return;
     }
     setSelectedRunID(selectedRunSummary.id);
-    api.getWorkflowRun(selectedRunSummary.id).then(setSelectedRun).catch(() => setSelectedRun(null));
-    api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents).catch(() => setSelectedRunEvents([]));
-    api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates).catch(() => setSelectedRunCandidates([]));
+    setIsRunDetailLoading(true);
+    setSelectedRun(null);
+    setSelectedRunEvents([]);
+    setSelectedRunCandidates([]);
+    Promise.all([
+      api.getWorkflowRun(selectedRunSummary.id).then(setSelectedRun).catch(() => setSelectedRun(null)),
+      api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents).catch(() => setSelectedRunEvents([])),
+      api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates).catch(() => setSelectedRunCandidates([])),
+    ]).finally(() => setIsRunDetailLoading(false));
   }, [selectedRunSummary?.id]);
 
   const runLocalScan = async () => {
@@ -369,6 +384,7 @@ export function WorkflowsPage({
                 <TriggerSidebar
                   triggers={scheduledTriggers}
                   selectedId={selectedTrigger?.id ?? null}
+                  loading={isWorkflowMetaLoading}
                   onSelect={(trigger) => setSelectedTriggerID(trigger.id)}
                   onCreate={() => setModalMode("create-trigger")}
                 />
@@ -393,6 +409,7 @@ export function WorkflowsPage({
                   selectedId={selectedDefinition?.id ?? null}
                   canCreate={workflowView === "definitions"}
                   systemMode={workflowView === "system"}
+                  loading={isWorkflowMetaLoading}
                   onSelect={(definition) => setSelectedDefinitionID(definition.id)}
                   onCreate={() => setModalMode("create-workflow")}
                 />
@@ -453,6 +470,7 @@ export function WorkflowsPage({
                 page={runsPage.page}
                 pageSize={runsPage.pageSize}
                 total={runsPage.total}
+                loading={isRunsLoading}
                 onSelect={(run) => setSelectedRunID(run.id)}
                 onPrevious={() => {
                   setSelectedRunID(null);
@@ -464,7 +482,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} loading={isRunDetailLoading && !selectedRun} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
           />
         </>
       )}
@@ -536,7 +554,11 @@ export function WorkflowsPage({
 }
 
 function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
-  return <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">{left}{right}</div>;
+	return <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">{left}{right}</div>;
+}
+
+function SkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
 function DefinitionSidebar({
@@ -544,6 +566,7 @@ function DefinitionSidebar({
   selectedId,
   canCreate,
   systemMode = false,
+  loading,
   onSelect,
   onCreate,
 }: {
@@ -551,6 +574,7 @@ function DefinitionSidebar({
   selectedId: number | null;
   canCreate: boolean;
   systemMode?: boolean;
+  loading?: boolean;
   onSelect: (definition: WorkflowDefinition) => void;
   onCreate: () => void;
 }) {
@@ -572,7 +596,9 @@ function DefinitionSidebar({
           )}
         </div>
         <div className="space-y-2">
-          {sortedDefinitions.map((definition) => {
+          {loading ? (
+            <SidebarSkeletonRows count={6} />
+          ) : sortedDefinitions.map((definition) => {
             const systemRunKinds = manuallyRunnableSystemWorkflows[definition.code] ?? [];
             const hasManualAction = systemRunKinds.length > 0;
             return (
@@ -605,7 +631,7 @@ function DefinitionSidebar({
               </button>
             );
           })}
-          {definitions.length === 0 && <EmptyPanel text="No workflows here yet." />}
+          {!loading && definitions.length === 0 && <EmptyPanel text="No workflows here yet." />}
         </div>
       </CardContent>
     </Card>
@@ -615,11 +641,13 @@ function DefinitionSidebar({
 function TriggerSidebar({
   triggers,
   selectedId,
+  loading,
   onSelect,
   onCreate,
 }: {
   triggers: WorkflowTrigger[];
   selectedId: number | null;
+  loading?: boolean;
   onSelect: (trigger: WorkflowTrigger) => void;
   onCreate: () => void;
 }) {
@@ -634,7 +662,9 @@ function TriggerSidebar({
           </Button>
         </div>
         <div className="space-y-2">
-          {triggers.map((trigger) => (
+          {loading ? (
+            <SidebarSkeletonRows count={5} />
+          ) : triggers.map((trigger) => (
             <button
               key={trigger.id}
               className={`w-full rounded-md border p-3 text-left transition-colors ${
@@ -652,7 +682,7 @@ function TriggerSidebar({
               <div className="mt-2 text-xs text-muted-foreground">{trigger.lastSuccessAt ? `Last success ${trigger.lastSuccessAt}` : "No successful run yet"}</div>
             </button>
           ))}
-          {triggers.length === 0 && <EmptyPanel text="No scheduled triggers yet." />}
+          {!loading && triggers.length === 0 && <EmptyPanel text="No scheduled triggers yet." />}
         </div>
       </CardContent>
     </Card>
@@ -699,6 +729,7 @@ function RunSidebar({
   page,
   pageSize,
   total,
+  loading,
   onSelect,
   onPrevious,
   onNext,
@@ -708,6 +739,7 @@ function RunSidebar({
   page: number;
   pageSize: number;
   total: number;
+  loading?: boolean;
   onSelect: (run: WorkflowRun) => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -735,7 +767,9 @@ function RunSidebar({
           </div>
         </div>
         <div className="divide-y rounded-md border">
-          {runs.map((run) => (
+          {loading ? (
+            <RunSidebarSkeletonRows />
+          ) : runs.map((run) => (
             <button
               key={run.id}
               className={`w-full p-3 text-left transition-colors ${
@@ -760,13 +794,58 @@ function RunSidebar({
             </button>
           ))}
         </div>
-        {runs.length === 0 && <EmptyPanel text="No runs in this view." />}
+        {!loading && runs.length === 0 && <EmptyPanel text="No runs in this view." />}
         <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
           <span>Page {page} / {totalPages}</span>
           <span>{pageSize} per page</span>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SidebarSkeletonRows({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="rounded-md border bg-card p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 space-y-2">
+              <SkeletonLine className="h-4 w-3/4" />
+              <SkeletonLine className="h-3 w-1/2" />
+            </div>
+            <SkeletonLine className="h-5 w-16" />
+          </div>
+          <div className="mt-3 flex gap-2">
+            <SkeletonLine className="h-3 w-14" />
+            <SkeletonLine className="h-3 w-16" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function RunSidebarSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <SkeletonLine className="h-4 w-4/5" />
+              <SkeletonLine className="h-3 w-2/5" />
+            </div>
+            <SkeletonLine className="h-5 w-16" />
+          </div>
+          <div className="mt-3 flex gap-3">
+            <SkeletonLine className="h-3 w-16" />
+            <SkeletonLine className="h-3 w-20" />
+            <SkeletonLine className="h-3 w-12" />
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -875,6 +954,7 @@ function RunDetail({
   candidates,
   nodeTypes,
   view,
+  loading = false,
   onViewChange,
   onCandidateUpdate,
   onRunAction,
@@ -885,13 +965,14 @@ function RunDetail({
   candidates: WorkflowCandidate[];
   nodeTypes: WorkflowNodeType[];
   view: RunDetailView;
+  loading?: boolean;
   onViewChange: (view: RunDetailView) => void;
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
   onReviewRun: () => Promise<void>;
 }) {
   if (!run) {
-    return <EmptyPanel text="Select a run to inspect execution by node." />;
+    return loading ? <RunDetailSkeleton view={view} /> : <EmptyPanel text="Select a run to inspect execution by node." />;
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
   return (
@@ -928,16 +1009,120 @@ function RunDetail({
           </ViewButton>
         </SegmentedNav>
         {view === "overview" ? (
-          <RunOverview run={run} nodeRuns={nodeRuns} />
+          loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />
         ) : view === "steps" ? (
-          nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} nodeTypes={nodeTypes} /> : <EmptyPanel text="This run has no node detail yet." />
+          loading ? <RunNodePipelineSkeleton /> : nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} nodeTypes={nodeTypes} /> : <EmptyPanel text="This run has no node detail yet." />
         ) : view === "items" ? (
-          <RunItems run={run} nodeRuns={nodeRuns} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />
+          loading ? <RunItemsSkeleton /> : <RunItems run={run} nodeRuns={nodeRuns} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />
         ) : (
-          <RunLogs run={run} nodeRuns={nodeRuns} events={events} />
+          loading ? <RunLogsSkeleton /> : <RunLogs run={run} nodeRuns={nodeRuns} events={events} />
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function RunDetailSkeleton({ view }: { view: RunDetailView }) {
+  return (
+    <Card>
+      <CardContent className="space-y-5 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <SkeletonLine className="h-6 w-56" />
+              <SkeletonLine className="h-5 w-20" />
+            </div>
+            <SkeletonLine className="h-4 w-80 max-w-full" />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <SkeletonLine className="h-8 w-28" />
+            <SkeletonLine className="h-8 w-28" />
+          </div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
+          {Array.from({ length: 4 }, (_, index) => <SkeletonLine key={index} className="h-9 w-24 shrink-0" />)}
+        </div>
+        {view === "overview" ? <RunOverviewSkeleton /> : view === "steps" ? <RunNodePipelineSkeleton /> : view === "items" ? <RunItemsSkeleton /> : <RunLogsSkeleton />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunOverviewSkeleton() {
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <div className="rounded-md border p-3">
+        <SkeletonLine className="h-4 w-28" />
+        <div className="mt-3 space-y-2">
+          <SkeletonLine className="h-3 w-full" />
+          <SkeletonLine className="h-3 w-5/6" />
+          <SkeletonLine className="h-3 w-2/3" />
+        </div>
+      </div>
+      <div className="rounded-md border p-3">
+        <SkeletonLine className="h-4 w-32" />
+        <div className="mt-3 grid gap-2">
+          {Array.from({ length: 4 }, (_, index) => <SkeletonLine key={index} className="h-3 w-full" />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RunNodePipelineSkeleton() {
+  return (
+    <div className="divide-y rounded-md border">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="grid gap-2 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <SkeletonLine className="h-4 w-44" />
+              <SkeletonLine className="h-3 w-28" />
+            </div>
+            <SkeletonLine className="h-5 w-20" />
+          </div>
+          <SkeletonLine className="h-3 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RunItemsSkeleton() {
+  return (
+    <div className="grid gap-3">
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="rounded-md border p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <SkeletonLine className="h-4 w-48" />
+              <SkeletonLine className="h-3 w-32" />
+            </div>
+            <SkeletonLine className="h-5 w-16" />
+          </div>
+          <div className="mt-3 space-y-2">
+            <SkeletonLine className="h-3 w-full" />
+            <SkeletonLine className="h-3 w-4/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RunLogsSkeleton() {
+  return (
+    <div className="divide-y rounded-md border">
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="grid gap-2 p-3">
+          <div className="flex gap-2">
+            <SkeletonLine className="h-4 w-16" />
+            <SkeletonLine className="h-4 w-24" />
+          </div>
+          <SkeletonLine className="h-3 w-4/5" />
+        </div>
+      ))}
+    </div>
   );
 }
 
