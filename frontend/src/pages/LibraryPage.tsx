@@ -1877,6 +1877,7 @@ function RemoteWorkDetailView({
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
+  const [isManageOpen, setIsManageOpen] = useState(false);
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
@@ -2055,6 +2056,7 @@ function RemoteWorkDetailView({
             onSync={() => void fetchWork("manual_track")}
             onTrack={() => void fetchWork("manual_track")}
             onFetch={() => setIsSaveSelectionOpen(true)}
+            onManage={() => setIsManageOpen(true)}
             dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
             syncLabel="Track"
             showSync={false}
@@ -2094,6 +2096,13 @@ function RemoteWorkDetailView({
         ) : null}
         onPlayFolder={playRemoteTracks}
       />
+      {isManageOpen && (
+        <DirectoryManagerModal
+          root={tree}
+          emptyLabel="No remote files detected."
+          onClose={() => setIsManageOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2124,6 +2133,7 @@ function WorkDetailView({
   const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []), [work, remoteSources]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
+  const [isManageOpen, setIsManageOpen] = useState(false);
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -2611,6 +2621,7 @@ function WorkDetailView({
             currentForkSource={currentForkSource}
             onFork={(remote) => requestForkSource(remote)}
             onFetch={selectedRemoteDetail ? () => setIsSaveSelectionOpen(true) : undefined}
+            onManage={() => setIsManageOpen(true)}
             dlsiteUrl={work.dlsiteUrl}
             syncLabel="Sync"
             showSync
@@ -2677,10 +2688,17 @@ function WorkDetailView({
         loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
         onPreview={setPreview}
-        onDeleteCache={setDeleteTarget}
-        onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
       />
       {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
+      {isManageOpen && (
+        <DirectoryManagerModal
+          root={tree}
+          emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+          onClose={() => setIsManageOpen(false)}
+          onDeleteCache={setDeleteTarget}
+          onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
+        />
+      )}
       {deleteTarget && (
         <ConfirmMediaDeleteModal
           target={deleteTarget}
@@ -3084,7 +3102,7 @@ function sourceStatusTitle(summary: SourceAvailabilitySource, known: string[]) {
   return details.join("\n");
 }
 
-type DirectoryMode = "browse" | "tree" | "manage";
+type DirectoryMode = "browse" | "tree";
 
 function SourceDirectoryPanel({
   title,
@@ -3107,8 +3125,6 @@ function SourceDirectoryPanel({
   emptyState,
   onPlayFolder,
   onPreview,
-  onDeleteCache,
-  onDeleteLocal,
 }: {
   title: string;
   description: string;
@@ -3130,8 +3146,6 @@ function SourceDirectoryPanel({
   emptyState?: ReactNode;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
-  onDeleteCache?: (target: MediaDeleteTarget) => void;
-  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   const content = emptyState ? emptyState : directoryMode === "browse" ? (
     <DirectoryBrowser
@@ -3141,20 +3155,13 @@ function SourceDirectoryPanel({
       onPlayFolder={onPlayFolder}
       onPreview={onPreview}
     />
-  ) : directoryMode === "tree" ? (
+  ) : (
     <DirectoryTree
       root={root}
       currentLocationId={currentLocationId}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
       onPreview={onPreview}
-    />
-  ) : (
-    <DirectoryManager
-      root={root}
-      emptyLabel={emptyLabel}
-      onDeleteCache={onDeleteCache}
-      onDeleteLocal={onDeleteLocal}
     />
   );
   return (
@@ -3221,16 +3228,6 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
       >
         <FolderTree className="h-3.5 w-3.5" />
         Tree
-      </button>
-      <button
-        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
-          mode === "manage" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-        }`}
-        title="Manage files"
-        onClick={() => onChange("manage")}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        Manage
       </button>
     </div>
   );
@@ -3307,6 +3304,7 @@ function DetailActionBar({
   currentForkSource,
   onFork,
   onFetch,
+  onManage,
   dlsiteUrl,
   syncLabel,
   showSync,
@@ -3330,6 +3328,7 @@ function DetailActionBar({
   currentForkSource?: RemoteSourceAvailability | null;
   onFork?: (remote: RemoteSourceAvailability) => void;
   onFetch?: () => void;
+  onManage?: () => void;
   dlsiteUrl: string;
   syncLabel: string;
   showSync?: boolean;
@@ -3352,55 +3351,59 @@ function DetailActionBar({
     <>
       {mode !== "tracked_unforked" && (
         <>
-          <Button size="icon" className="h-8 w-8" disabled={!canPlay || busy} onClick={onPlay} title="Play" aria-label="Play">
+          <Button size="sm" className="h-8" disabled={!canPlay || busy} onClick={onPlay}>
             <Play className="h-4 w-4" />
+            Play
           </Button>
           {onResume && (
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onResume} title="Resume" aria-label="Resume">
+            <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onResume}>
               <Clock3 className="h-4 w-4" />
+              Resume
             </Button>
           )}
-          <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} onChange={onMark} />
+          <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel onChange={onMark} />
           <WorkCardListButton
             workId={listWorkId}
             active={favorite}
             disabled={busy}
+            showLabel
             ensureWorkId={onEnsureListWork}
             onSaved={onListSaved}
           />
         </>
       )}
       {mode === "local" && showSync && onSync && (
-        <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onSync} title={syncLabel} aria-label={syncLabel}>
+        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onSync}>
           <RefreshCw className="h-4 w-4" />
+          {syncLabel}
         </Button>
       )}
       {mode === "remote_source" && onTrack && (
         <Button
           variant="outline"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
+          className="h-8"
           disabled={busy || trackDisabled}
           onClick={onTrack}
           title={trackDisabled ? "Already tracked" : "Track remote work"}
-          aria-label={trackDisabled ? "Already tracked" : "Track remote work"}
         >
           <GitBranchPlus className="h-4 w-4" />
+          Track
         </Button>
       )}
       {(mode === "tracked_forked" || mode === "remote_source") && onFork && (
         <div className="relative" ref={forkMenuRef}>
           <Button
             variant="outline"
-            size="icon"
-            className="relative h-8 w-8"
+            size="sm"
+            className="relative h-8 pr-7"
             disabled={busy || forkSources.length === 0}
             onClick={() => setForkMenuOpen((open) => !open)}
             title={mode === "tracked_forked" ? "Switch fork source" : "Fork remote source"}
-            aria-label={mode === "tracked_forked" ? "Switch fork source" : "Fork remote source"}
           >
             <GitBranchPlus className="h-4 w-4" />
-            {forkSources.length > 0 && <ChevronDown className="absolute bottom-0.5 right-0.5 h-3 w-3" />}
+            {mode === "tracked_forked" ? "Switch fork" : "Fork"}
+            {forkSources.length > 0 && <ChevronDown className="absolute right-2 h-3 w-3" />}
           </Button>
           {forkMenuOpen && (
             <div className="absolute right-0 z-30 mt-2 w-60 rounded-md border bg-popover p-1 text-sm shadow-lg">
@@ -3425,14 +3428,22 @@ function DetailActionBar({
         </div>
       )}
       {showFetch && onFetch && (
-        <Button variant="outline" size="icon" className="h-8 w-8" disabled={busy} onClick={onFetch} title="Fetch remote files" aria-label="Fetch remote files">
+        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onFetch}>
           <HardDriveDownload className="h-4 w-4" />
+          Fetch
+        </Button>
+      )}
+      {onManage && (
+        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onManage}>
+          <Trash2 className="h-4 w-4" />
+          Manage
         </Button>
       )}
       {dlsiteUrl && (
-        <Button variant="outline" size="icon" className="h-8 w-8" asChild title="Open DLsite">
-          <a href={dlsiteUrl} target="_blank" rel="noreferrer" aria-label="Open DLsite">
+        <Button variant="outline" size="sm" className="h-8" asChild>
+          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
             <ExternalLink className="h-4 w-4" />
+            DLsite
           </a>
         </Button>
       )}
@@ -4479,6 +4490,7 @@ function TreeFile({
   const canPreview = Boolean(preview && onPreview);
   const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
   const canOpen = canPlay || canPreview || canDownload;
+  const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes)].filter(Boolean).join(" · ");
   const openFile = () => {
     if (canPlay) {
       onPlayFolder?.(files, file.locationId);
@@ -4515,8 +4527,46 @@ function TreeFile({
       </span>
       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" onClick={(event) => event.stopPropagation()}>
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
-        <span>{formatBytes(file.sizeBytes)}</span>
+        <span>{fileMeta}</span>
       </span>
+    </div>
+  );
+}
+
+function DirectoryManagerModal({
+  root,
+  emptyLabel,
+  onClose,
+  onDeleteCache,
+  onDeleteLocal,
+}: {
+  root: TreeNode;
+  emptyLabel: string;
+  onClose: () => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
+      <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
+          <div>
+            <h3 className="text-base font-semibold">Manage files</h3>
+            <p className="text-xs text-muted-foreground">Review file operations in the same folder structure as the directory tree.</p>
+          </div>
+          <IconButton title="Close" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-card p-3">
+          <DirectoryManager
+            root={root}
+            emptyLabel={emptyLabel}
+            onDeleteCache={onDeleteCache}
+            onDeleteLocal={onDeleteLocal}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -4532,42 +4582,100 @@ function DirectoryManager({
   onDeleteCache?: (target: MediaDeleteTarget) => void;
   onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
-  const files = useMemo(() => sortedFilesDeep(root), [root]);
-  if (files.length === 0) {
+  const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
+  if (!hasFiles) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
   }
   return (
-    <div className="space-y-2">
-      <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        File operations are isolated here so the directory browser stays focused on reading and playback.
-      </div>
-      <div className="space-y-1">
-        {files.map((file) => (
+    <div className="space-y-1">
+      <DirectoryManagerNode
+        node={root}
+        depth={0}
+        onDeleteCache={onDeleteCache}
+        onDeleteLocal={onDeleteLocal}
+        isRoot
+      />
+    </div>
+  );
+}
+
+function DirectoryManagerNode({
+  node,
+  depth,
+  isRoot,
+  onDeleteCache,
+  onDeleteLocal,
+}: {
+  node: TreeNode;
+  depth: number;
+  isRoot?: boolean;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+}) {
+  const [open, setOpen] = useState(isRoot);
+  const folders = sortedFolders(node);
+  const files = sortedFiles(node);
+  const stats = treeStats(node);
+  const hasChildren = folders.length > 0 || files.length > 0;
+  return (
+    <div className="space-y-1">
+      {!isRoot && (
+        <button
+          className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
+          style={{ paddingLeft: depth * 14 + 8 }}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          <Folder className="h-4 w-4 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{formatFolderStats(stats, playableFiles(node.files).length)}</span>
+        </button>
+      )}
+      {(isRoot || open) && hasChildren && (
+        <>
+          {folders.map((folder) => (
+            <DirectoryManagerNode
+              key={folder.path || folder.name}
+              node={folder}
+              depth={isRoot ? 0 : depth + 1}
+              onDeleteCache={onDeleteCache}
+              onDeleteLocal={onDeleteLocal}
+            />
+          ))}
+          {files.map((file) => (
           <ManagedFileRow
             key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
             file={file}
+            depth={isRoot ? 0 : depth + 1}
             onDeleteCache={onDeleteCache}
             onDeleteLocal={onDeleteLocal}
           />
-        ))}
-      </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
 
 function ManagedFileRow({
   file,
+  depth,
   onDeleteCache,
   onDeleteLocal,
 }: {
   file: TreeTrack;
+  depth: number;
   onDeleteCache?: (target: MediaDeleteTarget) => void;
   onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
   const canDeleteCache = file.cacheAvailable && file.cacheLocationId !== null && Boolean(onDeleteCache);
   const canDeleteLocal = file.localAvailable && file.localLocationId !== null && Boolean(onDeleteLocal);
+  const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
   return (
-    <div className="grid min-h-11 gap-2 rounded-md border bg-background px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div
+      className="grid min-h-10 gap-2 rounded-md border bg-background px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+      style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
+    >
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {fileIcon(file)}
@@ -4575,8 +4683,7 @@ function ManagedFileRow({
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="max-w-full truncate">{file.sourcePath}</span>
-          <span>{file.locationType}</span>
-          <span>{formatBytes(file.sizeBytes)}</span>
+          <span>{fileMeta}</span>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 md:justify-end">

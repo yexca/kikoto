@@ -234,17 +234,30 @@ export function WorkCardFooter({ left, right }: { left?: ReactNode; right?: Reac
 export function WorkCardActionButton({
   title,
   disabled,
+  showLabel = false,
+  label,
   children,
   onClick,
 }: {
   title: string;
   disabled?: boolean;
+  showLabel?: boolean;
+  label?: string;
   children: ReactNode;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <Button variant="ghost" size="icon" className="h-8 w-8" title={title} aria-label={title} disabled={disabled} onClick={onClick}>
+    <Button
+      variant="ghost"
+      size={showLabel ? "sm" : "icon"}
+      className={showLabel ? "h-8" : "h-8 w-8"}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
+      {showLabel && <span>{label ?? title}</span>}
     </Button>
   );
 }
@@ -252,10 +265,12 @@ export function WorkCardActionButton({
 export function WorkCardQuickMarkButton({
   value,
   disabled,
+  showLabel = false,
   onChange,
 }: {
   value: ListeningStatus;
   disabled?: boolean;
+  showLabel?: boolean;
   onChange: (status: ListeningStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -285,6 +300,8 @@ export function WorkCardQuickMarkButton({
       <WorkCardActionButton
         title={`Mark: ${current.label}`}
         disabled={disabled}
+        showLabel={showLabel}
+        label={`Mark: ${current.label}`}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((value) => !value);
@@ -322,12 +339,14 @@ export function WorkCardListButton({
   workId,
   active,
   disabled,
+  showLabel = false,
   ensureWorkId,
   onSaved,
 }: {
   workId: number | null;
   active: boolean;
   disabled?: boolean;
+  showLabel?: boolean;
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
@@ -411,6 +430,8 @@ export function WorkCardListButton({
       <WorkCardActionButton
         title={active ? "Favorite lists" : "Add to list"}
         disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
+        showLabel={showLabel}
+        label={active ? "Lists" : "Add list"}
         onClick={(event) => {
           event.stopPropagation();
           if (effectiveWorkId) {
