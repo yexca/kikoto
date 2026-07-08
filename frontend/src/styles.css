@@ -11,6 +11,17 @@
   }
 }
 
+@keyframes player-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @layer base {
   :root {
     --background: 84 24% 97%;
@@ -70,5 +81,9 @@
     animation-name: toast-progress;
     animation-timing-function: linear;
     animation-fill-mode: forwards;
+  }
+
+  .animate-player-enter {
+    animation: player-enter 180ms ease-out;
   }
 }

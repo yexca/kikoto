@@ -4478,23 +4478,40 @@ function TreeFile({
 }) {
   const canPlay = Boolean(onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
   const preview = previewForFile(file);
+  const canPreview = Boolean(preview && onPreview);
+  const canOpen = canPlay || canPreview;
+  const openFile = () => {
+    if (canPlay) {
+      onPlayFolder?.(files, file.locationId);
+      return;
+    }
+    if (preview) {
+      onPreview?.(preview);
+    }
+  };
   const [confirmingDelete, setConfirmingDelete] = useState<"cache" | "local" | null>(null);
   return (
     <div
+      role={canOpen ? "button" : undefined}
+      tabIndex={canOpen ? 0 : undefined}
       className={`flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
         isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
-      }`}
+      } ${canOpen ? "cursor-pointer" : "cursor-default"}`}
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
+      onClick={() => {
+        if (canOpen) openFile();
+      }}
+      onKeyDown={(event) => {
+        if (!canOpen || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        openFile();
+      }}
     >
-      <button
-        className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
-        disabled={!canPlay}
-        onClick={() => onPlayFolder?.(files, file.locationId)}
-      >
+      <span className="flex min-w-0 flex-1 items-center gap-2">
         {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
         <span className="truncate">{file.title}</span>
-      </button>
-      <div className="flex shrink-0 items-center gap-2">
+      </span>
+      <span className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
         {file.localAvailable && <Badge variant="outline">Local</Badge>}
         {file.cacheAvailable && <Badge variant="outline">Cached</Badge>}
         {preview && onPreview && (
@@ -4571,7 +4588,7 @@ function TreeFile({
         <span className="text-xs text-muted-foreground">
           {formatBytes(file.sizeBytes)} · {file.availability}
         </span>
-      </div>
+      </span>
     </div>
   );
 }
@@ -4882,7 +4899,7 @@ function findLyricsForTrack(track: TreeTrack, items: MediaItem[]) {
 
 function isLyricsPath(path: string) {
   const lower = path.toLowerCase();
-  return [".lrc", ".txt", ".cue"].some((extension) => lower.endsWith(extension));
+  return [".lrc", ".srt", ".vtt", ".txt", ".cue"].some((extension) => lower.endsWith(extension));
 }
 
 function lyricMatchKeys(value: string) {
