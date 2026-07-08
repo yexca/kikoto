@@ -163,6 +163,22 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
 		return
 	}
+	if passwordHashNeedsUpgrade(passwordHash) {
+		upgradedHash, err := hashPassword(password)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if _, err := s.db.ExecContext(r.Context(), `
+			UPDATE user_password_credential
+			SET password_hash = ?,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE user_id = ?
+		`, upgradedHash, userID); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 
 	sessionID, err := newSessionID()
 	if err != nil {
