@@ -305,24 +305,7 @@ function UserEditor({
   const [password, setPassword] = useState("");
 
   if (!user) {
-    return (
-      <Card className="self-start overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            <EmptyUserAvatar />
-            <span>
-              <span className="block">Select a user</span>
-              <span className="block text-xs font-normal text-muted-foreground">Use the user bar or table to edit an account.</span>
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
-            Add users from the top toolbar. Existing accounts open here for role, status, password, and deletion controls.
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <EmptyUserEditor />;
   }
 
   const isEditingSelf = user?.id === currentUserId;
@@ -441,6 +424,27 @@ function UserEditor({
             )}
           </div>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyUserEditor() {
+  return (
+    <Card className="self-start overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3">
+          <EmptyUserAvatar />
+          <span>
+            <span className="block">Select a user</span>
+            <span className="block text-xs font-normal text-muted-foreground">Use the user bar or table to edit an account.</span>
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-lg border border-dashed bg-background p-4 text-sm text-muted-foreground">
+          Add users from the top toolbar. Existing accounts open here for role, status, password, and deletion controls.
+        </div>
       </CardContent>
     </Card>
   );
