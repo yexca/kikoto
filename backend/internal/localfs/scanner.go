@@ -20,12 +20,13 @@ type WorkFolder struct {
 }
 
 type LocalFile struct {
-	AbsPath     string
-	RelPath     string
-	WorkRelPath string
-	Title       string
-	Extension   string
-	SizeBytes   int64
+	AbsPath         string
+	RelPath         string
+	WorkRelPath     string
+	Title           string
+	Extension       string
+	SizeBytes       int64
+	DurationSeconds *int64
 }
 
 type Summary struct {

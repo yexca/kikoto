@@ -1876,7 +1876,7 @@ function RemoteWorkDetailView({
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
+  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
@@ -2123,8 +2123,10 @@ function WorkDetailView({
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
   const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []), [work, remoteSources]);
   const [activeSourceKey, setActiveSourceKey] = useState("local");
-  const [directoryMode, setDirectoryMode] = useState<"browse" | "tree">("browse");
+  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediaDeleteTarget | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [selectedLocalSavePaths, setSelectedLocalSavePaths] = useState<Set<string>>(new Set());
@@ -2310,6 +2312,38 @@ function WorkDetailView({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
       locationId,
     );
+  };
+
+  const deleteLocal = async () => {
+    if (!deleteTarget || deleteTarget.kind !== "local") return;
+    setIsDeleting(true);
+    setMessage("");
+    try {
+      const result = await api.deleteMediaLocalLocation(deleteTarget.locationId);
+      toast.success(`Deleted local file through workflow run #${result.runId}.`);
+      setDeleteTarget(null);
+      await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Local delete failed."));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const deleteCache = async () => {
+    if (!deleteTarget || deleteTarget.kind !== "cache") return;
+    setIsDeleting(true);
+    setMessage("");
+    try {
+      const result = await api.deleteMediaCacheLocation(deleteTarget.locationId);
+      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
+      setDeleteTarget(null);
+      await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Cache delete failed."));
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const planRemoteSave = async () => {
@@ -2643,8 +2677,18 @@ function WorkDetailView({
         loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
         onPreview={setPreview}
+        onDeleteCache={setDeleteTarget}
+        onDeleteLocal={selectedRemoteSource ? undefined : setDeleteTarget}
       />
       {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
+      {deleteTarget && (
+        <ConfirmMediaDeleteModal
+          target={deleteTarget}
+          deleting={isDeleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void (deleteTarget.kind === "cache" ? deleteCache() : deleteLocal())}
+        />
+      )}
       {reforkTarget && (
         <ReforkConfirmModal
           currentName={reforkTarget.current?.source.displayName ?? "the current fork"}
@@ -3040,6 +3084,8 @@ function sourceStatusTitle(summary: SourceAvailabilitySource, known: string[]) {
   return details.join("\n");
 }
 
+type DirectoryMode = "browse" | "tree" | "manage";
+
 function SourceDirectoryPanel({
   title,
   description,
@@ -3061,6 +3107,8 @@ function SourceDirectoryPanel({
   emptyState,
   onPlayFolder,
   onPreview,
+  onDeleteCache,
+  onDeleteLocal,
 }: {
   title: string;
   description: string;
@@ -3070,8 +3118,8 @@ function SourceDirectoryPanel({
   onActiveKeyChange: (key: string) => void;
   checkingLabel?: string;
   sourceSummary?: ReactNode;
-  directoryMode: "browse" | "tree";
-  onDirectoryModeChange: (mode: "browse" | "tree") => void;
+  directoryMode: DirectoryMode;
+  onDirectoryModeChange: (mode: DirectoryMode) => void;
   root: TreeNode;
   currentLocationId: number | null;
   emptyLabel: string;
@@ -3082,7 +3130,33 @@ function SourceDirectoryPanel({
   emptyState?: ReactNode;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
 }) {
+  const content = emptyState ? emptyState : directoryMode === "browse" ? (
+    <DirectoryBrowser
+      root={root}
+      currentLocationId={currentLocationId}
+      emptyLabel={emptyLabel}
+      onPlayFolder={onPlayFolder}
+      onPreview={onPreview}
+    />
+  ) : directoryMode === "tree" ? (
+    <DirectoryTree
+      root={root}
+      currentLocationId={currentLocationId}
+      emptyLabel={emptyLabel}
+      onPlayFolder={onPlayFolder}
+      onPreview={onPreview}
+    />
+  ) : (
+    <DirectoryManager
+      root={root}
+      emptyLabel={emptyLabel}
+      onDeleteCache={onDeleteCache}
+      onDeleteLocal={onDeleteLocal}
+    />
+  );
   return (
     <section className="space-y-3 pb-28 lg:pb-8">
       <div className="space-y-3">
@@ -3117,23 +3191,7 @@ function SourceDirectoryPanel({
           {toolbar}
           {loadingMessage && <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">{loadingMessage}</div>}
           {selectionPanel}
-          {emptyState ? emptyState : directoryMode === "browse" ? (
-            <DirectoryBrowser
-              root={root}
-              currentLocationId={currentLocationId}
-              emptyLabel={emptyLabel}
-              onPlayFolder={onPlayFolder}
-              onPreview={onPreview}
-            />
-          ) : (
-            <DirectoryTree
-              root={root}
-              currentLocationId={currentLocationId}
-              emptyLabel={emptyLabel}
-              onPlayFolder={onPlayFolder}
-              onPreview={onPreview}
-            />
-          )}
+          {content}
         </CardContent>
       </Card>
       {selectionModal}
@@ -3141,7 +3199,7 @@ function SourceDirectoryPanel({
   );
 }
 
-function DirectoryModeSwitch({ mode, onChange }: { mode: "browse" | "tree"; onChange: (mode: "browse" | "tree") => void }) {
+function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange: (mode: DirectoryMode) => void }) {
   return (
     <div className="flex rounded-md border bg-card p-0.5">
       <button
@@ -3163,6 +3221,16 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: "browse" | "tree"; onCh
       >
         <FolderTree className="h-3.5 w-3.5" />
         Tree
+      </button>
+      <button
+        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs font-medium ${
+          mode === "manage" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+        }`}
+        title="Manage files"
+        onClick={() => onChange("manage")}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Manage
       </button>
     </div>
   );
@@ -4453,6 +4521,107 @@ function TreeFile({
   );
 }
 
+function DirectoryManager({
+  root,
+  emptyLabel,
+  onDeleteCache,
+  onDeleteLocal,
+}: {
+  root: TreeNode;
+  emptyLabel: string;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+}) {
+  const files = useMemo(() => sortedFilesDeep(root), [root]);
+  if (files.length === 0) {
+    return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
+  }
+  return (
+    <div className="space-y-2">
+      <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        File operations are isolated here so the directory browser stays focused on reading and playback.
+      </div>
+      <div className="space-y-1">
+        {files.map((file) => (
+          <ManagedFileRow
+            key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
+            file={file}
+            onDeleteCache={onDeleteCache}
+            onDeleteLocal={onDeleteLocal}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManagedFileRow({
+  file,
+  onDeleteCache,
+  onDeleteLocal,
+}: {
+  file: TreeTrack;
+  onDeleteCache?: (target: MediaDeleteTarget) => void;
+  onDeleteLocal?: (target: MediaDeleteTarget) => void;
+}) {
+  const canDeleteCache = file.cacheAvailable && file.cacheLocationId !== null && Boolean(onDeleteCache);
+  const canDeleteLocal = file.localAvailable && file.localLocationId !== null && Boolean(onDeleteLocal);
+  return (
+    <div className="grid min-h-11 gap-2 rounded-md border bg-background px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          {fileIcon(file)}
+          <span className="truncate font-medium">{file.title}</span>
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="max-w-full truncate">{file.sourcePath}</span>
+          <span>{file.locationType}</span>
+          <span>{formatBytes(file.sizeBytes)}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 md:justify-end">
+        {canDeleteCache && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onDeleteCache?.({
+                kind: "cache",
+                locationId: file.cacheLocationId!,
+                title: file.title,
+                path: file.cachePath,
+              })
+            }
+          >
+            <Trash2 className="h-4 w-4" />
+            Cache
+          </Button>
+        )}
+        {canDeleteLocal && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onDeleteLocal?.({
+                kind: "local",
+                locationId: file.localLocationId!,
+                title: file.title,
+                path: file.localPath,
+              })
+            }
+          >
+            <Trash2 className="h-4 w-4" />
+            Local
+          </Button>
+        )}
+        {!canDeleteCache && !canDeleteLocal && (
+          <span className="inline-flex h-8 items-center text-xs text-muted-foreground">No file action</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function folderNameHasPriority(name: string) {
   const lower = name.toLowerCase();
   return ["本編", "honhen", "main", "mp3"].some((value) => lower.includes(value.toLowerCase()));
@@ -4567,6 +4736,14 @@ function sortedFolders(node: TreeNode) {
 
 function sortedFiles(node: TreeNode) {
   return [...node.files].sort((a, b) => naturalCompare(a.title, b.title));
+}
+
+function sortedFilesDeep(node: TreeNode) {
+  const files = [...node.files];
+  for (const child of node.children.values()) {
+    files.push(...sortedFilesDeep(child));
+  }
+  return files.sort((a, b) => naturalCompare(a.sourcePath || a.title, b.sourcePath || b.title));
 }
 
 type VisibleTreeRow =

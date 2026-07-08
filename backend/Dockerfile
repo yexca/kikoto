@@ -6,7 +6,10 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/kikoto ./cmd/kikoto
 
-FROM gcr.io/distroless/static-debian12
+FROM debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/kikoto /app/kikoto
 COPY migrations /app/migrations
