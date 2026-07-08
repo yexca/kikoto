@@ -321,21 +321,33 @@ export type RemoteWorkSavePlanItem = {
   path: string;
   kind: string;
   sizeBytes: number | null;
+  sourceKind: string;
   action: string;
   status: string;
   sourcePath: string;
+  localSourcePath: string;
   cachePath: string;
   targetPath: string;
+  mediaItemId: number;
+  localPaths: string[];
   targetExists: boolean;
   targetConflict: boolean;
   targetConflictReason: string;
   targetSizeBytes: number | null;
 };
 
+export type RemoteWorkSaveLocalFile = {
+  mediaItemId: number;
+  path: string;
+  sizeBytes: number | null;
+  available: boolean;
+};
+
 export type RemoteWorkSavePlan = {
   sourceId: number;
   primaryCode: string;
   saveRoot: string;
+  localFiles: RemoteWorkSaveLocalFile[];
   items: RemoteWorkSavePlanItem[];
   summary: RemoteWorkSaveSummary;
 };
@@ -909,10 +921,10 @@ export const api = {
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
-  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
-  fetchRemoteSourceWork: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
+  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = []) =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths }),
+  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = []) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
