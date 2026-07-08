@@ -1,8 +1,14 @@
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
+  ArrowUpDown,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Check,
+  CheckCircle2,
+  BookmarkPlus,
+  Circle,
   CircleUserRound,
   Clock3,
   Database,
@@ -27,9 +33,11 @@ import {
   ListChecks,
   MoreHorizontal,
   Pause,
+  PauseCircle,
   Play,
   Plus,
   RefreshCw,
+  Repeat2,
   Search,
   Star,
   Tags,
@@ -37,7 +45,7 @@ import {
   X,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +57,8 @@ import {
   api,
   assetURL,
   type LibrarySource,
+  type LibrarySort,
+  type SortDirection,
   type FavoriteList,
   type ListeningStatus,
   type MediaItem,
@@ -91,6 +101,16 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 ];
 const localWorkPageSizeOptions = [24, 48] as const;
 type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
+const columnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+type LibraryColumnCount = (typeof columnOptions)[number];
+const librarySortOptions: { value: LibrarySort; label: string }[] = [
+  { value: "recent", label: "Recently added" },
+  { value: "release", label: "Release date" },
+  { value: "code", label: "Code" },
+  { value: "title", label: "Title" },
+  { value: "rating", label: "Rating" },
+  { value: "sales", label: "Sales" },
+];
 const librarySearchDebounceMs = 400;
 const remoteSearchDebounceMs = 600;
 
@@ -144,8 +164,10 @@ export function LibraryPage() {
   const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState("");
   const [optimisticLibrarySearchTokens, setOptimisticLibrarySearchTokens] = useState<SearchToken[] | null>(null);
   const [tokenEditor, setTokenEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft } | null>(null);
-  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
-  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [mobileColumns, setMobileColumns] = useState<LibraryColumnCount>(1);
+  const [desktopColumns, setDesktopColumns] = useState<LibraryColumnCount>(6);
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
   const [workTotal, setWorkTotal] = useState(0);
@@ -182,7 +204,7 @@ export function LibraryPage() {
     }
     const requestSeq = ++libraryRequestSeq.current;
     api
-      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter)
+      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection)
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
@@ -197,7 +219,7 @@ export function LibraryPage() {
         setIsAPIAvailable(false);
         setOptimisticLibrarySearchTokens(null);
       });
-  }, [activeTab.kind, librarySearchQuery, statusFilter, workPage, workPageSize, workScope]);
+  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
@@ -281,7 +303,7 @@ export function LibraryPage() {
 
   useEffect(() => {
     setWorkPage(1);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", librarySearchQuery, statusFilter, workPageSize]);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", librarySearchQuery, statusFilter, librarySort, sortDirection, workPageSize]);
 
   useEffect(() => {
     if (activeTab.kind !== "source") return;
@@ -395,7 +417,7 @@ export function LibraryPage() {
 
   const loadLibraryWorksNow = (query: string, page = 1) => {
     const requestSeq = ++libraryRequestSeq.current;
-    api.listWorksPage(page, workPageSize, query, workScope, statusFilter).then((result) => {
+    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection).then((result) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks(result.works);
       setWorkTotal(result.total);
@@ -432,7 +454,7 @@ export function LibraryPage() {
 
   const refreshCurrentWorksPage = async () => {
     if (activeTab.kind === "source") return;
-    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter);
+    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection);
     setWorks(page.works);
     setWorkTotal(page.total);
     setIsAPIAvailable(true);
@@ -528,6 +550,17 @@ export function LibraryPage() {
   const totalWorkPages = Math.max(1, Math.ceil(workTotal / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
+  const activeFilterCount = statusFilter === "all" ? 0 : 1;
+  const localPagination = (
+    <WorkPagination
+      page={currentWorkPage}
+      pageSize={workPageSize}
+      totalItems={workTotal}
+      totalPages={totalWorkPages}
+      onPageChange={setWorkPage}
+      onPageSizeChange={setWorkPageSize}
+    />
+  );
 
   return (
     <div className="space-y-5">
@@ -561,29 +594,21 @@ export function LibraryPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
-          <select
-            className="h-8 rounded-md border bg-card px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ring"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as ListeningStatus | "all")}
-            aria-label="Listening status filter"
-          >
-            <option value="all">All marks</option>
-            {listeningStatusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <Button variant="outline" size="sm">
-            <Filter className="h-4 w-4" />
-            Filters
-          </Button>
-          <Button size="sm">
-            <Headphones className="h-4 w-4" />
-            {isAPIAvailable ? `${activeTab.kind === "source" ? visibleWorks.length : workTotal} works` : "Preview data"}
-          </Button>
+          <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={setLibrarySort} onDirectionChange={setSortDirection} />
+          <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={setStatusFilter} />
         </div>
       </section>
+      {activeFilterCount > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="outline" className="gap-1.5">
+            <Filter className="h-4 w-4" />
+            Mark: {statusFilterLabel(statusFilter)}
+            <button className="rounded-sm text-muted-foreground hover:text-foreground" aria-label="Clear mark filter" onClick={() => setStatusFilter("all")}>
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        </div>
+      )}
       {searchTokens.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {searchTokens.map((token, index) => (
@@ -643,7 +668,8 @@ export function LibraryPage() {
         />
       ) : (
         <div className="space-y-3">
-          <section className={workGridClassName(mobileColumns, desktopColumns)}>
+          {localPagination}
+          <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
             {pagedWorks.map((work) => (
               <WorkCard
                 key={work.id}
@@ -672,16 +698,7 @@ export function LibraryPage() {
               </Card>
             )}
           </section>
-          {totalWorkPages > 1 && (
-            <WorkPagination
-              page={currentWorkPage}
-              pageSize={workPageSize}
-              totalItems={workTotal}
-              totalPages={totalWorkPages}
-              onPageChange={setWorkPage}
-              onPageSizeChange={setWorkPageSize}
-            />
-          )}
+          {localPagination}
         </div>
       )}
       {untrackTarget && (
@@ -1052,7 +1069,7 @@ function RemoteSourcePanel({
           <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
         </Card>
       ) : (
-        <section className={workGridClassName(2, 6)}>
+        <section className={workGridClassName()} style={workGridStyle(2, 6)}>
           {visibleWorks.map((work) => (
             <RemoteWorkCard
               key={work.remoteId}
@@ -1370,37 +1387,230 @@ function ColumnPicker({
   onMobileChange,
   onDesktopChange,
 }: {
-  mobileColumns: 1 | 2;
-  desktopColumns: 4 | 6 | 8;
-  onMobileChange: (value: 1 | 2) => void;
-  onDesktopChange: (value: 4 | 6 | 8) => void;
+  mobileColumns: LibraryColumnCount;
+  desktopColumns: LibraryColumnCount;
+  onMobileChange: (value: LibraryColumnCount) => void;
+  onDesktopChange: (value: LibraryColumnCount) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const isWide = useIsWideLibraryLayout();
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  useDismissiblePopover(open, popoverRef, () => setOpen(false));
+  const currentValue = isWide ? desktopColumns : mobileColumns;
+  const options = isWide ? columnOptions : ([1, 2] as const);
+  const setColumns = (value: LibraryColumnCount) => {
+    if (isWide) onDesktopChange(value);
+    else onMobileChange(value);
+    setOpen(false);
+  };
   return (
-    <>
-      <div className="flex rounded-md border bg-card p-1 sm:hidden" aria-label="Mobile card columns">
-        {[1, 2].map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${mobileColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onMobileChange(value as 1 | 2)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-      <div className="hidden rounded-md border bg-card p-1 sm:flex" aria-label="Desktop card columns">
-        {[4, 6, 8].map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${desktopColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onDesktopChange(value as 4 | 6 | 8)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-    </>
+    <div className="relative" ref={popoverRef}>
+      <IconButton title={`Columns: ${currentValue}`} onClick={() => setOpen((value) => !value)}>
+        <FolderTree className="h-4 w-4" />
+      </IconButton>
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
+          {options.map((option) => (
+            <button
+              key={option}
+              className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              title={`${option} ${option === 1 ? "column" : "columns"}`}
+              aria-label={`${option} ${option === 1 ? "column" : "columns"}`}
+              onClick={() => setColumns(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
+}
+
+function SortPicker({
+  activeTab,
+  value,
+  direction,
+  onChange,
+  onDirectionChange,
+}: {
+  activeTab: LibraryTab;
+  value: LibrarySort;
+  direction: SortDirection;
+  onChange: (value: LibrarySort) => void;
+  onDirectionChange: (value: SortDirection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const disabled = activeTab.kind === "source";
+  const label = disabled ? "Source order" : librarySortOptions.find((option) => option.value === value)?.label ?? "Sort";
+  useDismissiblePopover(open, popoverRef, () => setOpen(false));
+  const nextDirection = direction === "asc" ? "desc" : "asc";
+  return (
+    <div className="relative" ref={popoverRef}>
+      <div className="inline-flex rounded-md border bg-background">
+        <button
+          className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          title={disabled ? "Source order" : `Sort: ${label}`}
+          aria-label={disabled ? "Source order" : `Sort: ${label}`}
+          disabled={disabled}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <ArrowUpDown className="h-4 w-4" />
+        </button>
+        <button
+          className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          title={disabled ? "Source order" : direction === "asc" ? "Ascending" : "Descending"}
+          aria-label={disabled ? "Source order" : direction === "asc" ? "Ascending" : "Descending"}
+          disabled={disabled}
+          onClick={() => onDirectionChange(nextDirection)}
+        >
+          {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
+        </button>
+      </div>
+      {open && !disabled && (
+        <div className="absolute right-0 z-30 mt-2 w-56 rounded-lg border bg-card p-1 text-sm shadow-lg">
+          {librarySortOptions.map((option) => (
+            <button
+              key={option.value}
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "text-foreground" : "text-muted-foreground"}`}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+              {value === option.value && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterPicker({
+  value,
+  activeCount,
+  onChange,
+}: {
+  value: ListeningStatus | "all";
+  activeCount: number;
+  onChange: (value: ListeningStatus | "all") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  useDismissiblePopover(open, popoverRef, () => setOpen(false));
+  return (
+    <div className="relative" ref={popoverRef}>
+      <IconButton title={activeCount > 0 ? `Filters: ${activeCount} active` : "Filters"} onClick={() => setOpen((current) => !current)}>
+        <Filter className="h-4 w-4" />
+        {activeCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
+      </IconButton>
+      {open && (
+        <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
+          <button
+            className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            title="All marks"
+            aria-label="All marks"
+            onClick={() => {
+              onChange("all");
+              setOpen(false);
+            }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+          {listeningStatusOptions.map((option) => {
+            const meta = quickMarkFilterMeta(option.value);
+            return (
+              <button
+                key={option.value}
+                className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                title={option.label}
+                aria-label={option.label}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <meta.icon className={`h-4 w-4 ${value === option.value ? "" : meta.className}`} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function quickMarkFilterMeta(value: ListeningStatus) {
+  switch (value) {
+    case "want_to_listen":
+      return { icon: BookmarkPlus, className: "text-primary" };
+    case "listening":
+      return { icon: Headphones, className: "text-primary" };
+    case "finished":
+      return { icon: CheckCircle2, className: "text-emerald-600" };
+    case "relisten":
+      return { icon: Repeat2, className: "text-primary" };
+    case "paused":
+      return { icon: PauseCircle, className: "text-amber-600" };
+    default:
+      return { icon: Circle, className: "" };
+  }
+}
+
+function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>, onClose: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && ref.current?.contains(target)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, ref, onClose]);
+}
+
+function useIsWideLibraryLayout() {
+  const [isWide, setIsWide] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 640px)").matches;
+  });
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 640px)");
+    const update = () => setIsWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isWide;
+}
+
+function statusFilterLabel(value: ListeningStatus | "all") {
+  if (value === "all") return "All marks";
+  return listeningStatusOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function workGridClassName() {
+  return "grid gap-4 [grid-template-columns:repeat(var(--mobile-columns),minmax(0,1fr))] sm:[grid-template-columns:repeat(var(--desktop-columns),minmax(0,1fr))]";
+}
+
+function workGridStyle(mobileColumns: LibraryColumnCount, desktopColumns: LibraryColumnCount) {
+  return {
+    "--mobile-columns": mobileColumns,
+    "--desktop-columns": desktopColumns,
+  } as CSSProperties;
 }
 
 function WorkPagination({
@@ -1524,12 +1734,6 @@ function SearchTokenEditor({
   );
 }
 
-function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
-  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
-  const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
-  return `grid gap-4 ${mobileClass} ${desktopClass}`;
-}
-
 function dlsiteWorkURL(code: string) {
   const site = code.toUpperCase().startsWith("RJ") ? "maniax" : "home";
   return `https://www.dlsite.com/${site}/work/=/product_id/${encodeURIComponent(code)}.html`;
@@ -1560,7 +1764,7 @@ function IconButton({
 }) {
   return (
     <button
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       title={title}
       aria-label={title}
       disabled={disabled}

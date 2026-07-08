@@ -474,6 +474,8 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
 	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	sortKey := strings.TrimSpace(r.URL.Query().Get("sort"))
+	sortDirection := strings.TrimSpace(r.URL.Query().Get("direction"))
 	page := queryInt(r, "page", 1)
 	pageSize := queryInt(r, "pageSize", 24)
 	if page < 1 {
@@ -491,7 +493,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		return
 	}
 	offset := (page - 1) * pageSize
-	query := libraryListSelectSQL(where) + " ORDER BY work.created_at DESC LIMIT ? OFFSET ?"
+	query := libraryListSelectSQL(where, sortKey, sortDirection) + " LIMIT ? OFFSET ?"
 	queryArgs := append([]any{userID}, args...)
 	queryArgs = append(queryArgs, pageSize, offset)
 	rows, err := s.db.QueryContext(r.Context(), query, queryArgs...)
@@ -511,6 +513,52 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		"pageSize": pageSize,
 		"total":    total,
 	})
+}
+
+func libraryListOrderBy(sortKey string, direction string) (string, bool) {
+	sortKey, direction = normalizeLibrarySort(sortKey, direction)
+	switch sortKey {
+	case "release":
+		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction, false
+	case "code":
+		return "work.primary_code " + direction + ", work.id " + direction, false
+	case "title":
+		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction, false
+	case "rating":
+		return "latest_dlsite_rating IS NULL ASC, latest_dlsite_rating " + direction + ", created_at " + direction + ", id " + direction, true
+	case "sales":
+		return "latest_dlsite_sales IS NULL ASC, latest_dlsite_sales " + direction + ", created_at " + direction + ", id " + direction, true
+	default:
+		return "work.created_at " + direction + ", work.id " + direction, false
+	}
+}
+
+func normalizeLibrarySort(sortKey string, direction string) (string, string) {
+	sortKey = strings.ToLower(strings.TrimSpace(sortKey))
+	direction = strings.ToUpper(strings.TrimSpace(direction))
+	switch sortKey {
+	case "release_desc":
+		sortKey, direction = "release", "DESC"
+	case "release_asc":
+		sortKey, direction = "release", "ASC"
+	case "code_asc":
+		sortKey, direction = "code", "ASC"
+	case "title_asc":
+		sortKey, direction = "title", "ASC"
+	case "rating_desc":
+		sortKey, direction = "rating", "DESC"
+	case "sales_desc":
+		sortKey, direction = "sales", "DESC"
+	}
+	switch sortKey {
+	case "recent", "release", "code", "title", "rating", "sales":
+	default:
+		sortKey = "recent"
+	}
+	if direction != "ASC" && direction != "DESC" {
+		direction = "DESC"
+	}
+	return sortKey, direction
 }
 
 func libraryListWhere(scope string, status string) (string, []any) {
@@ -561,7 +609,55 @@ func libraryListWhere(scope string, status string) (string, []any) {
 	return strings.Join(clauses, " AND "), args
 }
 
-func libraryListSelectSQL(where string) string {
+func libraryListSelectSQL(where string, sortKey string, direction string) string {
+	orderBy, needsMetadataSort := libraryListOrderBy(sortKey, direction)
+	if needsMetadataSort {
+		return `SELECT
+				id,
+				primary_code,
+				title,
+				created_at,
+				track_count,
+				available_locations,
+				available_location_types,
+				source_presence,
+				snapshot_json,
+				party_link,
+				listening_status,
+				favorite
+			FROM (` + libraryListBaseSelectSQL(where, true) + `) AS library_rows
+		ORDER BY ` + orderBy
+	}
+	return libraryListBaseSelectSQL(where, false) + " ORDER BY " + orderBy
+}
+
+func libraryListBaseSelectSQL(where string, includeMetadataSortColumns bool) string {
+	metadataSortColumns := ""
+	if includeMetadataSortColumns {
+		metadataSortColumns = `,
+			(
+				SELECT json_extract(snapshot_json, '$.product.rate_average_2dp')
+				FROM metadata_snapshot
+				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+				WHERE metadata_snapshot.work_id = work.id
+					AND metadata_provider.code = 'dlsite'
+				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+				LIMIT 1
+			) AS latest_dlsite_rating,
+			(
+				SELECT COALESCE(
+					json_extract(snapshot_json, '$.dynamic.dl_count'),
+					json_extract(snapshot_json, '$.product.dl_count'),
+					json_extract(snapshot_json, '$.product.sales_count')
+				)
+				FROM metadata_snapshot
+				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+				WHERE metadata_snapshot.work_id = work.id
+					AND metadata_provider.code = 'dlsite'
+				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+				LIMIT 1
+			) AS latest_dlsite_sales`
+	}
 	return `
 		SELECT
 			work.id,
@@ -624,7 +720,7 @@ func libraryListSelectSQL(where string) string {
 				LIMIT 1
 			) AS party_link,
 			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-			COALESCE(user_work_state.favorite, 0) AS favorite
+			COALESCE(user_work_state.favorite, 0) AS favorite` + metadataSortColumns + `
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
 			AND user_work_state.user_id = ?
