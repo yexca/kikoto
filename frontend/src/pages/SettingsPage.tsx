@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type AppSettings, type FileSource } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
@@ -27,6 +28,7 @@ const emptyRemoteSource = {
 type SettingsTab = "local" | "remote" | "metadata";
 
 export function SettingsPage({ canManageSources }: { canManageSources: boolean }) {
+  const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("local");
   const [localScanDepth, setLocalScanDepth] = useState(2);
@@ -43,7 +45,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
   const [isPathsOpen, setIsPathsOpen] = useState(false);
-  const [message, setMessage] = useState("");
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -69,7 +70,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
-      .catch(() => setMessage("Settings API is unavailable."));
+      .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")));
 
   useEffect(() => {
     void reload();
@@ -77,7 +78,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
 
   const saveRuntimeSettings = async () => {
     if (saveSuffixError) {
-      setMessage(saveSuffixError);
+      toast.warning(saveSuffixError);
       return;
     }
     const next = await api.updateSettings({
@@ -95,21 +96,19 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
     setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
-    setMessage("Settings saved.");
+    toast.success("Settings saved.");
   };
 
   const openCreateSource = () => {
     setDraftSource(emptyRemoteSource);
     setEditingSourceId(null);
     setIsSourceModalOpen(true);
-    setMessage("");
   };
 
   const openEditSource = (source: FileSource) => {
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
-    setMessage("");
   };
 
   const closeSourceModal = () => {
@@ -134,13 +133,13 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
     }
     closeSourceModal();
     await reload();
-    setMessage("Source saved.");
+    toast.success("Source saved.");
   };
 
   const deleteSource = async (id: number) => {
     await api.deleteFileSource(id);
     await reload();
-    setMessage("Source deleted.");
+    toast.success("Source deleted.");
   };
 
   if (!canManageSources) {
@@ -154,8 +153,6 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
 
   return (
     <div className="space-y-4">
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
-
       <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
         <SettingsTabButton active={activeTab === "local"} onClick={() => setActiveTab("local")} icon={<Folder className="h-4 w-4" />}>
           Local library

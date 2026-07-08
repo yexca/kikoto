@@ -1,7 +1,6 @@
 import {
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
   CircleAlert,
   ExternalLink,
   FileAudio,
@@ -20,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import {
   WorkCardActionButton,
@@ -85,9 +85,9 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
 }
 
 function CircleListPage() {
+  const toast = useToast();
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [toast, setToast] = useState<ToastState | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CircleFilter>("all");
   const [page, setPage] = useState(1);
@@ -101,7 +101,7 @@ function CircleListPage() {
       setCircles(items);
     }).catch((error) => {
       setCircles([]);
-      setToast(toastFromError(error, "Circle API is unavailable."));
+      toast.notify(toastFromError(error, "Circle API is unavailable."));
     }).finally(() => setIsLoading(false));
   }, []);
 
@@ -146,7 +146,6 @@ function CircleListPage() {
         </div>
       </section>
 
-      <ToastNotice toast={toast} onClose={() => setToast(null)} />
 
       <section className="space-y-3">
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
@@ -270,9 +269,9 @@ function CircleCard({ circle }: { circle: CircleSummary }) {
 }
 
 function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [toast, setToast] = useState<ToastState | null>(null);
   const [isEditingState, setIsEditingState] = useState(false);
   const [ratingDraft, setRatingDraft] = useState(0);
   const [noteDraft, setNoteDraft] = useState("");
@@ -293,7 +292,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const loadCircleDetail = useCallback(async (showLoading = false) => {
     if (showLoading) {
       setIsLoading(true);
-      setToast(null);
     }
     try {
       const next = await api.getCircle(externalId);
@@ -303,7 +301,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       return next;
     } catch (error) {
       setDetail(null);
-      setToast(toastFromError(error, "Circle detail is unavailable."));
+      toast.notify(toastFromError(error, "Circle detail is unavailable."));
       return null;
     } finally {
       if (showLoading) {
@@ -324,16 +322,16 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       if (cancelled) return;
       if (autoRefresh.status === "queued") {
         refreshStarted = true;
-        setToast({ kind: "info", message: `Auto refresh queued: ${autoRefresh.mode} crawl for ${autoRefresh.reason}.` });
+        toast.info(`Auto refresh queued: ${autoRefresh.mode} crawl for ${autoRefresh.reason}.`);
       } else if (autoRefresh.status === "running") {
         refreshStarted = true;
-        setToast({ kind: "info", message: `Auto refresh is already running: ${autoRefresh.mode} crawl.` });
+        toast.info(`Auto refresh is already running: ${autoRefresh.mode} crawl.`);
       } else if (attempt > 0 && autoRefresh.status === "skipped" && autoRefresh.reason === "fresh") {
-        setToast({ kind: "success", message: "Auto refresh completed." });
+        toast.success("Auto refresh completed.");
       }
       if (refreshStarted && !metadataSyncToastShown && circleCatalogNeedsMetadataRefresh(next)) {
         metadataSyncToastShown = true;
-        setToast({ kind: "info", message: "Catalog fetched. Metadata is still syncing; refresh the page to show completed details." });
+        toast.info("Catalog fetched. Metadata is still syncing; refresh the page to show completed details.");
       }
       if ((autoRefresh.status === "queued" || autoRefresh.status === "running" || refreshStarted) && attempt < 30 && !metadataSyncToastShown) {
         timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
@@ -417,11 +415,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setRefreshingScope(scope);
     try {
       const result = await api.refreshCircle(externalId, { scope, mode, productMode: workProductMode(scope, mode) });
-      setToast({ kind: "success", message: refreshMessage(result) });
+      toast.success(refreshMessage(result));
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setToast(toastFromError(error, "Refresh workflow failed."));
+      toast.notify(toastFromError(error, "Refresh workflow failed."));
     } finally {
       setRefreshingScope(null);
     }
@@ -436,9 +434,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       });
       setDetail((current) => current ? { ...current, ...next, works: current.works } : current);
       setIsEditingState(false);
-      setToast({ kind: "success", message: "Circle note saved." });
+      toast.success("Circle note saved.");
     } catch (error) {
-      setToast(toastFromError(error, "Circle note save failed."));
+      toast.notify(toastFromError(error, "Circle note save failed."));
     }
   };
 
@@ -446,12 +444,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!deleteTarget) return;
     try {
       const result = await api.deleteCircleCatalogWork(externalId, deleteTarget.primaryCode);
-      setToast({ kind: "success", message: result.deleted > 0 ? `${deleteTarget.primaryCode} removed from this circle catalog.` : `${deleteTarget.primaryCode} was already removed.` });
+      toast.success(result.deleted > 0 ? `${deleteTarget.primaryCode} removed from this circle catalog.` : `${deleteTarget.primaryCode} was already removed.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
       setDeleteTarget(null);
     } catch (error) {
-      setToast(toastFromError(error, "Catalog work delete failed."));
+      toast.notify(toastFromError(error, "Catalog work delete failed."));
     }
   };
 
@@ -467,7 +465,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: result.listeningStatus } : item),
       } : current);
     } catch (error) {
-      setToast(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, "Mark update failed."));
     }
   };
 
@@ -475,18 +473,17 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
-    setToast(null);
     try {
       const syncResult = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      setToast({ kind: "success", message: `Tracked and marked ${syncResult.primaryCode}.` });
+      toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
         works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item),
       });
     } catch (error) {
-      setToast(toastFromError(error, "Mark update failed."));
+      toast.notify(toastFromError(error, "Mark update failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -508,7 +505,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       setDetail(next);
       return workId;
     } catch (error) {
-      setToast(toastFromError(error, "Track for list failed."));
+      toast.notify(toastFromError(error, "Track for list failed."));
       return null;
     }
   };
@@ -540,16 +537,15 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   const runBulkSaveSelected = async () => {
     setIsBulkSaving(true);
-    setToast(null);
     try {
       const results = await runCircleBulkBySource(selectedWorks, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setToast({ kind: "success", message: `Bulk workflow ${runIds}: fetched ${fetched} selected works.` });
+      toast.success(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setToast(toastFromError(error, "Bulk fetch failed."));
+      toast.notify(toastFromError(error, "Bulk fetch failed."));
     } finally {
       setIsBulkSaving(false);
       setSaveConfirm(null);
@@ -559,17 +555,16 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const bulkSyncAndSaveSelected = async () => {
     if (selectedSyncableWorks.length === 0) return;
     setIsBulkSaving(true);
-    setToast(null);
     try {
       const results = await runCircleBulkBySource(selectedSyncableWorks, "track_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setToast({ kind: "success", message: `Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.` });
+      toast.success(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
-      setToast(toastFromError(error, "Bulk track/fetch failed."));
+      toast.notify(toastFromError(error, "Bulk track/fetch failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -589,12 +584,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
-    setToast(null);
     try {
       const detail = await api.getRemoteSourceWork(target.sourceId, work.primaryCode);
       setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
     } catch (error) {
-      setToast(toastFromError(error, "Remote directory failed."));
+      toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -603,7 +597,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const fetchSingleSelection = async () => {
     if (!fetchSelection) return;
     setIsBulkSaving(true);
-    setToast(null);
     try {
       const paths = Array.from(fetchSelection.selectedPaths);
       const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
@@ -612,11 +605,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         return;
       }
       const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
-      setToast({ kind: "success", message: `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.` });
+      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
     } catch (error) {
-      setToast(toastFromError(error, "Fetch failed."));
+      toast.notify(toastFromError(error, "Fetch failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -628,10 +621,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     try {
       const result = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
-      setToast({ kind: "success", message: `Tracked ${result.primaryCode} through workflow run #${result.runId}.` });
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       setDetail(await api.getCircle(externalId));
     } catch (error) {
-      setToast(toastFromError(error, "Track failed."));
+      toast.notify(toastFromError(error, "Track failed."));
     } finally {
       setIsBulkSaving(false);
     }
@@ -644,7 +637,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         Back to circles
       </Button>
 
-      <ToastNotice toast={toast} onClose={() => setToast(null)} />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
@@ -1210,23 +1202,6 @@ function Stat({ label, value }: { label: string; value: string }) {
       </CardContent>
     </Card>
   );
-}
-
-type ToastState = { kind: "success" | "error" | "info"; message: string };
-
-function ToastNotice({ toast, onClose }: { toast: ToastState | null; onClose: () => void }) {
-  if (!toast) return null;
-  return (
-    <div className="fixed right-4 top-4 z-50 flex max-w-sm items-start gap-2 rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
-      {toast.kind === "error" ? <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
-      <div className="min-w-0 flex-1 text-foreground">{toast.message}</div>
-      <button className="text-muted-foreground hover:text-foreground" onClick={onClose} aria-label="Close notification">x</button>
-    </div>
-  );
-}
-
-function toastFromError(error: unknown, fallback: string): ToastState {
-  return { kind: "error", message: error instanceof Error ? error.message : fallback };
 }
 
 function emptyCircleDetail(externalId: string): CircleDetail {

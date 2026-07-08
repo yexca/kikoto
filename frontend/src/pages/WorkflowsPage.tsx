@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   api,
   type WorkflowCandidate,
@@ -130,6 +131,7 @@ export function WorkflowsPage({
   canRun: boolean;
   canSyncMetadata: boolean;
 }) {
+  const toast = useToast();
   const [workflowView, setWorkflowView] = useState<WorkflowView>("definitions");
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [runDetailView, setRunDetailView] = useState<RunDetailView>("overview");
@@ -140,7 +142,6 @@ export function WorkflowsPage({
   const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0 });
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
-  const [activityMessage, setActivityMessage] = useState("");
   const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(null);
   const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
@@ -270,11 +271,13 @@ export function WorkflowsPage({
     setRunningSystemAction(kind);
     try {
       const result = await api.runRemotePopularCollection({ action });
-      setActivityMessage(`Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `fetched ${result.fetched}`}, failed ${result.failed}.`);
+      toast.success(`Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `fetched ${result.fetched}`}, failed ${result.failed}.`);
       refresh();
       setActivityView("completed");
       setRunPage(1);
       refreshRuns(1, "completed", runQuery);
+    } catch (error) {
+      toast.notify(toastFromError(error, `Popular ${action} failed.`));
     } finally {
       setRunningSystemAction(null);
     }
@@ -310,9 +313,13 @@ export function WorkflowsPage({
   };
 
   const recoverStaleRuns = async () => {
-    const result = await api.recoverStaleWorkflowRuns();
-    setActivityMessage(`${result.recovered ?? 0} stale runs recovered.`);
-    refreshRuns(runPage, activityView, runQuery);
+    try {
+      const result = await api.recoverStaleWorkflowRuns();
+      toast.success(`${result.recovered ?? 0} stale runs recovered.`);
+      refreshRuns(runPage, activityView, runQuery);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Recover stale runs failed."));
+    }
   };
 
   return (
@@ -414,7 +421,6 @@ export function WorkflowsPage({
           </SegmentedNav>
           <ActivityToolbar
             query={runQuery}
-            message={activityMessage}
             onQueryChange={setRunQuery}
             onSearch={() => {
               setRunPage(1);
@@ -639,13 +645,11 @@ function TriggerSidebar({
 
 function ActivityToolbar({
   query,
-  message,
   onQueryChange,
   onSearch,
   onRecoverStale,
 }: {
   query: string;
-  message: string;
   onQueryChange: (value: string) => void;
   onSearch: () => void;
   onRecoverStale: () => Promise<void>;
@@ -665,7 +669,6 @@ function ActivityToolbar({
         />
       </label>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
-        {message && <span>{message}</span>}
         <Button size="sm" variant="outline" onClick={() => void onRecoverStale()}>
           Recover stale
         </Button>
@@ -991,20 +994,18 @@ function RunItems({
 }
 
 function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: WorkflowCandidate; onCandidateUpdate: () => Promise<void> }) {
+  const [confirmDeleteOldFiles, setConfirmDeleteOldFiles] = useState(false);
   const payload = parseJSONRecord(candidate.payloadJson);
   const cleanupLocations = candidate.type === "local_fetch_merge_cleanup" ? localCleanupLocations(payload) : [];
   const duplicateFolders = candidate.type === "local_duplicate_work_folder" ? localDuplicateFolders(payload) : [];
   const needsReview = candidateNeedsReview(candidate);
   const cleanup = async (action: "mark_unavailable" | "delete_files") => {
     if (cleanupLocations.length === 0) return;
-    if (action === "delete_files") {
-      const confirmed = window.confirm("Delete the selected old local files from disk and mark their locations unavailable? This will not delete the work metadata.");
-      if (!confirmed) return;
-    }
     await api.cleanupLocalWorkflowCandidate(candidate.id, {
       action,
       locationIds: cleanupLocations.map((location) => location.locationId),
     });
+    setConfirmDeleteOldFiles(false);
     await onCandidateUpdate();
   };
   return (
@@ -1054,7 +1055,7 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
               <Button size="sm" variant="outline" onClick={() => void cleanup("mark_unavailable")}>
                 Hide old locations
               </Button>
-              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => void cleanup("delete_files")}>
+              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteOldFiles(true)}>
                 Delete old files
               </Button>
             </>
@@ -1079,6 +1080,20 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
           >
             Ignore
           </Button>
+        </div>
+      )}
+      {confirmDeleteOldFiles && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+          <div className="text-sm font-semibold text-destructive">Delete old local files?</div>
+          <div className="mt-1 text-sm text-muted-foreground">This deletes the selected old files from disk and marks their locations unavailable. Work metadata is kept.</div>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setConfirmDeleteOldFiles(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void cleanup("delete_files")}>
+              Delete files
+            </Button>
+          </div>
         </div>
       )}
     </div>

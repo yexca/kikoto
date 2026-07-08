@@ -28,6 +28,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import {
   WorkCardActionButton,
@@ -82,6 +83,7 @@ export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
 }
 
 function VoiceListPage() {
+  const toast = useToast();
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -98,7 +100,8 @@ function VoiceListPage() {
       setMessage(items.length === 0 ? "No voice actor credits have been derived from known work metadata yet." : "");
     }).catch((error) => {
       setVoices([]);
-      setMessage(error instanceof Error ? error.message : "Voice actor API is unavailable.");
+      toast.notify(toastFromError(error, "Voice actor API is unavailable."));
+      setMessage("");
     }).finally(() => setIsLoading(false));
   }, []);
 
@@ -229,6 +232,7 @@ function VoiceCard({ voice }: { voice: VoiceSummary }) {
 }
 
 function VoiceDetailPage({ personId }: { personId: number }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -258,7 +262,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       setMessage("");
     }).catch((error) => {
       setDetail(null);
-      setMessage(error instanceof Error ? error.message : "Voice actor detail is unavailable.");
+      toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
     }).finally(() => setIsLoading(false));
   }, [personId]);
 
@@ -318,9 +322,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const tagResult = await api.setVoiceUserTags(detail.personId, tags);
       setDetail((current) => current ? { ...current, ...next, userTags: tagResult.userTags, works: current.works, remoteMatches: current.remoteMatches } : current);
       setIsEditingState(false);
-      setMessage("Voice preferences saved.");
+      toast.success("Voice preferences saved.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Voice preference save failed.");
+      toast.notify(toastFromError(error, "Voice preference save failed."));
     }
   };
 
@@ -334,7 +338,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       });
       setDetail((current) => current ? { ...current, ...next, works: current.works, remoteMatches: current.remoteMatches } : current);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Favorite update failed.");
+      toast.notify(toastFromError(error, "Favorite update failed."));
     }
   };
 
@@ -359,7 +363,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         works: current.works.map((item) => item.workId === workId ? { ...item, listeningMark: result.listeningStatus } : item),
       } : current);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Listening mark update failed.");
+      toast.notify(toastFromError(error, "Listening mark update failed."));
     }
   };
 
@@ -371,10 +375,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
-      setMessage(`Tracked and marked ${syncResult.primaryCode}.`);
+      toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Listening mark update failed.");
+      toast.notify(toastFromError(error, "Listening mark update failed."));
     } finally {
       setIsBulkBusy(false);
     }
@@ -396,7 +400,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       await refreshDetail();
       return nextWorkId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Track for list failed.");
+      toast.notify(toastFromError(error, "Track for list failed."));
       return null;
     }
   };
@@ -432,10 +436,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setMessage(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
+      toast.success(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk track/fetch failed.");
+      toast.notify(toastFromError(error, "Bulk track/fetch failed."));
     } finally {
       setIsBulkBusy(false);
     }
@@ -453,10 +457,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const results = await runVoiceBulkBySource(selectedSaveable, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      setMessage(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
+      toast.success(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
+      toast.notify(toastFromError(error, "Bulk fetch failed."));
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
@@ -482,7 +486,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
       setFetchSelection({ work, sourceId: target.sourceId, code: target.code, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+      toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
       setIsBulkBusy(false);
     }
@@ -500,11 +504,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         return;
       }
       const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
-      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
+      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+      toast.notify(toastFromError(error, "Fetch failed."));
     } finally {
       setIsBulkBusy(false);
     }
@@ -516,10 +520,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     try {
       const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
-      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await refreshDetail();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Track failed.");
+      toast.notify(toastFromError(error, "Track failed."));
     } finally {
       setIsBulkBusy(false);
     }

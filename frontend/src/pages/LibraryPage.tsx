@@ -42,6 +42,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
@@ -801,6 +802,7 @@ function RemoteSourcePanel({
   onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite">>) => void;
   onSynced: (workID: number) => Promise<void>;
 }) {
+  const toast = useToast();
   const isLoading = result === null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
@@ -808,23 +810,21 @@ function RemoteSourcePanel({
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
   const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
-  const [message, setMessage] = useState("");
   const { page, pageSize } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
-      setMessage("This remote work has no stable work code.");
+      toast.warning("This remote work has no stable work code.");
       return;
     }
     setIsSyncingCode(work.primaryCode);
-    setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, reason);
-      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
       return result.workId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      toast.notify(toastFromError(error, "Remote sync failed."));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -863,13 +863,12 @@ function RemoteSourcePanel({
   const bulkSyncSelected = async () => {
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
-    setMessage("");
     try {
       const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) });
-      setMessage(`Bulk workflow #${parent.runId}: tracked ${parent.synced} remote-only works.`);
+      toast.success(`Bulk workflow #${parent.runId}: tracked ${parent.synced} remote-only works.`);
       await onSynced(0);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk track failed.");
+      toast.notify(toastFromError(error, "Bulk track failed."));
     } finally {
       setIsBulkBusy(false);
     }
@@ -882,13 +881,12 @@ function RemoteSourcePanel({
 
   const runBulkSaveSelected = async () => {
     setIsBulkBusy(true);
-    setMessage("");
     try {
       const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) });
-      setMessage(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
+      toast.success(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
       await onSynced(0);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk fetch failed.");
+      toast.notify(toastFromError(error, "Bulk fetch failed."));
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
@@ -898,13 +896,12 @@ function RemoteSourcePanel({
   const openSaveSelection = async (work: RemoteWork) => {
     if (!work.primaryCode) return;
     setIsSyncingCode(work.primaryCode);
-    setMessage("");
     try {
       const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
       const root = buildRemoteTree(detail.tracks);
       setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)), selectedLocalPaths: new Set(), plan: null, message: "" });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote directory failed.");
+      toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
       setIsSyncingCode(null);
     }
@@ -915,7 +912,6 @@ function RemoteSourcePanel({
     const paths = Array.from(saveSelection.selectedPaths);
     const localPaths = Array.from(saveSelection.selectedLocalPaths);
     setIsSyncingCode(saveSelection.work.primaryCode);
-    setMessage("");
     try {
       const plan = await api.planRemoteSourceWorkFetch(source.id, saveSelection.detail.primaryCode, paths, localPaths);
       if (!saveSelection.plan && remoteFetchNeedsLocalReview(plan)) {
@@ -927,11 +923,11 @@ function RemoteSourcePanel({
         return;
       }
       const result = await api.fetchRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths, localPaths);
-      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
+      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       await onSynced(0);
       setSaveSelection(null);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Fetch failed.");
+      toast.notify(toastFromError(error, "Fetch failed."));
     } finally {
       setIsSyncingCode(null);
     }
@@ -940,15 +936,14 @@ function RemoteSourcePanel({
   const markRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     if (!work.primaryCode) return;
     setIsSyncingCode(work.primaryCode);
-    setMessage("");
     try {
       const workId = work.workId ?? await syncWork(work, "mark_interest");
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
-      setMessage(`Tracked and marked ${work.primaryCode}.`);
+      toast.success(`Tracked and marked ${work.primaryCode}.`);
       await onSynced(workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+      toast.notify(toastFromError(error, "Mark update failed."));
     } finally {
       setIsSyncingCode(null);
     }
@@ -956,14 +951,13 @@ function RemoteSourcePanel({
 
   const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     setIsSyncingCode(work.primaryCode);
-    setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
       await api.updateWorkUserState(result.workId, { listeningStatus: status });
-      setMessage(`Tracked and marked ${result.primaryCode}.`);
+      toast.success(`Tracked and marked ${result.primaryCode}.`);
       await onSynced(result.workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Mark update failed.");
+      toast.notify(toastFromError(error, "Mark update failed."));
     } finally {
       setIsSyncingCode(null);
     }
@@ -973,13 +967,12 @@ function RemoteSourcePanel({
     if (work.workId) return work.workId;
     if (!work.primaryCode) return null;
     setIsSyncingCode(work.primaryCode);
-    setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "list_remote");
-      setMessage(`Tracked ${result.primaryCode} for list selection.`);
+      toast.success(`Tracked ${result.primaryCode} for list selection.`);
       return result.workId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      toast.notify(toastFromError(error, "Remote sync failed."));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -1050,7 +1043,6 @@ function RemoteSourcePanel({
           </Button>
         </div>
       </div>}
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
       {isLoading ? (
         <Card>
           <CardContent className="p-5 text-sm text-muted-foreground">Loading remote page...</CardContent>
@@ -1614,6 +1606,7 @@ function RemoteWorkDetailView({
   onOpenLocal: (workID: number) => void;
   onWorksChanged: () => Promise<void>;
 }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
@@ -1641,7 +1634,9 @@ function RemoteWorkDetailView({
     setSavePlan(null);
     setSavePlanMessage("");
     api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Remote preview failed.");
+      const text = error instanceof Error ? error.message : "Remote preview failed.";
+      setMessage(text);
+      toast.notify({ kind: "error", message: text });
     });
   }, [source.id, code]);
 
@@ -1658,11 +1653,11 @@ function RemoteWorkDetailView({
     setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(source.id, detail.primaryCode, reason);
-      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote track failed.");
+      toast.notify(toastFromError(error, "Remote track failed."));
     } finally {
       setIsFetching(false);
     }
@@ -1678,7 +1673,7 @@ function RemoteWorkDetailView({
       setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
       return result.workId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Remote sync failed.");
+      toast.notify(toastFromError(error, "Remote sync failed."));
       return null;
     } finally {
       setIsFetching(false);
@@ -1689,9 +1684,13 @@ function RemoteWorkDetailView({
     if (!detail?.primaryCode) return;
     const workID = detail.workId ?? await syncForUserState("detail_mark_interest");
     if (!workID) return;
-    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-    setMessage(`Marked ${detail.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
-    await onWorksChanged();
+    try {
+      const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+      toast.success(`Marked ${detail.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
+      await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Mark update failed."));
+    }
   };
 
   const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
@@ -1714,14 +1713,14 @@ function RemoteWorkDetailView({
         return;
       }
       const result = await api.fetchRemoteSourceWork(source.id, detail.primaryCode, selectedPaths, selectedLocalPaths);
-      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
+      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
       setSavePlanMessage("");
       await onWorksChanged();
       onOpenLocal(result.workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed.");
+      toast.notify(toastFromError(error, "Save failed."));
     } finally {
       setIsSaving(false);
     }
@@ -1733,13 +1732,13 @@ function RemoteWorkDetailView({
     setMessage("");
     try {
       const result = await api.deleteMediaCacheLocation(cacheDeleteTarget.locationId);
-      setMessage(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
+      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
       setCacheDeleteTarget(null);
       const refreshed = await api.getRemoteSourceWork(source.id, code);
       setDetail(refreshed);
       await onWorksChanged();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cache delete failed.");
+      toast.notify(toastFromError(error, "Cache delete failed."));
     } finally {
       setIsDeletingCache(false);
     }
@@ -1880,6 +1879,7 @@ function WorkDetailView({
   onWorkReload: (workID: number) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
+  const toast = useToast();
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
@@ -2080,9 +2080,11 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.deleteMediaLocalLocation(deleteTarget.locationId);
-      setMessage(`Deleted local file through workflow run #${result.runId}.`);
+      toast.success(`Deleted local file through workflow run #${result.runId}.`);
       setDeleteTarget(null);
       await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Local delete failed."));
     } finally {
       setIsDeleting(false);
     }
@@ -2094,9 +2096,11 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.deleteMediaCacheLocation(deleteTarget.locationId);
-      setMessage(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
+      toast.success(`Deleted cache ${result.cachePath} through workflow run #${result.runId}.`);
       setDeleteTarget(null);
       await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Cache delete failed."));
     } finally {
       setIsDeleting(false);
     }
@@ -2120,14 +2124,14 @@ function WorkDetailView({
         return;
       }
       const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths, selectedLocalPaths);
-      setMessage(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
+      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
       setSavePlanMessage("");
       await onWorksChanged();
       openRemoteLocal(result.workId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed.");
+      toast.notify(toastFromError(error, "Save failed."));
     } finally {
       setIsSaving(false);
     }
@@ -2140,16 +2144,16 @@ function WorkDetailView({
     try {
       if (selectedRemoteSource?.detail?.primaryCode) {
         const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
-        setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+        toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
         await onWorksChanged();
         openRemoteLocal(result.workId);
       } else {
         const result = await api.runDLsiteSync();
-        setMessage(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
+        toast.success(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
         await onWorksChanged();
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sync failed.");
+      toast.notify(toastFromError(error, "Sync failed."));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -2161,11 +2165,11 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
-      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId);
       await onWorksChanged();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Track failed.");
+      toast.notify(toastFromError(error, "Track failed."));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -2179,7 +2183,7 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, reason);
-      setMessage(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
+      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       setRemoteSources((items) => items.map((item) => item.source.id === selectedRemoteSource.source.id
         ? { ...item, summary: { ...item.summary, workId: result.workId, hasRemote: true } }
         : item));
@@ -2187,7 +2191,7 @@ function WorkDetailView({
       await onWorksChanged();
       return result.workId;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Track failed.");
+      toast.notify(toastFromError(error, "Track failed."));
       return null;
     } finally {
       setIsSyncingDetail(false);
@@ -2202,10 +2206,14 @@ function WorkDetailView({
     }
     const workID = await ensureSelectedRemoteSourceWork("detail_mark_interest");
     if (!workID) return;
-    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-    setMessage(`Marked ${selectedRemoteSource.detail?.primaryCode ?? work.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
-    if (workID === work.id) await onWorkReload(work.id);
-    await onWorksChanged();
+    try {
+      const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+      toast.success(`Marked ${selectedRemoteSource.detail?.primaryCode ?? work.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
+      if (workID === work.id) await onWorkReload(work.id);
+      await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Mark update failed."));
+    }
   };
 
   const ensureDetailListWork = async () => {
@@ -2234,9 +2242,9 @@ function WorkDetailView({
       });
       setRemoteSources(checkedSources);
       setSourceCheckedAt(result.checkedAt);
-      setMessage(`Checked source availability through workflow run #${result.runId}.`);
+      toast.success(`Checked source availability through workflow run #${result.runId}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Source check failed.");
+      toast.notify(toastFromError(error, "Source check failed."));
     } finally {
       setIsCheckingSources(false);
     }
@@ -2248,12 +2256,12 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.trackRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
-      setMessage(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
+      toast.success(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId);
       await onWorksChanged();
       setActiveSourceKey(`${remote.source.id}:remote_stream`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Fork failed.");
+      toast.notify(toastFromError(error, "Fork failed."));
     } finally {
       setIsSyncingDetail(false);
     }

@@ -4,17 +4,17 @@ import { Plus, RefreshCw, Save, Trash2, UserCog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type ManagedUser } from "@/lib/api";
 
 const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
 
 export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: number; isSuperAdmin: boolean }) {
+  const toast = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | "new">("new");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
@@ -23,7 +23,6 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
 
   const refresh = async () => {
     setIsLoading(true);
-    setError("");
     try {
       const nextUsers = await api.listUsers();
       setUsers(nextUsers);
@@ -31,7 +30,7 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
         setSelectedUserId("new");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
+      toast.notify(toastFromError(err, "Failed to load users"));
     } finally {
       setIsLoading(false);
     }
@@ -43,8 +42,6 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
 
   const saveUser = async (payload: UserFormPayload) => {
     setIsSaving(true);
-    setError("");
-    setMessage("");
     try {
       if (selectedUser) {
         const updatePayload: Parameters<typeof api.updateUser>[1] = {
@@ -57,15 +54,15 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
         }
         const updated = await api.updateUser(selectedUser.id, updatePayload);
         setUsers((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-        setMessage("User updated");
+        toast.success("User updated");
       } else {
         const created = await api.createUser(payload);
         setUsers((items) => [...items, created]);
         setSelectedUserId(created.id);
-        setMessage("User created");
+        toast.success("User created");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      toast.notify(toastFromError(err, "Save failed"));
     } finally {
       setIsSaving(false);
     }
@@ -73,15 +70,13 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
 
   const deleteUser = async (user: ManagedUser) => {
     setIsSaving(true);
-    setError("");
-    setMessage("");
     try {
       await api.deleteUser(user.id);
       setUsers((items) => items.filter((item) => item.id !== user.id));
       setSelectedUserId("new");
-      setMessage("User deleted");
+      toast.success("User deleted");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      toast.notify(toastFromError(err, "Delete failed"));
     } finally {
       setIsSaving(false);
     }
@@ -106,12 +101,6 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
             </Button>
           </div>
         </div>
-
-        {(error || message) && (
-          <div className={error ? "rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" : "rounded-md border bg-secondary px-3 py-2 text-sm text-secondary-foreground"}>
-            {error || message}
-          </div>
-        )}
 
         <Card>
           <CardContent className="p-0">
