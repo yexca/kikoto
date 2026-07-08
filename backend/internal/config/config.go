@@ -11,6 +11,7 @@ type Config struct {
 	DatabasePath        string
 	DataRoot            string
 	CacheRoot           string
+	StaticDir           string
 	LocalScanDepth      int
 	DevMode             bool
 	SessionCookieSecure bool
@@ -35,6 +36,7 @@ func Load() Config {
 		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
 		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
+		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
 		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
 		DevMode:             envBool("KIKOTO_DEV_MODE", false),
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),

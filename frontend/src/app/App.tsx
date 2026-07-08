@@ -102,7 +102,9 @@ function AuthenticatedApp() {
         <aside className="sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
           <div className={cn("flex h-16 items-center border-b", sidebarCollapsed ? "justify-center px-3" : "px-5")}>
             <div className="flex min-w-0 items-center gap-2">
-              <img src="/kikoto-icon.svg" alt="" className="h-8 w-8 shrink-0" />
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 ring-1 ring-primary/15">
+                <img src="/kikoto-icon.svg" alt="" className="h-7 w-7" />
+              </span>
               {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
             </div>
           </div>
