@@ -106,9 +106,19 @@ type appSettingsResponse struct {
 	RemoteMaxBackoff       float64             `json:"remoteMaxBackoffSeconds"`
 	CircleAutoRefreshDays  int                 `json:"circleAutoRefreshDays"`
 	DLsiteMetadataLanguage string              `json:"dlsiteMetadataLanguage"`
+	DirectoryRoutingRules  []directoryRule     `json:"directoryRoutingRules"`
 	DataRoot               string              `json:"dataRoot"`
 	CacheRoot              string              `json:"cacheRoot"`
 	FileSources            []fileSourceSummary `json:"fileSources"`
+}
+
+type directoryRule struct {
+	ID              string   `json:"id"`
+	Label           string   `json:"label"`
+	Weight          int      `json:"weight"`
+	Aliases         []string `json:"aliases"`
+	NegativeAliases []string `json:"negativeAliases"`
+	Enabled         bool     `json:"enabled"`
 }
 
 type fileSourceSummary struct {
@@ -387,7 +397,8 @@ func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"cacheEnabled": s.settingBool(r, "remote_cache_enabled", false),
+		"cacheEnabled":          s.settingBool(r, "remote_cache_enabled", false),
+		"directoryRoutingRules": s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 	})
 }
 
@@ -396,16 +407,17 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth         *int     `json:"localScanDepth"`
-		CacheEnabled           *bool    `json:"cacheEnabled"`
-		CacheLimitGB           *int     `json:"cacheLimitGb"`
-		RemoteSaveTemplate     *string  `json:"remoteSaveTemplate"`
-		RemoteDelayBase        *float64 `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom      *float64 `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff          *float64 `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff       *float64 `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays  *int     `json:"circleAutoRefreshDays"`
-		DLsiteMetadataLanguage *string  `json:"dlsiteMetadataLanguage"`
+		LocalScanDepth         *int             `json:"localScanDepth"`
+		CacheEnabled           *bool            `json:"cacheEnabled"`
+		CacheLimitGB           *int             `json:"cacheLimitGb"`
+		RemoteSaveTemplate     *string          `json:"remoteSaveTemplate"`
+		RemoteDelayBase        *float64         `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom      *float64         `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff          *float64         `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff       *float64         `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays  *int             `json:"circleAutoRefreshDays"`
+		DLsiteMetadataLanguage *string          `json:"dlsiteMetadataLanguage"`
+		DirectoryRoutingRules  *[]directoryRule `json:"directoryRoutingRules"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -511,6 +523,17 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := upsertSetting(r, tx, "dlsite_metadata_language", value); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.DirectoryRoutingRules != nil {
+		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
+		if len(rules) > 20 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "directoryRoutingRules must contain at most 20 rules"})
+			return
+		}
+		if err := upsertSetting(r, tx, "directory_routing_rules", rules); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -4188,10 +4211,108 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteMaxBackoff:       s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		CircleAutoRefreshDays:  s.settingInt(r, "circle_auto_refresh_days", 30),
 		DLsiteMetadataLanguage: normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
+		DirectoryRoutingRules:  s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		DataRoot:               s.cfg.DataRoot,
 		CacheRoot:              s.cfg.CacheRoot,
 		FileSources:            sources,
 	}, nil
+}
+
+func defaultDirectoryRoutingRules() []directoryRule {
+	return []directoryRule{
+		{
+			ID:              "main",
+			Label:           "Main story",
+			Weight:          40,
+			Aliases:         []string{"本編", "本篇", "honhen", "main"},
+			NegativeAliases: []string{"特典", "bonus", "おまけ"},
+			Enabled:         true,
+		},
+		{
+			ID:              "with_se",
+			Label:           "SEあり",
+			Weight:          30,
+			Aliases:         []string{"SEあり", "SE有", "SE付き", "効果音あり", "with se"},
+			NegativeAliases: []string{"SEなし", "SE無", "効果音なし", "without se"},
+			Enabled:         true,
+		},
+		{
+			ID:              "mp3",
+			Label:           "mp3",
+			Weight:          20,
+			Aliases:         []string{"mp3"},
+			NegativeAliases: []string{"wav", "flac"},
+			Enabled:         true,
+		},
+	}
+}
+
+func normalizeDirectoryRoutingRules(rules []directoryRule) []directoryRule {
+	normalized := []directoryRule{}
+	for index, rule := range rules {
+		label := strings.TrimSpace(rule.Label)
+		aliases := cleanStringList(rule.Aliases, 24)
+		negativeAliases := cleanStringList(rule.NegativeAliases, 24)
+		if label == "" && len(aliases) > 0 {
+			label = aliases[0]
+		}
+		if label == "" || len(aliases) == 0 {
+			continue
+		}
+		id := stablePreferenceID(rule.ID, label, index)
+		weight := rule.Weight
+		if weight < 1 {
+			weight = 1
+		}
+		if weight > 100 {
+			weight = 100
+		}
+		normalized = append(normalized, directoryRule{
+			ID:              id,
+			Label:           label,
+			Weight:          weight,
+			Aliases:         aliases,
+			NegativeAliases: negativeAliases,
+			Enabled:         rule.Enabled,
+		})
+	}
+	return normalized
+}
+
+func cleanStringList(values []string, limit int) []string {
+	cleaned := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		cleaned = append(cleaned, value)
+		if len(cleaned) >= limit {
+			break
+		}
+	}
+	return cleaned
+}
+
+func stablePreferenceID(value string, label string, index int) string {
+	id := strings.ToLower(strings.TrimSpace(value))
+	id = sourceCodePattern.ReplaceAllString(id, "_")
+	id = strings.Trim(id, "_")
+	if id == "" {
+		id = strings.ToLower(strings.TrimSpace(label))
+		id = sourceCodePattern.ReplaceAllString(id, "_")
+		id = strings.Trim(id, "_")
+	}
+	if id == "" {
+		id = fmt.Sprintf("rule_%d", index+1)
+	}
+	return id
 }
 
 func normalizeDLsiteLanguage(value string) string {
@@ -4448,6 +4569,22 @@ func (s *Server) settingString(r *http.Request, key string, fallback string) str
 		return fallback
 	}
 	return value
+}
+
+func (s *Server) settingDirectoryRules(r *http.Request, key string, fallback []directoryRule) []directoryRule {
+	var raw string
+	if err := s.db.QueryRowContext(r.Context(), "SELECT value_json FROM app_setting WHERE key = ?", key).Scan(&raw); err != nil {
+		return fallback
+	}
+	var rules []directoryRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return fallback
+	}
+	rules = normalizeDirectoryRoutingRules(rules)
+	if len(rules) == 0 {
+		return fallback
+	}
+	return rules
 }
 
 func slugSourceCode(displayName string) string {

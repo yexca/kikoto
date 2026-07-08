@@ -1,4 +1,6 @@
 import {
+  ArrowDown,
+  ArrowUp,
   Cloud,
   Database,
   Download,
@@ -24,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type AppSettings, type FileSource } from "@/lib/api";
+import { api, type AppSettings, type DirectoryRoutingRule, type FileSource } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
@@ -60,6 +62,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [remoteMaxBackoff, setRemoteMaxBackoff] = useState(300);
   const [circleAutoRefreshDays, setCircleAutoRefreshDays] = useState(30);
   const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
+  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -88,6 +91,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setCircleAutoRefreshDays(next.circleAutoRefreshDays);
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
+        setDirectoryRoutingRules(next.directoryRoutingRules ?? []);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
@@ -113,6 +117,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       remoteMaxBackoffSeconds: remoteMaxBackoff,
       circleAutoRefreshDays,
       dlsiteMetadataLanguage,
+      directoryRoutingRules,
     });
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
@@ -248,11 +253,10 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           items={["Display name and avatar", "Language and theme preference", "Session and sign-out controls"]}
         />
       ) : activeTab === "playback" ? (
-        <ComingSoonSettings
-          icon={<PlayCircle className="h-5 w-5" />}
-          title="Playback"
-          summary="Playback behavior is becoming a first-class preference area."
-          items={["Default player mode", "Playback speed and seek intervals", "Lyrics, sleep timer, and source preference"]}
+        <PlaybackSettings
+          rules={directoryRoutingRules}
+          onRulesChange={setDirectoryRoutingRules}
+          onSave={saveRuntimeSettings}
         />
       ) : activeTab === "local" ? (
         <LocalLibrarySettings
@@ -476,6 +480,182 @@ function ComingSoonSettings({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PlaybackSettings({
+  rules,
+  onRulesChange,
+  onSave,
+}: {
+  rules: DirectoryRoutingRule[];
+  onRulesChange: (rules: DirectoryRoutingRule[]) => void;
+  onSave: () => Promise<void>;
+}) {
+  const patchRule = (index: number, patch: Partial<DirectoryRoutingRule>) => {
+    onRulesChange(rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule));
+  };
+  const moveRule = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= rules.length) return;
+    const next = [...rules];
+    const [rule] = next.splice(index, 1);
+    next.splice(nextIndex, 0, rule);
+    onRulesChange(next);
+  };
+  const addRule = () => {
+    onRulesChange([
+      ...rules,
+      {
+        id: `rule_${Date.now()}`,
+        label: "New rule",
+        weight: 10,
+        aliases: ["keyword"],
+        negativeAliases: [],
+        enabled: true,
+      },
+    ]);
+  };
+  const removeRule = (index: number) => onRulesChange(rules.filter((_, ruleIndex) => ruleIndex !== index));
+  return (
+    <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <PlayCircle className="h-4 w-4" />
+              </span>
+              <span className="truncate">Playback</span>
+            </span>
+            <Button variant="outline" size="sm" onClick={addRule}>
+              <Plus className="h-4 w-4" />
+              Add rule
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusPanel icon={<Folder className="h-4 w-4" />} label="Directory routing" value={rules.length > 0 ? "Enabled" : "No rules"} />
+            <StatusPanel icon={<SlidersHorizontal className="h-4 w-4" />} label="Match model" value="Weighted aliases" />
+            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Fallback" value="Most audio" />
+          </div>
+          <div className="space-y-3">
+            {rules.map((rule, index) => (
+              <DirectoryRuleEditor
+                key={rule.id || index}
+                rule={rule}
+                index={index}
+                canMoveUp={index > 0}
+                canMoveDown={index < rules.length - 1}
+                onPatch={(patch) => patchRule(index, patch)}
+                onMove={moveRule}
+                onRemove={() => removeRule(index)}
+              />
+            ))}
+            {rules.length === 0 && (
+              <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+                Add at least one rule to prefer matching playable folders.
+              </div>
+            )}
+          </div>
+          <Button size="sm" onClick={() => void onSave()}>
+            <Save className="h-4 w-4" />
+            Save playback settings
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function DirectoryRuleEditor({
+  rule,
+  index,
+  canMoveUp,
+  canMoveDown,
+  onPatch,
+  onMove,
+  onRemove,
+}: {
+  rule: DirectoryRoutingRule;
+  index: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onPatch: (patch: Partial<DirectoryRoutingRule>) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className={`rounded-lg border bg-background p-3 ${rule.enabled ? "" : "opacity-65"}`}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="flex items-center gap-2">
+          <button
+            className="grid h-8 w-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:opacity-40"
+            disabled={!canMoveUp}
+            onClick={() => onMove(index, -1)}
+            aria-label="Move rule up"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
+          <button
+            className="grid h-8 w-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:opacity-40"
+            disabled={!canMoveDown}
+            onClick={() => onMove(index, 1)}
+            aria-label="Move rule down"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_120px_120px]">
+          <TextInput label="Rule name" value={rule.label} onChange={(value) => onPatch({ label: value })} />
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Weight</span>
+            <input
+              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+              type="number"
+              min={1}
+              max={100}
+              value={rule.weight}
+              onChange={(event) => onPatch({ weight: Number(event.target.value) })}
+            />
+          </label>
+          <label className="flex min-h-9 items-center justify-between gap-3 self-end rounded-md border px-3 text-sm">
+            <span className="font-medium">Enabled</span>
+            <input type="checkbox" checked={rule.enabled} onChange={(event) => onPatch({ enabled: event.target.checked })} />
+          </label>
+        </div>
+        <Button variant="outline" size="icon" aria-label="Remove rule" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <TagListInput
+          label="Aliases"
+          value={rule.aliases}
+          onChange={(aliases) => onPatch({ aliases })}
+        />
+        <TagListInput
+          label="Negative aliases"
+          value={rule.negativeAliases}
+          onChange={(negativeAliases) => onPatch({ negativeAliases })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TagListInput({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string[]) => void }) {
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <textarea
+        className="min-h-20 rounded-md border bg-card px-3 py-2 outline-none focus:ring-2 focus:ring-ring"
+        value={value.join(", ")}
+        onChange={(event) => onChange(splitRuleTokens(event.target.value))}
+      />
+      <span className="text-xs text-muted-foreground">Separate words with commas or new lines.</span>
+    </label>
   );
 }
 
@@ -1212,6 +1392,13 @@ function normalizeSaveSuffix(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return DEFAULT_SAVE_SUFFIX;
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function splitRuleTokens(value: string) {
+  return Array.from(new Set(value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)));
 }
 
 function languageName(value: string) {
