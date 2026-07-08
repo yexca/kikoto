@@ -77,6 +77,80 @@
 }
 
 @layer utilities {
+  .player-range {
+    appearance: none;
+    background: transparent;
+  }
+
+  .player-range::-webkit-slider-runnable-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: hsl(var(--muted));
+  }
+
+  .player-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    margin-top: -0.3125rem;
+    border-radius: 9999px;
+    border: 3px solid hsl(var(--card));
+    background: hsl(var(--primary));
+    box-shadow: 0 3px 10px hsl(var(--primary) / 0.35);
+  }
+
+  .player-range::-moz-range-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: hsl(var(--muted));
+  }
+
+  .player-range::-moz-range-progress {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+  }
+
+  .player-range::-moz-range-thumb {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    border: 3px solid hsl(var(--card));
+    background: hsl(var(--primary));
+    box-shadow: 0 3px 10px hsl(var(--primary) / 0.35);
+  }
+
+  .player-scrub {
+    appearance: none;
+    background: transparent;
+  }
+
+  .player-scrub::-webkit-slider-runnable-track {
+    height: 1.25rem;
+    background: transparent;
+  }
+
+  .player-scrub::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    background: transparent;
+  }
+
+  .player-scrub::-moz-range-track {
+    height: 1.25rem;
+    background: transparent;
+  }
+
+  .player-scrub::-moz-range-thumb {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+  }
+
   .animate-toast-progress {
     animation-name: toast-progress;
     animation-timing-function: linear;

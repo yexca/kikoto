@@ -1,6 +1,7 @@
 import {
   Captions,
   ListMusic,
+  ListOrdered,
   Maximize2,
   Minimize2,
   Pause,
@@ -62,6 +63,7 @@ type PlayerContextValue = {
   seekTo: (seconds: number) => void;
   setVolume: (volume: number) => void;
   cycleMode: () => void;
+  setMode: (mode: PlayMode) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -260,6 +262,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       seekTo,
       setVolume: setVolumeValue,
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
+      setMode,
     }),
     [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, mode],
   );
@@ -310,16 +313,10 @@ export function PlayerDock() {
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
+  const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(null);
+  const miniDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const suppressMiniClickRef = useRef(false);
   const track = player.currentTrack;
-  const seekFromMiniPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (player.duration <= 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left - rect.width / 2;
-    const y = event.clientY - rect.top - rect.height / 2;
-    const angle = Math.atan2(y, x) + Math.PI / 2;
-    const normalized = angle < 0 ? angle + Math.PI * 2 : angle;
-    player.seekTo((normalized / (Math.PI * 2)) * player.duration);
-  };
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
 
@@ -355,52 +352,83 @@ export function PlayerDock() {
 
   if (dockMode === "mini") {
     return (
-      <div className="fixed bottom-[76px] right-3 z-40 lg:bottom-6 lg:right-6">
+      <div
+        className="group fixed z-40 touch-none"
+        style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "76px", right: "12px" }}
+        onPointerDown={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          miniDragRef.current = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - rect.left,
+            offsetY: event.clientY - rect.top,
+            moved: false,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = miniDragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const nextX = Math.max(8, Math.min(window.innerWidth - 100, event.clientX - drag.offsetX));
+          const nextY = Math.max(8, Math.min(window.innerHeight - 100, event.clientY - drag.offsetY));
+          if (!drag.moved && miniPosition) {
+            drag.moved = Math.abs(nextX - miniPosition.x) > 4 || Math.abs(nextY - miniPosition.y) > 4;
+          } else if (!drag.moved) {
+            const rect = event.currentTarget.getBoundingClientRect();
+            drag.moved = Math.abs(nextX - rect.left) > 4 || Math.abs(nextY - rect.top) > 4;
+          }
+          setMiniPosition({ x: nextX, y: nextY });
+        }}
+        onPointerUp={(event) => {
+          if (miniDragRef.current?.moved) suppressMiniClickRef.current = true;
+          miniDragRef.current = null;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+      >
         <div
-          className="relative h-[92px] w-[92px] animate-player-enter rounded-full bg-card shadow-xl transition-all duration-300 ease-out"
-          onPointerDown={seekFromMiniPointer}
-          onPointerMove={(event) => {
-            if (event.buttons === 1) seekFromMiniPointer(event);
-          }}
-          role="slider"
-          tabIndex={0}
-          aria-label="Seek"
-          aria-valuemin={0}
-          aria-valuemax={Math.round(player.duration || 0)}
-          aria-valuenow={Math.round(player.currentTime)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
-              event.preventDefault();
-              player.seekBy(-5);
-            } else if (event.key === "ArrowRight") {
-              event.preventDefault();
-              player.seekBy(5);
-            }
-          }}
+          className="relative h-[92px] w-[92px] animate-player-enter cursor-grab rounded-full border border-primary/20 bg-card shadow-xl shadow-primary/15 ring-4 ring-primary/10 transition-all duration-300 ease-out active:cursor-grabbing"
         >
           <MiniProgress progress={progress} />
           <button
-            className="absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={player.togglePlay}
+            className="absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background shadow-inner"
+            onClick={(event) => {
+              if (suppressMiniClickRef.current) {
+                suppressMiniClickRef.current = false;
+                event.preventDefault();
+                return;
+              }
+              player.togglePlay();
+            }}
             onDoubleClick={() => setDockMode("compact")}
             aria-label={player.isPlaying ? "Pause" : "Play"}
             title="Double-click to expand"
           >
             <CoverImage track={track} className="h-full w-full rounded-full" />
-            <span className="absolute inset-0 grid place-items-center bg-background/10 opacity-0 transition-opacity hover:opacity-100">
+            <span className="absolute inset-0 grid place-items-center bg-background/30 opacity-0 backdrop-blur-[1px] transition-opacity hover:opacity-100">
               {player.isPlaying ? <Pause className="h-5 w-5 drop-shadow" /> : <Play className="h-5 w-5 drop-shadow" />}
             </span>
           </button>
-          <Button
-            className="absolute -right-1 -top-1 z-30 h-7 w-7 rounded-full"
-            size="icon"
-            variant="secondary"
-            onClick={() => setDockMode("compact")}
-            aria-label="Expand player"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+            <Button
+              className="pointer-events-auto h-8 w-8 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-md transition-all duration-200 group-hover:-translate-x-8 group-hover:opacity-100"
+              size="icon"
+              variant="secondary"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setDockMode("full")}
+              aria-label="Open full player"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              className="pointer-events-auto h-8 w-8 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-md transition-all duration-200 group-hover:translate-x-8 group-hover:opacity-100"
+              size="icon"
+              variant="secondary"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setDockMode("compact")}
+              aria-label="Open compact player"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -409,20 +437,21 @@ export function PlayerDock() {
   if (dockMode === "compact") {
     return (
       <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
-        <div className="relative animate-player-enter overflow-hidden rounded-lg border bg-card shadow-lg transition-all duration-300 ease-out">
-          <div className="absolute inset-y-0 left-0 bg-primary/15 transition-[width] duration-300" style={{ width: `${progress}%` }} />
-          <div className="relative z-10 flex min-h-[68px] items-center gap-3 px-3">
+        <div className="relative animate-player-enter overflow-hidden rounded-xl border border-primary/15 bg-card/95 shadow-xl shadow-primary/10 backdrop-blur transition-all duration-300 ease-out">
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-muted" />
+          <div className="absolute bottom-0 left-0 h-1 rounded-r-full bg-primary transition-[width] duration-300" style={{ width: `${progress}%` }} />
+          <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
-              <CoverImage track={track} className="h-12 w-16" />
+              <CoverImage track={track} className="h-12 w-16 shadow-sm" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{track.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
               </div>
             </button>
-            <Button size="icon" variant="outline" onClick={() => setDockMode("mini")} aria-label="Mini player">
+            <Button className="h-9 w-9 rounded-full border-primary/15 bg-card/80" size="icon" variant="outline" onClick={() => setDockMode("mini")} aria-label="Mini player">
               <Minimize2 className="h-4 w-4" />
             </Button>
-            <Button size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+            <Button className="h-11 w-11 rounded-full shadow-lg shadow-primary/25" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
               {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           </div>
@@ -432,28 +461,28 @@ export function PlayerDock() {
   }
 
   return (
-    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-lg border bg-card shadow-xl transition-all duration-300 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
+    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-xl border border-primary/15 bg-card shadow-2xl shadow-primary/10 transition-all duration-300 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
       <div className="flex h-full flex-col">
         <button
-          className="flex h-9 shrink-0 items-center justify-center border-b hover:bg-muted"
+          className="flex h-8 shrink-0 items-center justify-center hover:bg-muted/70"
           onClick={() => setDockMode("compact")}
           aria-label="Collapse player"
         >
-          <span className="h-1.5 w-12 rounded-full bg-muted-foreground/35" />
+          <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-hidden p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="flex min-h-[72px] items-center gap-3 rounded-md border bg-background p-2">
-                <CoverImage track={track} className="h-14 w-[74px]" />
+              <div className="flex min-h-[76px] items-center gap-3 rounded-lg border border-primary/10 bg-secondary/35 p-2.5">
+                <CoverImage track={track} className="h-14 w-[74px] shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
                   <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background p-2">
+              <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-primary/10 bg-background/70 p-2">
                 {panel === "lyrics" ? (
                   track.lyricsLocationId ? (
                     lyricsError ? (
@@ -476,12 +505,12 @@ export function PlayerDock() {
                     {player.queue.map((item, index) => (
                       <button
                         key={item.locationId}
-                        className={`flex min-h-8 w-full items-center gap-2 rounded px-2 text-left text-xs ${
-                          index === player.currentIndex ? "bg-secondary font-semibold" : "hover:bg-muted"
+                        className={`flex min-h-10 w-full items-center gap-2 rounded-md border-l-2 px-2 text-left text-xs transition-colors ${
+                          index === player.currentIndex ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground" : "border-transparent hover:bg-muted"
                         }`}
                         onClick={() => player.selectTrack(index)}
                       >
-                        {index === player.currentIndex ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        {index === player.currentIndex ? <Pause className="h-3.5 w-3.5 text-primary" /> : <Play className="h-3.5 w-3.5 text-muted-foreground" />}
                         <span className="truncate">{item.title}</span>
                       </button>
                     ))}
@@ -491,7 +520,9 @@ export function PlayerDock() {
             </div>
           ) : (
             <div className="flex h-full flex-col justify-center gap-4">
-              <CoverImage track={track} className="mx-auto aspect-[4/3] w-full max-w-[260px]" />
+              <div className="mx-auto w-full max-w-[272px] rounded-xl bg-secondary/35 p-2 shadow-inner">
+                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full shadow-lg shadow-primary/10" />
+              </div>
               <div className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
@@ -501,17 +532,13 @@ export function PlayerDock() {
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t p-4">
+        <div className="shrink-0 space-y-4 border-t bg-secondary/25 p-4">
           <div className="space-y-1">
-          <input
-            className="h-2 w-full accent-primary"
-            type="range"
-            min={0}
-            max={player.duration || 0}
-            step={0.1}
-            value={Math.min(player.currentTime, player.duration || player.currentTime)}
-            onChange={(event) => player.seekTo(Number(event.currentTarget.value))}
-            aria-label="Seek"
+          <SeekBar
+            currentTime={player.currentTime}
+            duration={player.duration}
+            progress={progress}
+            onSeek={player.seekTo}
           />
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{formatTime(player.currentTime)}</span>
@@ -520,28 +547,49 @@ export function PlayerDock() {
           </div>
 
           <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
+          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
+          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
             <SeekIcon direction="back" seconds={5} />
           </Button>
-          <Button className="h-12 w-12" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+          <Button className="h-14 w-14 rounded-full shadow-xl shadow-primary/30" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
             {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
           </Button>
-          <Button variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
+          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
             <SeekIcon direction="forward" seconds={10} />
           </Button>
-          <Button variant="outline" size="icon" onClick={player.next} aria-label="Next">
+          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={player.next} aria-label="Next">
             <SkipForward className="h-4 w-4" />
           </Button>
           </div>
 
           <div className="relative grid grid-cols-4 gap-2">
-          <Button variant="outline" size="sm" onClick={player.cycleMode} title={modeLabel}>
-            {player.mode === "single" ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
-          </Button>
+          <div className="grid grid-cols-3 rounded-full border border-primary/15 bg-card/70 p-0.5" title={modeLabel}>
+            <button
+              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "order" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => player.setMode("order")}
+              aria-label="Order playback"
+            >
+              <ListOrdered className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "loop" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => player.setMode("loop")}
+              aria-label="Loop queue"
+            >
+              <Repeat className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "single" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => player.setMode("single")}
+              aria-label="Repeat one"
+            >
+              <Repeat1 className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Button
+            className="rounded-full border-primary/15"
             variant={panel === "queue" ? "secondary" : "outline"}
             size="sm"
             onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
@@ -549,6 +597,7 @@ export function PlayerDock() {
             <ListMusic className="h-4 w-4" />
           </Button>
           <Button
+            className="rounded-full border-primary/15"
             variant={panel === "lyrics" ? "secondary" : "outline"}
             size="sm"
             onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
@@ -559,6 +608,7 @@ export function PlayerDock() {
           </Button>
           <Button
             ref={volumeButtonRef}
+            className="rounded-full border-primary/15"
             variant={isVolumeOpen ? "secondary" : "outline"}
             size="sm"
             onClick={() => setIsVolumeOpen((value) => !value)}
@@ -569,11 +619,11 @@ export function PlayerDock() {
           {isVolumeOpen && (
             <div
               ref={volumePopoverRef}
-              className="absolute bottom-11 right-0 z-10 flex h-44 w-14 flex-col items-center gap-2 rounded-md border bg-card px-2 py-3 shadow-lg"
+              className="absolute bottom-11 right-0 z-10 flex h-44 w-14 flex-col items-center gap-2 rounded-lg border border-primary/15 bg-card px-2 py-3 shadow-xl shadow-primary/10"
             >
               <span className="text-xs text-muted-foreground">{Math.round(player.volume * 100)}</span>
               <input
-                className="h-24 w-2 accent-primary [direction:rtl] [writing-mode:vertical-lr]"
+                className="player-range h-24 w-2 [direction:rtl] [writing-mode:vertical-lr]"
                 type="range"
                 min={0}
                 max={1}
@@ -599,6 +649,44 @@ function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; secon
       <Icon className="h-5 w-5" />
       <span className="absolute text-[8px] font-bold leading-none">{seconds}</span>
     </span>
+  );
+}
+
+function SeekBar({
+  currentTime,
+  duration,
+  progress,
+  onSeek,
+}: {
+  currentTime: number;
+  duration: number;
+  progress: number;
+  onSeek: (seconds: number) => void;
+}) {
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+  return (
+    <div className="relative h-5">
+      <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-card shadow-inner">
+        <div
+          className="h-full rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-[width] duration-200"
+          style={{ width: `${clampedProgress}%` }}
+        />
+      </div>
+      <div
+        className="pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-card bg-primary shadow-lg shadow-primary/30 transition-[left] duration-200"
+        style={{ left: `${clampedProgress}%` }}
+      />
+      <input
+        className="player-scrub absolute inset-0 h-5 w-full cursor-pointer"
+        type="range"
+        min={0}
+        max={duration || 0}
+        step={0.1}
+        value={Math.min(currentTime, duration || currentTime)}
+        onChange={(event) => onSeek(Number(event.currentTarget.value))}
+        aria-label="Seek"
+      />
+    </div>
   );
 }
 
