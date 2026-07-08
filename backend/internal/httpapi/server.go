@@ -590,6 +590,37 @@ func libraryListWhere(scope string, status string) (string, []any) {
 				AND scope_presence.presence_type = 'tracked'
 				AND scope_presence.availability = 'available'
 		)`)
+	case "remote":
+		clauses = append(clauses, `EXISTS (
+			SELECT 1
+			FROM work_source_presence AS scope_presence
+			WHERE scope_presence.work_id = work.id
+				AND scope_presence.presence_type = 'remote_source'
+				AND scope_presence.availability = 'available'
+		)`)
+		clauses = append(clauses, `NOT EXISTS (
+			SELECT 1
+			FROM work_source_presence AS scope_presence
+			WHERE scope_presence.work_id = work.id
+				AND scope_presence.presence_type = 'tracked'
+				AND scope_presence.availability = 'available'
+		)`)
+		clauses = append(clauses, `NOT EXISTS (
+			SELECT 1
+			FROM media_file_location AS scope_location
+			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
+			WHERE (
+					scope_item.work_id = work.id
+					OR scope_item.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+				)
+				AND scope_location.location_type = 'local'
+				AND scope_location.availability = 'available'
+		)`)
 	case "no_source":
 		clauses = append(clauses, libraryNoSourceWhereClause())
 	}
@@ -904,6 +935,10 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 		return stringSliceContainsFold(work.Availability, "local")
 	case "tracked":
 		return workHasAvailableSourcePresenceType(work, "tracked")
+	case "remote":
+		return workHasAvailableSourcePresenceType(work, "remote_source") &&
+			!workHasAvailableSourcePresenceType(work, "tracked") &&
+			!stringSliceContainsFold(work.Availability, "local")
 	case "no_source":
 		return len(work.SourcePresence) == 0 && len(work.Availability) == 0
 	default:

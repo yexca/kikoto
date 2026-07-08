@@ -150,6 +150,7 @@ export function LibraryPage() {
   const [works, setWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
+  const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ cacheEnabled: boolean } | null>(null);
@@ -184,7 +185,7 @@ export function LibraryPage() {
   const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
   const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
-  const workScope = activeTab.kind === "local" ? "local" : activeTab.kind === "tracked" ? "tracked" : activeTab.kind === "no_source" ? "no_source" : "all";
+  const workScope = localScope;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
@@ -290,6 +291,7 @@ export function LibraryPage() {
       setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
       setActiveTab((tab) => resolveTabFromPath(window.location.pathname, sources, tab));
+      setLocalScope(localScopeFromPath(window.location.pathname));
     };
     const handlePopState = () => syncFromPath();
     const handleAppNavigation = () => syncFromPath();
@@ -303,7 +305,7 @@ export function LibraryPage() {
 
   useEffect(() => {
     setWorkPage(1);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", librarySearchQuery, statusFilter, librarySort, sortDirection, workPageSize]);
+  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", localScope, librarySearchQuery, statusFilter, librarySort, sortDirection, workPageSize]);
 
   useEffect(() => {
     if (activeTab.kind !== "source") return;
@@ -337,12 +339,18 @@ export function LibraryPage() {
 
   const changeTab = (tab: LibraryTab) => {
     setActiveTab(tab);
+    if (tab.kind === "all") setLocalScope("local");
     setSelectedRemoteTarget(null);
     const path = pathForLibraryTab(tab);
     if (window.location.pathname !== path) {
       window.history.pushState({}, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
+  };
+
+  const changeLocalScope = (scope: LocalLibraryScope) => {
+    setLocalScope(scope);
+    setWorkPage(1);
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
@@ -668,6 +676,7 @@ export function LibraryPage() {
         />
       ) : (
         <div className="space-y-3">
+          <LocalScopeTabs value={localScope} onChange={changeLocalScope} />
           {localPagination}
           <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
             {pagedWorks.map((work) => (
@@ -681,19 +690,23 @@ export function LibraryPage() {
                   setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                 }}
                 onTagOpen={addTagSearchToken}
-                onUntrack={activeTab.kind === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
-                onFetch={activeTab.kind === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
+                onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
                 isFetchBusy={isTrackedFetching}
               />
             ))}
             {visibleWorks.length === 0 && (
               <Card className="sm:col-span-2 xl:col-span-3">
                 <CardContent className="p-5 text-sm text-muted-foreground">
-                  {activeTab.kind === "tracked"
+                  {localScope === "tracked"
                     ? "No tracked works match this view."
-                    : activeTab.kind === "no_source"
+                    : localScope === "remote"
+                    ? "No untracked remote-available works match this view."
+                    : localScope === "no_source"
                     ? "No works without sources match this view."
-                    : "No local works match this view."}
+                    : localScope === "local"
+                    ? "No local works match this view."
+                    : "No works match this view."}
                 </CardContent>
               </Card>
             )}
@@ -732,7 +745,16 @@ export function LibraryPage() {
   );
 }
 
-type LibraryTab = { kind: "local" } | { kind: "tracked" } | { kind: "no_source" } | { kind: "source"; source: LibrarySource };
+type LibraryTab = { kind: "all" } | { kind: "source"; source: LibrarySource };
+type LocalLibraryScope = "all" | "local" | "tracked" | "remote" | "no_source";
+
+const localScopeTabs: { value: LocalLibraryScope; label: string; icon: ReactNode }[] = [
+  { value: "local", label: "Local", icon: <HardDrive className="h-4 w-4" /> },
+  { value: "tracked", label: "Tracked", icon: <GitBranchPlus className="h-4 w-4" /> },
+  { value: "remote", label: "Remote", icon: <Cloud className="h-4 w-4" /> },
+  { value: "no_source", label: "No source", icon: <CloudOff className="h-4 w-4" /> },
+  { value: "all", label: "All", icon: <Database className="h-4 w-4" /> },
+];
 
 function LibraryTabs({
   activeTab,
@@ -745,11 +767,8 @@ function LibraryTabs({
 }) {
   return (
     <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
-      <TabButton active={activeTab.kind === "local"} onClick={() => onChange({ kind: "local" })} icon={<HardDrive className="h-4 w-4" />}>
-        Local
-      </TabButton>
-      <TabButton active={activeTab.kind === "tracked"} onClick={() => onChange({ kind: "tracked" })} icon={<GitBranchPlus className="h-4 w-4" />}>
-        Tracked
+      <TabButton active={activeTab.kind === "all"} onClick={() => onChange({ kind: "all" })} icon={<Database className="h-4 w-4" />}>
+        Library
       </TabButton>
       {sources.map((source) => (
         <TabButton
@@ -762,9 +781,18 @@ function LibraryTabs({
           {source.displayName}
         </TabButton>
       ))}
-      <TabButton active={activeTab.kind === "no_source"} onClick={() => onChange({ kind: "no_source" })} icon={<CloudOff className="h-4 w-4" />}>
-        No source
-      </TabButton>
+    </div>
+  );
+}
+
+function LocalScopeTabs({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card/60 p-1">
+      {localScopeTabs.map((tab) => (
+        <TabButton key={tab.value} active={value === tab.value} onClick={() => onChange(tab.value)} icon={tab.icon}>
+          {tab.label}
+        </TabButton>
+      ))}
     </div>
   );
 }
@@ -5323,15 +5351,15 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
   return source ? { source, code } : null;
 }
 
-function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "local" }): LibraryTab {
+function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "all" }): LibraryTab {
   if (path === "/tracked" || path === "/library/tracked") {
-    return { kind: "tracked" };
+    return { kind: "all" };
   }
   if (path === "/no-source" || path === "/library/no-source") {
-    return { kind: "no_source" };
+    return { kind: "all" };
   }
   if (path === "/" || path === "/library") {
-    return { kind: "local" };
+    return { kind: "all" };
   }
   const encodedKey = path.startsWith("/library/source/")
     ? path.slice("/library/source/".length).replace(/\/$/, "")
@@ -5353,15 +5381,17 @@ function resolveTabFromPath(path: string, sources: LibrarySource[], fallback: Li
 
 function pathForLibraryTab(tab: LibraryTab) {
   switch (tab.kind) {
-    case "tracked":
-      return "/tracked";
-    case "no_source":
-      return "/no-source";
     case "source":
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
     default:
       return "/";
   }
+}
+
+function localScopeFromPath(path: string): LocalLibraryScope {
+  if (path === "/tracked" || path === "/library/tracked") return "tracked";
+  if (path === "/no-source" || path === "/library/no-source") return "no_source";
+  return "local";
 }
 
 function sourceRouteKey(source: LibrarySource) {
