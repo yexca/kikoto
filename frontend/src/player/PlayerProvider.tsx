@@ -1,6 +1,8 @@
 import {
   Captions,
   ListMusic,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Repeat,
@@ -17,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 
 export type PlayMode = "order" | "loop" | "single";
+type DockMode = "full" | "compact" | "mini";
 
 export type PlayerTrack = {
   mediaItemId: number;
@@ -302,12 +305,23 @@ export function PlayerDock() {
   const player = usePlayer();
   const volumeButtonRef = useRef<HTMLButtonElement | null>(null);
   const volumePopoverRef = useRef<HTMLDivElement | null>(null);
-  const [expanded, setExpanded] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const [dockMode, setDockMode] = useState<DockMode>(() => (window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact"));
   const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
   const track = player.currentTrack;
+  const seekFromMiniPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (player.duration <= 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left - rect.width / 2;
+    const y = event.clientY - rect.top - rect.height / 2;
+    const angle = Math.atan2(y, x) + Math.PI / 2;
+    const normalized = angle < 0 ? angle + Math.PI * 2 : angle;
+    player.seekTo((normalized / (Math.PI * 2)) * player.duration);
+  };
+  const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
+  const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
 
   useEffect(() => {
     setLyricsText(null);
@@ -339,19 +353,75 @@ export function PlayerDock() {
   const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
   const hasPanel = panel !== null;
 
-  if (!expanded) {
+  if (dockMode === "mini") {
+    return (
+      <div className="fixed bottom-[76px] right-3 z-40 lg:bottom-6 lg:right-6">
+        <div
+          className="relative h-[92px] w-[92px] animate-player-enter rounded-full bg-card shadow-xl transition-all duration-300 ease-out"
+          onPointerDown={seekFromMiniPointer}
+          onPointerMove={(event) => {
+            if (event.buttons === 1) seekFromMiniPointer(event);
+          }}
+          role="slider"
+          tabIndex={0}
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(player.duration || 0)}
+          aria-valuenow={Math.round(player.currentTime)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              player.seekBy(-5);
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault();
+              player.seekBy(5);
+            }
+          }}
+        >
+          <MiniProgress progress={progress} />
+          <button
+            className="absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={player.togglePlay}
+            onDoubleClick={() => setDockMode("compact")}
+            aria-label={player.isPlaying ? "Pause" : "Play"}
+            title="Double-click to expand"
+          >
+            <CoverImage track={track} className="h-full w-full rounded-full" />
+            <span className="absolute inset-0 grid place-items-center bg-background/10 opacity-0 transition-opacity hover:opacity-100">
+              {player.isPlaying ? <Pause className="h-5 w-5 drop-shadow" /> : <Play className="h-5 w-5 drop-shadow" />}
+            </span>
+          </button>
+          <Button
+            className="absolute -right-1 -top-1 z-30 h-7 w-7 rounded-full"
+            size="icon"
+            variant="secondary"
+            onClick={() => setDockMode("compact")}
+            aria-label="Expand player"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (dockMode === "compact") {
     return (
       <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
-        <div className="relative overflow-hidden rounded-lg border bg-card shadow-lg">
-          <div className="absolute inset-y-0 left-0 bg-primary/15" style={{ width: `${progress}%` }} />
+        <div className="relative animate-player-enter overflow-hidden rounded-lg border bg-card shadow-lg transition-all duration-300 ease-out">
+          <div className="absolute inset-y-0 left-0 bg-primary/15 transition-[width] duration-300" style={{ width: `${progress}%` }} />
           <div className="relative z-10 flex min-h-[68px] items-center gap-3 px-3">
-            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpanded(true)}>
+            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
               <CoverImage track={track} className="h-12 w-16" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{track.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
               </div>
             </button>
+            <Button size="icon" variant="outline" onClick={() => setDockMode("mini")} aria-label="Mini player">
+              <Minimize2 className="h-4 w-4" />
+            </Button>
             <Button size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
               {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
@@ -362,11 +432,11 @@ export function PlayerDock() {
   }
 
   return (
-    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] overflow-hidden rounded-lg border bg-card shadow-xl lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
+    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-lg border bg-card shadow-xl transition-all duration-300 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
       <div className="flex h-full flex-col">
         <button
           className="flex h-9 shrink-0 items-center justify-center border-b hover:bg-muted"
-          onClick={() => setExpanded(false)}
+          onClick={() => setDockMode("compact")}
           aria-label="Collapse player"
         >
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/35" />
@@ -391,10 +461,12 @@ export function PlayerDock() {
                     ) : lyricsText === null ? (
                       <div className="p-3 text-sm text-muted-foreground">Loading lyrics...</div>
                     ) : (
-                      <div className="space-y-3 p-3">
-                        <div className="truncate text-xs font-semibold text-muted-foreground">{track.lyricsTitle}</div>
-                        <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{lyricsText}</pre>
-                      </div>
+                      <LyricsPanel
+                        title={track.lyricsTitle}
+                        text={lyricsText}
+                        parsed={parsedLyrics}
+                        activeIndex={activeLyricIndex}
+                      />
                     )
                   ) : (
                     <div className="p-3 text-sm text-muted-foreground">No lyrics matched for this track.</div>
@@ -530,6 +602,88 @@ function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; secon
   );
 }
 
+function MiniProgress({ progress }: { progress: number }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.max(0, Math.min(100, progress)) / 100) * circumference;
+  return (
+    <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r={radius} fill="none" stroke="currentColor" strokeWidth="6" className="text-border" />
+      <circle
+        cx="50"
+        cy="50"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        className="text-primary transition-[stroke-dashoffset] duration-300"
+      />
+    </svg>
+  );
+}
+
+type TimedLyricLine = {
+  time: number;
+  text: string;
+};
+
+type ParsedLyrics = {
+  timed: boolean;
+  lines: TimedLyricLine[];
+};
+
+function LyricsPanel({
+  title,
+  text,
+  parsed,
+  activeIndex,
+}: {
+  title: string;
+  text: string;
+  parsed: ParsedLyrics;
+  activeIndex: number;
+}) {
+  const activeRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [activeIndex]);
+
+  if (!parsed.timed) {
+    return (
+      <div className="space-y-3 p-3">
+        <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>
+        <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 p-3">
+      <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>
+      <div className="space-y-1 py-12 text-center">
+        {parsed.lines.map((line, index) => {
+          const active = index === activeIndex;
+          return (
+            <div
+              key={`${line.time}:${index}`}
+              ref={active ? activeRef : undefined}
+              className={`rounded-md px-2 py-1.5 text-sm leading-relaxed transition-all duration-300 ${
+                active ? "bg-primary/10 text-base font-semibold text-primary" : "text-muted-foreground"
+              }`}
+            >
+              {line.text || " "}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CoverImage({ track, className }: { track: PlayerTrack; className: string }) {
   return track.coverUrl ? (
     <img src={assetURL(track.coverUrl)} alt="" className={`${className} shrink-0 rounded-md bg-muted object-contain`} />
@@ -550,4 +704,59 @@ function formatTime(value: number) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function parseTimedLyrics(text: string): ParsedLyrics {
+  const lrcLines: TimedLyricLine[] = [];
+  const sourceLines = text.split(/\r?\n/);
+  for (const rawLine of sourceLines) {
+    const timestamps = Array.from(rawLine.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g));
+    if (timestamps.length === 0) continue;
+    const lineText = rawLine.replace(/\[[^\]]+\]/g, "").trim();
+    for (const match of timestamps) {
+      lrcLines.push({ time: timestampToSeconds(match[1], match[2], match[3]), text: lineText });
+    }
+  }
+  if (lrcLines.length > 0) {
+    return { timed: true, lines: lrcLines.sort((left, right) => left.time - right.time) };
+  }
+
+  const cueLines: TimedLyricLine[] = [];
+  for (let index = 0; index < sourceLines.length; index += 1) {
+    const match = sourceLines[index].match(/(\d{1,2}:)?(\d{1,2}):(\d{2})([,.]\d{1,3})?\s*-->/);
+    if (!match) continue;
+    const textLines: string[] = [];
+    index += 1;
+    while (index < sourceLines.length && sourceLines[index].trim() !== "") {
+      textLines.push(sourceLines[index].trim());
+      index += 1;
+    }
+    cueLines.push({ time: cueTimestampToSeconds(match[0].split("-->")[0].trim()), text: textLines.join(" ") });
+  }
+  return cueLines.length > 0
+    ? { timed: true, lines: cueLines.sort((left, right) => left.time - right.time) }
+    : { timed: false, lines: [] };
+}
+
+function activeTimedLyricIndex(lines: TimedLyricLine[], currentTime: number) {
+  if (lines.length === 0) return -1;
+  let active = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].time > currentTime + 0.15) break;
+    active = index;
+  }
+  return active;
+}
+
+function timestampToSeconds(minutes: string, seconds: string, fraction = "0") {
+  const normalizedFraction = Number(`0.${fraction.padEnd(3, "0").slice(0, 3)}`);
+  return Number(minutes) * 60 + Number(seconds) + normalizedFraction;
+}
+
+function cueTimestampToSeconds(value: string) {
+  const parts = value.replace(",", ".").split(":");
+  const secondsPart = Number(parts.pop() ?? 0);
+  const minutesPart = Number(parts.pop() ?? 0);
+  const hoursPart = Number(parts.pop() ?? 0);
+  return hoursPart * 3600 + minutesPart * 60 + secondsPart;
 }
