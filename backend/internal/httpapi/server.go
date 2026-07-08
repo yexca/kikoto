@@ -84,6 +84,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
+	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)
 	mux.HandleFunc("PATCH /api/media-items/{id}/progress", s.updateMediaProgress)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("GET /api/runtime-settings", s.getRuntimeSettings)
@@ -1841,6 +1842,23 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) downloadMedia(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+		return
+	}
+	path, relPath, err := s.mediaDownloadPath(r, r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	filename := filepath.Base(filepath.FromSlash(relPath))
+	if filename == "." || filename == string(filepath.Separator) || strings.TrimSpace(filename) == "" {
+		filename = "media-file"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	http.ServeFile(w, r, path)
+}
+
 func (s *Server) localMediaPath(r *http.Request, idValue string) (string, string, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idValue), 10, 64)
 	if err != nil || id <= 0 {
@@ -1863,6 +1881,38 @@ func (s *Server) localMediaPath(r *http.Request, idValue string) (string, string
 		return "", "", fmt.Errorf("media location is not available")
 	}
 	path, err := safeDataPath(s.cfg.DataRoot, relPath)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid media path")
+	}
+	return path, relPath, nil
+}
+
+func (s *Server) mediaDownloadPath(r *http.Request, idValue string) (string, string, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(idValue), 10, 64)
+	if err != nil || id <= 0 {
+		return "", "", fmt.Errorf("invalid media location id")
+	}
+	var locationType string
+	var relPath string
+	var availability string
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT location_type, path, availability
+		FROM media_file_location
+		WHERE id = ?
+	`, id).Scan(&locationType, &relPath, &availability); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("media location not found")
+		}
+		return "", "", err
+	}
+	if (locationType != "local" && locationType != "cache") || availability != "available" {
+		return "", "", fmt.Errorf("media location is not available for download")
+	}
+	root := s.cfg.DataRoot
+	if locationType == "cache" {
+		root = s.cfg.CacheRoot
+	}
+	path, err := safeDataPath(root, relPath)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid media path")
 	}

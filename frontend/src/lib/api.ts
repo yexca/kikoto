@@ -832,6 +832,10 @@ export function assetURL(path: string) {
   return `${API_BASE}${path}`;
 }
 
+export function mediaDownloadURL(locationId: number) {
+  return assetURL(`/api/media/${locationId}/download`);
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { credentials: "include" });
   if (!response.ok) {
