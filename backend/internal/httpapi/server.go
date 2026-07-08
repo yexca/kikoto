@@ -1702,6 +1702,15 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 	}
 	result, err := s.runLocalMediaDelete(r.Context(), id)
 	if err != nil {
+		var symlinkErr symlinkMediaLocationError
+		if errors.As(err, &symlinkErr) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":       symlinkErr.Error(),
+				"runId":       symlinkErr.RunID,
+				"candidateId": symlinkErr.CandidateID,
+			})
+			return
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
@@ -2410,6 +2419,16 @@ type mediaLocalDeleteResult struct {
 	ClearedWorkStates int64  `json:"clearedWorkStates"`
 }
 
+type symlinkMediaLocationError struct {
+	RunID       int64
+	CandidateID int64
+	Path        string
+}
+
+func (err symlinkMediaLocationError) Error() string {
+	return fmt.Sprintf("local media path %s is a symlink; review the location before deleting", filepath.ToSlash(err.Path))
+}
+
 func (s *Server) runMediaCacheCleanup(ctx context.Context, cacheLocationID int64) (mediaCacheDeleteResult, error) {
 	var mediaItemID int64
 	var sourceID int64
@@ -2507,6 +2526,13 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 	if err != nil {
 		return mediaLocalDeleteResult{}, err
 	}
+	if isSymlinkPath(targetPath) {
+		runID, candidateID, err := s.createSymlinkMediaReview(ctx, localLocationID, mediaItemID, workID, sourceID, relPath)
+		if err != nil {
+			return mediaLocalDeleteResult{}, err
+		}
+		return mediaLocalDeleteResult{}, symlinkMediaLocationError{RunID: runID, CandidateID: candidateID, Path: relPath}
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -2582,6 +2608,106 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		ClearedProgress:   0,
 		ClearedWorkStates: 0,
 	}, nil
+}
+
+func isSymlinkPath(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
+func (s *Server) createSymlinkMediaReview(ctx context.Context, localLocationID int64, mediaItemID int64, workID int64, sourceID int64, relPath string) (int64, int64, error) {
+	externalKey := symlinkMediaReviewExternalKey(localLocationID, relPath)
+	var existingRunID int64
+	var existingCandidateID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT workflow_run_id, id
+		FROM workflow_candidate
+		WHERE candidate_type = 'local_symlink_media_location'
+			AND external_key = ?
+			AND status = 'pending'
+		ORDER BY updated_at DESC, id DESC
+		LIMIT 1
+	`, externalKey).Scan(&existingRunID, &existingCandidateID); err == nil {
+		return existingRunID, existingCandidateID, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_symlink_review", "Review local symlink", "Notify users when a local media delete request targets a symlink.", map[string]any{
+		"nodes": []map[string]string{
+			{"id": "detect", "type": "filter_candidates"},
+			{"id": "review", "type": "filter_candidates"},
+		},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	input := map[string]any{
+		"local_location_id": localLocationID,
+		"media_item_id":     mediaItemID,
+		"work_id":           workID,
+		"source_id":         sourceID,
+		"path":              relPath,
+		"reason":            "symlink_delete_blocked",
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_symlink_review", "Review local symlink", "skipped", "manual", "delete_local", input, map[string]any{"path": relPath, "reason": "symlink_delete_blocked"})
+	if err != nil {
+		return 0, 0, err
+	}
+	detectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "detect", NodeType: "filter_candidates", DisplayName: "Detect symlink media", Position: 1, Status: "skipped",
+		Input: input, Output: map[string]any{"blocked": true, "path": relPath, "reason": "symlink_delete_blocked"},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "review", NodeType: "filter_candidates", DisplayName: "Review symlink location", Position: 2, Status: "skipped",
+		Input: input, Output: map[string]any{"candidate_status": "pending"},
+	}); err != nil {
+		return 0, 0, err
+	}
+	candidatePayload := map[string]any{
+		"local_location_id":      localLocationID,
+		"media_item_id":          mediaItemID,
+		"work_id":                workID,
+		"source_id":              sourceID,
+		"path":                   relPath,
+		"message":                "Delete was blocked because this local media path is a symlink. The link and its target were left untouched.",
+		"recommended_action":     "Resolve or ignore this review item after checking the linked file.",
+		"candidate_location_ids": []int64{localLocationID},
+		"candidate_locations": []map[string]any{{
+			"location_id": localLocationID,
+			"path":        relPath,
+			"reason":      "symlink_delete_blocked",
+		}},
+	}
+	candidateID, err := insertAndID(ctx, tx, `
+		INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
+		VALUES (?, ?, 'local_symlink_media_location', ?, 'pending', ?)
+	`, runID, detectNodeID, externalKey, mustJSON(candidatePayload))
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
+		NodeRunID: detectNodeID,
+		Level:     "warn",
+		Type:      "candidate.symlink_media_location",
+		Message:   "Local media delete blocked for symlink",
+		Detail:    candidatePayload,
+	}); err != nil {
+		return 0, 0, err
+	}
+	return runID, candidateID, tx.Commit()
+}
+
+func symlinkMediaReviewExternalKey(localLocationID int64, relPath string) string {
+	return fmt.Sprintf("location:%d:%s", localLocationID, filepath.ToSlash(relPath))
 }
 
 func (s *Server) finishLocalMediaDelete(ctx context.Context, runID int64, deleteNodeID int64, jobID int64, status string, locationID int64, relPath string, deleted bool, errorMessage string) error {

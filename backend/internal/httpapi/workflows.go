@@ -1095,11 +1095,13 @@ func (s *Server) cleanupLocalLocation(ctx context.Context, locationID int64, del
 		if err != nil {
 			return false, false, err
 		}
-		info, err := os.Stat(targetPath)
+		info, err := os.Lstat(targetPath)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				return false, false, err
 			}
+		} else if info.Mode()&os.ModeSymlink != 0 {
+			return false, false, fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(relPath))
 		} else if info.IsDir() {
 			return false, false, fmt.Errorf("refusing to delete directory %s", filepath.ToSlash(relPath))
 		} else if err := os.Remove(targetPath); err != nil {
