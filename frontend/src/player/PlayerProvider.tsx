@@ -349,6 +349,15 @@ export function PlayerDock() {
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
   const hasPanel = panel !== null;
+  const openWorkDetail = () => {
+    if (!track.workCode) return;
+    window.history.pushState(
+      { returnTo: window.location.pathname + window.location.search, returnLabel: "Back" },
+      "",
+      `/${encodeURIComponent(track.workCode)}`,
+    );
+    window.dispatchEvent(new Event("kikoto:navigation"));
+  };
 
   if (dockMode === "mini") {
     return (
@@ -437,12 +446,12 @@ export function PlayerDock() {
   if (dockMode === "compact") {
     return (
       <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
-        <div className="relative animate-player-enter overflow-hidden rounded-xl border border-primary/15 bg-card/95 shadow-xl shadow-primary/10 backdrop-blur transition-all duration-300 ease-out">
+        <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
           <div className="absolute inset-x-0 bottom-0 h-1 bg-muted" />
           <div className="absolute bottom-0 left-0 h-1 rounded-r-full bg-primary transition-[width] duration-300" style={{ width: `${progress}%` }} />
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
-              <CoverImage track={track} className="h-12 w-16 shadow-sm" />
+              <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{track.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
@@ -461,10 +470,10 @@ export function PlayerDock() {
   }
 
   return (
-    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-xl border border-primary/15 bg-card shadow-2xl shadow-primary/10 transition-all duration-300 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
+    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-[28px] border border-white/35 bg-card/78 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/72 lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
       <div className="flex h-full flex-col">
         <button
-          className="flex h-8 shrink-0 items-center justify-center hover:bg-muted/70"
+          className="flex h-8 shrink-0 items-center justify-center hover:bg-white/20"
           onClick={() => setDockMode("compact")}
           aria-label="Collapse player"
         >
@@ -474,15 +483,15 @@ export function PlayerDock() {
         <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
-              <div className="flex min-h-[76px] items-center gap-3 rounded-lg border border-primary/10 bg-secondary/35 p-2.5">
-                <CoverImage track={track} className="h-14 w-[74px] shadow-sm" />
+              <div className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5">
+                <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
                   <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-primary/10 bg-background/70 p-2">
+              <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
                 {panel === "lyrics" ? (
                   track.lyricsLocationId ? (
                     lyricsError ? (
@@ -520,9 +529,14 @@ export function PlayerDock() {
             </div>
           ) : (
             <div className="flex h-full flex-col justify-center gap-4">
-              <div className="mx-auto w-full max-w-[272px] rounded-xl bg-secondary/35 p-2 shadow-inner">
-                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full shadow-lg shadow-primary/10" />
-              </div>
+              <button
+                className="mx-auto w-full max-w-[282px] rounded-[24px] bg-white/25 p-2 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5"
+                onDoubleClick={openWorkDetail}
+                title="Double-click to open work detail"
+                aria-label="Open work detail"
+              >
+                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15" />
+              </button>
               <div className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
@@ -532,7 +546,7 @@ export function PlayerDock() {
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t bg-secondary/25 p-4">
+        <div className="shrink-0 space-y-4 border-t border-white/30 bg-white/25 p-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 dark:bg-white/5">
           <div className="space-y-1">
           <SeekBar
             currentTime={player.currentTime}
@@ -547,25 +561,25 @@ export function PlayerDock() {
           </div>
 
           <div className="flex items-center justify-center gap-2">
-          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
+          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
+          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
             <SeekIcon direction="back" seconds={5} />
           </Button>
-          <Button className="h-14 w-14 rounded-full shadow-xl shadow-primary/30" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+          <Button className="h-14 w-14 rounded-full shadow-xl shadow-primary/30 transition-transform active:scale-95" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
             {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
           </Button>
-          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
+          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
             <SeekIcon direction="forward" seconds={10} />
           </Button>
-          <Button className="h-10 w-10 rounded-full border-primary/15 bg-card/70" variant="outline" size="icon" onClick={player.next} aria-label="Next">
+          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={player.next} aria-label="Next">
             <SkipForward className="h-4 w-4" />
           </Button>
           </div>
 
           <div className="relative grid grid-cols-4 gap-2">
-          <div className="grid grid-cols-3 rounded-full border border-primary/15 bg-card/70 p-0.5" title={modeLabel}>
+          <div className="grid grid-cols-3 rounded-full border border-white/40 bg-card/50 p-0.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-card/40" title={modeLabel}>
             <button
               className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "order" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               onClick={() => player.setMode("order")}
@@ -666,7 +680,7 @@ function SeekBar({
   const clampedProgress = Math.max(0, Math.min(100, progress));
   return (
     <div className="relative h-5">
-      <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-card shadow-inner">
+      <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/45 shadow-inner dark:bg-white/10">
         <div
           className="h-full rounded-full bg-primary shadow-[0_0_14px_hsl(var(--primary)/0.32)] transition-[width] duration-200"
           style={{ width: `${clampedProgress}%` }}
