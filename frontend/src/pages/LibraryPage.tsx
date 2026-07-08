@@ -152,6 +152,7 @@ export function LibraryPage() {
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
+  const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ cacheEnabled: boolean } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
@@ -238,6 +239,7 @@ export function LibraryPage() {
   useEffect(() => {
     if (activeTab.kind !== "source") {
       setRemoteResult(null);
+      setIsRemoteLoading(false);
       return;
     }
     if (skipNextRemoteEffect.current) {
@@ -246,7 +248,8 @@ export function LibraryPage() {
     }
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
     const requestSeq = ++remoteRequestSeq.current;
-    setRemoteResult(null);
+    setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
+    setIsRemoteLoading(true);
     api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
@@ -260,6 +263,8 @@ export function LibraryPage() {
         total: 0,
         status: "unavailable",
       });
+    }).finally(() => {
+      if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
   }, [activeTab, remoteSearchQuery, remoteSourceStates]);
 
@@ -443,7 +448,8 @@ export function LibraryPage() {
   const loadRemoteWorksNow = (source: LibrarySource, query: string, page = 1, options: { clearResult?: boolean } = {}) => {
     const sourceState = remoteSourceStates[source.id] ?? defaultRemoteSourceViewState;
     const requestSeq = ++remoteRequestSeq.current;
-    if (options.clearResult !== false) setRemoteResult(null);
+    setIsRemoteLoading(true);
+    if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
     api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
@@ -457,6 +463,8 @@ export function LibraryPage() {
         total: 0,
         status: "unavailable",
       });
+    }).finally(() => {
+      if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
   };
 
@@ -651,6 +659,7 @@ export function LibraryPage() {
         <RemoteSourcePanel
           source={activeTab.source}
           result={remoteResult}
+          loading={isRemoteLoading}
           viewState={activeRemoteSourceState}
           searchTokens={searchTokens}
           onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
@@ -827,6 +836,7 @@ function TabButton({
 function RemoteSourcePanel({
   source,
   result,
+  loading,
   viewState,
   searchTokens,
   onPageChange,
@@ -838,6 +848,7 @@ function RemoteSourcePanel({
 }: {
   source: LibrarySource;
   result: RemoteWorksResponse | null;
+  loading: boolean;
   viewState: RemoteSourceViewState;
   searchTokens: SearchToken[];
   onPageChange: (page: number) => void;
@@ -848,7 +859,8 @@ function RemoteSourcePanel({
   onSynced: (workID: number) => Promise<void>;
 }) {
   const toast = useToast();
-  const isLoading = result === null;
+  const isInitialLoading = loading && result === null;
+  const isRefreshing = loading && result !== null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1062,10 +1074,10 @@ function RemoteSourcePanel({
               </option>
             ))}
           </select>
-          <IconButton title="Previous page" disabled={!canGoPrevious || isLoading} onClick={() => onPageChange(Math.max(1, page - 1))}>
+          <IconButton title="Previous page" disabled={!canGoPrevious || isInitialLoading} onClick={() => onPageChange(Math.max(1, page - 1))}>
             <ChevronLeft className="h-4 w-4" />
           </IconButton>
-          <IconButton title="Next page" disabled={!canGoNext || isLoading} onClick={() => onPageChange(page + 1)}>
+          <IconButton title="Next page" disabled={!canGoNext || isInitialLoading} onClick={() => onPageChange(page + 1)}>
             <ChevronRight className="h-4 w-4" />
           </IconButton>
         </div>
@@ -1088,39 +1100,40 @@ function RemoteSourcePanel({
           </Button>
         </div>
       </div>}
-      {isLoading ? (
-        <Card>
-          <CardContent className="p-5 text-sm text-muted-foreground">Loading remote page...</CardContent>
-        </Card>
+      {isInitialLoading ? (
+        <RemoteWorkGridSkeleton />
       ) : visibleWorks.length === 0 ? (
         <Card>
           <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
         </Card>
       ) : (
-        <section className={workGridClassName()} style={workGridStyle(2, 6)}>
-          {visibleWorks.map((work) => (
-            <RemoteWorkCard
-              key={work.remoteId}
-              work={work}
-              source={source}
-              selected={bulkCodes.has(work.primaryCode)}
-              selectable={Boolean(work.primaryCode)}
-              selectionActive={selectionActive}
-              isBusy={isSyncingCode === work.primaryCode}
-              onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
-              onOpen={() => onOpenPreview(work)}
-              onFetch={() => void syncWork(work, "manual_track")}
-              onTagOpen={onTagOpen}
-              onMark={(status) => void markRemoteWork(work, status)}
-              onSave={() => void openSaveSelection(work)}
-              onEnsureWork={() => ensureRemoteWorkForList(work)}
-              onListSaved={(workId, favorite) => {
-                onWorkStateChanged(work.primaryCode, { workId, favorite });
-                void onSynced(0);
-              }}
-            />
-          ))}
-        </section>
+        <div className="space-y-2">
+          {isRefreshing && <div className="rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">Refreshing remote results...</div>}
+          <section className={workGridClassName()} style={workGridStyle(2, 6)}>
+            {visibleWorks.map((work) => (
+              <RemoteWorkCard
+                key={work.remoteId}
+                work={work}
+                source={source}
+                selected={bulkCodes.has(work.primaryCode)}
+                selectable={Boolean(work.primaryCode)}
+                selectionActive={selectionActive}
+                isBusy={isSyncingCode === work.primaryCode}
+                onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
+                onOpen={() => onOpenPreview(work)}
+                onFetch={() => void syncWork(work, "manual_track")}
+                onTagOpen={onTagOpen}
+                onMark={(status) => void markRemoteWork(work, status)}
+                onSave={() => void openSaveSelection(work)}
+                onEnsureWork={() => ensureRemoteWorkForList(work)}
+                onListSaved={(workId, favorite) => {
+                  onWorkStateChanged(work.primaryCode, { workId, favorite });
+                  void onSynced(0);
+                }}
+              />
+            ))}
+          </section>
+        </div>
       )}
       {saveConfirm && (
         <SaveConfirmModal
@@ -1292,6 +1305,26 @@ function RemoteWorkCard({
         />
       )}
     />
+  );
+}
+
+function RemoteWorkGridSkeleton() {
+  return (
+    <section className={workGridClassName()} style={workGridStyle(2, 6)}>
+      {Array.from({ length: 12 }, (_, index) => (
+        <div key={index} className="overflow-hidden rounded-lg border bg-card">
+          <div className="aspect-[4/5] animate-pulse bg-muted" />
+          <div className="space-y-2 p-3">
+            <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+            <div className="flex gap-2 pt-2">
+              <div className="h-6 w-16 animate-pulse rounded bg-muted" />
+              <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -4803,11 +4836,26 @@ function FilePreviewModal({ preview, onClose }: { preview: FilePreviewState; onC
           ) : error ? (
             <div className="text-sm text-muted-foreground">{error}</div>
           ) : text === null ? (
-            <div className="text-sm text-muted-foreground">Loading text...</div>
+            <TextPreviewSkeleton />
           ) : (
             <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TextPreviewSkeleton() {
+  return (
+    <div className="space-y-3" aria-label="Loading text preview">
+      <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+      <div className="space-y-2">
+        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+        <div className="h-4 w-11/12 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-10/12 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
       </div>
     </div>
   );

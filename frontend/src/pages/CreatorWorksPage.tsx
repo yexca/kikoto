@@ -149,7 +149,7 @@ function VoiceListPage() {
           <p className="text-sm text-muted-foreground">Persisted voice credits with personal favorites and tags</p>
           <h2 className="text-xl font-semibold">Voice Actors</h2>
         </div>
-        <Badge variant="outline">{isLoading ? "Loading" : `${filteredVoices.length} voices`}</Badge>
+        {isLoading ? <EntityBadgeSkeleton /> : <Badge variant="outline">{filteredVoices.length} voices</Badge>}
       </section>
 
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
@@ -182,13 +182,63 @@ function VoiceListPage() {
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-          {pageVoices.map((voice) => <VoiceCard key={voice.personId} voice={voice} />)}
-          {pageVoices.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>}
+          {isLoading ? (
+            <EntityCardSkeletonGrid count={Math.min(pageSize, 9)} />
+          ) : pageVoices.length > 0 ? (
+            pageVoices.map((voice) => <VoiceCard key={voice.personId} voice={voice} />)
+          ) : (
+            <Card><CardContent className="p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>
+          )}
         </div>
 
         {totalPages > 1 && <Pagination currentPage={currentPage} totalPages={totalPages} onPage={setPage} />}
       </section>
     </div>
+  );
+}
+
+function EntitySkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function EntityBadgeSkeleton() {
+  return <EntitySkeletonLine className="h-5 w-24 rounded-full" />;
+}
+
+function EntityCardSkeletonGrid({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <Card key={index}>
+          <CardContent className="space-y-3 p-3">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <EntitySkeletonLine className="h-5 w-16 rounded-full" />
+                  <EntitySkeletonLine className="h-5 w-20 rounded-full" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <EntitySkeletonLine className="h-5 w-36" />
+                  <EntitySkeletonLine className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <EntitySkeletonLine className="h-4 w-16" />
+                <EntitySkeletonLine className="h-4 w-20" />
+                <EntitySkeletonLine className="h-4 w-14" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+              <div className="flex gap-1">
+                <EntitySkeletonLine className="h-6 w-16 rounded-full" />
+                <EntitySkeletonLine className="h-6 w-20 rounded-full" />
+              </div>
+              <EntitySkeletonLine className="h-4 w-44" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </>
   );
 }
 

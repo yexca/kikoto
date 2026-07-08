@@ -459,7 +459,7 @@ export function PlayerDock() {
                     lyricsError ? (
                       <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
                     ) : lyricsText === null ? (
-                      <div className="p-3 text-sm text-muted-foreground">Loading lyrics...</div>
+                      <LyricsLoadingSkeleton />
                     ) : (
                       <LyricsPanel
                         title={track.lyricsTitle}
@@ -599,6 +599,20 @@ function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; secon
       <Icon className="h-5 w-5" />
       <span className="absolute text-[8px] font-bold leading-none">{seconds}</span>
     </span>
+  );
+}
+
+function LyricsLoadingSkeleton() {
+  return (
+    <div className="space-y-3 p-3" aria-label="Loading lyrics">
+      <div className="mx-auto h-4 w-32 animate-pulse rounded bg-muted" />
+      <div className="space-y-2 pt-2">
+        <div className="mx-auto h-4 w-4/5 animate-pulse rounded bg-muted" />
+        <div className="mx-auto h-4 w-2/3 animate-pulse rounded bg-muted" />
+        <div className="mx-auto h-4 w-5/6 animate-pulse rounded bg-muted" />
+        <div className="mx-auto h-4 w-3/5 animate-pulse rounded bg-muted" />
+      </div>
+    </div>
   );
 }
 

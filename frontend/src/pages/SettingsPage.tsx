@@ -49,6 +49,7 @@ type SettingsTab = "overview" | "profile" | "playback" | "local" | "remote" | "c
 export function SettingsPage({ canManageSources }: { canManageSources: boolean }) {
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>("overview");
   const [localScanDepth, setLocalScanDepth] = useState(2);
   const [cacheEnabled, setCacheEnabled] = useState(false);
@@ -89,7 +90,8 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
-      .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")));
+      .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
+      .finally(() => setIsSettingsLoading(false));
 
   useEffect(() => {
     void reload();
@@ -179,9 +181,15 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
             <h2 className="mt-1 text-2xl font-semibold">Settings</h2>
           </div>
           <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-            <SettingsMetric label="Sources" value={String(remoteSources.length)} />
-            <SettingsMetric label="Cache" value={cacheEnabled ? "On" : "Off"} />
-            <SettingsMetric label="Scan" value={`${localScanDepth} levels`} />
+            {isSettingsLoading ? (
+              <SettingsMetricSkeletons />
+            ) : (
+              <>
+                <SettingsMetric label="Sources" value={String(remoteSources.length)} />
+                <SettingsMetric label="Cache" value={cacheEnabled ? "On" : "Off"} />
+                <SettingsMetric label="Scan" value={`${localScanDepth} levels`} />
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -213,7 +221,15 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         </SettingsTabButton>
       </div>
 
-      {activeTab === "overview" ? (
+      {isSettingsLoading ? (
+        activeTab === "overview" ? (
+          <SettingsOverviewSkeleton />
+        ) : activeTab === "remote" ? (
+          <RemoteSourcesSettingsSkeleton />
+        ) : (
+          <SettingsPanelSkeleton />
+        )
+      ) : activeTab === "overview" ? (
         <SettingsOverview
           remoteSources={remoteSources}
           localSource={localSource}
@@ -468,6 +484,133 @@ function SettingsMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border bg-background px-3 py-2">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-0.5 truncate font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function SettingsSkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function SettingsMetricSkeletons() {
+  return (
+    <>
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="rounded-md border bg-background px-3 py-2">
+          <SettingsSkeletonLine className="h-3 w-14" />
+          <SettingsSkeletonLine className="mt-2 h-5 w-12" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function SettingsOverviewSkeleton() {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="flex min-h-[188px] flex-col justify-between rounded-lg border bg-card p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <SettingsSkeletonLine className="h-10 w-10 rounded-md" />
+            <SettingsSkeletonLine className="h-5 w-24 rounded-full" />
+          </div>
+          <div className="mt-5 space-y-2">
+            <SettingsSkeletonLine className="h-5 w-36" />
+            <SettingsSkeletonLine className="h-3 w-full" />
+            <SettingsSkeletonLine className="h-3 w-4/5" />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            <SettingsSkeletonLine className="h-6 w-16 rounded-full" />
+            <SettingsSkeletonLine className="h-6 w-20 rounded-full" />
+            <SettingsSkeletonLine className="h-6 w-14 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SettingsPanelSkeleton() {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
+          <SettingsSkeletonLine className="h-5 w-36" />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="flex items-center gap-3 rounded-lg border bg-background p-3">
+              <SettingsSkeletonLine className="h-9 w-9 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <SettingsSkeletonLine className="h-3 w-20" />
+                <SettingsSkeletonLine className="h-4 w-24" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <SettingsSkeletonLine className="h-16 w-full" />
+          <SettingsSkeletonLine className="h-16 w-full" />
+        </div>
+        <SettingsSkeletonLine className="h-9 w-32 rounded-md" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function RemoteSourcesSettingsSkeleton() {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <SettingsSkeletonLine className="h-5 w-36" />
+            <SettingsSkeletonLine className="h-4 w-72 max-w-full" />
+          </div>
+          <SettingsSkeletonLine className="h-9 w-28 rounded-md" />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="flex items-center gap-3 rounded-lg border bg-background p-3">
+              <SettingsSkeletonLine className="h-9 w-9 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <SettingsSkeletonLine className="h-3 w-20" />
+                <SettingsSkeletonLine className="h-4 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Card key={index} className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-start justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
+                  <SettingsSkeletonLine className="h-5 w-40" />
+                </span>
+                <SettingsSkeletonLine className="h-5 w-16 rounded-full" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <SettingsSkeletonLine className="h-14 w-full" />
+                <SettingsSkeletonLine className="h-14 w-full" />
+                <SettingsSkeletonLine className="h-14 w-full" />
+              </div>
+              <SettingsSkeletonLine className="h-14 w-full" />
+              <div className="flex gap-2">
+                <SettingsSkeletonLine className="h-9 flex-1 rounded-md" />
+                <SettingsSkeletonLine className="h-9 w-9 rounded-md" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

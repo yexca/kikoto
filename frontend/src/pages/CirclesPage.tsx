@@ -200,24 +200,72 @@ function CircleListPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary">{isLoading ? "Loading" : `${filteredCircles.length} circles`}</Badge>
+          {isLoading ? <EntityBadgeSkeleton /> : <Badge variant="secondary">{filteredCircles.length} circles</Badge>}
           <Badge variant="outline">{totalCatalogWorks} catalog works</Badge>
           <Badge variant="outline">{totalPlayableWorks} available works</Badge>
           <span>Page {currentPage} / {totalPages}</span>
         </div>
 
         <div className={circleListGridClassName(mobileColumns, desktopColumns)}>
-          {pageCircles.map((circle) => (
-            <CircleCard key={circle.externalId} circle={circle} />
-          ))}
-          {pageCircles.length === 0 && (
+          {isLoading ? (
+            <EntityCardSkeletonGrid count={Math.min(pageSize, 8)} />
+          ) : pageCircles.length > 0 ? (
+            pageCircles.map((circle) => (
+              <CircleCard key={circle.externalId} circle={circle} />
+            ))
+          ) : (
             <Card>
-              <CardContent className="p-5 text-sm text-muted-foreground">{isLoading ? "Loading circles." : "No circles match this view."}</CardContent>
+              <CardContent className="p-5 text-sm text-muted-foreground">No circles match this view.</CardContent>
             </Card>
           )}
         </div>
       </section>
     </div>
+  );
+}
+
+function EntitySkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function EntityBadgeSkeleton() {
+  return <EntitySkeletonLine className="h-5 w-24 rounded-full" />;
+}
+
+function EntityCardSkeletonGrid({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <Card key={index}>
+          <CardContent className="space-y-3 p-3">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <EntitySkeletonLine className="h-5 w-20 rounded-full" />
+                  <EntitySkeletonLine className="h-5 w-16 rounded-full" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <EntitySkeletonLine className="h-5 w-40" />
+                  <EntitySkeletonLine className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <EntitySkeletonLine className="h-4 w-16" />
+                <EntitySkeletonLine className="h-4 w-20" />
+                <EntitySkeletonLine className="h-4 w-14" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+              <div className="flex gap-1">
+                <EntitySkeletonLine className="h-6 w-16 rounded-full" />
+                <EntitySkeletonLine className="h-6 w-20 rounded-full" />
+              </div>
+              <EntitySkeletonLine className="h-4 w-44" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </>
   );
 }
 

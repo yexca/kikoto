@@ -110,9 +110,15 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
             <p className="mt-2 text-sm text-muted-foreground">Create accounts, assign roles, and keep access tidy.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-            <UserMetric icon={<Users className="h-4 w-4" />} label="Users" value={String(users.length)} />
-            <UserMetric icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledCount)} />
-            <UserMetric icon={<Crown className="h-4 w-4" />} label="Admins" value={String(adminCount)} />
+            {isLoading ? (
+              <UserMetricSkeletons count={3} />
+            ) : (
+              <>
+                <UserMetric icon={<Users className="h-4 w-4" />} label="Users" value={String(users.length)} />
+                <UserMetric icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledCount)} />
+                <UserMetric icon={<Crown className="h-4 w-4" />} label="Admins" value={String(adminCount)} />
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -144,7 +150,9 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-                {visibleUsers.map((user) => (
+                {isLoading ? (
+                  <UserBarSkeleton />
+                ) : visibleUsers.map((user) => (
                   <Button
                     key={user.id}
                     type="button"
@@ -184,9 +192,15 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <RoleSummaryCard icon={<UserRound className="h-4 w-4" />} label="Standard users" value={String(users.filter((user) => user.role === "user").length)} />
-          <RoleSummaryCard icon={<Shield className="h-4 w-4" />} label="Administrators" value={String(users.filter((user) => user.role === "admin").length)} />
-          <RoleSummaryCard icon={<Crown className="h-4 w-4" />} label="Super admins" value={String(superAdminCount)} />
+          {isLoading ? (
+            <RoleSummarySkeletons />
+          ) : (
+            <>
+              <RoleSummaryCard icon={<UserRound className="h-4 w-4" />} label="Standard users" value={String(users.filter((user) => user.role === "user").length)} />
+              <RoleSummaryCard icon={<Shield className="h-4 w-4" />} label="Administrators" value={String(users.filter((user) => user.role === "admin").length)} />
+              <RoleSummaryCard icon={<Crown className="h-4 w-4" />} label="Super admins" value={String(superAdminCount)} />
+            </>
+          )}
         </div>
 
         <Card className="overflow-hidden">
@@ -239,13 +253,7 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
                       </td>
                     </tr>
                   )}
-                  {isLoading && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
-                        Loading users...
-                      </td>
-                    </tr>
-                  )}
+                  {isLoading && <UserTableSkeletonRows />}
                 </tbody>
               </table>
             </div>
@@ -447,6 +455,83 @@ function EmptyUserEditor() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function UserSkeletonLine({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function UserMetricSkeletons({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="rounded-md border bg-background px-3 py-2">
+          <UserSkeletonLine className="h-3 w-14" />
+          <UserSkeletonLine className="mt-2 h-5 w-10" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function UserBarSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="flex h-14 min-w-[160px] items-center gap-2 rounded-md border bg-background px-2">
+          <UserSkeletonLine className="h-8 w-8 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <UserSkeletonLine className="h-4 w-24" />
+            <UserSkeletonLine className="h-3 w-20" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function RoleSummarySkeletons() {
+  return (
+    <>
+      {Array.from({ length: 3 }, (_, index) => (
+        <Card key={index}>
+          <CardContent className="flex items-center gap-3 p-3">
+            <UserSkeletonLine className="h-9 w-9 rounded-md" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <UserSkeletonLine className="h-3 w-24" />
+              <UserSkeletonLine className="h-5 w-10" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+function UserTableSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 6 }, (_, index) => (
+        <tr key={index} className="border-b last:border-0">
+          <td className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              <UserSkeletonLine className="h-9 w-9 rounded-full" />
+              <div className="space-y-2">
+                <UserSkeletonLine className="h-4 w-28" />
+                <UserSkeletonLine className="h-3 w-20" />
+              </div>
+            </div>
+          </td>
+          <td className="px-4 py-3"><UserSkeletonLine className="h-5 w-20 rounded-full" /></td>
+          <td className="px-4 py-3"><UserSkeletonLine className="h-5 w-16 rounded-full" /></td>
+          <td className="px-4 py-3"><UserSkeletonLine className="h-4 w-36" /></td>
+          <td className="px-4 py-3">
+            <div className="flex justify-end"><UserSkeletonLine className="h-8 w-20 rounded-md" /></div>
+          </td>
+        </tr>
+      ))}
+    </>
   );
 }
 

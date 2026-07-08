@@ -207,7 +207,39 @@ function AuthenticatedApp() {
 }
 
 function PageLoading() {
-  return <div className="px-4 py-5 text-sm text-muted-foreground lg:px-6">Loading page...</div>;
+  return (
+    <div className="space-y-5 px-4 py-5 lg:px-6" aria-label="Loading page">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+            <div className="h-7 w-48 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-72 max-w-full animate-pulse rounded bg-muted" />
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:flex">
+            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
+            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
+            <div className="h-14 w-24 animate-pulse rounded-md border bg-muted" />
+          </div>
+        </div>
+      </section>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index} className="rounded-lg border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="h-10 w-10 animate-pulse rounded-md bg-muted" />
+              <div className="h-5 w-20 animate-pulse rounded-full bg-muted" />
+            </div>
+            <div className="mt-5 space-y-2">
+              <div className="h-5 w-36 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-full animate-pulse rounded bg-muted" />
+              <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+            </div>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
 }
 
 function pageFromPath(path: string): PageID {
