@@ -1,4 +1,23 @@
-import { Database, Folder, Plus, RefreshCw, Save, Settings2, Trash2, X } from "lucide-react";
+import {
+  Cloud,
+  Database,
+  Download,
+  Folder,
+  Gauge,
+  Globe2,
+  HardDrive,
+  PlayCircle,
+  Plus,
+  RefreshCw,
+  Save,
+  Server,
+  Settings2,
+  Shield,
+  SlidersHorizontal,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +44,12 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type SettingsTab = "local" | "remote" | "metadata";
+type SettingsTab = "overview" | "profile" | "playback" | "local" | "remote" | "cache" | "metadata" | "system";
 
 export function SettingsPage({ canManageSources }: { canManageSources: boolean }) {
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("local");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("overview");
   const [localScanDepth, setLocalScanDepth] = useState(2);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
@@ -152,20 +171,74 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Kikoto preferences</p>
+            <h2 className="mt-1 text-2xl font-semibold">Settings</h2>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
+            <SettingsMetric label="Sources" value={String(remoteSources.length)} />
+            <SettingsMetric label="Cache" value={cacheEnabled ? "On" : "Off"} />
+            <SettingsMetric label="Scan" value={`${localScanDepth} levels`} />
+          </div>
+        </div>
+      </section>
+
       <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
-        <SettingsTabButton active={activeTab === "local"} onClick={() => setActiveTab("local")} icon={<Folder className="h-4 w-4" />}>
-          Local library
+        <SettingsTabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")} icon={<SlidersHorizontal className="h-4 w-4" />}>
+          Overview
         </SettingsTabButton>
-        <SettingsTabButton active={activeTab === "remote"} onClick={() => setActiveTab("remote")} icon={<Database className="h-4 w-4" />}>
-          Remote sources
+        <SettingsTabButton active={activeTab === "profile"} onClick={() => setActiveTab("profile")} icon={<UserRound className="h-4 w-4" />}>
+          Profile
+        </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "playback"} onClick={() => setActiveTab("playback")} icon={<PlayCircle className="h-4 w-4" />}>
+          Playback
+        </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "local"} onClick={() => setActiveTab("local")} icon={<Folder className="h-4 w-4" />}>
+          Library
+        </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "remote"} onClick={() => setActiveTab("remote")} icon={<Cloud className="h-4 w-4" />}>
+          Sources
+        </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "cache"} onClick={() => setActiveTab("cache")} icon={<Download className="h-4 w-4" />}>
+          Cache & Fetch
         </SettingsTabButton>
         <SettingsTabButton active={activeTab === "metadata"} onClick={() => setActiveTab("metadata")} icon={<RefreshCw className="h-4 w-4" />}>
           Metadata
         </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "system"} onClick={() => setActiveTab("system")} icon={<Server className="h-4 w-4" />}>
+          System
+        </SettingsTabButton>
       </div>
 
-      {activeTab === "local" ? (
+      {activeTab === "overview" ? (
+        <SettingsOverview
+          remoteSources={remoteSources}
+          localSource={localSource}
+          cacheEnabled={cacheEnabled}
+          cacheLimitGb={cacheLimitGb}
+          localScanDepth={localScanDepth}
+          circleAutoRefreshDays={circleAutoRefreshDays}
+          saveTemplate={saveTemplate}
+          onSelect={setActiveTab}
+        />
+      ) : activeTab === "profile" ? (
+        <ComingSoonSettings
+          icon={<UserRound className="h-5 w-5" />}
+          title="Profile & account"
+          summary="Personal display, sessions, and per-user preferences will live here."
+          items={["Display name and avatar", "Language and theme preference", "Session and sign-out controls"]}
+        />
+      ) : activeTab === "playback" ? (
+        <ComingSoonSettings
+          icon={<PlayCircle className="h-5 w-5" />}
+          title="Playback"
+          summary="Playback behavior is becoming a first-class preference area."
+          items={["Default player mode", "Playback speed and seek intervals", "Lyrics, sleep timer, and source preference"]}
+        />
+      ) : activeTab === "local" ? (
         <LocalLibrarySettings
           settings={settings}
           localSource={localSource}
@@ -176,9 +249,15 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onSave={saveRuntimeSettings}
         />
       ) : activeTab === "remote" ? (
-        <RemoteSourceSettings
-          settings={settings}
+        <RemoteSourcesSettings
           remoteSources={remoteSources}
+          onCreateSource={openCreateSource}
+          onEditSource={openEditSource}
+          onDeleteSource={deleteSource}
+        />
+      ) : activeTab === "cache" ? (
+        <CacheFetchSettings
+          settings={settings}
           cacheEnabled={cacheEnabled}
           cacheLimitGb={cacheLimitGb}
           remoteDelayBase={remoteDelayBase}
@@ -196,11 +275,8 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onRemoteMaxBackoffChange={setRemoteMaxBackoff}
           onSaveSuffixChange={setSaveSuffix}
           onSave={saveRuntimeSettings}
-          onCreateSource={openCreateSource}
-          onEditSource={openEditSource}
-          onDeleteSource={deleteSource}
         />
-      ) : (
+      ) : activeTab === "metadata" ? (
         <MetadataSettings
           circleAutoRefreshDays={circleAutoRefreshDays}
           dlsiteMetadataLanguage={dlsiteMetadataLanguage}
@@ -208,6 +284,8 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onDlsiteMetadataLanguageChange={setDlsiteMetadataLanguage}
           onSave={saveRuntimeSettings}
         />
+      ) : (
+        <SystemPathsSettings settings={settings} saveTemplate={saveTemplate} />
       )}
 
       {isSourceModalOpen && (
@@ -219,6 +297,177 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           onClose={closeSourceModal}
         />
       )}
+    </div>
+  );
+}
+
+function SettingsOverview({
+  remoteSources,
+  localSource,
+  cacheEnabled,
+  cacheLimitGb,
+  localScanDepth,
+  circleAutoRefreshDays,
+  saveTemplate,
+  onSelect,
+}: {
+  remoteSources: FileSource[];
+  localSource: FileSource | null;
+  cacheEnabled: boolean;
+  cacheLimitGb: number;
+  localScanDepth: number;
+  circleAutoRefreshDays: number;
+  saveTemplate: string;
+  onSelect: (tab: SettingsTab) => void;
+}) {
+  const enabledSources = remoteSources.filter((source) => source.enabled).length;
+  const warningSources = remoteSources.filter((source) => ["error", "unavailable", "disabled"].includes(source.healthStatus)).length;
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <SettingsHomeCard
+        icon={<UserRound className="h-5 w-5" />}
+        title="Profile & account"
+        description="Personal display, session, and preference settings."
+        status="Planned"
+        chips={["Per-user", "Theme", "Session"]}
+        onClick={() => onSelect("profile")}
+      />
+      <SettingsHomeCard
+        icon={<PlayCircle className="h-5 w-5" />}
+        title="Playback"
+        description="Default player behavior, lyrics, source preference, and listening comfort."
+        status="Planned"
+        chips={["Player", "Lyrics", "Timer"]}
+        onClick={() => onSelect("playback")}
+      />
+      <SettingsHomeCard
+        icon={<Folder className="h-5 w-5" />}
+        title="Library"
+        description="Local source scan behavior and library root visibility."
+        status={localSource?.enabled ? "Active" : "Needs scan"}
+        chips={[localSource?.displayName ?? "Main local library", `${localScanDepth} scan levels`]}
+        onClick={() => onSelect("local")}
+      />
+      <SettingsHomeCard
+        icon={<Cloud className="h-5 w-5" />}
+        title="Remote sources"
+        description="Manage configured file sources, health, and priority."
+        status={`${enabledSources}/${remoteSources.length} enabled`}
+        chips={[warningSources > 0 ? `${warningSources} warnings` : "Healthy", "Priority", "Endpoints"]}
+        onClick={() => onSelect("remote")}
+      />
+      <SettingsHomeCard
+        icon={<Download className="h-5 w-5" />}
+        title="Cache & fetch"
+        description="Remote playback cache, save path, and download pacing."
+        status={cacheEnabled ? "Auto cache on" : "Auto cache off"}
+        chips={[`${cacheLimitGb} GB limit`, saveTemplate]}
+        onClick={() => onSelect("cache")}
+      />
+      <SettingsHomeCard
+        icon={<RefreshCw className="h-5 w-5" />}
+        title="Metadata"
+        description="DLsite localization and circle refresh behavior."
+        status={circleAutoRefreshDays === 0 ? "Manual refresh" : `${circleAutoRefreshDays} day refresh`}
+        chips={["DLsite", "Circles", "Language"]}
+        onClick={() => onSelect("metadata")}
+      />
+      <SettingsHomeCard
+        icon={<Server className="h-5 w-5" />}
+        title="System paths"
+        description="Read-only runtime roots and derived storage templates."
+        status="Read only"
+        chips={["/data", "/cache", "Docker"]}
+        onClick={() => onSelect("system")}
+      />
+      <SettingsHomeCard
+        icon={<Shield className="h-5 w-5" />}
+        title="Administration"
+        description="Role-gated controls for source and server configuration."
+        status="Admin"
+        chips={["Sources", "Workflows", "Users"]}
+        onClick={() => onSelect("system")}
+      />
+    </div>
+  );
+}
+
+function SettingsHomeCard({
+  icon,
+  title,
+  description,
+  status,
+  chips,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  status: string;
+  chips: string[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="group flex min-h-[188px] flex-col justify-between rounded-lg border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/45 hover:bg-muted/35"
+      onClick={onClick}
+    >
+      <span className="flex items-start justify-between gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">{icon}</span>
+        <Badge variant="outline" className="max-w-[140px] truncate">{status}</Badge>
+      </span>
+      <span className="mt-5 block">
+        <span className="block text-base font-semibold">{title}</span>
+        <span className="mt-1 line-clamp-2 text-sm text-muted-foreground">{description}</span>
+      </span>
+      <span className="mt-4 flex flex-wrap gap-1.5">
+        {chips.slice(0, 3).map((chip) => (
+          <Badge key={chip} variant="secondary" className="max-w-full truncate">{chip}</Badge>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function ComingSoonSettings({
+  icon,
+  title,
+  summary,
+  items,
+}: {
+  icon: ReactNode;
+  title: string;
+  summary: string;
+  items: string[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">{icon}</span>
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">{summary}</p>
+        <div className="grid gap-3 md:grid-cols-3">
+          {items.map((item) => (
+            <div key={item} className="rounded-lg border bg-background p-3 text-sm">
+              <div className="font-medium">{item}</div>
+              <div className="mt-1 text-xs text-muted-foreground">Reserved for a later user-settings slice.</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettingsMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 truncate font-semibold">{value}</div>
     </div>
   );
 }
@@ -237,14 +486,21 @@ function MetadataSettings({
   onSave: () => Promise<void>;
 }) {
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <RefreshCw className="h-4 w-4 text-primary" />
-          Circle metadata
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+            <RefreshCw className="h-4 w-4" />
+          </span>
+          Metadata
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <StatusPanel icon={<Globe2 className="h-4 w-4" />} label="Metadata language" value={languageName(dlsiteMetadataLanguage)} />
+          <StatusPanel icon={<RefreshCw className="h-4 w-4" />} label="Circle refresh" value={circleAutoRefreshDays === 0 ? "Manual" : `${circleAutoRefreshDays} days`} />
+          <StatusPanel icon={<Database className="h-4 w-4" />} label="Provider" value="DLsite" />
+        </div>
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
             <span className="font-medium">DLsite title/tag language</span>
@@ -311,14 +567,21 @@ function LocalLibrarySettings({
 }) {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Folder className="h-4 w-4 text-primary" />
+            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+              <Folder className="h-4 w-4" />
+            </span>
             Local library
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Source" value={localSource?.displayName ?? "Main local library"} />
+            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Scan depth" value={`${localScanDepth} levels`} />
+            <StatusPanel icon={<Shield className="h-4 w-4" />} label="State" value={localSource?.enabled ? "Enabled" : "Not scanned"} />
+          </div>
           <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Scan depth</span>
@@ -359,9 +622,85 @@ function LocalLibrarySettings({
   );
 }
 
-function RemoteSourceSettings({
-  settings,
+function RemoteSourcesSettings({
   remoteSources,
+  onCreateSource,
+  onEditSource,
+  onDeleteSource,
+}: {
+  remoteSources: FileSource[];
+  onCreateSource: () => void;
+  onEditSource: (source: FileSource) => void;
+  onDeleteSource: (id: number) => Promise<void>;
+}) {
+  const enabledSources = remoteSources.filter((source) => source.enabled).length;
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Remote sources</h2>
+            <p className="text-sm text-muted-foreground">Configure source endpoints without making them separate work libraries.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onCreateSource}>
+            <Plus className="h-4 w-4" />
+            Add source
+          </Button>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <StatusPanel icon={<Cloud className="h-4 w-4" />} label="Configured" value={String(remoteSources.length)} />
+          <StatusPanel icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledSources)} />
+          <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Priority model" value="Per source" />
+        </div>
+      </section>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {remoteSources.map((source) => (
+          <Card key={source.id} className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-start justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                    <Database className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 truncate">{source.displayName}</span>
+                </span>
+                <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <SourceFact label="Health" value={source.healthStatus} />
+                <SourceFact label="Priority" value={String(source.priority)} />
+                <SourceFact label="Cache" value={source.config.cacheEnabled ? "On" : "Off"} />
+              </div>
+              <div className="rounded-md border bg-background px-3 py-2">
+                <div className="text-xs font-medium text-muted-foreground">Endpoint</div>
+                <div className="mt-1 truncate text-sm">{source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured"}</div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => onEditSource(source)}>
+                  Configure
+                </Button>
+                <Button variant="outline" size="icon" aria-label="Delete source" onClick={() => void onDeleteSource(source.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {remoteSources.length === 0 && (
+          <Card>
+            <CardContent className="p-5 text-sm text-muted-foreground">No remote sources configured yet.</CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CacheFetchSettings({
+  settings,
   cacheEnabled,
   cacheLimitGb,
   remoteDelayBase,
@@ -379,12 +718,8 @@ function RemoteSourceSettings({
   onRemoteMaxBackoffChange,
   onSaveSuffixChange,
   onSave,
-  onCreateSource,
-  onEditSource,
-  onDeleteSource,
 }: {
   settings: AppSettings | null;
-  remoteSources: FileSource[];
   cacheEnabled: boolean;
   cacheLimitGb: number;
   remoteDelayBase: number;
@@ -402,20 +737,24 @@ function RemoteSourceSettings({
   onRemoteMaxBackoffChange: (value: number) => void;
   onSaveSuffixChange: (value: string) => void;
   onSave: () => Promise<void>;
-  onCreateSource: () => void;
-  onEditSource: (source: FileSource) => void;
-  onDeleteSource: (id: number) => Promise<void>;
 }) {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-primary" />
-            Remote cache
+            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+              <Download className="h-4 w-4" />
+            </span>
+            Cache & fetch
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusPanel icon={<Database className="h-4 w-4" />} label="Playback cache" value={cacheEnabled ? "Enabled" : "Disabled"} />
+            <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Cache limit" value={`${cacheLimitGb} GB`} />
+            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Backoff max" value={`${remoteMaxBackoff}s`} />
+          </div>
           <div className="grid gap-3 md:grid-cols-3">
             <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
               <span className="font-medium">Cache remote playback</span>
@@ -503,58 +842,10 @@ function RemoteSourceSettings({
 
           <Button size="sm" onClick={() => void onSave()} disabled={Boolean(saveSuffixError)}>
             <Save className="h-4 w-4" />
-            Save remote settings
+            Save cache & fetch settings
           </Button>
         </CardContent>
       </Card>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Remote sources</h2>
-            <p className="text-sm text-muted-foreground">Kikoeru-compatible sources stay configurable and are not hard-coded into the app.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={onCreateSource}>
-            <Plus className="h-4 w-4" />
-            Add source
-          </Button>
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          {remoteSources.map((source) => (
-            <Card key={source.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-primary" />
-                  {source.displayName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
-                  <Badge variant="secondary">{source.healthStatus}</Badge>
-                  <Badge variant="outline">Priority {source.priority}</Badge>
-                  {source.config.cacheEnabled && <Badge variant="outline">cache</Badge>}
-                </div>
-                <p className="truncate text-sm text-muted-foreground">{source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured"}</p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => onEditSource(source)}>
-                    Configure
-                  </Button>
-                  <Button variant="outline" size="icon" aria-label="Delete source" onClick={() => void onDeleteSource(source.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          {remoteSources.length === 0 && (
-            <Card>
-              <CardContent className="p-5 text-sm text-muted-foreground">No remote sources configured yet.</CardContent>
-            </Card>
-          )}
-        </div>
-      </section>
     </div>
   );
 }
@@ -682,6 +973,55 @@ function SourceModal({
   );
 }
 
+function SystemPathsSettings({ settings, saveTemplate }: { settings: AppSettings | null; saveTemplate: string }) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+            <Server className="h-4 w-4" />
+          </span>
+          System paths
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Data root" value={settings?.dataRoot ?? "/data"} />
+          <StatusPanel icon={<Database className="h-4 w-4" />} label="Cache root" value={settings?.cacheRoot ?? "/cache"} />
+          <StatusPanel icon={<Download className="h-4 w-4" />} label="Fetch root" value={saveTemplate} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
+          <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />
+          <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
+          <ReadonlyField label="Remote fetch path" value={`${settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}`} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusPanel({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-lg border bg-background p-3">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground">{icon}</div>
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="truncate text-sm font-semibold">{value || "Unknown"}</div>
+      </div>
+    </div>
+  );
+}
+
+function SourceFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-sm font-semibold">{value || "Unknown"}</div>
+    </div>
+  );
+}
+
 function SettingsTabButton({ active, icon, children, onClick }: { active: boolean; icon: ReactNode; children: ReactNode; onClick: () => void }) {
   return (
     <button
@@ -729,4 +1069,21 @@ function normalizeSaveSuffix(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return DEFAULT_SAVE_SUFFIX;
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function languageName(value: string) {
+  switch (value) {
+  case "ja-jp":
+    return "Japanese";
+  case "en-us":
+    return "English";
+  case "zh-cn":
+    return "Simplified Chinese";
+  case "zh-tw":
+    return "Traditional Chinese";
+  case "ko-kr":
+    return "Korean";
+  default:
+    return value || "Unknown";
+  }
 }
