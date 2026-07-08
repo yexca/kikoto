@@ -303,13 +303,29 @@ export function WorkflowsPage({
 
   const refreshSelectedRunReview = async () => {
     if (!selectedRunSummary) return;
-    const [nextCandidates, nextEvents] = await Promise.all([
+    const [nextRun, nextCandidates, nextEvents] = await Promise.all([
+      api.getWorkflowRun(selectedRunSummary.id).catch(() => selectedRun),
       api.listWorkflowRunCandidates(selectedRunSummary.id).catch(() => []),
       api.listWorkflowRunEvents(selectedRunSummary.id).catch(() => []),
     ]);
+    setSelectedRun(nextRun);
     setSelectedRunCandidates(nextCandidates);
     setSelectedRunEvents(nextEvents);
     refreshRuns(runPage, activityView, runQuery);
+  };
+
+  const reviewSelectedRun = async () => {
+    const run = selectedRun ?? selectedRunSummary;
+    if (!run) return;
+    try {
+      const next = await api.reviewWorkflowRun(run.id);
+      setSelectedRun((current) => current && current.id === next.id ? { ...current, ...next } : current);
+      setRuns((items) => items.map((item) => (item.id === next.id ? { ...item, ...next } : item)));
+      toast.success(`Run #${next.id} marked reviewed.`);
+      await refreshSelectedRunReview();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Mark reviewed failed."));
+    }
   };
 
   const recoverStaleRuns = async () => {
@@ -448,7 +464,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
           />
         </>
       )}
@@ -862,6 +878,7 @@ function RunDetail({
   onViewChange,
   onCandidateUpdate,
   onRunAction,
+  onReviewRun,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
   events: WorkflowEvent[];
@@ -871,6 +888,7 @@ function RunDetail({
   onViewChange: (view: RunDetailView) => void;
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
+  onReviewRun: () => Promise<void>;
 }) {
   if (!run) {
     return <EmptyPanel text="Select a run to inspect execution by node." />;
@@ -891,6 +909,7 @@ function RunDetail({
           </div>
           <div className="space-y-2">
             <RunMetrics run={run} />
+            <RunReviewAction run={run} onReviewRun={onReviewRun} />
             <RunActions run={run} onRunAction={onRunAction} />
           </div>
         </div>
@@ -919,6 +938,35 @@ function RunDetail({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function RunReviewAction({ run, onReviewRun }: { run: WorkflowRunDetail | WorkflowRun; onReviewRun: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const hasReviewSignal = reviewCount(run) > 0 || Boolean(run.reviewedAt);
+  if (!hasReviewSignal) return null;
+  const hasPendingCandidates = run.pendingCandidates > 0;
+  const reviewed = Boolean(run.reviewedAt);
+  return (
+    <div className="flex justify-end">
+      <Button
+        size="sm"
+        variant={reviewed ? "secondary" : "outline"}
+        disabled={busy || hasPendingCandidates || reviewed}
+        title={hasPendingCandidates ? "Resolve pending candidates before marking this run reviewed." : reviewed ? `Reviewed ${run.reviewedAt}` : "Mark this run reviewed"}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onReviewRun();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        {reviewed ? "Reviewed" : "Mark reviewed"}
+      </Button>
+    </div>
   );
 }
 
