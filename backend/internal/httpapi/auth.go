@@ -264,7 +264,7 @@ func verifyArgon2idPassword(password string, encoded string) bool {
 	if len(expected) == 0 || uint32(len(expected)) > maxArgon2idKeyLen {
 		return false
 	}
-	actual := argon2.IDKey([]byte(password), salt, params.memory, params.iterations, params.parallelism, uint32(len(expected)))
+	actual := argon2.IDKey([]byte(password), salt, params.iterations, params.memory, params.parallelism, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1
 }
 
