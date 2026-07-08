@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,21 +13,45 @@ import (
 )
 
 func Open(path string) (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
+	if !strings.HasPrefix(path, "file:") && path != ":memory:" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, err
+		}
 	}
 
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
+	if path == ":memory:" {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	} else {
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(4)
+	}
 
-	if _, err := db.Exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;"); err != nil {
+	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 
 	return db, nil
+}
+
+func sqliteDSN(path string) string {
+	if path == ":memory:" {
+		path = "file::memory:"
+	}
+	values := url.Values{}
+	values.Add("_pragma", "foreign_keys(1)")
+	values.Add("_pragma", "journal_mode(WAL)")
+	values.Add("_pragma", "busy_timeout(5000)")
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + values.Encode()
 }
 
 func Migrate(db *sql.DB, dir string) error {
