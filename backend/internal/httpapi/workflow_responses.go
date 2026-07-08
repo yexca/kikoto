@@ -23,6 +23,8 @@ type workflowRunRecord struct {
 	PendingCandidates  int64  `json:"pendingCandidates"`
 	AcceptedCandidates int64  `json:"acceptedCandidates"`
 	RejectedCandidates int64  `json:"rejectedCandidates"`
+	ReviewedAt         string `json:"reviewedAt"`
+	ReviewedByUserID   *int64 `json:"reviewedByUserId"`
 	DefinitionID       *int64 `json:"definitionId"`
 	TriggerID          *int64 `json:"triggerId"`
 }

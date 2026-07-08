@@ -1300,6 +1300,66 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, workflowRunActionResult{RunID: id, Status: "retried", Message: "retry started", NewRunID: &newRunID})
 }
 
+func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	run, err := s.loadWorkflowRun(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if run.PendingCandidates > 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "resolve pending candidates before marking the run reviewed"})
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(r.Context(), `
+		INSERT INTO workflow_run_review (workflow_run_id, user_id, status, reviewed_at)
+		VALUES (?, ?, 'reviewed', CURRENT_TIMESTAMP)
+		ON CONFLICT(workflow_run_id, user_id) DO UPDATE SET
+			status = 'reviewed',
+			reviewed_at = CURRENT_TIMESTAMP
+	`, id, user.ID); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := workflow.InsertEvent(r.Context(), tx, id, workflow.EventSpec{
+		Level:   "info",
+		Type:    "run.reviewed",
+		Message: "Run marked reviewed",
+		Detail:  map[string]any{"user_id": user.ID},
+	}); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	next, err := s.loadWorkflowRun(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, next)
+}
+
 func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
@@ -1341,6 +1401,7 @@ func (s *Server) loadWorkflowRunFrom(ctx context.Context, db workflowRunQuerier,
 	var item workflowRunRecord
 	var definitionID sql.NullInt64
 	var triggerID sql.NullInt64
+	var reviewedByUserID sql.NullInt64
 	err := db.QueryRowContext(ctx, workflowRunSelectSQL()+`
 		FROM workflow_run AS run
 		WHERE run.id = ?
@@ -1367,9 +1428,12 @@ func (s *Server) loadWorkflowRunFrom(ctx context.Context, db workflowRunQuerier,
 		&item.PendingCandidates,
 		&item.AcceptedCandidates,
 		&item.RejectedCandidates,
+		&item.ReviewedAt,
+		&reviewedByUserID,
 		&definitionID,
 		&triggerID,
 	)
+	item.ReviewedByUserID = nullableInt64(reviewedByUserID)
 	item.DefinitionID = nullableInt64(definitionID)
 	item.TriggerID = nullableInt64(triggerID)
 	return item, err
@@ -1469,6 +1533,22 @@ func workflowRunSelectSQL() string {
 				WHERE workflow_candidate.workflow_run_id = run.id
 					AND workflow_candidate.status = 'rejected'
 			) AS rejected_candidates,
+			COALESCE((
+				SELECT review.reviewed_at
+				FROM workflow_run_review AS review
+				WHERE review.workflow_run_id = run.id
+					AND review.status = 'reviewed'
+				ORDER BY review.reviewed_at DESC, review.id DESC
+				LIMIT 1
+			), '') AS reviewed_at,
+			(
+				SELECT review.user_id
+				FROM workflow_run_review AS review
+				WHERE review.workflow_run_id = run.id
+					AND review.status = 'reviewed'
+				ORDER BY review.reviewed_at DESC, review.id DESC
+				LIMIT 1
+			) AS reviewed_by_user_id,
 			run.workflow_definition_id,
 			run.trigger_id
 	`

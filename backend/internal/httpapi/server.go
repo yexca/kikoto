@@ -117,6 +117,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs/{id}/candidates", s.listWorkflowRunCandidates)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/cancel", s.cancelWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/{id}/retry", s.retryWorkflowRun)
+	mux.HandleFunc("POST /api/workflow-runs/{id}/review", s.reviewWorkflowRun)
 	mux.HandleFunc("POST /api/workflow-runs/recover-stale", s.recoverStaleWorkflowRuns)
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/local-cleanup", s.cleanupLocalWorkflowCandidate)
@@ -3417,18 +3418,28 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		conditions = append(conditions, "run.status = 'failed'")
 	case "review":
 		conditions = append(conditions, `(
-			run.status IN ('partial', 'skipped')
-			OR EXISTS (
+			EXISTS (
 				SELECT 1
 				FROM workflow_candidate
 				WHERE workflow_candidate.workflow_run_id = run.id
 					AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')
 			)
-			OR EXISTS (
-				SELECT 1
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status IN ('partial', 'skipped')
+			OR (
+				(
+					run.status IN ('partial', 'skipped')
+					OR EXISTS (
+						SELECT 1
+						FROM workflow_node_run
+						WHERE workflow_node_run.workflow_run_id = run.id
+							AND workflow_node_run.status IN ('partial', 'skipped')
+					)
+				)
+				AND NOT EXISTS (
+					SELECT 1
+					FROM workflow_run_review
+					WHERE workflow_run_review.workflow_run_id = run.id
+						AND workflow_run_review.status = 'reviewed'
+				)
 			)
 		)`)
 	case "completed", "history", "logs":
@@ -3472,6 +3483,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		var item workflowRunRecord
 		var definitionID sql.NullInt64
 		var triggerID sql.NullInt64
+		var reviewedByUserID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&item.WorkflowCode,
@@ -3495,12 +3507,15 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 			&item.PendingCandidates,
 			&item.AcceptedCandidates,
 			&item.RejectedCandidates,
+			&item.ReviewedAt,
+			&reviewedByUserID,
 			&definitionID,
 			&triggerID,
 		); err != nil {
 			writeError(w, err)
 			return
 		}
+		item.ReviewedByUserID = nullableInt64(reviewedByUserID)
 		item.DefinitionID = nullableInt64(definitionID)
 		item.TriggerID = nullableInt64(triggerID)
 		runs = append(runs, item)

@@ -404,6 +404,8 @@ export type WorkflowRun = {
   pendingCandidates: number;
   acceptedCandidates: number;
   rejectedCandidates: number;
+  reviewedAt: string;
+  reviewedByUserId: number | null;
   definitionId: number | null;
   triggerId: number | null;
 };
@@ -1077,6 +1079,7 @@ export const api = {
     postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
   cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
+  reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
