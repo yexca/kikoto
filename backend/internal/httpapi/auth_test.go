@@ -88,6 +88,38 @@ func TestLoginUpgradesLegacyPasswordHash(t *testing.T) {
 	}
 }
 
+func TestSessionCookieSecureFromConfig(t *testing.T) {
+	server := NewServer(nil, config.Config{SessionCookieSecure: true})
+	request := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+	recorder := httptest.NewRecorder()
+
+	server.setSessionCookie(request, recorder, &http.Cookie{Name: sessionCookieName, Value: "session", Path: "/"})
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookie count = %d, want 1", len(cookies))
+	}
+	if !cookies[0].Secure {
+		t.Fatal("session cookie is not secure when configured")
+	}
+}
+
+func TestSessionCookieSecureForHTTPSRequest(t *testing.T) {
+	server := NewServer(nil, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "https://example.test/", nil)
+	recorder := httptest.NewRecorder()
+
+	server.setSessionCookie(request, recorder, &http.Cookie{Name: sessionCookieName, Value: "session", Path: "/"})
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookie count = %d, want 1", len(cookies))
+	}
+	if !cookies[0].Secure {
+		t.Fatal("session cookie is not secure for HTTPS requests")
+	}
+}
+
 func legacyPasswordHashForTest(password string) string {
 	salt := []byte("legacy-test-salt")
 	return "sha256:" + hex.EncodeToString(salt) + ":" + hex.EncodeToString(passwordHashSum(password, salt))

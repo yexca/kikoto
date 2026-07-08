@@ -7,15 +7,16 @@ import (
 )
 
 type Config struct {
-	HTTPAddr          string
-	DatabasePath      string
-	DataRoot          string
-	CacheRoot         string
-	LocalScanDepth    int
-	DevMode           bool
-	RootUsername      string
-	RootPassword      string
-	RemoteSourceSeeds []RemoteSourceSeed
+	HTTPAddr            string
+	DatabasePath        string
+	DataRoot            string
+	CacheRoot           string
+	LocalScanDepth      int
+	DevMode             bool
+	SessionCookieSecure bool
+	RootUsername        string
+	RootPassword        string
+	RemoteSourceSeeds   []RemoteSourceSeed
 }
 
 type RemoteSourceSeed struct {
@@ -30,15 +31,16 @@ type RemoteSourceSeed struct {
 
 func Load() Config {
 	return Config{
-		HTTPAddr:          env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
-		DatabasePath:      env("KIKOTO_DB_PATH", "../config/kikoto.db"),
-		DataRoot:          env("KIKOTO_DATA_ROOT", "../data"),
-		CacheRoot:         env("KIKOTO_CACHE_ROOT", "../cache"),
-		LocalScanDepth:    envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
-		DevMode:           envBool("KIKOTO_DEV_MODE", false),
-		RootUsername:      env("KIKOTO_ROOT_USERNAME", "root"),
-		RootPassword:      env("KIKOTO_ROOT_PASSWORD", "change-me"),
-		RemoteSourceSeeds: loadRemoteSourceSeeds(),
+		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
+		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
+		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
+		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
+		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
+		DevMode:             envBool("KIKOTO_DEV_MODE", false),
+		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
+		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
+		RootPassword:        env("KIKOTO_ROOT_PASSWORD", "change-me"),
+		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
 	}
 }
 
