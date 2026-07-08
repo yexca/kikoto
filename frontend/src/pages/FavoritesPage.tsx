@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -69,6 +70,7 @@ type PageSize = (typeof pageSizeOptions)[number];
 type AvailabilityFilter = (typeof availabilityFilters)[number]["value"];
 
 export function FavoritesPage() {
+  const toast = useToast();
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [query, setQuery] = useState("");
@@ -85,7 +87,6 @@ export function FavoritesPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState("");
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
 
@@ -97,13 +98,12 @@ export function FavoritesPage() {
         if (cancelled) return;
         setWorks(workItems);
         setFavoriteLists(lists);
-        setMessage("");
       })
       .catch((error) => {
         if (cancelled) return;
         setWorks([]);
         setFavoriteLists([]);
-        setMessage(error instanceof Error ? error.message : "Favorites could not be loaded.");
+        toast.notify(toastFromError(error, "Favorites could not be loaded."));
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -125,7 +125,7 @@ export function FavoritesPage() {
         if (!cancelled) setListWorkIDs((items) => ({ ...items, [result.listId]: result.workIds }));
       })
       .catch((error) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "Favorite list could not be loaded.");
+        if (!cancelled) toast.notify(toastFromError(error, "Favorite list could not be loaded."));
       });
     return () => {
       cancelled = true;
@@ -224,7 +224,7 @@ export function FavoritesPage() {
       setActiveList(list.id);
     }
     setListEditor(null);
-    setMessage("");
+    toast.success("Favorite list saved.");
   };
 
   const deleteFavoriteList = async () => {
@@ -234,7 +234,7 @@ export function FavoritesPage() {
     setActiveList("all");
     setWorks(await api.listWorks());
     await reloadFavoriteLists();
-    setMessage("");
+    toast.success("Favorite list deleted.");
   };
 
   const moveFavoriteList = async (direction: -1 | 1) => {
@@ -248,7 +248,7 @@ export function FavoritesPage() {
     await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
     await reloadFavoriteLists();
     setActiveList(selectedList.id);
-    setMessage("");
+    toast.success("Favorite list reordered.");
   };
 
   const toggleWorkSelection = (workID: number, selected: boolean) => {
@@ -284,9 +284,9 @@ export function FavoritesPage() {
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
       setListDialogTarget(null);
-      setMessage(`Updated list membership for ${targetWorks.length} work${targetWorks.length === 1 ? "" : "s"}.`);
+      toast.success(`Updated list membership for ${targetWorks.length} work${targetWorks.length === 1 ? "" : "s"}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bulk list update failed.");
+      toast.notify(toastFromError(error, "Bulk list update failed."));
     } finally {
       setIsBulkUpdating(false);
     }
@@ -330,8 +330,6 @@ export function FavoritesPage() {
           </div>
         </div>
       </div>
-
-      {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Shelf Works" value={shelfWorks.length} icon={Heart} />
@@ -495,7 +493,7 @@ export function FavoritesPage() {
                 onListsChanged={async () => {
                   setWorks(await api.listWorks());
                   await reloadFavoriteLists();
-                  setMessage(`Updated list membership for ${work.primaryCode}.`);
+                  toast.success(`Updated list membership for ${work.primaryCode}.`);
                 }}
                 onOpen={() => openWork(work)}
                 onStatusChange={updateWorkStatus}
