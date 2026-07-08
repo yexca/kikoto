@@ -14,6 +14,7 @@ depth, cache options, and file source configuration in the UI.
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root, including cover images. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum folder depth used by local scan code detection. |
 | `KIKOTO_DEV_MODE` | `false` | When enabled, every request is authenticated as the configured root super administrator. |
+| `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Adds the `Secure` attribute to session cookies. Enable when serving through HTTPS reverse proxies; direct HTTPS requests also enable it automatically. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root super administrator username created or updated at startup. |
 | `KIKOTO_ROOT_PASSWORD` | `change-me` | Root super administrator password created or updated at startup. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enables first-run seeding of compatible remote sources from a mounted config file. |
@@ -30,6 +31,7 @@ KIKOTO_DATA_ROOT=/data
 KIKOTO_CACHE_ROOT=/cache
 KIKOTO_LOCAL_SCAN_DEPTH=4
 KIKOTO_DEV_MODE=true
+KIKOTO_SESSION_COOKIE_SECURE=false
 KIKOTO_ROOT_USERNAME=root
 KIKOTO_ROOT_PASSWORD=change-me
 KIKOTO_REMOTE_SOURCES_ENABLED=false

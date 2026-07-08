@@ -194,7 +194,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    sessionID,
 		Path:     "/",
@@ -215,7 +215,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM user_session WHERE id = ?", cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
+	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
@@ -224,6 +224,11 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) setSessionCookie(r *http.Request, w http.ResponseWriter, cookie *http.Cookie) {
+	cookie.Secure = s.cfg.SessionCookieSecure || r.TLS != nil
+	http.SetCookie(w, cookie)
 }
 
 func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
