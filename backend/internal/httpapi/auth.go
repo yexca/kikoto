@@ -3,11 +3,9 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,11 +227,7 @@ func verifyPassword(password string, encoded string) bool {
 	if strings.HasPrefix(encoded, "argon2id$") {
 		return verifyArgon2idPassword(password, encoded)
 	}
-	return verifyLegacySHA256Password(password, encoded)
-}
-
-func passwordHashNeedsUpgrade(encoded string) bool {
-	return strings.HasPrefix(encoded, "sha256:")
+	return false
 }
 
 func verifyArgon2idPassword(password string, encoded string) bool {
@@ -306,33 +300,6 @@ func parseArgon2idParams(encoded string) (argon2idParams, error) {
 		return argon2idParams{}, errors.New("argon2id params are too large")
 	}
 	return params, nil
-}
-
-func verifyLegacySHA256Password(password string, encoded string) bool {
-	parts := strings.Split(encoded, ":")
-	if len(parts) != 3 || parts[0] != "sha256" {
-		return false
-	}
-	salt, err := hex.DecodeString(parts[1])
-	if err != nil {
-		return false
-	}
-	expected, err := hex.DecodeString(parts[2])
-	if err != nil {
-		return false
-	}
-	actual := passwordHashSum(password, salt)
-	return subtle.ConstantTimeCompare(actual, expected) == 1
-}
-
-func passwordHashSum(password string, salt []byte) []byte {
-	sum := sha256.Sum256(append(salt, []byte(password)...))
-	value := sum[:]
-	for i := 0; i < 120_000; i++ {
-		next := sha256.Sum256(append(value, []byte(password)...))
-		value = next[:]
-	}
-	return value
 }
 
 func newSessionID() (string, error) {

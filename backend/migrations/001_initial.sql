@@ -111,6 +111,41 @@ CREATE TABLE party_catalog_item (
   UNIQUE(party_id, provider_id, primary_code)
 );
 
+CREATE TABLE party_series (
+  id INTEGER PRIMARY KEY,
+  party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+  provider_id INTEGER NOT NULL REFERENCES metadata_provider(id),
+  title_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL DEFAULT '',
+  declared_works INTEGER NOT NULL DEFAULT 0,
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(party_id, provider_id, title_id)
+);
+
+CREATE TABLE party_series_work (
+  series_id INTEGER NOT NULL REFERENCES party_series(id) ON DELETE CASCADE,
+  primary_code TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(series_id, primary_code)
+);
+
+CREATE TABLE party_catalog_refresh_state (
+  party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+  provider_code TEXT NOT NULL,
+  last_success_at TEXT,
+  last_attempt_at TEXT,
+  last_mode TEXT NOT NULL DEFAULT '',
+  last_status TEXT NOT NULL DEFAULT '',
+  last_run_id INTEGER,
+  last_error TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(party_id, provider_code)
+);
+
 CREATE TABLE work_party (
   work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
   party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
@@ -142,6 +177,9 @@ CREATE INDEX idx_party_catalog_party
 
 CREATE INDEX idx_work_party_party
   ON work_party(party_id, role);
+
+CREATE INDEX idx_party_series_party
+  ON party_series(party_id, provider_id);
 
 CREATE TABLE person (
   id INTEGER PRIMARY KEY,

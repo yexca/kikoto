@@ -978,9 +978,6 @@ func (s *Server) readWorkSourceAvailability(ctx context.Context, code string) (s
 }
 
 func (s *Server) latestSourceAvailabilityCheckedAt(ctx context.Context, code string) (string, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return "", err
-	}
 	var checkedAt sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT MAX(presence.last_checked_at)
@@ -999,9 +996,6 @@ func (s *Server) latestSourceAvailabilityCheckedAt(ctx context.Context, code str
 }
 
 func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return err
-	}
 	var availability, remoteID, rawJSON sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT presence.availability, presence.remote_id, presence.raw_json
@@ -1326,70 +1320,6 @@ type workSourcePresence struct {
 
 const sourcePresenceTypeRemoteSource = "source"
 
-func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS work_source_presence (
-			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
-			file_source_id INTEGER NOT NULL REFERENCES file_source(id) ON DELETE CASCADE,
-			presence_type TEXT NOT NULL DEFAULT 'location',
-			remote_id TEXT NOT NULL DEFAULT '',
-			source_url TEXT NOT NULL DEFAULT '',
-			availability TEXT NOT NULL DEFAULT 'unknown',
-			raw_json TEXT NOT NULL DEFAULT '{}',
-			last_seen_at TEXT,
-			last_checked_at TEXT,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(work_id, file_source_id, presence_type)
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE INDEX IF NOT EXISTS idx_work_source_presence_source
-		ON work_source_presence(file_source_id, availability, updated_at)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE work_source_presence
-		SET presence_type = ?
-		WHERE presence_type = 'remote'
-			AND file_source_id IN (
-				SELECT id
-				FROM file_source
-				WHERE source_type <> 'local'
-			)
-	`, sourcePresenceTypeRemoteSource); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Server) ensureWorkManualOverrideSchema(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS work_manual_override (
-			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
-			field_name TEXT NOT NULL,
-			value_json TEXT NOT NULL DEFAULT 'null',
-			asset_path TEXT NOT NULL DEFAULT '',
-			updated_by_user_id INTEGER REFERENCES user_account(id) ON DELETE SET NULL,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(work_id, field_name)
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		CREATE INDEX IF NOT EXISTS idx_work_manual_override_field
-		ON work_manual_override(field_name, updated_at)
-	`); err != nil {
-		return err
-	}
-	return nil
-}
-
 func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSourcePresence) error {
 	presence.PresenceType = strings.TrimSpace(presence.PresenceType)
 	if presence.PresenceType == "" {
@@ -1474,9 +1404,6 @@ func (s *Server) workHasLocationType(ctx context.Context, workID int64, sourceID
 }
 
 func (s *Server) workHasSourcePresence(ctx context.Context, workID int64, sourceID int64, presenceType string, availability string) bool {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return false
-	}
 	query := `
 		SELECT 1
 		FROM work_source_presence
@@ -1495,9 +1422,6 @@ func (s *Server) workHasSourcePresence(ctx context.Context, workID int64, source
 }
 
 func (s *Server) recordSourceAvailabilityWorkflow(ctx context.Context, code string, checkedAt string, results []sourceAvailabilitySummary, triggerType string, triggerReason string) (int64, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return 0, err
-	}
 	triggerType = strings.TrimSpace(triggerType)
 	if triggerType == "" {
 		triggerType = "manual"
@@ -1823,9 +1747,6 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 }
 
 func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code string, triggerReason string) (remoteWorkSyncResult, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1949,9 +1870,6 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 }
 
 func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceID int64) (workSourceUntrackResult, error) {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return workSourceUntrackResult{}, err
-	}
 	var found int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT 1
@@ -3534,9 +3452,6 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 }
 
 func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSourceID int64, localSourceID int64, workCode string) error {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

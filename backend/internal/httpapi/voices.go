@@ -186,14 +186,6 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureCircleSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
 		writeError(w, err)
 		return
@@ -214,10 +206,6 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
-		return
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	if err := s.syncVoiceCreditsFromSnapshots(r.Context()); err != nil {
@@ -264,10 +252,6 @@ func (s *Server) listVoiceAliasCandidates(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
@@ -308,10 +292,6 @@ func (s *Server) createVoiceAlias(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(alias) > 120 {
 		alias = alias[:120]
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -385,10 +365,6 @@ func (s *Server) mergeVoiceAliasCandidate(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source person must be different"})
 		return
 	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	result, err := s.mergeVoicePeople(r.Context(), targetID, payload.SourcePersonID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -408,10 +384,6 @@ func (s *Server) listVoiceMergeReviews(w http.ResponseWriter, r *http.Request) {
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
-		return
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	items, err := s.loadVoiceMergeReviews(r.Context(), personID)
@@ -434,10 +406,6 @@ func (s *Server) undoVoiceMergeReview(w http.ResponseWriter, r *http.Request) {
 	mergeID, err := parseInt64PathValue(r, "mergeId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid merge id"})
-		return
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	result, err := s.undoVoiceMerge(r.Context(), personID, mergeID)
@@ -473,10 +441,6 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.Rating != nil && (*payload.Rating < 0 || *payload.Rating > 5) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rating must be between 0 and 5"})
-		return
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
@@ -534,10 +498,6 @@ func (s *Server) setVoiceUserTags(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
-	}
-	if err := s.ensureVoiceSchema(r.Context()); err != nil {
-		writeError(w, err)
 		return
 	}
 	if _, err := s.loadPersonName(r.Context(), personID); err != nil {
@@ -1055,83 +1015,6 @@ func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 		return 0, err
 	}
 	return id, nil
-}
-
-func (s *Server) ensureVoiceSchema(ctx context.Context) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS person (
-			id INTEGER PRIMARY KEY,
-			display_name TEXT NOT NULL,
-			sort_name TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(display_name)
-		)`,
-		`CREATE TABLE IF NOT EXISTS person_alias (
-			id INTEGER PRIMARY KEY,
-			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-			alias TEXT NOT NULL,
-			source TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(person_id, alias)
-		)`,
-		`CREATE TABLE IF NOT EXISTS work_credit (
-			work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
-			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-			role TEXT NOT NULL,
-			provider_id INTEGER REFERENCES metadata_provider(id),
-			source TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(work_id, person_id, role)
-		)`,
-		`CREATE TABLE IF NOT EXISTS user_person_state (
-			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
-			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-			rating INTEGER,
-			note TEXT NOT NULL DEFAULT '',
-			favorite INTEGER NOT NULL DEFAULT 0,
-			last_viewed_at TEXT,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(user_id, person_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS user_person_tag (
-			id INTEGER PRIMARY KEY,
-			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
-			name TEXT NOT NULL,
-			color TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(user_id, name)
-		)`,
-		`CREATE TABLE IF NOT EXISTS user_person_tag_assignment (
-			user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
-			person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-			user_person_tag_id INTEGER NOT NULL REFERENCES user_person_tag(id) ON DELETE CASCADE,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY(user_id, person_id, user_person_tag_id)
-		)`,
-		`CREATE TABLE IF NOT EXISTS person_merge_review (
-			id INTEGER PRIMARY KEY,
-			target_person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-			source_person_id INTEGER NOT NULL,
-			target_name TEXT NOT NULL,
-			source_name TEXT NOT NULL,
-			snapshot_json TEXT NOT NULL DEFAULT '{}',
-			status TEXT NOT NULL DEFAULT 'merged',
-			undone_at TEXT,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_work_credit_person ON work_credit(person_id, role)`,
-		`CREATE INDEX IF NOT EXISTS idx_person_merge_review_target ON person_merge_review(target_person_id, status, created_at)`,
-	}
-	for _, statement := range statements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Server) loadPersonName(ctx context.Context, personID int64) (string, error) {
