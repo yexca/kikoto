@@ -5099,7 +5099,7 @@ function TreeFile({
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPreview?: (preview: FilePreviewState) => void;
 }) {
-  const canPlay = Boolean(onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
+  const canPlay = Boolean(file.kind === "audio" && onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
   const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
