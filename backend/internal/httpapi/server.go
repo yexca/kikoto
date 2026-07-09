@@ -55,6 +55,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/works/{id}/manual-overrides/{field}", s.deleteWorkManualOverride)
 	mux.HandleFunc("GET /api/works/{id}/cover-candidates", s.listWorkCoverCandidates)
 	mux.HandleFunc("POST /api/works/{id}/cover-override", s.setWorkCoverOverride)
+	mux.HandleFunc("GET /api/metadata-suggestions/circles", s.suggestCircles)
+	mux.HandleFunc("GET /api/metadata-suggestions/voices", s.suggestVoices)
+	mux.HandleFunc("GET /api/metadata-suggestions/series", s.suggestSeries)
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
@@ -734,7 +737,7 @@ func librarySearchWhere(queryText string) (string, []any) {
 			clauses = append(clauses, "LOWER(work.primary_code) LIKE ?")
 			args = append(args, like)
 		case "circle":
-			clauses = append(clauses, `EXISTS (
+			clauses = append(clauses, `(EXISTS (
 				SELECT 1
 				FROM work_party AS search_relation
 				INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
@@ -742,18 +745,18 @@ func librarySearchWhere(queryText string) (string, []any) {
 				WHERE search_relation.work_id = work.id
 					AND search_relation.role = 'circle'
 					AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
-			)`)
-			args = append(args, like, like)
+			) OR `+manualOverrideFieldLikeClause("circle")+`)`)
+			args = append(args, like, like, like)
 		case "voice_actor":
-			clauses = append(clauses, `EXISTS (
+			clauses = append(clauses, `(EXISTS (
 				SELECT 1
 				FROM work_credit AS search_credit
 				INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
 				WHERE search_credit.work_id = work.id
 					AND search_credit.role = 'voice_actor'
 					AND LOWER(search_person.display_name) LIKE ?
-			)`)
-			args = append(args, like)
+			) OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
+			args = append(args, like, like)
 		case "tag":
 			clauses = append(clauses, latestSnapshotLikeClause(false))
 			args = append(args, like)
@@ -765,14 +768,38 @@ func librarySearchWhere(queryText string) (string, []any) {
 		case "sales_min":
 			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListTokenValue(needle)))
 		default:
-			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+latestSnapshotLikeClause(false)+`)`)
-			args = append(args, like, like, like)
+			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+latestSnapshotLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
+			args = append(args, like, like, like, like)
 		}
 	}
 	if len(clauses) == 0 {
 		return "", nil
 	}
 	return "(" + strings.Join(clauses, " AND ") + ")", args
+}
+
+func manualOverrideFieldLikeClause(field string) string {
+	return `EXISTS (
+		SELECT 1
+		FROM work_manual_override AS search_override
+		WHERE search_override.work_id = work.id
+			AND search_override.field_name = '` + field + `'
+			AND LOWER(search_override.value_json) LIKE ?
+	)`
+}
+
+func manualOverrideAnyLikeClause(fields ...string) string {
+	quoted := make([]string, 0, len(fields))
+	for _, field := range fields {
+		quoted = append(quoted, "'"+field+"'")
+	}
+	return `EXISTS (
+		SELECT 1
+		FROM work_manual_override AS search_override
+		WHERE search_override.work_id = work.id
+			AND search_override.field_name IN (` + strings.Join(quoted, ",") + `)
+			AND LOWER(search_override.value_json) LIKE ?
+	)`
 }
 
 func latestSnapshotLikeClause(negated bool) string {

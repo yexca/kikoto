@@ -62,6 +62,7 @@ import {
   type LibrarySource,
   type LibrarySort,
   type SortDirection,
+  type CircleSuggestion,
   type FavoriteList,
   type DirectoryRoutingRule,
   type ListeningStatus,
@@ -75,6 +76,8 @@ import {
   type RemoteWorkSavePlan,
   type SourceAvailabilitySource,
   type SourcePresenceItem,
+  type SeriesSuggestion,
+  type VoiceSuggestion,
   type VoiceCredit,
   type Work,
   type WorkCoverCandidate,
@@ -2972,7 +2975,20 @@ function WorkDetailView({
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
         onPreview={setPreview}
       />
-      {preview && <FilePreviewModal preview={preview} onClose={() => setPreview(null)} />}
+      {preview && <FilePreviewModal
+        preview={preview}
+        onClose={() => setPreview(null)}
+        onSetCover={work ? async (locationId) => {
+          try {
+            await api.setWorkCoverOverride(work.id, locationId);
+            toast.success("Cover override saved.");
+            setPreview(null);
+            await metadataSaved();
+          } catch (error) {
+            toast.notify(toastFromError(error, "Cover override could not be saved."));
+          }
+        } : undefined}
+      />}
       {isManageOpen && (
         <DirectoryManagerModal
           root={tree}
@@ -3830,6 +3846,10 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
   const [voiceActors, setVoiceActors] = useState<ManualOverridePerson[]>(() => initialManualVoiceActors(work));
   const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
   const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
+  const [circleSuggestions, setCircleSuggestions] = useState<{ items: CircleSuggestion[]; truncated: boolean }>({ items: [], truncated: false });
+  const [seriesSuggestions, setSeriesSuggestions] = useState<{ items: SeriesSuggestion[]; truncated: boolean }>({ items: [], truncated: false });
+  const [voiceSuggestions, setVoiceSuggestions] = useState<{ index: number; items: VoiceSuggestion[]; truncated: boolean }>({ index: -1, items: [], truncated: false });
+  const [focusedVoiceIndex, setFocusedVoiceIndex] = useState(-1);
   const [loadingCovers, setLoadingCovers] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -3852,6 +3872,67 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
       cancelled = true;
     };
   }, [toast, work.id]);
+
+  useEffect(() => {
+    const query = circleName.trim();
+    if ([...query].length < 2) {
+      setCircleSuggestions({ items: [], truncated: false });
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api.suggestCircles(query).then((result) => {
+        if (!cancelled) setCircleSuggestions(result);
+      }).catch(() => {
+        if (!cancelled) setCircleSuggestions({ items: [], truncated: false });
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [circleName]);
+
+  useEffect(() => {
+    const query = seriesName.trim();
+    if ([...query].length < 2) {
+      setSeriesSuggestions({ items: [], truncated: false });
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api.suggestSeries(query, seriesCircleExternalId).then((result) => {
+        if (!cancelled) setSeriesSuggestions(result);
+      }).catch(() => {
+        if (!cancelled) setSeriesSuggestions({ items: [], truncated: false });
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [seriesName, seriesCircleExternalId]);
+
+  useEffect(() => {
+    const actor = focusedVoiceIndex >= 0 ? voiceActors[focusedVoiceIndex] : null;
+    const query = actor?.name.trim() ?? "";
+    if ([...query].length < 2) {
+      setVoiceSuggestions({ index: focusedVoiceIndex, items: [], truncated: false });
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api.suggestVoices(query).then((result) => {
+        if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, ...result });
+      }).catch(() => {
+        if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, items: [], truncated: false });
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [focusedVoiceIndex, voiceActors]);
 
   const save = async () => {
     setSaving(true);
@@ -3960,6 +4041,21 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               <LabeledInput label="Name" value={circleName} onChange={setCircleName} />
               <LabeledInput label="External ID" value={circleExternalId} onChange={setCircleExternalId} />
             </div>
+            <SuggestionList
+              truncated={circleSuggestions.truncated}
+              emptyLabel="Type at least two characters to search circles."
+              items={circleSuggestions.items.map((item) => ({
+                key: String(item.partyId),
+                label: item.name,
+                detail: item.externalId,
+                onSelect: () => {
+                  setCircleName(item.name);
+                  setCircleExternalId(item.externalId);
+                  setSeriesCircleExternalId(item.externalId);
+                  setCircleSuggestions({ items: [], truncated: false });
+                },
+              }))}
+            />
             <div className="flex justify-end">
               <Button variant="outline" size="sm" disabled={saving || !manual.circle} onClick={() => void resetField("circle")}>Reset circle</Button>
             </div>
@@ -3971,6 +4067,21 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               <LabeledInput label="Title ID" value={seriesTitleId} onChange={setSeriesTitleId} />
               <LabeledInput label="Circle ID" value={seriesCircleExternalId} onChange={setSeriesCircleExternalId} />
             </div>
+            <SuggestionList
+              truncated={seriesSuggestions.truncated}
+              emptyLabel="Type at least two characters to search series."
+              items={seriesSuggestions.items.map((item) => ({
+                key: String(item.seriesId),
+                label: item.name,
+                detail: [item.titleId, item.circleName, item.circleExternalId].filter(Boolean).join(" · "),
+                onSelect: () => {
+                  setSeriesName(item.name);
+                  setSeriesTitleId(item.titleId);
+                  setSeriesCircleExternalId(item.circleExternalId);
+                  setSeriesSuggestions({ items: [], truncated: false });
+                },
+              }))}
+            />
             <div className="flex justify-end">
               <Button variant="outline" size="sm" disabled={saving || !manual.series} onClick={() => void resetField("series")}>Reset series</Button>
             </div>
@@ -3980,13 +4091,28 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
             <div className="space-y-2">
               {voiceActors.map((actor, index) => (
                 <div key={`${index}:${actor.personId}`} className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
-                  <LabeledInput label="Name" value={actor.name} onChange={(value) => updateVoiceActor(index, { name: value })} />
+                  <LabeledInput label="Name" value={actor.name} onFocus={() => setFocusedVoiceIndex(index)} onChange={(value) => updateVoiceActor(index, { name: value, personId: 0 })} />
                   <LabeledInput label="Person ID" value={actor.personId ? String(actor.personId) : ""} onChange={(value) => updateVoiceActor(index, { personId: Number(value) || 0 })} />
                   <Button variant="outline" size="icon" className="mt-5 h-9 w-9" onClick={() => removeVoiceActor(index)} aria-label="Remove voice actor">
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
+              {focusedVoiceIndex >= 0 && voiceSuggestions.index === focusedVoiceIndex && (
+                <SuggestionList
+                  truncated={voiceSuggestions.truncated}
+                  emptyLabel="Type at least two characters to search voices."
+                  items={voiceSuggestions.items.map((item) => ({
+                    key: String(item.personId),
+                    label: item.name,
+                    detail: `Person #${item.personId}`,
+                    onSelect: () => {
+                      updateVoiceActor(focusedVoiceIndex, { name: item.name, personId: item.personId });
+                      setVoiceSuggestions({ index: focusedVoiceIndex, items: [], truncated: false });
+                    },
+                  }))}
+                />
+              )}
             </div>
             <div className="flex flex-wrap justify-between gap-2">
               <Button variant="outline" size="sm" onClick={addVoiceActor}>
@@ -4017,13 +4143,39 @@ function EditorSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
-function LabeledInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function SuggestionList({
+  items,
+  truncated,
+  emptyLabel,
+}: {
+  items: { key: string; label: string; detail: string; onSelect: () => void }[];
+  truncated: boolean;
+  emptyLabel: string;
+}) {
+  if (items.length === 0 && !truncated) {
+    return <div className="text-xs text-muted-foreground">{emptyLabel}</div>;
+  }
+  return (
+    <div className="space-y-1 rounded-md border bg-background p-1">
+      {items.map((item) => (
+        <button key={item.key} className="flex min-h-8 w-full items-center justify-between gap-3 rounded px-2 text-left text-xs hover:bg-muted" onClick={item.onSelect}>
+          <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+          {item.detail && <span className="shrink-0 truncate text-muted-foreground">{item.detail}</span>}
+        </button>
+      ))}
+      {truncated && <div className="px-2 py-1 text-xs text-muted-foreground">Too many matches. Keep typing to narrow results.</div>}
+    </div>
+  );
+}
+
+function LabeledInput({ label, value, onChange, onFocus }: { label: string; value: string; onChange: (value: string) => void; onFocus?: () => void }) {
   return (
     <label className="block min-w-0 text-xs font-medium text-muted-foreground">
       {label}
       <input
         className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
         value={value}
+        onFocus={onFocus}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
@@ -4256,7 +4408,7 @@ type TreeTrack = {
 };
 
 type FilePreviewState =
-  | { kind: "image"; title: string; url: string }
+  | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
   | { kind: "text"; title: string; locationId: number };
 
 type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string };
@@ -5850,7 +6002,7 @@ function fileIcon(file: TreeTrack) {
 
 function previewForFile(file: TreeTrack): FilePreviewState | null {
   if (file.kind === "image" && file.assetUrl) {
-    return { kind: "image", title: file.title, url: file.assetUrl };
+    return { kind: "image", title: file.title, url: file.assetUrl, locationId: file.locationId, canSetCover: file.locationType === "local" && file.locationId > 0 };
   }
   if (file.kind === "text" && file.locationId > 0) {
     return { kind: "text", title: file.title, locationId: file.locationId };
@@ -5858,7 +6010,7 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
   return null;
 }
 
-function FilePreviewModal({ preview, onClose }: { preview: FilePreviewState; onClose: () => void }) {
+function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePreviewState; onClose: () => void; onSetCover?: (locationId: number) => void | Promise<void> }) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -5894,7 +6046,7 @@ function FilePreviewModal({ preview, onClose }: { preview: FilePreviewState; onC
           <div className="min-w-0 truncate text-sm font-semibold">{preview.title}</div>
           <div className="flex items-center gap-2">
             {preview.kind === "image" && (
-              <Button variant="outline" size="sm" disabled>
+              <Button variant="outline" size="sm" disabled={!onSetCover || !preview.canSetCover} onClick={() => void onSetCover?.(preview.locationId)}>
                 <ImageIcon className="h-4 w-4" />
                 Set cover
               </Button>
