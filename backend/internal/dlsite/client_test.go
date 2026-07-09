@@ -2,6 +2,7 @@ package dlsite
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +47,48 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	}
 	if product.RateAverage2DP == nil || *product.RateAverage2DP != 4.89 {
 		t.Fatalf("RateAverage2DP = %v", product.RateAverage2DP)
+	}
+}
+
+func TestFetchProductAcceptsEmptyCreatorsArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/maniax/api/=/product.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Bonus","creaters":[]}]`))
+		case "/maniax-touch/product/info/ajax":
+			_, _ = w.Write([]byte(`{"RJ0123456":{}}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+
+	product, err := client.FetchProduct(context.Background(), "RJ0123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(product.Creators) != 0 {
+		t.Fatalf("Creators = %#v", product.Creators)
+	}
+}
+
+func TestFetchProductReturnsNoProductSentinel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+
+	_, err := client.FetchProduct(context.Background(), "RJ0123456")
+	if !errors.Is(err, ErrNoProduct) {
+		t.Fatalf("err = %v, want ErrNoProduct", err)
 	}
 }
 

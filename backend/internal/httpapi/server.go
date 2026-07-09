@@ -5507,10 +5507,8 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 			Title string `json:"title"`
 			Name  string `json:"name"`
 		} `json:"series_work"`
-		Creators map[string][]struct {
-			Name string `json:"name"`
-		} `json:"creaters"`
-		Kikoto struct {
+		Creators dlsite.Creators `json:"creaters"`
+		Kikoto   struct {
 			Language string `json:"language"`
 		} `json:"_kikoto"`
 		TranslationInfo struct {

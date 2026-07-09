@@ -34,14 +34,22 @@ type DLsiteSyncer struct {
 }
 
 type DLsiteSyncResult struct {
-	RunID        int64    `json:"runId"`
-	JobID        int64    `json:"jobId"`
-	Status       string   `json:"status"`
-	TargetWorks  int      `json:"targetWorks"`
-	SyncedWorks  int      `json:"syncedWorks"`
-	SkippedWorks int      `json:"skippedWorks"`
-	FailedWorks  int      `json:"failedWorks"`
-	Failures     []string `json:"failures"`
+	RunID            int64                   `json:"runId"`
+	JobID            int64                   `json:"jobId"`
+	Status           string                  `json:"status"`
+	TargetWorks      int                     `json:"targetWorks"`
+	SyncedWorks      int                     `json:"syncedWorks"`
+	SkippedWorks     int                     `json:"skippedWorks"`
+	FailedWorks      int                     `json:"failedWorks"`
+	ReviewCandidates []DLsiteReviewCandidate `json:"reviewCandidates"`
+	Failures         []string                `json:"failures"`
+}
+
+type DLsiteReviewCandidate struct {
+	WorkID  int64  `json:"workId"`
+	Code    string `json:"code"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
 }
 
 type workTarget struct {
@@ -88,15 +96,25 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	}
 
 	result := DLsiteSyncResult{
-		Status:       "succeeded",
-		TargetWorks:  len(targets),
-		SkippedWorks: maxInt(0, totalWorks-len(targets)),
-		Failures:     []string{},
+		Status:           "succeeded",
+		TargetWorks:      len(targets),
+		SkippedWorks:     maxInt(0, totalWorks-len(targets)),
+		ReviewCandidates: []DLsiteReviewCandidate{},
+		Failures:         []string{},
 	}
 
 	for _, target := range targets {
 		product, err := s.fetchProduct(ctx, target.PrimaryCode)
 		if err != nil {
+			if errors.Is(err, dlsite.ErrNoProduct) {
+				result.ReviewCandidates = append(result.ReviewCandidates, DLsiteReviewCandidate{
+					WorkID:  target.ID,
+					Code:    target.PrimaryCode,
+					Reason:  "dlsite_not_found",
+					Message: err.Error(),
+				})
+				continue
+			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
 			continue
 		}
@@ -328,11 +346,13 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 	}()
 
 	summary := map[string]any{
-		"target_works":  result.TargetWorks,
-		"synced_works":  result.SyncedWorks,
-		"skipped_works": result.SkippedWorks,
-		"failed_works":  result.FailedWorks,
-		"failures":      result.Failures,
+		"target_works":      result.TargetWorks,
+		"synced_works":      result.SyncedWorks,
+		"skipped_works":     result.SkippedWorks,
+		"failed_works":      result.FailedWorks,
+		"review_works":      len(result.ReviewCandidates),
+		"review_candidates": result.ReviewCandidates,
+		"failures":          result.Failures,
 	}
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "metadata_sync", "Sync work metadata", "Select works and sync normalized metadata snapshots.", map[string]any{
 		"nodes": []map[string]string{
@@ -372,10 +392,12 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 			"target_works": result.TargetWorks,
 		},
 		Output: map[string]any{
-			"synced_works":  result.SyncedWorks,
-			"skipped_works": result.SkippedWorks,
-			"failed_works":  result.FailedWorks,
-			"failures":      result.Failures,
+			"synced_works":      result.SyncedWorks,
+			"skipped_works":     result.SkippedWorks,
+			"failed_works":      result.FailedWorks,
+			"review_works":      len(result.ReviewCandidates),
+			"review_candidates": result.ReviewCandidates,
+			"failures":          result.Failures,
 		},
 		Error: strings.Join(result.Failures, "\n"),
 	})
@@ -394,6 +416,22 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 	})
 	if err != nil {
 		return 0, 0, err
+	}
+
+	for _, candidate := range result.ReviewCandidates {
+		payload := map[string]any{
+			"work_id":  candidate.WorkID,
+			"code":     candidate.Code,
+			"provider": "dlsite",
+			"reason":   candidate.Reason,
+			"message":  candidate.Message,
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
+			VALUES (?, ?, 'dlsite_unavailable_work', ?, 'pending', ?)
+		`, runID, syncNodeID, candidate.Code, mustJSON(payload)); err != nil {
+			return 0, 0, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -438,6 +476,14 @@ func selectID(ctx context.Context, tx *sql.Tx, query string, args ...any) (int64
 		return 0, err
 	}
 	return id, nil
+}
+
+func mustJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func chooseTitle(product dlsite.Product) string {
