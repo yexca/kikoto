@@ -142,6 +142,30 @@ export type WorkCoverCandidate = {
   selected: boolean;
 };
 
+export type MetadataSuggestionResponse<T> = {
+  items: T[];
+  truncated: boolean;
+};
+
+export type CircleSuggestion = {
+  partyId: number;
+  name: string;
+  externalId: string;
+};
+
+export type VoiceSuggestion = {
+  personId: number;
+  name: string;
+};
+
+export type SeriesSuggestion = {
+  seriesId: number;
+  name: string;
+  titleId: string;
+  circleExternalId: string;
+  circleName: string;
+};
+
 export type WorkTranslation = {
   workId: number | null;
   primaryCode: string;
@@ -1039,6 +1063,14 @@ export const api = {
     getJSON<{ candidates: WorkCoverCandidate[] }>(`/api/works/${id}/cover-candidates`),
   setWorkCoverOverride: (id: number, locationId: number) =>
     postJSONBody<WorkManualOverrides>(`/api/works/${id}/cover-override`, { locationId }),
+  suggestCircles: (query: string, limit = 20) =>
+    getJSON<MetadataSuggestionResponse<CircleSuggestion>>(`/api/metadata-suggestions/circles?q=${encodeURIComponent(query)}&limit=${limit}`),
+  suggestVoices: (query: string, limit = 20) =>
+    getJSON<MetadataSuggestionResponse<VoiceSuggestion>>(`/api/metadata-suggestions/voices?q=${encodeURIComponent(query)}&limit=${limit}`),
+  suggestSeries: (query: string, circleId = "", limit = 20) =>
+    getJSON<MetadataSuggestionResponse<SeriesSuggestion>>(
+      `/api/metadata-suggestions/series?q=${encodeURIComponent(query)}&limit=${limit}${circleId.trim() ? `&circleId=${encodeURIComponent(circleId.trim())}` : ""}`,
+    ),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
   createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),

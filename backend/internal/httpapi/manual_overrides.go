@@ -135,6 +135,10 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
+	if err := syncManualOverrideRelations(r.Context(), tx, workID, normalizeManualEntity(payload.Circle), normalizeManualSeries(payload.Series), actors); err != nil {
+		writeError(w, err)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
@@ -161,8 +165,22 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override field"})
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ?", workID, field)
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(r.Context(), "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ?", workID, field)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := deleteManualOverrideRelations(r.Context(), tx, workID, field); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -626,4 +644,75 @@ func manualPeopleCredits(values []manualOverridePerson) []voiceCredit {
 		credits = append(credits, voiceCredit{PersonID: value.PersonID, DisplayName: value.Name})
 	}
 	return credits
+}
+
+func syncManualOverrideRelations(ctx context.Context, tx *sql.Tx, workID int64, circle *manualOverrideEntity, series *manualOverrideSeries, actors []manualOverridePerson) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM work_party WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'", workID); err != nil {
+		return err
+	}
+	if circle != nil {
+		if partyID, ok, err := partyIDForExternalID(ctx, tx, circle.ExternalID); err != nil {
+			return err
+		} else if ok {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO work_party (work_id, party_id, role, source, updated_at)
+				VALUES (?, ?, 'circle', 'manual_override', CURRENT_TIMESTAMP)
+				ON CONFLICT(work_id, party_id, role) DO UPDATE SET
+					source = excluded.source,
+					updated_at = CURRENT_TIMESTAMP
+			`, workID, partyID); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND role = 'voice_actor' AND source = 'manual_override'", workID); err != nil {
+		return err
+	}
+	for _, actor := range actors {
+		if ok, err := personIDExists(ctx, tx, actor.PersonID); err != nil {
+			return err
+		} else if ok {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO work_credit (work_id, person_id, role, source, updated_at)
+				VALUES (?, ?, 'voice_actor', 'manual_override', CURRENT_TIMESTAMP)
+				ON CONFLICT(work_id, person_id, role) DO UPDATE SET
+					source = excluded.source,
+					updated_at = CURRENT_TIMESTAMP
+			`, workID, actor.PersonID); err != nil {
+				return err
+			}
+		}
+	}
+	if series != nil {
+		if seriesID, ok, err := seriesIDForTitle(ctx, tx, series.TitleID, series.CircleExternalID); err != nil {
+			return err
+		} else if ok {
+			var code string
+			if err := tx.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&code); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO party_series_work (series_id, primary_code, updated_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT(series_id, primary_code) DO UPDATE SET
+					updated_at = CURRENT_TIMESTAMP
+			`, seriesID, strings.ToUpper(strings.TrimSpace(code))); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func deleteManualOverrideRelations(ctx context.Context, tx *sql.Tx, workID int64, field string) error {
+	switch field {
+	case "circle":
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_party WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'", workID)
+		return err
+	case "voice_actors":
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_credit WHERE work_id = ? AND role = 'voice_actor' AND source = 'manual_override'", workID)
+		return err
+	default:
+		return nil
+	}
 }
