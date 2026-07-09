@@ -35,7 +35,7 @@ type favoriteWorksResponse struct {
 }
 
 func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
+	user, ok := s.requirePermission(w, r, "favorites:write")
 	if !ok {
 		return
 	}

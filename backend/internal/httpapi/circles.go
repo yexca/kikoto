@@ -104,10 +104,7 @@ type circleRefreshRequest struct {
 }
 
 func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT
 			party.id,
@@ -130,7 +127,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 			AND external.id_type = 'maker_id'
 		ORDER BY party.display_name ASC
 		LIMIT 100
-	`, user.ID)
+	`, userID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -150,7 +147,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Rating = nullableIntPointer(rating)
 		item.Favorite = favorite != 0
-		tags, err := s.loadCircleUserTags(r.Context(), user.ID, item.ID)
+		tags, err := s.loadCircleUserTags(r.Context(), userID, item.ID)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -175,10 +172,7 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	externalID := normalizeMakerID(r.PathValue("externalId"))
 	if !dlsiteMakerIDPattern.MatchString(externalID) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
@@ -190,12 +184,12 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary, err := s.loadCircleSummary(r.Context(), user.ID, partyID)
+	summary, err := s.loadCircleSummary(r.Context(), userID, partyID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	works, err := s.loadCircleWorks(r.Context(), user.ID, partyID)
+	works, err := s.loadCircleWorks(r.Context(), userID, partyID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -237,7 +231,7 @@ func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:write")
+	user, ok := s.requirePermission(w, r, "favorites:write")
 	if !ok {
 		return
 	}

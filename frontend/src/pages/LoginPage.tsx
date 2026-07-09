@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/auth/AuthProvider";
 
-export function LoginPage() {
+export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean; onSuccess?: () => void }) {
   const auth = useAuth();
   const [username, setUsername] = useState("root");
   const [password, setPassword] = useState("");
@@ -18,6 +18,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await auth.login(username, password);
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -25,8 +26,7 @@ export function LoginPage() {
     }
   };
 
-  return (
-    <main className="grid min-h-screen place-items-center bg-background px-4">
+  const content = (
       <Card className="w-full max-w-sm">
         <CardContent className="space-y-5 p-6">
           <div>
@@ -65,6 +65,13 @@ export function LoginPage() {
           </form>
         </CardContent>
       </Card>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-background px-4">
+      {content}
     </main>
   );
 }
