@@ -65,13 +65,21 @@ export function WorkCardShell({
     <Card className="group h-full transition-colors hover:border-primary/50">
       <CardContent className="flex h-full flex-col p-0">
         {onOpen ? (
-          <button
+          <div
             className={`flex flex-1 flex-col text-left ${canOpen ? "cursor-pointer" : "cursor-default"}`}
-            disabled={!canOpen}
-            onClick={onOpen}
+            role={canOpen ? "button" : undefined}
+            tabIndex={canOpen ? 0 : undefined}
+            onClick={canOpen ? onOpen : undefined}
+            onKeyDown={canOpen ? (event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpen();
+              }
+            } : undefined}
           >
             {content}
-          </button>
+          </div>
         ) : (
           <div className="flex flex-1 flex-col text-left">{content}</div>
         )}
@@ -275,6 +283,8 @@ export function WorkCardQuickMarkButton({
   onChange: (status: ListeningStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [openAbove, setOpenAbove] = useState(false);
+  const [mobilePosition, setMobilePosition] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
   const current = quickMarkMeta(value);
 
@@ -305,19 +315,42 @@ export function WorkCardQuickMarkButton({
         label={`Mark: ${current.label}`}
         onClick={(event) => {
           event.stopPropagation();
+          if (!open) {
+            const rect = ref.current?.getBoundingClientRect();
+            const isMobile = window.matchMedia("(max-width: 639px)").matches;
+            const reservedBottom = isMobile ? 168 : 12;
+            const availableBelow = rect ? window.innerHeight - reservedBottom - rect.bottom : window.innerHeight;
+            const shouldOpenAbove = availableBelow < 280;
+            setOpenAbove(shouldOpenAbove);
+            if (isMobile && rect) {
+              const menuWidth = 160;
+              const menuHeight = 280;
+              const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.right - menuWidth));
+              const desiredTop = shouldOpenAbove ? rect.top - menuHeight - 8 : rect.bottom + 8;
+              const top = Math.max(12, Math.min(window.innerHeight - reservedBottom - menuHeight, desiredTop));
+              setMobilePosition({ left, top });
+            } else {
+              setMobilePosition(null);
+            }
+          }
           setOpen((value) => !value);
         }}
       >
         <current.icon className={`h-4 w-4 ${current.active ? current.className : "text-muted-foreground"}`} />
       </WorkCardActionButton>
       {open && (
-        <div className="absolute bottom-10 right-0 z-30 w-40 overflow-hidden rounded-md border border-border bg-card p-1 text-card-foreground shadow-2xl">
+        <div
+          className={`${mobilePosition ? "fixed z-50" : "absolute right-0 z-30"} max-h-[calc(100dvh-2rem)] w-40 overflow-y-auto rounded-md border border-border bg-card p-1 text-card-foreground shadow-2xl ${
+            mobilePosition ? "" : openAbove ? "bottom-10" : "top-10"
+          }`}
+          style={mobilePosition ?? undefined}
+        >
           {quickMarkOptions.map((option) => {
             const meta = quickMarkMeta(option.value);
             return (
               <button
                 key={option.value}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-muted"
                 onClick={(event) => {
                   event.stopPropagation();
                   setOpen(false);

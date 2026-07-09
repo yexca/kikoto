@@ -720,19 +720,19 @@ func libraryCanonicalVisibleWhereClause() string {
 }
 
 func librarySearchWhere(queryText string) (string, []any) {
-	tokens := parseListSearchTokens(queryText)
-	if len(tokens) == 0 {
+	searchClauses := parseListSearchClauses(queryText)
+	if len(searchClauses) == 0 {
 		return "", nil
 	}
 	clauses := []string{}
 	args := []any{}
-	for _, token := range tokens {
-		needle := strings.TrimSpace(token.Value)
+	for _, clause := range searchClauses {
+		needle := strings.TrimSpace(clause.Value)
 		if needle == "" {
 			continue
 		}
 		like := "%" + strings.ToLower(needle) + "%"
-		switch token.Kind {
+		switch clause.Kind {
 		case "code":
 			clauses = append(clauses, "LOWER(work.primary_code) LIKE ?")
 			args = append(args, like)
@@ -764,9 +764,9 @@ func librarySearchWhere(queryText string) (string, []any) {
 			clauses = append(clauses, latestSnapshotLikeClause(true))
 			args = append(args, like)
 		case "rating_min":
-			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", numericListTokenValue(needle)))
+			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", numericListClauseValue(needle)))
 		case "sales_min":
-			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListTokenValue(needle)))
+			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListClauseValue(needle)))
 		default:
 			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+latestSnapshotLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
 			args = append(args, like, like, like, like)
@@ -1188,32 +1188,32 @@ func libraryNoSourceWhereClause() string {
 }
 
 func workMatchesListQuery(work libraryWorkSummary, query string) bool {
-	tokens := parseListSearchTokens(query)
-	if len(tokens) == 0 {
+	clauses := parseListSearchClauses(query)
+	if len(clauses) == 0 {
 		return true
 	}
-	for _, token := range tokens {
-		if !workMatchesListToken(work, token) {
+	for _, clause := range clauses {
+		if !workMatchesListClause(work, clause) {
 			return false
 		}
 	}
 	return true
 }
 
-type listSearchToken struct {
+type listSearchClause struct {
 	Kind  string
 	Value string
 }
 
-func parseListSearchTokens(query string) []listSearchToken {
-	tokens := []listSearchToken{}
+func parseListSearchClauses(query string) []listSearchClause {
+	clauses := []listSearchClause{}
 	rest := strings.TrimSpace(query)
 	wrappedPattern := regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
 	rest = wrappedPattern.ReplaceAllStringFunc(rest, func(match string) string {
 		parts := wrappedPattern.FindStringSubmatch(match)
 		if len(parts) == 3 {
-			if token, ok := listSearchTokenFromKey(parts[1], parts[2]); ok {
-				tokens = append(tokens, token)
+			if clause, ok := listSearchClauseFromKey(parts[1], parts[2]); ok {
+				clauses = append(clauses, clause)
 			}
 		}
 		return " "
@@ -1225,15 +1225,15 @@ func parseListSearchTokens(query string) []listSearchToken {
 			continue
 		}
 		if key, ok := strings.CutSuffix(part, ":"); ok && index+1 < len(parts) {
-			if token, matched := listSearchTokenFromKey(key, parts[index+1]); matched {
-				tokens = append(tokens, token)
+			if clause, matched := listSearchClauseFromKey(key, parts[index+1]); matched {
+				clauses = append(clauses, clause)
 				index++
 				continue
 			}
 		}
 		if key, value, ok := strings.Cut(part, ":"); ok {
-			if token, matched := listSearchTokenFromKey(key, value); matched {
-				tokens = append(tokens, token)
+			if clause, matched := listSearchClauseFromKey(key, value); matched {
+				clauses = append(clauses, clause)
 				continue
 			}
 		}
@@ -1241,20 +1241,26 @@ func parseListSearchTokens(query string) []listSearchToken {
 		if isListWorkCode(part) {
 			kind = "code"
 		}
-		tokens = append(tokens, listSearchToken{Kind: kind, Value: part})
+		clauses = append(clauses, listSearchClause{Kind: kind, Value: part})
 	}
-	return tokens
+	return clauses
 }
 
 func splitListSearchParts(value string) []string {
 	parts := []string{}
-	pattern := regexp.MustCompile(`"([^"]+)"|'([^']+)'|(\S+)`)
+	pattern := regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)`)
 	for _, match := range pattern.FindAllStringSubmatch(value, -1) {
-		for i := 1; i < len(match); i++ {
-			if match[i] != "" {
-				parts = append(parts, match[i])
-				break
-			}
+		switch {
+		case match[1] != "":
+			parts = append(parts, match[1]+":"+match[2])
+		case match[3] != "":
+			parts = append(parts, match[3]+":"+match[4])
+		case match[5] != "":
+			parts = append(parts, match[5])
+		case match[6] != "":
+			parts = append(parts, match[6])
+		case match[7] != "":
+			parts = append(parts, match[7])
 		}
 	}
 	return parts
@@ -1264,44 +1270,44 @@ func isListWorkCode(value string) bool {
 	return regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`).MatchString(strings.TrimSpace(value))
 }
 
-func listSearchTokenFromKey(key string, value string) (listSearchToken, bool) {
+func listSearchClauseFromKey(key string, value string) (listSearchClause, bool) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return listSearchToken{}, false
+		return listSearchClause{}, false
 	}
 	switch key {
 	case "circle":
-		return listSearchToken{Kind: "circle", Value: value}, true
+		return listSearchClause{Kind: "circle", Value: value}, true
 	case "va", "voice", "creator":
-		return listSearchToken{Kind: "voice_actor", Value: value}, true
+		return listSearchClause{Kind: "voice_actor", Value: value}, true
 	case "tag", "tagw":
-		return listSearchToken{Kind: "tag", Value: value}, true
+		return listSearchClause{Kind: "tag", Value: value}, true
 	case "-tag", "-tagw":
-		return listSearchToken{Kind: "exclude_tag", Value: value}, true
+		return listSearchClause{Kind: "exclude_tag", Value: value}, true
 	case "rate", "rating":
-		return listSearchToken{Kind: "rating_min", Value: value}, true
+		return listSearchClause{Kind: "rating_min", Value: value}, true
 	case "sell", "sales":
-		return listSearchToken{Kind: "sales_min", Value: value}, true
+		return listSearchClause{Kind: "sales_min", Value: value}, true
 	case "duration":
-		return listSearchToken{Kind: "duration_min", Value: value}, true
+		return listSearchClause{Kind: "duration_min", Value: value}, true
 	case "-duration":
-		return listSearchToken{Kind: "duration_max", Value: value}, true
+		return listSearchClause{Kind: "duration_max", Value: value}, true
 	case "age":
-		return listSearchToken{Kind: "age", Value: value}, true
+		return listSearchClause{Kind: "age", Value: value}, true
 	case "lang", "language":
-		return listSearchToken{Kind: "language", Value: value}, true
+		return listSearchClause{Kind: "language", Value: value}, true
 	default:
-		return listSearchToken{}, false
+		return listSearchClause{}, false
 	}
 }
 
-func workMatchesListToken(work libraryWorkSummary, token listSearchToken) bool {
-	needle := strings.ToLower(strings.TrimSpace(token.Value))
+func workMatchesListClause(work libraryWorkSummary, clause listSearchClause) bool {
+	needle := strings.ToLower(strings.TrimSpace(clause.Value))
 	if needle == "" {
 		return true
 	}
-	switch token.Kind {
+	switch clause.Kind {
 	case "code":
 		return strings.Contains(strings.ToLower(work.PrimaryCode), needle)
 	case "circle":
@@ -1313,9 +1319,9 @@ func workMatchesListToken(work libraryWorkSummary, token listSearchToken) bool {
 	case "exclude_tag":
 		return !stringSliceContainsSubstringFold(work.Tags, needle)
 	case "rating_min":
-		return work.Rating != nil && *work.Rating >= numericListTokenValue(needle)
+		return work.Rating != nil && *work.Rating >= numericListClauseValue(needle)
 	case "sales_min":
-		return work.Sales != nil && float64(*work.Sales) >= numericListTokenValue(needle)
+		return work.Sales != nil && float64(*work.Sales) >= numericListClauseValue(needle)
 	case "age":
 		return stringSliceContainsSubstringFold(append([]string{work.PrimaryCode, work.Title}, work.Tags...), needle)
 	case "language":
@@ -1358,7 +1364,7 @@ func workHasAvailableSourcePresenceType(work libraryWorkSummary, presenceType st
 	return false
 }
 
-func numericListTokenValue(value string) float64 {
+func numericListClauseValue(value string) float64 {
 	cleaned := regexp.MustCompile(`[^0-9.]`).ReplaceAllString(value, "")
 	parsed, err := strconv.ParseFloat(cleaned, 64)
 	if err != nil {

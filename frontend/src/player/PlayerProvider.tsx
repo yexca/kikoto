@@ -1,6 +1,7 @@
 import {
   Captions,
   CircleDot,
+  Gauge,
   ListMusic,
   ListOrdered,
   Maximize2,
@@ -55,6 +56,7 @@ type PlayerContextValue = {
   currentTime: number;
   duration: number;
   volume: number;
+  playbackRate: number;
   mode: PlayMode;
   playQueue: (tracks: PlayerTrack[], locationId: number) => void;
   selectTrack: (index: number) => void;
@@ -64,6 +66,7 @@ type PlayerContextValue = {
   seekBy: (seconds: number) => void;
   seekTo: (seconds: number) => void;
   setVolume: (volume: number) => void;
+  cyclePlaybackRate: () => void;
   cycleMode: () => void;
   setMode: (mode: PlayMode) => void;
 };
@@ -78,7 +81,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volumeValue, setVolumeValue] = useState(0.9);
+  const [volumeValue, setVolumeValue] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [mode, setMode] = useState<PlayMode>("order");
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
@@ -90,6 +94,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio) return;
     audio.volume = volumeValue;
   }, [volumeValue]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -247,6 +257,64 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
   };
 
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    if (currentTrack) {
+      const artwork = currentTrack.coverUrl
+        ? [{ src: new URL(assetURL(currentTrack.coverUrl), window.location.href).href }]
+        : [];
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.circle || currentTrack.workTitle,
+        album: currentTrack.workTitle,
+        artwork,
+      });
+    } else {
+      navigator.mediaSession.metadata = null;
+    }
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
+      ["play", () => setIsPlaying(true)],
+      ["pause", () => setIsPlaying(false)],
+      ["previoustrack", previous],
+      ["nexttrack", next],
+      ["seekbackward", (details) => seekBy(-(details.seekOffset ?? 5))],
+      ["seekforward", (details) => seekBy(details.seekOffset ?? 10)],
+      ["seekto", (details) => seekTo(details.seekTime ?? 0)],
+    ];
+    for (const [action, handler] of handlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Some browsers expose Media Session but not every action.
+      }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {
+          // Ignore unsupported cleanup actions.
+        }
+      }
+    };
+  }, [currentTrack?.locationId, currentTrack?.title, currentTrack?.workTitle, currentTrack?.circle, currentTrack?.coverUrl, currentIndex, queue.length]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    if (duration > 0 && Number.isFinite(duration) && currentTime >= 0 && currentTime <= duration) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate,
+          position: Math.min(currentTime, duration),
+        });
+      } catch {
+        // Position state support varies across browsers.
+      }
+    }
+  }, [isPlaying, currentTime, duration, playbackRate]);
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       queue,
@@ -256,6 +324,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentTime,
       duration,
       volume: volumeValue,
+      playbackRate,
       mode,
       playQueue,
       selectTrack,
@@ -265,10 +334,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       seekBy,
       seekTo,
       setVolume: setVolumeValue,
+      cyclePlaybackRate: () => setPlaybackRate((value) => {
+        const rates = [0.75, 1, 1.25, 1.5, 2];
+        const index = rates.indexOf(value);
+        return rates[(index + 1) % rates.length];
+      }),
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
       setMode,
     }),
-    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, mode],
+    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, playbackRate, mode],
   );
 
   return (
@@ -310,6 +384,7 @@ function remoteCacheKey(track: PlayerTrack) {
 
 export function PlayerDock() {
   const player = usePlayer();
+  const isMobile = useIsMobilePlayer();
   const volumeButtonRef = useRef<HTMLButtonElement | null>(null);
   const volumePopoverRef = useRef<HTMLDivElement | null>(null);
   const [dockMode, setDockMode] = useState<DockMode>(() => (window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact"));
@@ -319,6 +394,9 @@ export function PlayerDock() {
   const [lyricsError, setLyricsError] = useState("");
   const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(null);
   const miniDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const [fullDragOffset, setFullDragOffset] = useState(0);
+  const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
+  const suppressCollapseClickRef = useRef(false);
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
@@ -347,6 +425,24 @@ export function PlayerDock() {
     return () => window.removeEventListener("pointerdown", handlePointerDown, true);
   }, [isVolumeOpen]);
 
+  useEffect(() => {
+    document.documentElement.dataset.playerActive = track ? "true" : "false";
+    document.documentElement.dataset.playerMode = track ? dockMode : "none";
+    return () => {
+      delete document.documentElement.dataset.playerActive;
+      delete document.documentElement.dataset.playerMode;
+    };
+  }, [track, dockMode]);
+
+  useEffect(() => {
+    if (!isMobile || dockMode !== "full") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobile, dockMode]);
+
   if (!track) return null;
 
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
@@ -354,6 +450,7 @@ export function PlayerDock() {
   const hasPanel = panel !== null;
   const openWorkDetail = () => {
     if (!track.workCode) return;
+    if (isMobile) setDockMode("compact");
     window.history.pushState(
       { returnTo: window.location.pathname + window.location.search, returnLabel: "Back" },
       "",
@@ -367,7 +464,7 @@ export function PlayerDock() {
     return (
       <div
         className="group fixed z-40 touch-none"
-        style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "76px", right: "12px" }}
+        style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement | null)?.closest("[data-mini-action]")) return;
           const rect = event.currentTarget.getBoundingClientRect();
@@ -383,7 +480,8 @@ export function PlayerDock() {
           const drag = miniDragRef.current;
           if (!drag || drag.pointerId !== event.pointerId) return;
           const nextX = Math.max(8, Math.min(window.innerWidth - 100, event.clientX - drag.offsetX));
-          const nextY = Math.max(8, Math.min(window.innerHeight - 100, event.clientY - drag.offsetY));
+          const bottomLimit = isMobile ? 84 + safeAreaBottom() : 8;
+          const nextY = Math.max(8, Math.min(window.innerHeight - 92 - bottomLimit, event.clientY - drag.offsetY));
           if (!drag.moved && miniPosition) {
             drag.moved = Math.abs(nextX - miniPosition.x) > 4 || Math.abs(nextY - miniPosition.y) > 4;
           } else if (!drag.moved) {
@@ -393,8 +491,20 @@ export function PlayerDock() {
           setMiniPosition({ x: nextX, y: nextY });
         }}
         onPointerUp={(event) => {
+          const drag = miniDragRef.current;
           miniDragRef.current = null;
           event.currentTarget.releasePointerCapture(event.pointerId);
+          if (!drag) return;
+          if (!drag.moved) {
+            player.togglePlay();
+            return;
+          }
+          const rect = event.currentTarget.getBoundingClientRect();
+          const snappedX = rect.left + 46 < window.innerWidth / 2 ? 8 : window.innerWidth - 100;
+          setMiniPosition({ x: snappedX, y: rect.top });
+        }}
+        onPointerCancel={() => {
+          miniDragRef.current = null;
         }}
       >
         <div
@@ -409,7 +519,7 @@ export function PlayerDock() {
           </div>
           <button
             data-mini-action
-            className="absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:opacity-100 active:scale-95 dark:border-white/10 dark:bg-background/62"
+            className="absolute left-1/2 top-1/2 z-20 hidden h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:opacity-100 active:scale-95 dark:border-white/10 dark:bg-background/62 sm:grid"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -423,7 +533,7 @@ export function PlayerDock() {
           </button>
           <Button
             data-mini-action
-            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 ${miniActions.compactClass}`}
+            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-100 shadow-lg transition-all duration-200 sm:opacity-0 sm:group-hover:opacity-100 ${miniActions.compactClass}`}
             size="icon"
             variant="secondary"
             onPointerDown={(event) => event.stopPropagation()}
@@ -436,7 +546,7 @@ export function PlayerDock() {
           </Button>
           <Button
             data-mini-action
-            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-0 shadow-lg transition-all duration-200 group-hover:opacity-100 ${miniActions.fullClass}`}
+            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-100 shadow-lg transition-all duration-200 sm:opacity-0 sm:group-hover:opacity-100 ${miniActions.fullClass}`}
             size="icon"
             variant="secondary"
             onPointerDown={(event) => event.stopPropagation()}
@@ -454,7 +564,7 @@ export function PlayerDock() {
 
   if (dockMode === "compact") {
     return (
-      <div className="fixed inset-x-3 bottom-[76px] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
+      <div className="fixed inset-x-3 bottom-[calc(76px+env(safe-area-inset-bottom))] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
         <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
           <div className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300" style={{ width: `${progress}%` }} />
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
@@ -478,11 +588,57 @@ export function PlayerDock() {
   }
 
   return (
-    <section className="fixed inset-x-3 bottom-[76px] z-40 h-[560px] max-h-[calc(100vh-96px)] animate-player-enter overflow-hidden rounded-[28px] border border-white/35 bg-card/78 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/72 lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px]">
-      <div className="flex h-full flex-col">
+    <section
+      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78"
+      style={isMobile && fullDragOffset > 0 ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) } : undefined}
+    >
+      {track.coverUrl && (
+        <img
+          src={assetURL(track.coverUrl)}
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-8 h-[calc(100%+4rem)] w-[calc(100%+4rem)] scale-110 object-cover opacity-20 blur-3xl dark:opacity-15"
+        />
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
+      <div className="relative z-10 flex h-full flex-col pt-[env(safe-area-inset-top)]">
         <button
-          className="flex h-8 shrink-0 items-center justify-center hover:bg-white/20"
-          onClick={() => setDockMode("compact")}
+          className="flex h-10 shrink-0 touch-none items-center justify-center hover:bg-white/20 lg:h-8"
+          onClick={() => {
+            if (suppressCollapseClickRef.current) {
+              suppressCollapseClickRef.current = false;
+              return;
+            }
+            setDockMode("compact");
+          }}
+          onPointerDown={(event) => {
+            if (!isMobile) return;
+            fullDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startedAt: performance.now(), moved: false };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const drag = fullDragRef.current;
+            if (!isMobile || !drag || drag.pointerId !== event.pointerId) return;
+            const offset = Math.max(0, event.clientY - drag.startY);
+            if (offset > 6) drag.moved = true;
+            setFullDragOffset(offset);
+          }}
+          onPointerUp={(event) => {
+            const drag = fullDragRef.current;
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            fullDragRef.current = null;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            const offset = Math.max(0, event.clientY - drag.startY);
+            const elapsed = Math.max(1, performance.now() - drag.startedAt);
+            const velocity = offset / elapsed;
+            suppressCollapseClickRef.current = drag.moved;
+            if (offset >= 96 || velocity >= 0.55) setDockMode("compact");
+            setFullDragOffset(0);
+          }}
+          onPointerCancel={() => {
+            fullDragRef.current = null;
+            setFullDragOffset(0);
+          }}
           aria-label="Collapse player"
         >
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
@@ -490,7 +646,7 @@ export function PlayerDock() {
 
         <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
-            <div className="flex h-full min-h-0 flex-col gap-3">
+            <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
               <div className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5">
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
@@ -545,16 +701,21 @@ export function PlayerDock() {
               >
                 <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15" />
               </button>
-              <div className="space-y-1 text-center">
+              <button
+                className="space-y-1 text-center lg:cursor-default"
+                onClick={isMobile ? openWorkDetail : undefined}
+                aria-label={isMobile ? "Open work detail" : undefined}
+              >
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
                 <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
-              </div>
+                {isMobile && <div className="pt-1 text-[11px] font-medium text-primary">Open work details</div>}
+              </button>
             </div>
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t border-white/30 bg-white/25 p-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 dark:bg-white/5">
+        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
           <div className="space-y-1">
           <SeekBar
             currentTime={player.currentTime}
@@ -587,29 +748,16 @@ export function PlayerDock() {
           </div>
 
           <div className="relative grid grid-cols-4 gap-2">
-          <div className="grid grid-cols-3 rounded-full border border-white/40 bg-card/50 p-0.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-card/40" title={modeLabel}>
-            <button
-              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "order" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              onClick={() => player.setMode("order")}
-              aria-label="Order playback"
-            >
-              <ListOrdered className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "loop" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              onClick={() => player.setMode("loop")}
-              aria-label="Loop queue"
-            >
-              <Repeat className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className={`grid h-7 place-items-center rounded-full transition-colors ${player.mode === "single" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              onClick={() => player.setMode("single")}
-              aria-label="Repeat one"
-            >
-              <Repeat1 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <Button
+            className="rounded-full border-primary/15"
+            variant={player.mode === "order" ? "outline" : "secondary"}
+            size="sm"
+            onClick={player.cycleMode}
+            aria-label={`${modeLabel}. Change playback mode`}
+            title={modeLabel}
+          >
+            {player.mode === "order" ? <ListOrdered className="h-4 w-4" /> : player.mode === "loop" ? <Repeat className="h-4 w-4" /> : <Repeat1 className="h-4 w-4" />}
+          </Button>
           <Button
             className="rounded-full border-primary/15"
             variant={panel === "queue" ? "secondary" : "outline"}
@@ -630,12 +778,24 @@ export function PlayerDock() {
           </Button>
           <Button
             ref={volumeButtonRef}
-            className="rounded-full border-primary/15"
+            className="hidden rounded-full border-primary/15 lg:inline-flex"
             variant={isVolumeOpen ? "secondary" : "outline"}
             size="sm"
             onClick={() => setIsVolumeOpen((value) => !value)}
           >
             <Volume2 className="h-4 w-4" />
+          </Button>
+
+          <Button
+            className="rounded-full border-primary/15 lg:hidden"
+            variant={player.playbackRate === 1 ? "outline" : "secondary"}
+            size="sm"
+            onClick={player.cyclePlaybackRate}
+            aria-label={`Playback speed ${player.playbackRate} times`}
+            title="Playback speed"
+          >
+            <Gauge className="h-4 w-4" />
+            <span className="text-[10px]">{player.playbackRate}×</span>
           </Button>
 
           {isVolumeOpen && (
@@ -672,6 +832,24 @@ function SeekIcon({ direction, seconds }: { direction: "back" | "forward"; secon
       <span className="absolute text-[8px] font-bold leading-none">{seconds}</span>
     </span>
   );
+}
+
+function useIsMobilePlayer() {
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
+
+function safeAreaBottom() {
+  const footer = document.querySelector("footer");
+  return footer ? Number.parseFloat(window.getComputedStyle(footer).paddingBottom) || 0 : 0;
 }
 
 function miniActionLayout(position: { x: number; y: number } | null) {

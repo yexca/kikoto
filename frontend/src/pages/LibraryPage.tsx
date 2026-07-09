@@ -127,7 +127,7 @@ const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
-type SearchTokenKind =
+type SearchClauseKind =
   | "text"
   | "code"
   | "circle"
@@ -140,9 +140,9 @@ type SearchTokenKind =
   | "duration_max"
   | "age"
   | "language";
-type SearchToken = { kind: SearchTokenKind; value: string };
-type SearchTokenDraft = { kind: SearchTokenKind; value: string };
-const editableSearchTokenKinds: { value: SearchTokenKind; label: string }[] = [
+type SearchClause = { kind: SearchClauseKind; value: string };
+type SearchClauseDraft = { kind: SearchClauseKind; value: string };
+const editableSearchClauseKinds: { value: SearchClauseKind; label: string }[] = [
   { value: "text", label: "Text" },
   { value: "code", label: "Code" },
   { value: "circle", label: "Circle" },
@@ -176,8 +176,8 @@ export function LibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState("");
-  const [optimisticLibrarySearchTokens, setOptimisticLibrarySearchTokens] = useState<SearchToken[] | null>(null);
-  const [tokenEditor, setTokenEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft } | null>(null);
+  const [optimisticLibrarySearchClauses, setOptimisticLibrarySearchClauses] = useState<SearchClause[] | null>(null);
+  const [clauseEditor, setClauseEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchClauseDraft } | null>(null);
   const [mobileColumns, setMobileColumns] = useState<LibraryColumnCount>(1);
   const [desktopColumns, setDesktopColumns] = useState<LibraryColumnCount>(6);
   const [viewMode, setViewMode] = useState<LibraryViewMode>("grid");
@@ -195,11 +195,11 @@ export function LibraryPage() {
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
   const databaseMenuRef = useRef<HTMLDivElement | null>(null);
-  const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
-  const debouncedSearchTokens = useMemo(() => parseSearchTokens(debouncedSearchQuery), [debouncedSearchQuery]);
-  const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
-  const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
-  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
+  const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
+  const debouncedSearchClauses = useMemo(() => parseSearchClauses(debouncedSearchQuery), [debouncedSearchQuery]);
+  const debouncedRemoteSearchClauses = useMemo(() => parseSearchClauses(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
+  const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchClauses), [debouncedRemoteSearchClauses]);
+  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchClauses), [debouncedSearchClauses]);
   const workScope = localScope;
   const activePrimaryTab: "local" | "tracked" | "database" | null =
     activeTab.kind === "source" ? null : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
@@ -228,14 +228,14 @@ export function LibraryPage() {
         setWorks(page.works);
         setWorkTotal(page.total);
         setIsAPIAvailable(true);
-        setOptimisticLibrarySearchTokens(null);
+        setOptimisticLibrarySearchClauses(null);
       })
       .catch(() => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks([]);
         setWorkTotal(0);
         setIsAPIAvailable(false);
-        setOptimisticLibrarySearchTokens(null);
+        setOptimisticLibrarySearchClauses(null);
       });
   }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
 
@@ -482,13 +482,13 @@ export function LibraryPage() {
       setWorks(result.works);
       setWorkTotal(result.total);
       setIsAPIAvailable(true);
-      setOptimisticLibrarySearchTokens(null);
+      setOptimisticLibrarySearchClauses(null);
     }).catch(() => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks([]);
       setWorkTotal(0);
       setIsAPIAvailable(false);
-      setOptimisticLibrarySearchTokens(null);
+      setOptimisticLibrarySearchClauses(null);
     });
   };
 
@@ -523,19 +523,19 @@ export function LibraryPage() {
     setIsAPIAvailable(true);
   };
 
-  const updateSearchTokens = (tokens: SearchToken[]) => {
-    setOptimisticLibrarySearchTokens(null);
-    setSearchQuery(tokens.map(formatSearchToken).join(" "));
+  const updateSearchClauses = (clauses: SearchClause[]) => {
+    setOptimisticLibrarySearchClauses(null);
+    setSearchQuery(clauses.map(formatSearchClause).join(" "));
   };
 
-  const addTagSearchToken = (tag: string) => {
+  const addTagSearchClause = (tag: string) => {
     const value = tag.trim();
     if (!value) return;
-    const next = searchTokens.filter((token) => !(token.kind === "tag" && token.value.toLowerCase() === value.toLowerCase()));
-    const nextTokens = [...next, { kind: "tag" as const, value }];
-    const nextQuery = nextTokens.map(formatSearchToken).join(" ");
-    const nextLibraryQuery = compileLibrarySearchQuery(nextTokens);
-    const nextRemoteQuery = formatRemoteSearchQuery(nextTokens);
+    const next = searchClauses.filter((clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()));
+    const nextClauses = [...next, { kind: "tag" as const, value }];
+    const nextQuery = nextClauses.map(formatSearchClause).join(" ");
+    const nextLibraryQuery = compileLibrarySearchQuery(nextClauses);
+    const nextRemoteQuery = formatRemoteSearchQuery(nextClauses);
     setSearchQuery(nextQuery);
     setDebouncedSearchQuery(nextQuery);
     setDebouncedRemoteSearchQuery(nextQuery);
@@ -546,34 +546,34 @@ export function LibraryPage() {
       loadRemoteWorksNow(activeTab.source, nextRemoteQuery, 1, { clearResult: false });
       return;
     }
-    setOptimisticLibrarySearchTokens(nextTokens);
+    setOptimisticLibrarySearchClauses(nextClauses);
     skipNextLibraryEffect.current = true;
     loadLibraryWorksNow(nextLibraryQuery, 1);
   };
 
-  const removeSearchToken = (index: number) => {
-    updateSearchTokens(searchTokens.filter((_token, tokenIndex) => tokenIndex !== index));
-    setTokenEditor(null);
+  const removeSearchClause = (index: number) => {
+    updateSearchClauses(searchClauses.filter((_clause, clauseIndex) => clauseIndex !== index));
+    setClauseEditor(null);
   };
 
-  const openAddTokenEditor = () => {
-    setTokenEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
+  const openAddClauseEditor = () => {
+    setClauseEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
   };
 
-  const openEditTokenEditor = (token: SearchToken, index: number) => {
-    setTokenEditor({ mode: "edit", index, draft: { kind: token.kind, value: token.value } });
+  const openEditClauseEditor = (clause: SearchClause, index: number) => {
+    setClauseEditor({ mode: "edit", index, draft: { kind: clause.kind, value: clause.value } });
   };
 
-  const saveTokenEditor = () => {
-    if (!tokenEditor) return;
-    const token = normalizeSearchTokenDraft(tokenEditor.draft);
-    if (!token) return;
-    if (tokenEditor.mode === "add") {
-      updateSearchTokens([...searchTokens, token]);
-    } else if (tokenEditor.index !== null) {
-      updateSearchTokens(searchTokens.map((item, index) => (index === tokenEditor.index ? token : item)));
+  const saveClauseEditor = () => {
+    if (!clauseEditor) return;
+    const clause = normalizeSearchClauseDraft(clauseEditor.draft);
+    if (!clause) return;
+    if (clauseEditor.mode === "add") {
+      updateSearchClauses([...searchClauses, clause]);
+    } else if (clauseEditor.index !== null) {
+      updateSearchClauses(searchClauses.map((item, index) => (index === clauseEditor.index ? clause : item)));
     }
-    setTokenEditor(null);
+    setClauseEditor(null);
   };
 
   if (selectedRemoteTarget !== null) {
@@ -609,7 +609,7 @@ export function LibraryPage() {
     );
   }
 
-  const visibleWorks = optimisticLibrarySearchTokens === null ? works : works.filter((work) => workMatchesSearch(work, optimisticLibrarySearchTokens));
+  const visibleWorks = optimisticLibrarySearchClauses === null ? works : works.filter((work) => workMatchesSearch(work, optimisticLibrarySearchClauses));
   const totalWorkPages = Math.max(1, Math.ceil(workTotal / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
@@ -634,14 +634,14 @@ export function LibraryPage() {
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
             value={searchQuery}
             onChange={(event) => {
-              setOptimisticLibrarySearchTokens(null);
+              setOptimisticLibrarySearchClauses(null);
               setSearchQuery(event.target.value);
             }}
             placeholder="Search title, code, circle, tag, or creator"
           />
           {searchQuery.trim() && (
             <button className="text-muted-foreground hover:text-foreground" onClick={() => {
-              setOptimisticLibrarySearchTokens(null);
+              setOptimisticLibrarySearchClauses(null);
               setSearchQuery("");
             }} aria-label="Clear search">
               <X className="h-4 w-4" />
@@ -649,13 +649,13 @@ export function LibraryPage() {
           )}
           <button
             className="rounded-sm text-muted-foreground hover:text-foreground"
-            onClick={openAddTokenEditor}
+            onClick={openAddClauseEditor}
             aria-label="Add search condition"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-wrap justify-end gap-2 lg:w-auto">
           <LayoutPicker
             viewMode={viewMode}
             mobileColumns={mobileColumns}
@@ -694,18 +694,18 @@ export function LibraryPage() {
           </Badge>
         </div>
       )}
-      {searchTokens.length > 0 && (
+      {searchClauses.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {searchTokens.map((token, index) => (
-            <Badge key={`${token.kind}-${token.value}-${index}`} variant={token.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1.5">
-              <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => openEditTokenEditor(token, index)}>
+          {searchClauses.map((clause, index) => (
+            <Badge key={`${clause.kind}-${clause.value}-${index}`} variant={clause.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1.5">
+              <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => openEditClauseEditor(clause, index)}>
                 <Edit3 className="h-3 w-3" />
-                {searchTokenLabel(token)}
+                {searchClauseLabel(clause)}
               </button>
               <button
                 className="rounded-sm text-muted-foreground hover:text-foreground"
-                aria-label={`Remove ${searchTokenLabel(token)}`}
-                onClick={() => removeSearchToken(index)}
+                aria-label={`Remove ${searchClauseLabel(clause)}`}
+                onClick={() => removeSearchClause(index)}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -713,12 +713,12 @@ export function LibraryPage() {
           ))}
         </div>
       )}
-      {tokenEditor && (
-        <SearchTokenEditor
-          editor={tokenEditor}
-          onChange={(draft) => setTokenEditor((current) => current ? { ...current, draft } : current)}
-          onCancel={() => setTokenEditor(null)}
-          onSave={saveTokenEditor}
+      {clauseEditor && (
+        <SearchClauseEditor
+          editor={clauseEditor}
+          onChange={(draft) => setClauseEditor((current) => current ? { ...current, draft } : current)}
+          onCancel={() => setClauseEditor(null)}
+          onSave={saveClauseEditor}
         />
       )}
 
@@ -745,13 +745,13 @@ export function LibraryPage() {
             result={remoteResult}
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
-            searchTokens={searchTokens}
+            searchClauses={searchClauses}
             onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
             onPageSizeChange={(value) => {
               updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
             }}
             onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
-            onTagOpen={addTagSearchToken}
+            onTagOpen={addTagSearchClause}
             onWorkStateChanged={(primaryCode, patch) => {
               setRemoteResult((current) => current ? {
                 ...current,
@@ -785,7 +785,7 @@ export function LibraryPage() {
                       setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                       setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                     }}
-                    onTagOpen={addTagSearchToken}
+                    onTagOpen={addTagSearchClause}
                     onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                     onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
                     isFetchBusy={isTrackedFetching}
@@ -805,7 +805,7 @@ export function LibraryPage() {
                     setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                     setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                   }}
-                  onTagOpen={addTagSearchToken}
+                  onTagOpen={addTagSearchClause}
                   onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                   onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
                   isFetchBusy={isTrackedFetching}
@@ -894,7 +894,7 @@ function LibraryPrimaryTabs({
 
 function DatabaseViewMenu({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
   return (
-    <div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
+    <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-2 text-card-foreground shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-64">
       <div className="px-2 py-1.5">
         <div className="text-sm font-medium">Database view</div>
       </div>
@@ -953,7 +953,7 @@ function RemoteSourcePanel({
   result,
   loading,
   viewState,
-  searchTokens,
+  searchClauses,
   onPageChange,
   onPageSizeChange,
   onOpenPreview,
@@ -965,7 +965,7 @@ function RemoteSourcePanel({
   result: RemoteWorksResponse | null;
   loading: boolean;
   viewState: RemoteSourceViewState;
-  searchTokens: SearchToken[];
+  searchClauses: SearchClause[];
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
@@ -1005,8 +1005,8 @@ function RemoteSourcePanel({
 
   const visibleWorks = useMemo(() => {
     const works = result?.works ?? [];
-    return works.filter((work) => remoteWorkMatchesSearch(work, searchTokens));
-  }, [result, searchTokens]);
+    return works.filter((work) => remoteWorkMatchesSearch(work, searchClauses));
+  }, [result, searchClauses]);
   const selectableWorks = visibleWorks.filter((work) => work.primaryCode);
   const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
@@ -1619,7 +1619,7 @@ function LayoutPicker({
         </button>
       </div>
       {viewOpen && (
-        <div className="absolute right-0 z-30 mt-2 w-36 rounded-lg border bg-card p-1 text-sm shadow-lg">
+        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-36">
           {viewOptions.map((option) => {
             const OptionIcon = option.icon;
             return (
@@ -1639,7 +1639,7 @@ function LayoutPicker({
         </div>
       )}
       {columnsOpen && (
-        <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
+        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-10">
           {options.map((option) => (
             <button
               key={option}
@@ -1699,7 +1699,7 @@ function SortPicker({
         </button>
       </div>
       {open && !disabled && (
-        <div className="absolute right-0 z-30 mt-2 w-56 rounded-lg border bg-card p-1 text-sm shadow-lg">
+        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-56">
           {librarySortOptions.map((option) => (
             <button
               key={option.value}
@@ -1738,7 +1738,7 @@ function FilterPicker({
         {activeCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
       </IconButton>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
+        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-10">
           <button
             className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
             title="All marks"
@@ -1996,14 +1996,14 @@ function CompactWorkPagination({
   );
 }
 
-function SearchTokenEditor({
+function SearchClauseEditor({
   editor,
   onChange,
   onCancel,
   onSave,
 }: {
-  editor: { mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft };
-  onChange: (draft: SearchTokenDraft) => void;
+  editor: { mode: "add" | "edit"; index: number | null; draft: SearchClauseDraft };
+  onChange: (draft: SearchClauseDraft) => void;
   onCancel: () => void;
   onSave: () => void;
 }) {
@@ -2013,10 +2013,10 @@ function SearchTokenEditor({
       <select
         className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-40"
         value={editor.draft.kind}
-        onChange={(event) => onChange({ ...editor.draft, kind: event.target.value as SearchTokenKind })}
-        aria-label="Search token type"
+        onChange={(event) => onChange({ ...editor.draft, kind: event.target.value as SearchClauseKind })}
+        aria-label="Search clause type"
       >
-        {editableSearchTokenKinds.map((kind) => (
+        {editableSearchClauseKinds.map((kind) => (
           <option key={kind.value} value={kind.value}>
             {kind.label}
           </option>
@@ -6309,13 +6309,13 @@ function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
-function parseSearchTokens(query: string): SearchToken[] {
-  const tokens: SearchToken[] = [];
+function parseSearchClauses(query: string): SearchClause[] {
+  const clauses: SearchClause[] = [];
   let rest = query;
   const wrappedPattern = /\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$/gi;
   rest = rest.replace(wrappedPattern, (_match, key: string, value: string) => {
-    const token = searchTokenFromKeyValue(key, value);
-    if (token) tokens.push(token);
+    const clause = searchClauseFromKeyValue(key, value);
+    if (clause) clauses.push(clause);
     return " ";
   });
   const parts = splitSearchParts(rest);
@@ -6325,41 +6325,47 @@ function parseSearchTokens(query: string): SearchToken[] {
     if (!part) continue;
     const pendingPrefix = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):$/i);
     if (pendingPrefix && index + 1 < parts.length) {
-      const token = searchTokenFromKeyValue(pendingPrefix[1], parts[index + 1]);
-      if (token) {
-        tokens.push(token);
+      const clause = searchClauseFromKeyValue(pendingPrefix[1], parts[index + 1]);
+      if (clause) {
+        clauses.push(clause);
         index += 1;
         continue;
       }
     }
     const prefixed = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
     if (prefixed) {
-      const token = searchTokenFromKeyValue(prefixed[1], prefixed[2]);
-      if (token) {
-        tokens.push(token);
+      const clause = searchClauseFromKeyValue(prefixed[1], prefixed[2]);
+      if (clause) {
+        clauses.push(clause);
         continue;
       }
     }
     if (/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(part)) {
-      tokens.push({ kind: "code", value: part.toUpperCase() });
+      clauses.push({ kind: "code", value: part.toUpperCase() });
     } else {
-      tokens.push({ kind: "text", value: part });
+      clauses.push({ kind: "text", value: part });
     }
   }
-  return tokens.filter((token) => token.value.trim() !== "");
+  return clauses.filter((clause) => clause.value.trim() !== "");
 }
 
 function splitSearchParts(value: string) {
   const parts: string[] = [];
-  const pattern = /"([^"]+)"|'([^']+)'|(\S+)/g;
+  const pattern = /(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(value)) !== null) {
-    parts.push(match[1] ?? match[2] ?? match[3] ?? "");
+    if (match[1]) {
+      parts.push(`${match[1]}:${match[2]}`);
+    } else if (match[3]) {
+      parts.push(`${match[3]}:${match[4]}`);
+    } else {
+      parts.push(match[5] ?? match[6] ?? match[7] ?? "");
+    }
   }
   return parts;
 }
 
-function searchTokenFromKeyValue(key: string, rawValue: string): SearchToken | null {
+function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause | null {
   const normalizedKey = key.trim().toLowerCase();
   const value = rawValue.trim();
   if (!value) return null;
@@ -6399,7 +6405,7 @@ function searchTokenFromKeyValue(key: string, rawValue: string): SearchToken | n
   }
 }
 
-function normalizeSearchTokenDraft(draft: SearchTokenDraft): SearchToken | null {
+function normalizeSearchClauseDraft(draft: SearchClauseDraft): SearchClause | null {
   const value = draft.value.trim();
   if (!value) return null;
   if (draft.kind === "code") {
@@ -6408,74 +6414,74 @@ function normalizeSearchTokenDraft(draft: SearchTokenDraft): SearchToken | null 
   return { kind: draft.kind, value };
 }
 
-function compileLibrarySearchQuery(tokens: SearchToken[]) {
-  return tokens.map((token) => {
-    switch (token.kind) {
+function compileLibrarySearchQuery(clauses: SearchClause[]) {
+  return clauses.map((clause) => {
+    switch (clause.kind) {
       case "code":
       case "text":
-        return token.value;
+        return clause.value;
       case "circle":
-        return `$circle:${token.value}$`;
+        return `$circle:${clause.value}$`;
       case "voice_actor":
-        return `$va:${token.value}$`;
+        return `$va:${clause.value}$`;
       case "tag":
-        return `$tag:${token.value}$`;
+        return `$tag:${clause.value}$`;
       case "exclude_tag":
-        return `$-tag:${token.value}$`;
+        return `$-tag:${clause.value}$`;
       case "rating_min":
-        return `rating:${token.value}`;
+        return `rating:${clause.value}`;
       case "sales_min":
-        return `sales:${token.value}`;
+        return `sales:${clause.value}`;
       case "age":
-        return `$age:${token.value}$`;
+        return `$age:${clause.value}$`;
       case "language":
-        return `$lang:${token.value}$`;
+        return `$lang:${clause.value}$`;
       default:
-        return token.value;
+        return clause.value;
     }
   }).join(" ");
 }
 
-function formatRemoteSearchQuery(tokens: SearchToken[]) {
-  return tokens.map(formatRemoteSearchToken).join(" ");
+function formatRemoteSearchQuery(clauses: SearchClause[]) {
+  return clauses.map(formatRemoteSearchClause).join(" ");
 }
 
-function formatRemoteSearchToken(token: SearchToken) {
-  switch (token.kind) {
+function formatRemoteSearchClause(clause: SearchClause) {
+  switch (clause.kind) {
     case "circle":
-      return `$circle:${token.value}$`;
+      return `$circle:${clause.value}$`;
     case "voice_actor":
-      return `$va:${token.value}$`;
+      return `$va:${clause.value}$`;
     case "tag":
-      return `$tag:${token.value}$`;
+      return `$tag:${clause.value}$`;
     case "exclude_tag":
-      return `$-tag:${token.value}$`;
+      return `$-tag:${clause.value}$`;
     case "duration_min":
-      return `$duration:${token.value}$`;
+      return `$duration:${clause.value}$`;
     case "duration_max":
-      return `$-duration:${token.value}$`;
+      return `$-duration:${clause.value}$`;
     case "rating_min":
-      return `$rate:${token.value}$`;
+      return `$rate:${clause.value}$`;
     case "sales_min":
-      return `$sell:${token.value}$`;
+      return `$sell:${clause.value}$`;
     case "age":
-      return `$age:${token.value}$`;
+      return `$age:${clause.value}$`;
     case "language":
-      return `$lang:${token.value}$`;
+      return `$lang:${clause.value}$`;
     default:
-      return formatSearchToken(token);
+      return formatSearchClause(clause);
   }
 }
 
-function workMatchesSearch(work: Work, tokens: SearchToken[]) {
-  if (tokens.length === 0) return true;
-  return tokens.every((token) => workMatchesToken(work, token));
+function workMatchesSearch(work: Work, clauses: SearchClause[]) {
+  if (clauses.length === 0) return true;
+  return clauses.every((clause) => workMatchesClause(work, clause));
 }
 
-function workMatchesToken(work: Work, token: SearchToken) {
-  const value = token.value.trim().toLowerCase();
+function workMatchesClause(work: Work, clause: SearchClause) {
+  const value = clause.value.trim().toLowerCase();
   if (!value) return true;
-  switch (token.kind) {
+  switch (clause.kind) {
     case "code":
       return work.primaryCode.toLowerCase().includes(value);
     case "circle":
@@ -6487,9 +6493,9 @@ function workMatchesToken(work: Work, token: SearchToken) {
     case "exclude_tag":
       return !work.tags.some((tag) => tag.toLowerCase().includes(value));
     case "rating_min":
-      return work.rating !== null && work.rating >= numericTokenValue(value);
+      return work.rating !== null && work.rating >= numericClauseValue(value);
     case "sales_min":
-      return work.sales !== null && work.sales >= numericTokenValue(value);
+      return work.sales !== null && work.sales >= numericClauseValue(value);
     case "age":
       return workMatchesText([work.primaryCode, work.title, ...work.tags], value);
     case "language":
@@ -6510,15 +6516,15 @@ function workMatchesText(values: string[], needle: string) {
   return values.some((item) => item.toLowerCase().includes(needle));
 }
 
-function remoteWorkMatchesSearch(work: RemoteWork, tokens: SearchToken[]) {
-  if (tokens.length === 0) return true;
-  return tokens.every((token) => remoteWorkMatchesToken(work, token));
+function remoteWorkMatchesSearch(work: RemoteWork, clauses: SearchClause[]) {
+  if (clauses.length === 0) return true;
+  return clauses.every((clause) => remoteWorkMatchesClause(work, clause));
 }
 
-function remoteWorkMatchesToken(work: RemoteWork, token: SearchToken) {
-  const value = token.value.trim().toLowerCase();
+function remoteWorkMatchesClause(work: RemoteWork, clause: SearchClause) {
+  const value = clause.value.trim().toLowerCase();
   if (!value) return true;
-  switch (token.kind) {
+  switch (clause.kind) {
     case "code":
       return work.primaryCode.toLowerCase().includes(value) || work.remoteId.toLowerCase().includes(value);
     case "circle":
@@ -6528,9 +6534,9 @@ function remoteWorkMatchesToken(work: RemoteWork, token: SearchToken) {
     case "exclude_tag":
       return !work.tags.some((tag) => tag.toLowerCase().includes(value));
     case "rating_min":
-      return work.rating !== null && work.rating >= numericTokenValue(value);
+      return work.rating !== null && work.rating >= numericClauseValue(value);
     case "sales_min":
-      return work.sales !== null && work.sales >= numericTokenValue(value);
+      return work.sales !== null && work.sales >= numericClauseValue(value);
     case "voice_actor":
     case "age":
     case "language":
@@ -6543,48 +6549,48 @@ function remoteWorkMatchesToken(work: RemoteWork, token: SearchToken) {
   }
 }
 
-function numericTokenValue(value: string) {
+function numericClauseValue(value: string) {
   const number = Number(value.replace(/[^\d.]/g, ""));
   return Number.isFinite(number) ? number : 0;
 }
 
-function searchTokenLabel(token: SearchToken) {
-  switch (token.kind) {
+function searchClauseLabel(clause: SearchClause) {
+  switch (clause.kind) {
     case "code":
-      return `Code: ${token.value}`;
+      return `Code: ${clause.value}`;
     case "circle":
-      return `Circle: ${token.value}`;
+      return `Circle: ${clause.value}`;
     case "voice_actor":
-      return `VA: ${token.value}`;
+      return `VA: ${clause.value}`;
     case "tag":
-      return `Tag: ${token.value}`;
+      return `Tag: ${clause.value}`;
     case "exclude_tag":
-      return `Exclude tag: ${token.value}`;
+      return `Exclude tag: ${clause.value}`;
     case "rating_min":
-      return `Rating >= ${token.value}`;
+      return `Rating >= ${clause.value}`;
     case "sales_min":
-      return `Sales >= ${token.value}`;
+      return `Sales >= ${clause.value}`;
     case "duration_min":
-      return `Duration >= ${token.value}`;
+      return `Duration >= ${clause.value}`;
     case "duration_max":
-      return `Duration <= ${token.value}`;
+      return `Duration <= ${clause.value}`;
     case "age":
-      return `Age: ${token.value}`;
+      return `Age: ${clause.value}`;
     case "language":
-      return `Language: ${token.value}`;
+      return `Language: ${clause.value}`;
     case "text":
     default:
-      return `Text: ${token.value}`;
+      return `Text: ${clause.value}`;
   }
 }
 
-function searchQueryWithoutToken(tokens: SearchToken[], removeIndex: number) {
-  return tokens.filter((_token, index) => index !== removeIndex).map(formatSearchToken).join(" ");
+function searchQueryWithoutClause(clauses: SearchClause[], removeIndex: number) {
+  return clauses.filter((_clause, index) => index !== removeIndex).map(formatSearchClause).join(" ");
 }
 
-function formatSearchToken(token: SearchToken) {
-  const value = formatSearchValue(token.value);
-  switch (token.kind) {
+function formatSearchClause(clause: SearchClause) {
+  const value = formatSearchValue(clause.value);
+  switch (clause.kind) {
     case "code":
     case "text":
       return value;
@@ -6597,13 +6603,13 @@ function formatSearchToken(token: SearchToken) {
     case "exclude_tag":
       return `-tag:${value}`;
     case "rating_min":
-      return `rating:${token.value}`;
+      return `rating:${clause.value}`;
     case "sales_min":
-      return `sales:${token.value}`;
+      return `sales:${clause.value}`;
     case "duration_min":
-      return `duration:${token.value}`;
+      return `duration:${clause.value}`;
     case "duration_max":
-      return `-duration:${token.value}`;
+      return `-duration:${clause.value}`;
     case "age":
       return `age:${value}`;
     case "language":

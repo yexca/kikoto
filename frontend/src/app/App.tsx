@@ -103,7 +103,7 @@ function AuthenticatedApp() {
     <PlayerProvider>
       <div
         className={cn(
-          "min-h-screen bg-background pb-20 lg:grid lg:pb-0",
+          "app-shell min-h-screen bg-background lg:grid",
           sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
         )}
       >
@@ -185,7 +185,7 @@ function AuthenticatedApp() {
           </Suspense>
         </main>
 
-        <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur lg:hidden">
+        <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
           <nav className="grid grid-cols-4">
             {mobileNavItems.map((item) => {
               return (

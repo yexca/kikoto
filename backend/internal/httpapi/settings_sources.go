@@ -777,8 +777,8 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if len(plan.PostFilterTokens) > 0 {
-		works = filterRemoteWorkSummaries(works, plan.PostFilterTokens)
+	if len(plan.PostFilterClauses) > 0 {
+		works = filterRemoteWorkSummaries(works, plan.PostFilterClauses)
 	}
 	total := remotePage.Pagination.TotalCount
 	if total == 0 {
@@ -1628,43 +1628,43 @@ func sourceAvailabilityMatchSummary(results []sourceAvailabilitySummary) map[str
 }
 
 type remoteSourceQueryPlan struct {
-	PushdownQuery    string
-	PushdownToken    *listSearchToken
-	PostFilterTokens []listSearchToken
+	PushdownQuery     string
+	PushdownClause    *listSearchClause
+	PostFilterClauses []listSearchClause
 }
 
 func planRemoteSourceQuery(query string) remoteSourceQueryPlan {
-	tokens := parseListSearchTokens(query)
-	if len(tokens) == 0 {
+	clauses := parseListSearchClauses(query)
+	if len(clauses) == 0 {
 		return remoteSourceQueryPlan{}
 	}
 	pushdownIndex := -1
 	bestRank := 999
-	for index, token := range tokens {
-		rank := remoteSourcePushdownRank(token)
+	for index, clause := range clauses {
+		rank := remoteSourcePushdownRank(clause)
 		if rank < bestRank {
 			bestRank = rank
 			pushdownIndex = index
 		}
 	}
 	plan := remoteSourceQueryPlan{}
-	for index, token := range tokens {
+	for index, clause := range clauses {
 		if index == pushdownIndex {
-			pushdown := remoteSourcePushdownQuery(token)
+			pushdown := remoteSourcePushdownQuery(clause)
 			if pushdown != "" {
 				plan.PushdownQuery = pushdown
-				copyToken := token
-				plan.PushdownToken = &copyToken
+				copyClause := clause
+				plan.PushdownClause = &copyClause
 				continue
 			}
 		}
-		plan.PostFilterTokens = append(plan.PostFilterTokens, token)
+		plan.PostFilterClauses = append(plan.PostFilterClauses, clause)
 	}
 	return plan
 }
 
-func remoteSourcePushdownRank(token listSearchToken) int {
-	switch token.Kind {
+func remoteSourcePushdownRank(clause listSearchClause) int {
+	switch clause.Kind {
 	case "code":
 		return 1
 	case "circle", "voice_actor", "tag":
@@ -1678,58 +1678,58 @@ func remoteSourcePushdownRank(token listSearchToken) int {
 	}
 }
 
-func remoteSourcePushdownQuery(token listSearchToken) string {
-	switch token.Kind {
+func remoteSourcePushdownQuery(clause listSearchClause) string {
+	switch clause.Kind {
 	case "circle":
-		return "$circle:" + token.Value + "$"
+		return "$circle:" + clause.Value + "$"
 	case "voice_actor":
-		return "$va:" + token.Value + "$"
+		return "$va:" + clause.Value + "$"
 	case "tag":
-		return "$tag:" + token.Value + "$"
+		return "$tag:" + clause.Value + "$"
 	case "rating_min":
-		return "$rate:" + token.Value + "$"
+		return "$rate:" + clause.Value + "$"
 	case "sales_min":
-		return "$sell:" + token.Value + "$"
+		return "$sell:" + clause.Value + "$"
 	case "duration_min":
-		return "$duration:" + token.Value + "$"
+		return "$duration:" + clause.Value + "$"
 	case "duration_max":
-		return "$-duration:" + token.Value + "$"
+		return "$-duration:" + clause.Value + "$"
 	case "age":
-		return "$age:" + token.Value + "$"
+		return "$age:" + clause.Value + "$"
 	case "language":
-		return "$lang:" + token.Value + "$"
+		return "$lang:" + clause.Value + "$"
 	case "code", "text":
-		return token.Value
+		return clause.Value
 	default:
 		return ""
 	}
 }
 
-func filterRemoteWorkSummaries(works []remoteWorkSummary, tokens []listSearchToken) []remoteWorkSummary {
+func filterRemoteWorkSummaries(works []remoteWorkSummary, clauses []listSearchClause) []remoteWorkSummary {
 	result := make([]remoteWorkSummary, 0, len(works))
 	for _, work := range works {
-		if remoteWorkSummaryMatchesTokens(work, tokens) {
+		if remoteWorkSummaryMatchesClauses(work, clauses) {
 			result = append(result, work)
 		}
 	}
 	return result
 }
 
-func remoteWorkSummaryMatchesTokens(work remoteWorkSummary, tokens []listSearchToken) bool {
-	for _, token := range tokens {
-		if !remoteWorkSummaryMatchesToken(work, token) {
+func remoteWorkSummaryMatchesClauses(work remoteWorkSummary, clauses []listSearchClause) bool {
+	for _, clause := range clauses {
+		if !remoteWorkSummaryMatchesClause(work, clause) {
 			return false
 		}
 	}
 	return true
 }
 
-func remoteWorkSummaryMatchesToken(work remoteWorkSummary, token listSearchToken) bool {
-	needle := strings.ToLower(strings.TrimSpace(token.Value))
+func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchClause) bool {
+	needle := strings.ToLower(strings.TrimSpace(clause.Value))
 	if needle == "" {
 		return true
 	}
-	switch token.Kind {
+	switch clause.Kind {
 	case "code":
 		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
 	case "circle":
@@ -1739,9 +1739,9 @@ func remoteWorkSummaryMatchesToken(work remoteWorkSummary, token listSearchToken
 	case "exclude_tag":
 		return !stringSliceContainsSubstringFold(work.Tags, needle)
 	case "rating_min":
-		return work.Rating != nil && *work.Rating >= numericListTokenValue(needle)
+		return work.Rating != nil && *work.Rating >= numericListClauseValue(needle)
 	case "sales_min":
-		return work.Sales != nil && float64(*work.Sales) >= numericListTokenValue(needle)
+		return work.Sales != nil && float64(*work.Sales) >= numericListClauseValue(needle)
 	case "voice_actor", "duration_min", "duration_max", "age", "language":
 		return true
 	default:
