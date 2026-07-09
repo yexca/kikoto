@@ -29,9 +29,11 @@ import {
   ExternalLink,
   Cloud,
   Languages,
+  Columns3,
   LayoutGrid,
   ListChecks,
   MoreHorizontal,
+  PanelsTopLeft,
   Pause,
   PauseCircle,
   Play,
@@ -105,6 +107,7 @@ const localWorkPageSizeOptions = [24, 48] as const;
 type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
 const columnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 type LibraryColumnCount = (typeof columnOptions)[number];
+type LibraryViewMode = "grid" | "masonry";
 const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "recent", label: "Recently added" },
   { value: "release", label: "Release date" },
@@ -171,6 +174,7 @@ export function LibraryPage() {
   const [tokenEditor, setTokenEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchTokenDraft } | null>(null);
   const [mobileColumns, setMobileColumns] = useState<LibraryColumnCount>(1);
   const [desktopColumns, setDesktopColumns] = useState<LibraryColumnCount>(6);
+  const [viewMode, setViewMode] = useState<LibraryViewMode>("grid");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [workPage, setWorkPage] = useState(1);
@@ -651,7 +655,14 @@ export function LibraryPage() {
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
+          <LayoutPicker
+            viewMode={viewMode}
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+            onViewModeChange={setViewMode}
+            onMobileColumnsChange={setMobileColumns}
+            onDesktopColumnsChange={setDesktopColumns}
+          />
           <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={setLibrarySort} onDirectionChange={setSortDirection} />
           <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={setStatusFilter} />
           <div ref={databaseMenuRef} className="relative">
@@ -754,40 +765,53 @@ export function LibraryPage() {
       ) : (
         <div className="space-y-3">
           {localPagination}
-          <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
-            {pagedWorks.map((work) => (
-              <WorkCard
-                key={work.id}
-                work={work}
-                onOpen={() => openWork(work)}
-                onStatusChange={updateWorkStatus}
-                onFavoriteSaved={(workID, favorite) => {
-                  setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
-                  setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
-                }}
-                onTagOpen={addTagSearchToken}
-                onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
-                onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
-                isFetchBusy={isTrackedFetching}
-              />
-            ))}
-            {visibleWorks.length === 0 && (
-              <Card className="sm:col-span-2 xl:col-span-3">
-                <CardContent className="p-5 text-sm text-muted-foreground">
-                  {localScope === "tracked"
-                    ? "No tracked works match this view."
-                    : localScope === "remote"
-                    ? "No untracked remote-available works match this view."
-                    : localScope === "no_source"
-                    ? "No works without sources match this view."
-                    : localScope === "local"
-                    ? "No local works match this view."
-                    : "No works match this view."}
-                </CardContent>
-              </Card>
-            )}
-          </section>
-          {localPagination}
+          {visibleWorks.length === 0 ? (
+            <EmptyLibraryWorksCard scope={localScope} />
+          ) : viewMode === "masonry" ? (
+            <section className={workMasonryClassName()} style={workMasonryStyle(mobileColumns, desktopColumns)}>
+              {pagedWorks.map((work) => (
+                <div key={work.id} className="mb-4 [break-inside:avoid]">
+                  <WorkCard
+                    work={work}
+                    onOpen={() => openWork(work)}
+                    onStatusChange={updateWorkStatus}
+                    onFavoriteSaved={(workID, favorite) => {
+                      setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
+                      setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
+                    }}
+                    onTagOpen={addTagSearchToken}
+                    onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
+                    onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                    isFetchBusy={isTrackedFetching}
+                  />
+                </div>
+              ))}
+            </section>
+          ) : (
+            <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
+              {pagedWorks.map((work) => (
+                <WorkCard
+                  key={work.id}
+                  work={work}
+                  onOpen={() => openWork(work)}
+                  onStatusChange={updateWorkStatus}
+                  onFavoriteSaved={(workID, favorite) => {
+                    setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
+                    setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
+                  }}
+                  onTagOpen={addTagSearchToken}
+                  onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
+                  onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                  isFetchBusy={isTrackedFetching}
+                />
+              ))}
+            </section>
+          )}
+          {viewMode === "masonry" ? (
+            <CompactWorkPagination page={currentWorkPage} totalPages={totalWorkPages} onPageChange={setWorkPage} />
+          ) : (
+            localPagination
+          )}
         </div>
       )}
       {untrackTarget && (
@@ -1534,34 +1558,88 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
   );
 }
 
-function ColumnPicker({
+function LayoutPicker({
+  viewMode,
   mobileColumns,
   desktopColumns,
-  onMobileChange,
-  onDesktopChange,
+  onViewModeChange,
+  onMobileColumnsChange,
+  onDesktopColumnsChange,
 }: {
+  viewMode: LibraryViewMode;
   mobileColumns: LibraryColumnCount;
   desktopColumns: LibraryColumnCount;
-  onMobileChange: (value: LibraryColumnCount) => void;
-  onDesktopChange: (value: LibraryColumnCount) => void;
+  onViewModeChange: (value: LibraryViewMode) => void;
+  onMobileColumnsChange: (value: LibraryColumnCount) => void;
+  onDesktopColumnsChange: (value: LibraryColumnCount) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const isWide = useIsWideLibraryLayout();
   const popoverRef = useRef<HTMLDivElement | null>(null);
-  useDismissiblePopover(open, popoverRef, () => setOpen(false));
+  useDismissiblePopover(viewOpen || columnsOpen, popoverRef, () => {
+    setViewOpen(false);
+    setColumnsOpen(false);
+  });
   const currentValue = isWide ? desktopColumns : mobileColumns;
   const options = isWide ? columnOptions : ([1, 2] as const);
+  const viewOptions: { value: LibraryViewMode; label: string; icon: typeof LayoutGrid }[] = [
+    { value: "grid", label: "Grid", icon: LayoutGrid },
+    { value: "masonry", label: "Masonry", icon: PanelsTopLeft },
+  ];
+  const ActiveViewIcon = viewMode === "masonry" ? PanelsTopLeft : LayoutGrid;
   const setColumns = (value: LibraryColumnCount) => {
-    if (isWide) onDesktopChange(value);
-    else onMobileChange(value);
-    setOpen(false);
+    if (isWide) onDesktopColumnsChange(value);
+    else onMobileColumnsChange(value);
+    setColumnsOpen(false);
   };
   return (
     <div className="relative" ref={popoverRef}>
-      <IconButton title={`Columns: ${currentValue}`} onClick={() => setOpen((value) => !value)}>
-        <LayoutGrid className="h-4 w-4" />
-      </IconButton>
-      {open && (
+      <div className="inline-flex rounded-md border bg-background">
+        <button
+          className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          title={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
+          aria-label={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
+          onClick={() => {
+            setViewOpen((current) => !current);
+            setColumnsOpen(false);
+          }}
+        >
+          <ActiveViewIcon className="h-4 w-4" />
+        </button>
+        <button
+          className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground"
+          title={`Columns: ${currentValue}`}
+          aria-label={`Columns: ${currentValue}`}
+          onClick={() => {
+            setColumnsOpen((current) => !current);
+            setViewOpen(false);
+          }}
+        >
+          <Columns3 className="h-4 w-4" />
+        </button>
+      </div>
+      {viewOpen && (
+        <div className="absolute right-0 z-30 mt-2 w-36 rounded-lg border bg-card p-1 text-sm shadow-lg">
+          {viewOptions.map((option) => {
+            const OptionIcon = option.icon;
+            return (
+              <button
+                key={option.value}
+                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted ${viewMode === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                onClick={() => {
+                  onViewModeChange(option.value);
+                  setViewOpen(false);
+                }}
+              >
+                <OptionIcon className="h-4 w-4" />
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {columnsOpen && (
         <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
           {options.map((option) => (
             <button
@@ -1766,6 +1844,35 @@ function workGridStyle(mobileColumns: LibraryColumnCount, desktopColumns: Librar
   } as CSSProperties;
 }
 
+function workMasonryClassName() {
+  return "[column-count:var(--mobile-columns)] [column-gap:1rem] sm:[column-count:var(--desktop-columns)]";
+}
+
+function workMasonryStyle(mobileColumns: LibraryColumnCount, desktopColumns: LibraryColumnCount) {
+  return {
+    "--mobile-columns": mobileColumns,
+    "--desktop-columns": desktopColumns,
+  } as CSSProperties;
+}
+
+function EmptyLibraryWorksCard({ scope }: { scope: LocalLibraryScope }) {
+  return (
+    <Card>
+      <CardContent className="p-5 text-sm text-muted-foreground">
+        {scope === "tracked"
+          ? "No tracked works match this view."
+          : scope === "remote"
+          ? "No untracked remote-available works match this view."
+          : scope === "no_source"
+          ? "No works without sources match this view."
+          : scope === "local"
+          ? "No local works match this view."
+          : "No works match this view."}
+      </CardContent>
+    </Card>
+  );
+}
+
 function WorkPagination({
   page,
   pageSize,
@@ -1814,6 +1921,59 @@ function WorkPagination({
         <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
           <ChevronLeft className="h-4 w-4" />
         </IconButton>
+        <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
+          <ChevronRight className="h-4 w-4" />
+        </IconButton>
+        <input
+          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+          type="number"
+          min={1}
+          max={totalPages}
+          value={jumpPage}
+          onChange={(event) => setJumpPage(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") goToJumpPage();
+          }}
+          aria-label="Jump to page"
+        />
+        <Button variant="outline" size="sm" onClick={goToJumpPage}>
+          Go
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CompactWorkPagination({
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  const [jumpPage, setJumpPage] = useState(String(page));
+
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
+
+  const goToJumpPage = () => {
+    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
+    onPageChange(next);
+    setJumpPage(String(next));
+  };
+
+  return (
+    <div className="flex justify-center sm:justify-end">
+      <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-2 text-sm">
+        <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
+          <ChevronLeft className="h-4 w-4" />
+        </IconButton>
+        <div className="min-w-20 text-center text-xs text-muted-foreground">
+          {page} / {totalPages}
+        </div>
         <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
           <ChevronRight className="h-4 w-4" />
         </IconButton>
