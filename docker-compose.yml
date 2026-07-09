@@ -1,8 +1,7 @@
 services:
   kikoto:
-    image: yexca/kikoto:v0.1.0
-    build:
-      context: .
+    image: ${KIKOTO_IMAGE:-yexca/kikoto:latest}
+    pull_policy: always
     environment:
       KIKOTO_DEV_MODE: ${KIKOTO_DEV_MODE:-false}
       KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}

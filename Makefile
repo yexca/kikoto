@@ -13,10 +13,10 @@ frontend-build:
 	cd frontend && npm install && npm run build
 
 docker-build:
-	docker compose build
+	docker build -t kikoto:dev .
 
 docker-up:
-	docker compose up --build
+	docker compose -f docker-compose.dev.yml up --build
 
 docker-down:
 	docker compose down

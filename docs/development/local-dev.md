@@ -18,7 +18,7 @@ npm run dev
 ## Docker
 
 ```sh
-docker compose up -d --build
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
 ## Common Checks

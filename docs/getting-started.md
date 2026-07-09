@@ -9,10 +9,19 @@
 
 ## Run With Docker
 
-From the repository root:
+Download `docker-compose.yml` into an empty directory, then pull and start the
+published Docker Hub image:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
+```
+
+The default image is `yexca/kikoto:latest`. To pull the same release from
+GitHub Container Registry, set the image when starting the stack:
+
+```sh
+KIKOTO_IMAGE=ghcr.io/yexca/kikoto:latest docker compose up -d
 ```
 
 Open:

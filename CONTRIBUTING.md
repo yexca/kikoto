@@ -58,7 +58,7 @@ npm run build
 Full Docker stack:
 
 ```sh
-docker compose up -d --build
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
 ## Documentation Rules

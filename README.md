@@ -10,10 +10,18 @@ a browser-based audio player.
 
 ## Quick Start
 
-Run the Docker stack from the repository root:
+Download `docker-compose.yml`, then run the production image directly from
+Docker Hub:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
+```
+
+To use GitHub Container Registry instead:
+
+```sh
+KIKOTO_IMAGE=ghcr.io/yexca/kikoto:latest docker compose up -d
 ```
 
 Open:
