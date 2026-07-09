@@ -4509,6 +4509,10 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 }
 
 func (s *Server) runStartupAvailabilityChecks(ctx context.Context, codes []string) {
+	healthySourceIDs, err := s.healthyRemoteSourceIDsForAvailability(ctx, 0)
+	if err != nil || len(healthySourceIDs) == 0 {
+		return
+	}
 	seen := map[string]bool{}
 	for _, rawCode := range codes {
 		code := strings.ToUpper(strings.TrimSpace(rawCode))
@@ -4517,7 +4521,7 @@ func (s *Server) runStartupAvailabilityChecks(ctx context.Context, codes []strin
 		}
 		seen[code] = true
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		_, _ = s.checkWorkSourceAvailability(checkCtx, code, "startup", "new_local_work_detected")
+		_, _ = s.checkWorkSourceAvailabilityForSourcesWithHealth(checkCtx, code, 0, healthySourceIDs, "startup", "new_local_work_detected")
 		cancel()
 	}
 }
@@ -4547,6 +4551,10 @@ func (s *Server) startupAvailabilityWorkCodes(ctx context.Context, newCodes []st
 }
 
 func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID int64, reason string) {
+	healthySourceIDs, err := s.healthyRemoteSourceIDsForAvailability(ctx, sourceID)
+	if err != nil || len(healthySourceIDs) == 0 {
+		return
+	}
 	codes, err := s.localWorkCodesNeedingRemoteAvailability(ctx, sourceID, 0, 100)
 	if err != nil {
 		return
@@ -4559,7 +4567,7 @@ func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID
 		}
 		seen[code] = true
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		_, _ = s.checkWorkSourceAvailabilityForSources(checkCtx, code, sourceID, "source_poll", reason)
+		_, _ = s.checkWorkSourceAvailabilityForSourcesWithHealth(checkCtx, code, sourceID, healthySourceIDs, "source_poll", reason)
 		cancel()
 	}
 }
@@ -4778,6 +4786,11 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithLanguages(dlsiteLanguageFallbacks(language)).
+		WithRequestPacing(
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
+		).
 		WithTrigger(triggerType, triggerReason)
 	result, err := syncer.SyncAll(ctx)
 	if err != nil {
@@ -4787,6 +4800,13 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 		return result, err
 	}
 	return result, nil
+}
+
+func durationFromSettingSeconds(value float64) time.Duration {
+	if value <= 0 {
+		return 0
+	}
+	return time.Duration(value * float64(time.Second))
 }
 
 func dlsiteLanguageFallbacks(language string) []string {

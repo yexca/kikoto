@@ -885,6 +885,10 @@ func (s *Server) checkWorkSourceAvailability(ctx context.Context, code string, t
 }
 
 func (s *Server) checkWorkSourceAvailabilityForSources(ctx context.Context, code string, onlySourceID int64, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {
+	return s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, code, onlySourceID, nil, triggerType, triggerReason)
+}
+
+func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Context, code string, onlySourceID int64, allowedSourceIDs map[int64]bool, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
@@ -894,6 +898,9 @@ func (s *Server) checkWorkSourceAvailabilityForSources(ctx context.Context, code
 	results := make([]sourceAvailabilitySummary, 0, len(sources))
 	for _, source := range sources {
 		if onlySourceID > 0 && source.ID != onlySourceID {
+			continue
+		}
+		if allowedSourceIDs != nil && !allowedSourceIDs[source.ID] {
 			continue
 		}
 		result := sourceAvailabilitySummary{
@@ -953,6 +960,45 @@ func (s *Server) checkWorkSourceAvailabilityForSources(ctx context.Context, code
 	return sourceAvailabilityResponse{
 		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
 	}, nil
+}
+
+func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, onlySourceID int64) (map[int64]bool, error) {
+	sources, err := s.loadRemoteSourcesForAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
+	healthy := map[int64]bool{}
+	for _, source := range sources {
+		if onlySourceID > 0 && source.ID != onlySourceID {
+			continue
+		}
+		if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
+			continue
+		}
+		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			continue
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := checkRemoteSourceHealth(checkCtx, source)
+		cancel()
+		if err != nil {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			continue
+		}
+		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		healthy[source.ID] = true
+	}
+	return healthy, nil
+}
+
+func checkRemoteSourceHealth(ctx context.Context, source remoteSourceForUse) error {
+	client := kikoeruClientForSource(source)
+	if err := client.Health(ctx); err == nil {
+		return nil
+	}
+	_, err := client.ListWorks(ctx, 1, 1, "")
+	return err
 }
 
 func (s *Server) readWorkSourceAvailability(ctx context.Context, code string) (sourceAvailabilityResponse, error) {

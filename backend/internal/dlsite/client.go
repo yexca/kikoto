@@ -19,6 +19,48 @@ import (
 
 var ErrNoProduct = errors.New("dlsite product not found")
 
+type HTTPStatusError struct {
+	Operation  string
+	Status     string
+	StatusCode int
+	RetryAfter string
+}
+
+func (e HTTPStatusError) Error() string {
+	if e.Operation != "" {
+		return fmt.Sprintf("%s returned %s", e.Operation, e.Status)
+	}
+	return fmt.Sprintf("dlsite returned %s", e.Status)
+}
+
+func IsRetryableHTTPError(err error) bool {
+	var statusErr HTTPStatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	return statusErr.StatusCode == http.StatusTooManyRequests ||
+		statusErr.StatusCode == http.StatusBadGateway ||
+		statusErr.StatusCode == http.StatusServiceUnavailable ||
+		statusErr.StatusCode == http.StatusGatewayTimeout
+}
+
+func RetryAfterDuration(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds > 0 {
+		return time.Duration(seconds * float64(time.Second))
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		delay := time.Until(at)
+		if delay > 0 {
+			return delay
+		}
+	}
+	return 0
+}
+
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
@@ -234,7 +276,7 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("cover download returned %s", response.Status)
+		return "", HTTPStatusError{Operation: "cover download", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
 	file, err := os.Create(targetPath)
@@ -313,7 +355,7 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Product{}, fmt.Errorf("dlsite %s returned %s", site, response.Status)
+		return Product{}, HTTPStatusError{Operation: "dlsite " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
 	body, err := io.ReadAll(response.Body)
@@ -463,7 +505,7 @@ func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return MakerProfile{}, fmt.Errorf("dlsite maker %s returned %s", site, response.Status)
+		return MakerProfile{}, HTTPStatusError{Operation: "dlsite maker " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
 	if err != nil {
@@ -510,7 +552,7 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, nil, fmt.Errorf("dlsite dynamic returned %s", response.Status)
+		return nil, nil, HTTPStatusError{Operation: "dlsite dynamic", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
 	body, err := io.ReadAll(response.Body)
@@ -752,7 +794,7 @@ func (c *Client) fetchMakerSeriesCatalog(ctx context.Context, series MakerSeries
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("dlsite series %s returned %s", series.TitleID, response.Status)
+		return nil, HTTPStatusError{Operation: "dlsite series " + series.TitleID, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
 	if err != nil {
