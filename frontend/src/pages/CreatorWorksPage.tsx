@@ -344,7 +344,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const result = await api.getVoiceRemoteMatches(personId);
       setRemoteMatches(result.remoteMatches);
-      const failed = result.remoteMatches.filter((source) => source.status === "error" || source.status === "timeout");
+      const failed = result.remoteMatches.filter((source) => remoteSourceFailed(source));
       if (failed.length > 0 || notify) {
         const timedOut = failed.some((source) => source.status === "timeout");
         const message = failed.length > 0
@@ -1178,7 +1178,7 @@ function RemoteSourcePanel({ sources, loading, error, onRetry }: { sources: Voic
                 </div>
                 <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
               </div>
-              {source.error && <div className="mt-2 text-xs text-destructive">{source.error}</div>}
+              {remoteSourceStatusMessage(source) && <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>}
             </div>
           ))}
         {loading && sources.length > 0 && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches</div>}
@@ -1200,6 +1200,31 @@ function RemoteSourceSkeleton() {
       ))}
     </>
   );
+}
+
+function remoteSourceStatusMessage(source: VoiceRemoteSourceSet) {
+  if (source.status === "ok") return "";
+  switch (source.status) {
+  case "timeout":
+    return "Remote source timed out.";
+  case "unavailable":
+  case "error":
+    return "Remote source is unavailable.";
+  case "invalid_response":
+    return "Remote source returned an invalid response.";
+  case "misconfigured":
+    return "Remote source API endpoint is not configured.";
+  case "disabled":
+    return "Source is disabled.";
+  case "unsupported":
+    return "Source type is not supported.";
+  default:
+    return source.error || "";
+  }
+}
+
+function remoteSourceFailed(source: VoiceRemoteSourceSet) {
+  return !["ok", "disabled", "unsupported"].includes(source.status);
 }
 
 function VoiceRemoteWorkSkeletonCards({ count }: { count: number }) {
