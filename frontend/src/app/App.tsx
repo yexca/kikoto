@@ -17,8 +17,9 @@ const UsersPage = lazy(() => import("@/pages/UsersPage").then((module) => ({ def
 const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
 const CreatorWorksPage = lazy(() => import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })));
 const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
+const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 
-const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
+const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 
@@ -176,7 +177,8 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
               {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
               {canAccessCurrentPage && page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-              {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
+              {canAccessCurrentPage && page === "about" && <AboutPage />}
+              {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users", "about"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />
               )}
             </div>
