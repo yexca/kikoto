@@ -1,58 +1,83 @@
 # Kikoto
 
-Kikoto is a personal audio media library for local and remote audio works.
+Kikoto is a local-first personal audio library for DLsite-style works, local
+folders, and Kikoeru-compatible remote file sources.
 
-The project is in early implementation and is intended for local-first personal library use.
+The project is in early implementation. It already includes a Go backend,
+SQLite storage, a React frontend, local library scanning, DLsite metadata sync,
+remote source browsing, source availability checks, remote fetch workflows, and
+a browser-based audio player.
+
+## Quick Start
+
+Run the Docker stack from the repository root:
+
+```sh
+docker compose up -d --build
+```
+
+Open:
+
+- Frontend: `http://127.0.0.1:7655`
+- Backend: `http://127.0.0.1:7659`
+
+Runtime data is stored in mounted local directories:
+
+- `./config:/config`
+- `./cache:/cache`
+- `./data:/data`
+
+These directories may contain databases, cached covers, and media files. Do not
+commit runtime data.
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Overview](docs/overview.md)
+- [Getting started](docs/getting-started.md)
+- [Architecture](docs/architecture/index.md)
+- [Product specs](docs/product/index.md)
+- [Operations](docs/operations/configuration.md)
+- [Development](docs/development/local-dev.md)
+- [Contributing](CONTRIBUTING.md)
+
+## Core Boundary
+
+Kikoto uses one unified work identity. Local folders, remote sources, cached
+files, tracked state, and source catalogs describe where a work exists or can be
+played; they do not create separate work identities.
 
 ## Repository Layout
 
 ```text
-frontend/   React PWA frontend
-backend/    Go HTTP API, domain modules, SQLite migrations
-config/     User-mounted configuration and SQLite database location
-data/       User-mounted media library root
+backend/    Go HTTP API, domain modules, and SQLite migrations
+frontend/   React + TypeScript frontend
 docs/       Public project documentation
 scripts/    Utility scripts
+config/     Runtime configuration and SQLite database mount
+cache/      Runtime cache mount
+data/       Runtime media library mount
 ```
 
-## Local Development
+## Validation
 
-Run the backend:
+Backend:
 
 ```sh
-make backend-run
+cd backend
+go test ./...
 ```
 
-Run the frontend:
+Frontend:
 
 ```sh
-make frontend-dev
+cd frontend
+npm install
+npm run build
 ```
 
-Run the Docker-first stack:
-
-```sh
-make docker-up
-```
-
-Run smoke validation:
+Smoke validation:
 
 ```sh
 make smoke
 ```
-
-On Windows without `make`, run the same checks directly:
-
-```powershell
-cd frontend; npm install; npm run build; cd ..
-docker run --rm -v "${PWD}\backend:/src" -w /src golang:1.22 go test ./...
-docker compose build
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-api.ps1
-```
-
-The default Docker mounts are:
-
-- `./config:/config`
-- `./data:/data`
-
-`config/` and `data/` are intentionally ignored except for examples/placeholders.

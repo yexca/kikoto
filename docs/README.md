@@ -1,42 +1,58 @@
 # Kikoto Documentation
 
-Kikoto is a personal audio library and player for locally stored audio works, with metadata enrichment and a mobile-friendly playback experience.
+This is the public documentation for Kikoto. It is organized by reader task:
+understanding the product, running it, changing it, and reviewing design
+decisions.
 
-## Contents
+## Start Here
 
-- [Getting Started](./getting-started.md)
-- [Configuration](./configuration.md)
-- [Architecture](./architecture.md)
-- [API Reference](./api.md)
-- [Frontend](./frontend.md)
-- [Data Model](./data-model.md)
-- [Roadmap](./roadmap.md)
-- [Contributing](./contributing.md)
+- [Overview](overview.md)
+- [Getting started](getting-started.md)
+- [Configuration](operations/configuration.md)
+- [Troubleshooting](operations/troubleshooting.md)
 
-## Current Status
+## By Area
 
-Kikoto currently supports:
+- [Architecture](architecture/index.md): system boundaries, modules, data, and
+  workflow model.
+- [Product specs](product/index.md): user-visible screens and behavior.
+- [Operations](operations/configuration.md): runtime configuration, Docker,
+  reliability, security, and troubleshooting.
+- [Development](development/local-dev.md): local setup, testing, migrations, and
+  contribution workflow.
+- [Decisions](decisions/index.md): durable architecture decision records.
+- [History](history/index.md): public historical notes and release-oriented
+  summaries.
 
-- Docker-first local development.
-- SQLite-backed work, media, source, workflow, and metadata tables.
-- Local folder scanning with configurable scan depth.
-- DLsite metadata sync and cover caching.
-- Library cards and work-code detail routes.
-- Library pagination and circle browsing/detail routes.
-- Voice actor browsing/detail routes with favorite, user tag, alias review, and
-  merge undo support.
-- Local directory trees and local audio streaming with range support.
-- Settings-based file source, local scan depth, and cache configuration.
-- Configurable compatible remote source browsing, source availability checks,
-  remote work sync, cache, and fetch actions.
-- Shared work-card actions across Library, Circles, and Voices for DLsite,
-  remote sync, remote fetch, and quick marks.
-- Workflow definition, scheduled trigger, and run activity workbenches.
-- Parent bulk remote workflow runs for selected remote sync/fetch actions.
-- RBAC auth with dev-mode root login and admin user management.
-- Quick listening marks and per-track persisted playback progress.
-- A global custom audio player dock with queue, volume controls, and progress restore.
+## Reading Paths
 
-Kikoto does not yet support persisted queue restore, asynchronous download
-queues, workflow retry controls, large bulk action queueing, or full workflow
-recovery.
+New users should read:
+
+- [Overview](overview.md)
+- [Getting started](getting-started.md)
+- [Sources](product/sources.md)
+- [Playback](product/playback.md)
+
+Developers should read:
+
+- [Core boundaries](architecture/core-boundaries.md)
+- [Backend](architecture/backend.md)
+- [Frontend](architecture/frontend.md)
+- [Testing](development/testing.md)
+- [Commit and release](development/commit-and-release.md)
+
+Operators should read:
+
+- [Docker](operations/docker.md)
+- [Configuration](operations/configuration.md)
+- [Database](operations/database.md)
+- [Reliability](operations/reliability.md)
+- [Security](operations/security.md)
+
+## Documentation Rules
+
+- User-visible behavior belongs in [Product specs](product/index.md).
+- System boundaries belong in [Architecture](architecture/index.md).
+- Runtime instructions belong in [Operations](operations/configuration.md).
+- Local developer workflow belongs in [Development](development/local-dev.md).
+- Durable design choices belong in [ADRs](decisions/index.md).

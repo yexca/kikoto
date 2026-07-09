@@ -20,39 +20,40 @@ Open:
 - Frontend: `http://127.0.0.1:7655`
 - Backend: `http://127.0.0.1:7659`
 
-The default Docker mounts are:
+The default runtime mounts are:
 
 - `./config:/config`
+- `./cache:/cache`
 - `./data:/data`
 
-Runtime database files, cached covers, and media files are intentionally not source controlled.
+## First Library Scan
+
+1. Put supported audio work folders under `data/`.
+2. Start the Docker stack.
+3. Open the frontend.
+4. Run a local scan from the Workflows or Activity surface.
+5. Optionally run DLsite metadata sync to enrich detected works.
 
 ## Validate The Build
 
-Backend tests:
+Backend:
 
 ```sh
-docker run --rm -v "${PWD}/backend:/src" -w /src golang:1.22 go test ./...
+cd backend
+go test ./...
 ```
 
-Frontend build:
+Frontend:
 
 ```sh
-docker run --rm -v "${PWD}/frontend:/src" -w /src node:22 sh -c "npm install && npm run build"
+cd frontend
+npm install
+npm run build
 ```
 
-## First Local Library Scan
+## Next Reading
 
-1. Place audio work folders under `data/`.
-2. Start the Docker stack.
-3. Trigger the local scan workflow from Workflows, Activity, or the API:
-
-```sh
-curl -X POST http://127.0.0.1:7659/api/workflow-runs/local-scan
-```
-
-4. Optional: sync metadata:
-
-```sh
-curl -X POST http://127.0.0.1:7659/api/workflow-runs/dlsite-sync
-```
+- [Configuration](operations/configuration.md)
+- [Docker](operations/docker.md)
+- [Library](product/library.md)
+- [Sources](product/sources.md)
