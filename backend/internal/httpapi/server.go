@@ -294,14 +294,6 @@ func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
-	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
-	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
 	if pagedRequest {
 		s.listWorksPageFast(w, r, userID)
@@ -654,7 +646,7 @@ func libraryListWhere(scope string, status string, queryText string) (string, []
 			SELECT 1
 			FROM work_source_presence AS scope_presence
 			WHERE scope_presence.work_id = work.id
-				AND scope_presence.presence_type = 'remote_source'
+				AND scope_presence.presence_type = 'source'
 				AND scope_presence.availability = 'available'
 		)`)
 		clauses = append(clauses, `NOT EXISTS (
@@ -1118,7 +1110,7 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 	case "tracked":
 		return workHasAvailableSourcePresenceType(work, "tracked")
 	case "remote":
-		return workHasAvailableSourcePresenceType(work, "remote_source") &&
+		return workHasAvailableSourcePresenceType(work, sourcePresenceTypeRemoteSource) &&
 			!workHasAvailableSourcePresenceType(work, "tracked") &&
 			!workHasAvailableSourcePresenceType(work, "local")
 	case "no_source":
@@ -1450,9 +1442,6 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 }
 
 func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
-	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
-		return nil
-	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			presence.presence_type,
@@ -1597,66 +1586,6 @@ func mergeSourcePresenceItem(target *sourcePresenceItem, item sourcePresenceItem
 	if target.SourceURL == "" {
 		target.SourceURL = item.SourceURL
 	}
-}
-
-func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS logical_work (
-			id INTEGER PRIMARY KEY,
-			canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL,
-			canonical_code TEXT NOT NULL UNIQUE,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS work_edition (
-			work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE,
-			logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE,
-			provider_id INTEGER REFERENCES metadata_provider(id),
-			primary_code TEXT NOT NULL,
-			base_code TEXT NOT NULL DEFAULT '',
-			metadata_language TEXT NOT NULL DEFAULT '',
-			edition_label TEXT NOT NULL DEFAULT '',
-			is_canonical INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_work_edition_provider_code
-			ON work_edition(provider_id, primary_code)`,
-		`CREATE INDEX IF NOT EXISTS idx_work_edition_logical_work
-			ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
-	}
-	for _, statement := range statements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info(work_source_presence)")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, columnType string
-		var notNull int
-		var defaultValue any
-		var pk int
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
-			return err
-		}
-		if strings.EqualFold(name, "remote_code") {
-			return rows.Err()
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, "ALTER TABLE work_source_presence ADD COLUMN remote_code TEXT NOT NULL DEFAULT ''")
-	return err
 }
 
 func (s *Server) syncWorkEditionForWorkFromSnapshot(ctx context.Context, workID int64, primaryCode string, metadata dlsiteSnapshotMetadata) error {
@@ -3287,9 +3216,6 @@ func workCodeShard(workCode string) (string, string) {
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
-	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
-		return workDetail{}, err
-	}
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -3735,9 +3661,6 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	if code == "" {
 		return workResolveResponse{}, sql.ErrNoRows
 	}
-	if err := s.ensureLogicalWorkSchema(ctx); err != nil {
-		return workResolveResponse{}, err
-	}
 
 	workID, primaryCode, metadata, err := s.loadWorkCodeMetadata(ctx, code)
 	if err != nil {
@@ -3932,9 +3855,6 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 		ORDER BY edition.is_canonical DESC, edition.primary_code ASC
 	`, primaryCode)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
-			return []workTranslation{}, nil
-		}
 		return nil, err
 	}
 	defer rows.Close()

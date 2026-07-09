@@ -1348,9 +1348,6 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 	if presence.RemoteCode == "" {
 		presence.RemoteCode = normalizeDLsiteCode(remoteCodeFromRawJSON(presence.RawJSON))
 	}
-	if err := ensureWorkSourcePresenceRemoteCodeColumn(ctx, tx); err != nil {
-		return err
-	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO work_source_presence (
 			work_id,
@@ -1379,32 +1376,6 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 			last_checked_at = excluded.last_checked_at,
 			updated_at = CURRENT_TIMESTAMP
 	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.RemoteCode, presence.SourceURL, presence.Availability, presence.RawJSON)
-	return err
-}
-
-func ensureWorkSourcePresenceRemoteCodeColumn(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, "PRAGMA table_info(work_source_presence)")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, columnType string
-		var notNull int
-		var defaultValue any
-		var pk int
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
-			return err
-		}
-		if strings.EqualFold(name, "remote_code") {
-			return rows.Err()
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, "ALTER TABLE work_source_presence ADD COLUMN remote_code TEXT NOT NULL DEFAULT ''")
 	return err
 }
 
