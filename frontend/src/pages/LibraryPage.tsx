@@ -66,6 +66,8 @@ import {
   type DirectoryRoutingRule,
   type ListeningStatus,
   type MediaItem,
+  type ManualOverridePerson,
+  type ManualOverrideSeries,
   type RemoteTrack,
   type RemoteWorksResponse,
   type RemoteWork,
@@ -75,6 +77,7 @@ import {
   type SourcePresenceItem,
   type VoiceCredit,
   type Work,
+  type WorkCoverCandidate,
   type WorkDetail,
 } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
@@ -2292,6 +2295,8 @@ function RemoteWorkDetailView({
         ratingCount={null}
         sales={detail.sales}
         series=""
+        seriesTitleId=""
+        seriesCircleExternalId=""
         dlsiteFetchedAt=""
         releaseDate={detail.releaseDate || "Unknown"}
         ageRating={detail.ageRating}
@@ -2395,6 +2400,7 @@ function WorkDetailView({
   const [activeSourceKey, setActiveSourceKey] = useState("local");
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
@@ -2747,6 +2753,12 @@ function WorkDetailView({
     await onWorksChanged();
   };
 
+  const metadataSaved = async () => {
+    if (!work) return;
+    await onWorkReload(work.id);
+    await onWorksChanged();
+  };
+
   const refreshSourceAvailability = async () => {
     if (!work?.primaryCode) return;
     setIsCheckingSources(true);
@@ -2855,6 +2867,8 @@ function WorkDetailView({
         ratingCount={hero.ratingCount}
         sales={hero.sales}
         series={hero.series}
+        seriesTitleId={work?.seriesTitleId ?? ""}
+        seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
         baseCode={work?.baseCode}
         metadataLanguage={work?.metadataLanguage}
         translations={work?.translations ?? []}
@@ -2888,6 +2902,7 @@ function WorkDetailView({
             currentForkSource={currentForkSource}
             onFork={(remote) => requestForkSource(remote)}
             onFetch={selectedRemoteDetail ? () => setIsSaveSelectionOpen(true) : undefined}
+            onEditMetadata={() => setIsMetadataEditorOpen(true)}
             onManage={() => setIsManageOpen(true)}
             dlsiteUrl={work.dlsiteUrl}
             syncLabel="Sync"
@@ -2969,6 +2984,13 @@ function WorkDetailView({
           allowLocalDelete={!selectedRemoteSource}
         />
       )}
+      {isMetadataEditorOpen && work && (
+        <WorkMetadataEditorModal
+          work={work}
+          onClose={() => setIsMetadataEditorOpen(false)}
+          onSaved={() => void metadataSaved()}
+        />
+      )}
       {reforkTarget && (
         <ReforkConfirmModal
           currentName={reforkTarget.current?.source.displayName ?? "the current fork"}
@@ -2998,6 +3020,8 @@ function DetailHero({
   ratingCount,
   sales,
   series,
+  seriesTitleId,
+  seriesCircleExternalId,
   baseCode,
   metadataLanguage,
   translations,
@@ -3024,6 +3048,8 @@ function DetailHero({
   ratingCount: number | null;
   sales: number | null;
   series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
   baseCode?: string;
   metadataLanguage?: string;
   translations?: WorkDetail["translations"];
@@ -3076,7 +3102,16 @@ function DetailHero({
                 <span className="truncate">{circle || "Unknown circle"}</span>
               </span>
             )}
-            {series && <span className="inline-flex max-w-full items-center gap-1 truncate"><span className="text-border">/</span><span className="truncate">{series}</span></span>}
+            {series && (
+              <span className="inline-flex max-w-full items-center gap-1 truncate">
+                <span className="text-border">/</span>
+                {seriesTitleId && seriesCircleExternalId ? (
+                  <button className="truncate hover:text-primary" onClick={() => openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId)}>{series}</button>
+                ) : (
+                  <span className="truncate">{series}</span>
+                )}
+              </span>
+            )}
           </div>
         </div>
 
@@ -3591,6 +3626,7 @@ function DetailActionBar({
   currentForkSource,
   onFork,
   onFetch,
+  onEditMetadata,
   onManage,
   dlsiteUrl,
   syncLabel,
@@ -3615,6 +3651,7 @@ function DetailActionBar({
   currentForkSource?: RemoteSourceAvailability | null;
   onFork?: (remote: RemoteSourceAvailability) => void;
   onFetch?: () => void;
+  onEditMetadata?: () => void;
   onManage?: () => void;
   dlsiteUrl: string;
   syncLabel: string;
@@ -3622,7 +3659,9 @@ function DetailActionBar({
   showFetch?: boolean;
 }) {
   const [forkMenuOpen, setForkMenuOpen] = useState(false);
+  const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const forkMenuRef = useRef<HTMLDivElement | null>(null);
+  const manageMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!forkMenuOpen) return;
     const close = (event: globalThis.MouseEvent) => {
@@ -3633,6 +3672,16 @@ function DetailActionBar({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [forkMenuOpen]);
+  useEffect(() => {
+    if (!manageMenuOpen) return;
+    const close = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && manageMenuRef.current?.contains(target)) return;
+      setManageMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [manageMenuOpen]);
 
   return (
     <>
@@ -3720,11 +3769,42 @@ function DetailActionBar({
           Fetch
         </Button>
       )}
-      {onManage && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onManage}>
-          <Trash2 className="h-4 w-4" />
-          Manage
-        </Button>
+      {(onManage || onEditMetadata) && (
+        <div className="relative" ref={manageMenuRef}>
+          <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
+            <MoreHorizontal className="h-4 w-4" />
+            Manage
+            <ChevronDown className="absolute right-2 h-3 w-3" />
+          </Button>
+          {manageMenuOpen && (
+            <div className="absolute right-0 z-30 mt-2 w-48 rounded-md border bg-popover p-1 text-sm shadow-lg">
+              {onEditMetadata && (
+                <button
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    onEditMetadata();
+                  }}
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit metadata</span>
+                </button>
+              )}
+              {onManage && (
+                <button
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    onManage();
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Manage files</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
       {dlsiteUrl && (
         <Button variant="outline" size="sm" className="h-8" asChild>
@@ -3736,6 +3816,245 @@ function DetailActionBar({
       )}
     </>
   );
+}
+
+function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const manual = work.manualOverrides ?? {};
+  const [title, setTitle] = useState(manual.title ?? work.title);
+  const [circleName, setCircleName] = useState(manual.circle?.name ?? work.circle);
+  const [circleExternalId, setCircleExternalId] = useState(manual.circle?.externalId ?? work.circleExternalId);
+  const [seriesName, setSeriesName] = useState(manual.series?.name ?? work.series);
+  const [seriesTitleId, setSeriesTitleId] = useState(manual.series?.titleId ?? work.seriesTitleId ?? "");
+  const [seriesCircleExternalId, setSeriesCircleExternalId] = useState(manual.series?.circleExternalId ?? work.seriesCircleExternalId ?? work.circleExternalId ?? "");
+  const [voiceActors, setVoiceActors] = useState<ManualOverridePerson[]>(() => initialManualVoiceActors(work));
+  const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
+  const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
+  const [loadingCovers, setLoadingCovers] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCovers(true);
+    api.listWorkCoverCandidates(work.id)
+      .then((result) => {
+        if (cancelled) return;
+        setCoverCandidates(result.candidates);
+        setSelectedCoverId(result.candidates.find((candidate) => candidate.selected)?.locationId ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.notify(toastFromError(error, "Cover candidates could not be loaded."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCovers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [toast, work.id]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.updateWorkManualOverrides(work.id, {
+        title: nullableTrimmed(title),
+        circle: nullableEntity(circleName, circleExternalId),
+        series: nullableSeries(seriesName, seriesTitleId, seriesCircleExternalId),
+        voiceActors: voiceActors.map((actor) => ({ name: actor.name.trim(), personId: Number(actor.personId) || 0 })).filter((actor) => actor.name),
+      });
+      if (selectedCoverId !== null) {
+        await api.setWorkCoverOverride(work.id, selectedCoverId);
+      }
+      toast.success("Metadata overrides saved.");
+      onSaved();
+      onClose();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Metadata overrides could not be saved."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetField = async (field: string) => {
+    setSaving(true);
+    try {
+      await api.deleteWorkManualOverride(work.id, field);
+      toast.success("Override reset.");
+      onSaved();
+      onClose();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Override could not be reset."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addVoiceActor = () => setVoiceActors((items) => [...items, { name: "", personId: 0 }]);
+  const updateVoiceActor = (index: number, patch: Partial<ManualOverridePerson>) => {
+    setVoiceActors((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  };
+  const removeVoiceActor = (index: number) => {
+    setVoiceActors((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-card shadow-lg">
+        <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+          <div>
+            <h3 className="text-base font-semibold">Edit metadata</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{work.primaryCode}</p>
+          </div>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Close">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+          <EditorSection title="Work">
+            <LabeledInput label="Title" value={title} onChange={setTitle} />
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" disabled={saving || !manual.title} onClick={() => void resetField("title")}>Reset title</Button>
+            </div>
+          </EditorSection>
+
+          <EditorSection title="Cover">
+            {manual.cover?.url && (
+              <div className="flex items-center gap-3 rounded-md border bg-background p-2">
+                <img src={assetURL(manual.cover.url)} alt="" className="h-16 w-16 rounded object-contain" />
+                <div className="min-w-0 text-xs text-muted-foreground">
+                  <div className="truncate text-foreground">{manual.cover.assetPath}</div>
+                  {manual.cover.originalPath && <div className="truncate">{manual.cover.originalPath}</div>}
+                </div>
+              </div>
+            )}
+            {loadingCovers ? (
+              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading cover candidates...</div>
+            ) : coverCandidates.length === 0 ? (
+              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">No indexed local images found for this work.</div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {coverCandidates.map((candidate) => (
+                  <button
+                    key={candidate.locationId}
+                    className={`flex items-center gap-3 rounded-md border bg-background p-2 text-left hover:border-primary ${selectedCoverId === candidate.locationId ? "border-primary ring-1 ring-primary" : ""}`}
+                    onClick={() => setSelectedCoverId(candidate.locationId)}
+                  >
+                    <img src={assetURL(candidate.previewUrl)} alt="" className="h-16 w-16 shrink-0 rounded object-contain" loading="lazy" />
+                    <span className="min-w-0 flex-1 text-xs">
+                      <span className="block truncate font-medium">{candidate.fileName}</span>
+                      <span className="block truncate text-muted-foreground">{candidate.path}</span>
+                      <span className="block text-muted-foreground">{formatBytes(candidate.sizeBytes)}</span>
+                    </span>
+                    {selectedCoverId === candidate.locationId && <Check className="h-4 w-4 text-primary" />}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" disabled={saving || !manual.cover} onClick={() => void resetField("cover")}>Reset cover</Button>
+            </div>
+          </EditorSection>
+
+          <EditorSection title="Circle">
+            <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+              <LabeledInput label="Name" value={circleName} onChange={setCircleName} />
+              <LabeledInput label="External ID" value={circleExternalId} onChange={setCircleExternalId} />
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" disabled={saving || !manual.circle} onClick={() => void resetField("circle")}>Reset circle</Button>
+            </div>
+          </EditorSection>
+
+          <EditorSection title="Series">
+            <div className="grid gap-3 sm:grid-cols-[1fr_160px_180px]">
+              <LabeledInput label="Name" value={seriesName} onChange={setSeriesName} />
+              <LabeledInput label="Title ID" value={seriesTitleId} onChange={setSeriesTitleId} />
+              <LabeledInput label="Circle ID" value={seriesCircleExternalId} onChange={setSeriesCircleExternalId} />
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" disabled={saving || !manual.series} onClick={() => void resetField("series")}>Reset series</Button>
+            </div>
+          </EditorSection>
+
+          <EditorSection title="Voice actors">
+            <div className="space-y-2">
+              {voiceActors.map((actor, index) => (
+                <div key={`${index}:${actor.personId}`} className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+                  <LabeledInput label="Name" value={actor.name} onChange={(value) => updateVoiceActor(index, { name: value })} />
+                  <LabeledInput label="Person ID" value={actor.personId ? String(actor.personId) : ""} onChange={(value) => updateVoiceActor(index, { personId: Number(value) || 0 })} />
+                  <Button variant="outline" size="icon" className="mt-5 h-9 w-9" onClick={() => removeVoiceActor(index)} aria-label="Remove voice actor">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap justify-between gap-2">
+              <Button variant="outline" size="sm" onClick={addVoiceActor}>
+                <Plus className="h-4 w-4" />
+                Add voice
+              </Button>
+              <Button variant="outline" size="sm" disabled={saving || !manual.voiceActors?.length} onClick={() => void resetField("voice_actors")}>Reset voices</Button>
+            </div>
+          </EditorSection>
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={saving} onClick={() => void save()}>
+            {saving ? "Saving" : "Save"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h4 className="text-sm font-semibold">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function LabeledInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block min-w-0 text-xs font-medium text-muted-foreground">
+      {label}
+      <input
+        className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function initialManualVoiceActors(work: WorkDetail): ManualOverridePerson[] {
+  const manual = work.manualOverrides?.voiceActors;
+  if (manual && manual.length > 0) return manual;
+  if (work.voiceCredits.length > 0) {
+    return work.voiceCredits.map((credit) => ({ name: credit.displayName, personId: credit.personId }));
+  }
+  return work.voiceActors.map((name) => ({ name, personId: 0 }));
+}
+
+function nullableTrimmed(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function nullableEntity(name: string, externalId: string) {
+  const nextName = name.trim();
+  const nextExternalId = externalId.trim();
+  return nextName || nextExternalId ? { name: nextName, externalId: nextExternalId } : null;
+}
+
+function nullableSeries(name: string, titleId: string, circleExternalId: string): ManualOverrideSeries | null {
+  const nextName = name.trim();
+  const nextTitleId = titleId.trim();
+  const nextCircleExternalId = circleExternalId.trim();
+  return nextName || nextTitleId || nextCircleExternalId ? { name: nextName, titleId: nextTitleId, circleExternalId: nextCircleExternalId } : null;
 }
 
 function DirectoryMessage({ message }: { message: string }) {

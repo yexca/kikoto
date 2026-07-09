@@ -82,6 +82,8 @@ export type WorkDetail = {
   ratingCount: number | null;
   sales: number | null;
   series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
   dlsiteFetchedAt: string;
   tags: string[];
   voiceActors: string[];
@@ -89,8 +91,55 @@ export type WorkDetail = {
   listeningStatus: ListeningStatus;
   favorite: boolean;
   translations: WorkTranslation[];
+  manualOverrides: WorkManualOverrides;
   sourcePresence: SourcePresenceItem[] | null;
   mediaItems: MediaItem[];
+};
+
+export type ManualOverrideEntity = {
+  name: string;
+  externalId: string;
+};
+
+export type ManualOverrideSeries = {
+  name: string;
+  titleId: string;
+  circleExternalId: string;
+};
+
+export type ManualOverridePerson = {
+  name: string;
+  personId: number;
+};
+
+export type ManualOverrideCover = {
+  assetPath: string;
+  originalPath: string;
+  url: string;
+};
+
+export type WorkManualOverrides = {
+  title?: string;
+  circle?: ManualOverrideEntity;
+  series?: ManualOverrideSeries;
+  voiceActors?: ManualOverridePerson[];
+  cover?: ManualOverrideCover;
+};
+
+export type WorkManualOverridePayload = {
+  title?: string | null;
+  circle?: ManualOverrideEntity | null;
+  series?: ManualOverrideSeries | null;
+  voiceActors?: ManualOverridePerson[];
+};
+
+export type WorkCoverCandidate = {
+  locationId: number;
+  fileName: string;
+  path: string;
+  previewUrl: string;
+  sizeBytes: number | null;
+  selected: boolean;
 };
 
 export type WorkTranslation = {
@@ -981,6 +1030,15 @@ export const api = {
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
   getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
+  getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
+  updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
+    patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
+  deleteWorkManualOverride: (id: number, field: string) =>
+    deleteJSON<{ ok: boolean; deleted: number }>(`/api/works/${id}/manual-overrides/${encodeURIComponent(field)}`),
+  listWorkCoverCandidates: (id: number) =>
+    getJSON<{ candidates: WorkCoverCandidate[] }>(`/api/works/${id}/cover-candidates`),
+  setWorkCoverOverride: (id: number, locationId: number) =>
+    postJSONBody<WorkManualOverrides>(`/api/works/${id}/cover-override`, { locationId }),
   resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
   createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
