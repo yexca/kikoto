@@ -31,6 +31,7 @@ export type SourcePresenceItem = {
   fileSourceCode?: string;
   fileSourceName?: string;
   remoteId?: string;
+  remoteCode?: string;
   sourceUrl?: string;
 };
 

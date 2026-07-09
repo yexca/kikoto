@@ -425,7 +425,7 @@ export function LibraryPage() {
     if (!source) return;
     setIsTrackedFetching(true);
     try {
-      const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
+      const detail = await api.getRemoteSourceWork(source.id, sourcePresenceActionCode(presence, work.primaryCode));
       setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), selectedLocalPaths: new Set(), plan: null, message: "" });
     } finally {
       setIsTrackedFetching(false);
@@ -6241,6 +6241,10 @@ function remoteWorkActionCode(work: RemoteWork) {
 
 function remoteDetailActionCode(detail: RemoteWorkDetail) {
   return detail.remoteCode || detail.primaryCode || detail.remoteId;
+}
+
+function sourcePresenceActionCode(presence: SourcePresenceItem, fallbackCode: string) {
+  return presence.remoteCode || fallbackCode;
 }
 
 function remoteAvailabilityRouteCode(summary: SourceAvailabilitySource, fallbackCode: string) {
