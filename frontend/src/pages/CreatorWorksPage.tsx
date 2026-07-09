@@ -13,13 +13,10 @@ import {
   Layers3,
   ListChecks,
   Loader2,
-  NotebookPen,
   Plus,
   RefreshCw,
   Search,
   SlidersHorizontal,
-  Star,
-  Tags,
   Trash2,
 } from "lucide-react";
 import type React from "react";
@@ -30,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import { UserTagRow } from "@/components/UserTagRow";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -48,7 +46,7 @@ import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/re
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 
 type CreatorKind = "circle" | "voice";
-type VoiceFilter = "all" | "favorite" | "tagged" | "rated" | "available" | "local" | "remote" | "missing";
+type VoiceFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing";
 type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
 const voicePageSizeOptions = [20, 40, 80];
 const workPageSizeOptions = [24, 48] as const;
@@ -122,8 +120,6 @@ function VoiceListPage() {
         return voice.favorite;
       case "tagged":
         return voice.userTags.length > 0;
-      case "rated":
-        return voice.rating !== null && voice.rating > 0;
       case "available":
         return voice.playableWorks > 0;
       case "local":
@@ -165,7 +161,6 @@ function VoiceListPage() {
               <option value="all">All voices</option>
               <option value="favorite">Favorite</option>
               <option value="tagged">Tagged</option>
-              <option value="rated">Rated</option>
               <option value="available">Available</option>
               <option value="local">Local</option>
               <option value="remote">Remote</option>
@@ -185,7 +180,13 @@ function VoiceListPage() {
           {isLoading ? (
             <EntityCardSkeletonGrid count={Math.min(pageSize, 9)} />
           ) : pageVoices.length > 0 ? (
-            pageVoices.map((voice) => <VoiceCard key={voice.personId} voice={voice} />)
+            pageVoices.map((voice) => (
+              <VoiceCard
+                key={voice.personId}
+                voice={voice}
+                onChange={(next) => setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item))}
+              />
+            ))
           ) : (
             <Card><CardContent className="p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>
           )}
@@ -242,39 +243,60 @@ function EntityCardSkeletonGrid({ count }: { count: number }) {
   );
 }
 
-function VoiceCard({ voice }: { voice: VoiceSummary }) {
+function VoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
+  const toast = useToast();
+  const toggleFavorite = async () => {
+    try {
+      const next = await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite });
+      onChange({ ...voice, ...next });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice favorite update failed."));
+    }
+  };
+  const saveTags = async (tags: string[]) => {
+    try {
+      const result = await api.setVoiceUserTags(voice.personId, tags);
+      onChange({ ...voice, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice tags update failed."));
+    }
+  };
   return (
     <Card className="transition-colors hover:border-primary/50">
       <CardContent className="space-y-2 p-3">
-        <button className="grid w-full gap-2 text-left lg:grid-cols-[minmax(0,1fr)_auto]" onClick={() => openVoiceRoute(voice.personId)}>
-          <div className="min-w-0">
+        <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <button className="min-w-0 text-left" onClick={() => openVoiceRoute(voice.personId)}>
+            <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">#{voice.personId}</Badge>
               {voice.favorite && <Badge variant="secondary">Favorite</Badge>}
-              {voice.userTags.map((tag) => <Badge key={tag.id} variant="outline">{tag.name}</Badge>)}
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-2">
               <h3 className="truncate text-base font-semibold">{voice.displayName}</h3>
               <span className="shrink-0 text-xs text-muted-foreground">{voice.aliases.filter((alias) => alias !== voice.displayName).join(", ") || "No aliases"}</span>
             </div>
           </div>
+          </button>
           <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-muted-foreground lg:justify-end">
             <span>{voice.knownWorks} works</span>
             <span>{voice.playableWorks} available</span>
             {voice.playableWorks === 0 && <Badge variant="warning">missing</Badge>}
-            <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Star className={`h-3.5 w-3.5 ${voice.rating ? "fill-current text-primary" : ""}`} />
-              {voice.rating ? `${voice.rating}/5` : "Unrated"}
-            </span>
+            <Button
+              variant={voice.favorite ? "default" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              aria-label={voice.favorite ? "Remove favorite" : "Add favorite"}
+              title={voice.favorite ? "Remove favorite" : "Add favorite"}
+              onClick={() => void toggleFavorite()}
+            >
+              <Heart className={`h-4 w-4 ${voice.favorite ? "fill-current" : ""}`} />
+            </Button>
           </div>
-        </button>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
           <SourceTags sources={voice.sourceSummaries} />
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <NotebookPen className="h-3.5 w-3.5" />
-            <span className="max-w-80 truncate">{voice.note || `Last seen: ${voice.lastSeenAt ?? "never"}`}</span>
-          </div>
+          <UserTagRow tags={voice.userTags} compact onSave={saveTags} className="justify-end" />
         </div>
       </CardContent>
     </Card>
@@ -286,10 +308,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [isEditingState, setIsEditingState] = useState(false);
-  const [ratingDraft, setRatingDraft] = useState(0);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [tagDraft, setTagDraft] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<WorkFilter>("all");
   const [page, setPage] = useState(1);
@@ -306,9 +324,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsLoading(true);
     api.getVoice(personId).then((item) => {
       setDetail(item);
-      setRatingDraft(item.rating ?? 0);
-      setNoteDraft(item.note);
-      setTagDraft(item.userTags.map((tag) => tag.name).join(", "));
       setMessage("");
     }).catch((error) => {
       setDetail(null);
@@ -360,30 +375,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const selectedSaveable = selectedWorks.filter(voiceWorkRemoteTarget);
   const selectedSyncable = selectedWorks.filter((work) => voiceWorkRemoteTarget(work) && !voiceWorkHasImportedRemote(work));
 
-  const saveUserState = async () => {
-    if (!detail) return;
-    try {
-      const next = await api.updateVoiceUserState(detail.personId, {
-        rating: ratingDraft > 0 ? ratingDraft : null,
-        note: noteDraft,
-        favorite: detail.favorite,
-      });
-      const tags = tagDraft.split(",").map((tag) => tag.trim()).filter(Boolean);
-      const tagResult = await api.setVoiceUserTags(detail.personId, tags);
-      setDetail((current) => current ? { ...current, ...next, userTags: tagResult.userTags, works: current.works, remoteMatches: current.remoteMatches } : current);
-      setIsEditingState(false);
-      toast.success("Voice preferences saved.");
-    } catch (error) {
-      toast.notify(toastFromError(error, "Voice preference save failed."));
-    }
-  };
-
   const toggleFavorite = async () => {
     if (!detail) return;
     try {
       const next = await api.updateVoiceUserState(detail.personId, {
-        rating: detail.rating,
-        note: detail.note,
         favorite: !detail.favorite,
       });
       setDetail((current) => current ? { ...current, ...next, works: current.works, remoteMatches: current.remoteMatches } : current);
@@ -395,9 +390,16 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const refreshDetail = async () => {
     const item = await api.getVoice(personId);
     setDetail(item);
-    setRatingDraft(item.rating ?? 0);
-    setNoteDraft(item.note);
-    setTagDraft(item.userTags.map((tag) => tag.name).join(", "));
+  };
+
+  const saveVoiceTags = async (tags: string[]) => {
+    if (!detail) return;
+    try {
+      const result = await api.setVoiceUserTags(detail.personId, tags);
+      setDetail((current) => current ? { ...current, userTags: result.userTags } : current);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice tags update failed."));
+    }
   };
 
   const updateWorkMark = async (work: VoiceKnownWork | VoiceRemoteWork, status: ListeningStatus) => {
@@ -610,14 +612,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Badge variant="outline">#{detail.personId}</Badge>
                   {detail.favorite && <Badge variant="secondary">Favorite</Badge>}
                   <Badge variant="secondary">person route</Badge>
-                  {detail.userTags.map((tag) => <Badge key={tag.id} variant="outline">{tag.name}</Badge>)}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{detail.aliases.filter((alias) => alias !== detail.displayName).join(", ") || "No aliases"}</p>
+                <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant={detail.favorite ? "default" : "outline"} size="sm" onClick={() => void toggleFavorite()}>
-                  <Star className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
+                  <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
                   Favorite
                 </Button>
               </div>
@@ -631,59 +633,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <Stat label="Remote matches" value={remoteWorks.length} icon={<Search className="h-4 w-4" />} />
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
-              <Card>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Star className="h-4 w-4 fill-current text-primary" />
-                    User rating
-                  </div>
-                  {isEditingState ? (
-                    <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={ratingDraft} onChange={(event) => setRatingDraft(Number(event.target.value))}>
-                      <option value={0}>Unrated</option>
-                      {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}/5</option>)}
-                    </select>
-                  ) : (
-                    <div className="text-2xl font-semibold">{detail.rating ? `${detail.rating}/5` : "Unrated"}</div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      setRatingDraft(detail.rating ?? 0);
-                      setNoteDraft(detail.note);
-                      setTagDraft(detail.userTags.map((tag) => tag.name).join(", "));
-                      setIsEditingState((value) => !value);
-                    }}
-                  >
-                    {isEditingState ? "Cancel" : "Edit"}
-                  </Button>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <NotebookPen className="h-4 w-4 text-primary" />
-                    User note and tags
-                  </div>
-                  {isEditingState ? (
-                    <div className="space-y-2">
-                      <textarea className="min-h-20 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} />
-                      <div className="flex min-h-10 items-center gap-2 rounded-md border bg-background px-3">
-                        <Tags className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <input className="min-w-0 flex-1 bg-transparent text-sm outline-none" value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="tag1, tag2" />
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{detail.note || "No note yet."}</p>
-                  )}
-                  <Button variant="outline" size="sm" disabled={!isEditingState} onClick={() => void saveUserState()}>
-                    Save preferences
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
           </CardContent>
         </Card>
 

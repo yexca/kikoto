@@ -443,17 +443,38 @@ func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	ratingValue := any(nil)
-	if payload.Rating != nil && *payload.Rating > 0 {
-		ratingValue = *payload.Rating
+	var currentRating sql.NullInt64
+	currentNote := ""
+	currentFavorite := 0
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT rating, COALESCE(note, ''), COALESCE(favorite, 0)
+		FROM user_person_state
+		WHERE user_id = ? AND person_id = ?
+	`, user.ID, personID).Scan(&currentRating, &currentNote, &currentFavorite); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, err)
+		return
 	}
-	note := ""
+	ratingValue := any(nil)
+	if currentRating.Valid {
+		ratingValue = int(currentRating.Int64)
+	}
+	if payload.Rating != nil {
+		if *payload.Rating > 0 {
+			ratingValue = *payload.Rating
+		} else {
+			ratingValue = nil
+		}
+	}
+	note := currentNote
 	if payload.Note != nil {
 		note = strings.TrimSpace(*payload.Note)
 	}
-	favorite := 0
-	if payload.Favorite != nil && *payload.Favorite {
-		favorite = 1
+	favorite := currentFavorite
+	if payload.Favorite != nil {
+		favorite = 0
+		if *payload.Favorite {
+			favorite = 1
+		}
 	}
 	if _, err := s.db.ExecContext(r.Context(), `
 		INSERT INTO user_person_state (user_id, person_id, rating, note, favorite, updated_at)

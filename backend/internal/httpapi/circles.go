@@ -28,6 +28,7 @@ type circleSummary struct {
 	Rating          *int               `json:"rating"`
 	Note            string             `json:"note"`
 	Favorite        bool               `json:"favorite"`
+	UserTags        []voiceUserTag     `json:"userTags"`
 	LocalWorks      int                `json:"localWorks"`
 	PlayableWorks   int                `json:"playableWorks"`
 	RemoteWorks     int                `json:"remoteWorks"`
@@ -149,6 +150,12 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Rating = nullableIntPointer(rating)
 		item.Favorite = favorite != 0
+		tags, err := s.loadCircleUserTags(r.Context(), user.ID, item.ID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		item.UserTags = tags
 		item.LastSyncedAt = nullableString(lastSynced)
 		item.Aliases = []string{}
 		item.SourceSummaries = []circleSourceStat{}
@@ -257,17 +264,38 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	ratingValue := any(nil)
-	if payload.Rating != nil && *payload.Rating > 0 {
-		ratingValue = *payload.Rating
+	var currentRating sql.NullInt64
+	currentNote := ""
+	currentFavorite := 0
+	if err := s.db.QueryRowContext(r.Context(), `
+		SELECT rating, COALESCE(note, ''), COALESCE(favorite, 0)
+		FROM user_party_state
+		WHERE user_id = ? AND party_id = ?
+	`, user.ID, partyID).Scan(&currentRating, &currentNote, &currentFavorite); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, err)
+		return
 	}
-	note := ""
+	ratingValue := any(nil)
+	if currentRating.Valid {
+		ratingValue = int(currentRating.Int64)
+	}
+	if payload.Rating != nil {
+		if *payload.Rating > 0 {
+			ratingValue = *payload.Rating
+		} else {
+			ratingValue = nil
+		}
+	}
+	note := currentNote
 	if payload.Note != nil {
 		note = strings.TrimSpace(*payload.Note)
 	}
-	favorite := 0
-	if payload.Favorite != nil && *payload.Favorite {
-		favorite = 1
+	favorite := currentFavorite
+	if payload.Favorite != nil {
+		favorite = 0
+		if *payload.Favorite {
+			favorite = 1
+		}
 	}
 	if _, err := s.db.ExecContext(r.Context(), `
 		INSERT INTO user_party_state (user_id, party_id, rating, note, favorite, updated_at)
@@ -287,6 +315,36 @@ func (s *Server) updateCircleUserState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "tags:write")
+	if !ok {
+		return
+	}
+	externalID := normalizeMakerID(r.PathValue("externalId"))
+	if !dlsiteMakerIDPattern.MatchString(externalID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
+		return
+	}
+	var payload struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	tags, err := s.replaceCircleUserTags(r.Context(), user.ID, partyID, payload.Tags)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"externalId": externalID, "userTags": tags})
 }
 
 func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
@@ -663,6 +721,11 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	item.Favorite = favorite != 0
 	item.LastSyncedAt = nullableString(lastSynced)
 	item.Aliases = []string{}
+	tags, err := s.loadCircleUserTags(ctx, userID, item.ID)
+	if err != nil {
+		return circleSummary{}, err
+	}
+	item.UserTags = tags
 	if err := s.fillCircleStats(ctx, userID, &item); err != nil {
 		return circleSummary{}, err
 	}
@@ -2229,6 +2292,74 @@ func (s *Server) recordCircleRefreshWorkflow(ctx context.Context, partyID int64,
 		return 0, 0, err
 	}
 	return runID, jobID, nil
+}
+
+func (s *Server) replaceCircleUserTags(ctx context.Context, userID int64, partyID int64, rawTags []string) ([]voiceUserTag, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_party_tag_assignment WHERE user_id = ? AND party_id = ?", userID, partyID); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, raw := range rawTags {
+		name := strings.TrimSpace(raw)
+		if name == "" || seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		if len(name) > 40 {
+			name = name[:40]
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_party_tag (user_id, name)
+			VALUES (?, ?)
+			ON CONFLICT(user_id, name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+		`, userID, name); err != nil {
+			return nil, err
+		}
+		tagID, err := selectID(ctx, tx, "SELECT id FROM user_party_tag WHERE user_id = ? AND name = ?", userID, name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_party_tag_assignment (user_id, party_id, user_party_tag_id)
+			VALUES (?, ?, ?)
+			ON CONFLICT(user_id, party_id, user_party_tag_id) DO NOTHING
+		`, userID, partyID, tagID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.loadCircleUserTags(ctx, userID, partyID)
+}
+
+func (s *Server) loadCircleUserTags(ctx context.Context, userID int64, partyID int64) ([]voiceUserTag, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT tag.id, tag.name, tag.color
+		FROM user_party_tag_assignment AS assignment
+		INNER JOIN user_party_tag AS tag ON tag.id = assignment.user_party_tag_id
+		WHERE assignment.user_id = ?
+			AND assignment.party_id = ?
+		ORDER BY tag.name ASC
+	`, userID, partyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tags := []voiceUserTag{}
+	for rows.Next() {
+		var tag voiceUserTag
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Color); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
 }
 
 func (s *Server) metadataProviderID(ctx context.Context, code string, displayName string) (int64, error) {

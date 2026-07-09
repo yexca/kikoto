@@ -66,6 +66,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/circles/{externalId}", s.getCircle)
 	mux.HandleFunc("POST /api/circles/{externalId}/auto-refresh", s.autoRefreshCircle)
 	mux.HandleFunc("PATCH /api/circles/{externalId}/user-state", s.updateCircleUserState)
+	mux.HandleFunc("PUT /api/circles/{externalId}/tags", s.setCircleUserTags)
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/voices", s.listVoices)

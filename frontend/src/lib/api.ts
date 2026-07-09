@@ -616,6 +616,7 @@ export type CircleSummary = {
   rating: number | null;
   note: string;
   favorite: boolean;
+  userTags: VoiceUserTag[];
   localWorks: number;
   playableWorks: number;
   remoteWorks: number;
@@ -1002,12 +1003,14 @@ export const api = {
     postJSON<{ mergeId: number; targetPersonId: number; restoredPersonId: number; restoredName: string }>(
       `/api/voices/${personId}/merges/${mergeId}/undo`,
     ),
-  updateVoiceUserState: (personId: number, payload: { rating: number | null; note: string; favorite: boolean }) =>
+  updateVoiceUserState: (personId: number, payload: { rating?: number | null; note?: string; favorite?: boolean }) =>
     patchJSONBody<VoiceSummary>(`/api/voices/${personId}/user-state`, payload),
   setVoiceUserTags: (personId: number, tags: string[]) =>
     putJSONBody<{ personId: number; userTags: VoiceUserTag[] }>(`/api/voices/${personId}/tags`, { tags }),
-  updateCircleUserState: (externalId: string, payload: { rating: number | null; note: string; favorite: boolean }) =>
+  updateCircleUserState: (externalId: string, payload: { rating?: number | null; note?: string; favorite?: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
+  setCircleUserTags: (externalId: string, tags: string[]) =>
+    putJSONBody<{ externalId: string; userTags: VoiceUserTag[] }>(`/api/circles/${encodeURIComponent(externalId)}/tags`, { tags }),
   autoRefreshCircle: (externalId: string) =>
     postJSON<CircleSummary["autoRefresh"]>(`/api/circles/${encodeURIComponent(externalId)}/auto-refresh`),
   refreshCircle: (
