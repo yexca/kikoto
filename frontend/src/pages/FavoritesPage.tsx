@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { UserTagRow } from "@/components/UserTagRow";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -36,8 +37,10 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import { api, assetURL, type FavoriteList, type ListeningStatus, type Work } from "@/lib/api";
+import { api, assetURL, type CircleSummary, type FavoriteList, type ListeningStatus, type VoiceSummary, type Work } from "@/lib/api";
 import { openCircleSeriesRoute } from "@/pages/CirclesPage";
+import { openCircleRoute } from "@/pages/CirclesPage";
+import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -68,11 +71,16 @@ const availabilityFilters = [
 const pageSizeOptions = [24, 48] as const;
 type PageSize = (typeof pageSizeOptions)[number];
 type AvailabilityFilter = (typeof availabilityFilters)[number]["value"];
+type FavoriteEntity = "works" | "circles" | "voices";
 
 export function FavoritesPage() {
   const toast = useToast();
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
+  const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>("works");
+  const [circles, setCircles] = useState<CircleSummary[]>([]);
+  const [voices, setVoices] = useState<VoiceSummary[]>([]);
+  const [isEntitiesLoading, setIsEntitiesLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
@@ -102,6 +110,26 @@ export function FavoritesPage() {
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsEntitiesLoading(true);
+    Promise.all([api.listCircles(), api.listVoices()])
+      .then(([circleItems, voiceItems]) => {
+        if (cancelled) return;
+        setCircles(circleItems);
+        setVoices(voiceItems);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.notify(toastFromError(error, "Favorite people and circles could not be loaded."));
+      })
+      .finally(() => {
+        if (!cancelled) setIsEntitiesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -146,6 +174,8 @@ export function FavoritesPage() {
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
+  const favoriteCircles = circles.filter((circle) => circle.favorite);
+  const favoriteVoices = voices.filter((voice) => voice.favorite);
 
   const openWork = (work: Work) => {
     window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites" }, "", `/${work.primaryCode}`);
@@ -272,7 +302,7 @@ export function FavoritesPage() {
             />
           </label>
           <div className="flex items-center gap-2">
-            <select
+            {favoriteEntity === "works" && <select
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={availabilityFilter}
               onChange={(event) => setAvailabilityFilter(event.target.value as AvailabilityFilter)}
@@ -283,7 +313,7 @@ export function FavoritesPage() {
                   {filter.label}
                 </option>
               ))}
-            </select>
+            </select>}
             {hasActiveFilters && (
               <Button variant="outline" size="icon" onClick={clearFilters} aria-label="Clear filters">
                 <X className="h-4 w-4" />
@@ -293,6 +323,26 @@ export function FavoritesPage() {
         </div>
       </div>
 
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
+        <FavoriteEntityTab active={favoriteEntity === "circles"} icon={Heart} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
+        <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Heart} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+      </div>
+
+      {favoriteEntity !== "works" && (
+        <FavoriteEntitySection
+          kind={favoriteEntity}
+          query={query}
+          isLoading={isEntitiesLoading}
+          circles={favoriteCircles}
+          voices={favoriteVoices}
+          onCircleChange={(next) => setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item))}
+          onVoiceChange={(next) => setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item))}
+        />
+      )}
+
+      {favoriteEntity === "works" && (
+      <>
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         {isLoading ? <FavoriteMetricSkeletons /> : (
           <>
@@ -491,7 +541,170 @@ export function FavoritesPage() {
           onConfirm={() => void deleteFavoriteList()}
         />
       )}
+      </>
+      )}
     </section>
+  );
+}
+
+function FavoriteEntityTab({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Heart; label: string; count: number; onClick: () => void }) {
+  return (
+    <button
+      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+      onClick={onClick}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      <span className="text-xs opacity-80">{count}</span>
+    </button>
+  );
+}
+
+function FavoriteEntitySection({
+  kind,
+  query,
+  isLoading,
+  circles,
+  voices,
+  onCircleChange,
+  onVoiceChange,
+}: {
+  kind: Exclude<FavoriteEntity, "works">;
+  query: string;
+  isLoading: boolean;
+  circles: CircleSummary[];
+  voices: VoiceSummary[];
+  onCircleChange: (circle: CircleSummary) => void;
+  onVoiceChange: (voice: VoiceSummary) => void;
+}) {
+  const needle = query.trim().toLowerCase();
+  const filteredCircles = circles.filter((circle) => !needle || [circle.externalId, circle.displayName, ...circle.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle)));
+  const filteredVoices = voices.filter((voice) => !needle || [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle)));
+  const items = kind === "circles" ? filteredCircles : filteredVoices;
+
+  if (isLoading) {
+    return <FavoriteEntitySkeletonGrid />;
+  }
+  if (items.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-5 text-sm text-muted-foreground">No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.</CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+      {kind === "circles"
+        ? filteredCircles.map((circle) => <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />)
+        : filteredVoices.map((voice) => <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />)}
+    </div>
+  );
+}
+
+function FavoriteCircleCard({ circle, onChange }: { circle: CircleSummary; onChange: (circle: CircleSummary) => void }) {
+  const toast = useToast();
+  const saveTags = async (tags: string[]) => {
+    try {
+      const result = await api.setCircleUserTags(circle.externalId, tags);
+      onChange({ ...circle, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle tags update failed."));
+    }
+  };
+  const removeFavorite = async () => {
+    try {
+      const next = await api.updateCircleUserState(circle.externalId, { favorite: false });
+      onChange({ ...circle, ...next });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle favorite update failed."));
+    }
+  };
+  return (
+    <Card className="transition-colors hover:border-primary/50">
+      <CardContent className="space-y-3 p-3">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{circle.externalId}</Badge>
+              <Badge variant="secondary">Favorite</Badge>
+            </div>
+            <h3 className="mt-1 truncate text-base font-semibold">{circle.displayName}</h3>
+          </button>
+          <Button variant="outline" size="icon" aria-label="Remove favorite" title="Remove favorite" onClick={() => void removeFavorite()}>
+            <Heart className="h-4 w-4 fill-current" />
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>{circle.catalogWorks} works</span>
+            <span>{Math.max(circle.playableWorks, circle.localWorks + circle.remoteWorks)} available</span>
+          </div>
+          <UserTagRow tags={circle.userTags} compact onSave={saveTags} className="justify-end" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
+  const toast = useToast();
+  const saveTags = async (tags: string[]) => {
+    try {
+      const result = await api.setVoiceUserTags(voice.personId, tags);
+      onChange({ ...voice, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice tags update failed."));
+    }
+  };
+  const removeFavorite = async () => {
+    try {
+      const next = await api.updateVoiceUserState(voice.personId, { favorite: false });
+      onChange({ ...voice, ...next });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice favorite update failed."));
+    }
+  };
+  return (
+    <Card className="transition-colors hover:border-primary/50">
+      <CardContent className="space-y-3 p-3">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <button className="min-w-0 text-left" onClick={() => openVoiceRoute(voice.personId)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">#{voice.personId}</Badge>
+              <Badge variant="secondary">Favorite</Badge>
+            </div>
+            <h3 className="mt-1 truncate text-base font-semibold">{voice.displayName}</h3>
+            <p className="truncate text-xs text-muted-foreground">{voice.aliases.filter((alias) => alias !== voice.displayName).join(", ") || "No aliases"}</p>
+          </button>
+          <Button variant="outline" size="icon" aria-label="Remove favorite" title="Remove favorite" onClick={() => void removeFavorite()}>
+            <Heart className="h-4 w-4 fill-current" />
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>{voice.knownWorks} works</span>
+            <span>{voice.playableWorks} available</span>
+          </div>
+          <UserTagRow tags={voice.userTags} compact onSave={saveTags} className="justify-end" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FavoriteEntitySkeletonGrid() {
+  return (
+    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+      {Array.from({ length: 6 }, (_, index) => (
+        <Card key={index}>
+          <CardContent className="space-y-3 p-3">
+            <FavoriteSkeletonLine className="h-5 w-32" />
+            <FavoriteSkeletonLine className="h-5 w-48" />
+            <FavoriteSkeletonLine className="h-8 w-full" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 

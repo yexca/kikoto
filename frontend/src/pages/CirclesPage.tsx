@@ -8,11 +8,9 @@ import {
   HardDriveDownload,
   Heart,
   ListChecks,
-  NotebookPen,
   RefreshCw,
   Search,
   SlidersHorizontal,
-  Star,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -21,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
+import { UserTagRow } from "@/components/UserTagRow";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -50,7 +49,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "relisten", label: "Relisten" },
   { value: "paused", label: "Paused" },
 ];
-type CircleFilter = "all" | "available" | "local" | "remote" | "missing" | "stale" | "rated";
+type CircleFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "stale";
 type CircleRefreshScope = "all" | "catalog" | "work" | "source";
 type CircleRefreshResultScope = CircleRefreshScope | "metadata";
 type CircleRefreshMode = "incremental" | "full";
@@ -108,9 +107,13 @@ function CircleListPage() {
   const filteredCircles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return circles.filter((circle) => {
-      const matchesQuery = !needle || [circle.externalId, circle.displayName, ...circle.aliases].some((value) => value.toLowerCase().includes(needle));
+      const matchesQuery = !needle || [circle.externalId, circle.displayName, ...circle.aliases, ...circle.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle));
       if (!matchesQuery) return false;
       switch (filter) {
+      case "favorite":
+        return circle.favorite;
+      case "tagged":
+        return circle.userTags.length > 0;
       case "available":
         return circle.playableWorks > 0 || circle.localWorks > 0 || circle.remoteWorks > 0;
       case "local":
@@ -121,8 +124,6 @@ function CircleListPage() {
         return circle.missingWorks > 0;
       case "stale":
         return circle.syncState !== "fresh";
-      case "rated":
-        return circle.rating !== null && circle.rating > 0;
       default:
         return true;
       }
@@ -141,7 +142,7 @@ function CircleListPage() {
     <div className="space-y-5">
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Local party index with user rating and notes</p>
+          <p className="text-sm text-muted-foreground">Local party index with personal favorites and tags</p>
           <h2 className="text-xl font-semibold">Circles</h2>
         </div>
       </section>
@@ -166,12 +167,13 @@ function CircleListPage() {
               aria-label="Circle filter"
             >
               <option value="all">All circles</option>
+              <option value="favorite">Favorite</option>
+              <option value="tagged">Tagged</option>
               <option value="available">Available</option>
               <option value="local">Local</option>
               <option value="remote">Remote</option>
               <option value="missing">Missing</option>
               <option value="stale">Needs refresh</option>
-              <option value="rated">Rated</option>
             </select>
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -211,7 +213,11 @@ function CircleListPage() {
             <EntityCardSkeletonGrid count={Math.min(pageSize, 8)} />
           ) : pageCircles.length > 0 ? (
             pageCircles.map((circle) => (
-              <CircleCard key={circle.externalId} circle={circle} />
+              <CircleCard
+                key={circle.externalId}
+                circle={circle}
+                onChange={(next) => setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item))}
+              />
             ))
           ) : (
             <Card>
@@ -269,32 +275,61 @@ function EntityCardSkeletonGrid({ count }: { count: number }) {
   );
 }
 
-function CircleCard({ circle }: { circle: CircleSummary }) {
+function CircleCard({ circle, onChange }: { circle: CircleSummary; onChange: (circle: CircleSummary) => void }) {
+  const toast = useToast();
   const availableWorks = Math.max(circle.playableWorks, circle.localWorks + circle.remoteWorks);
+  const toggleFavorite = async () => {
+    try {
+      const next = await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite });
+      onChange({ ...circle, ...next });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle favorite update failed."));
+    }
+  };
+  const saveTags = async (tags: string[]) => {
+    try {
+      const result = await api.setCircleUserTags(circle.externalId, tags);
+      onChange({ ...circle, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle tags update failed."));
+    }
+  };
   return (
     <Card className="transition-colors hover:border-primary/50">
       <CardContent className="space-y-2 p-3">
-        <button className="grid w-full gap-2 text-left lg:grid-cols-[minmax(0,1fr)_auto]" onClick={() => openCircleRoute(circle.externalId)}>
+        <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{circle.externalId}</Badge>
               <SyncBadge state={circle.syncState} />
+              {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-2">
               <h3 className="truncate text-base font-semibold">{circle.displayName}</h3>
               <span className="shrink-0 text-xs text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</span>
             </div>
           </div>
+          </button>
           <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-muted-foreground lg:justify-end">
             <span>{circle.catalogWorks} works</span>
             <span>{availableWorks} available</span>
             {circle.missingWorks > 0 && <Badge variant="warning">{circle.missingWorks} missing</Badge>}
-            <span className="inline-flex items-center gap-1 font-medium text-foreground">
-              <Star className="h-3.5 w-3.5 fill-current text-primary" />
-              {circle.rating !== null && circle.rating > 0 ? circle.rating : "Unrated"}
-            </span>
+            <Button
+              variant={circle.favorite ? "default" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              aria-label={circle.favorite ? "Remove favorite" : "Add favorite"}
+              title={circle.favorite ? "Remove favorite" : "Add favorite"}
+              onClick={(event) => {
+                event.stopPropagation();
+                void toggleFavorite();
+              }}
+            >
+              <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
+            </Button>
           </div>
-        </button>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
           <div className="flex min-h-6 flex-wrap gap-1">
@@ -306,10 +341,7 @@ function CircleCard({ circle }: { circle: CircleSummary }) {
             ))}
             {sourceTags(circle.sourceSummaries).length === 0 && <Badge variant="warning">Unavailable</Badge>}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <NotebookPen className="h-3.5 w-3.5" />
-            <span className="max-w-80 truncate">{circle.note || `Last synced: ${circle.lastSyncedAt ?? "never"}`}</span>
-          </div>
+          <UserTagRow tags={circle.userTags} compact onSave={saveTags} className="justify-end" />
         </div>
       </CardContent>
     </Card>
@@ -320,9 +352,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const toast = useToast();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditingState, setIsEditingState] = useState(false);
-  const [ratingDraft, setRatingDraft] = useState(0);
-  const [noteDraft, setNoteDraft] = useState("");
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
   const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
   const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
@@ -344,8 +373,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     try {
       const next = await api.getCircle(externalId);
       setDetail(next);
-      setRatingDraft(next.rating ?? 0);
-      setNoteDraft(next.note);
       return next;
     } catch (error) {
       setDetail(null);
@@ -473,18 +500,21 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     }
   };
 
-  const saveUserState = async () => {
+  const toggleCircleFavorite = async () => {
     try {
-      const next = await api.updateCircleUserState(externalId, {
-        rating: ratingDraft > 0 ? ratingDraft : null,
-        note: noteDraft,
-        favorite: circle.favorite,
-      });
-      setDetail((current) => current ? { ...current, ...next, works: current.works } : current);
-      setIsEditingState(false);
-      toast.success("Circle note saved.");
+      const next = await api.updateCircleUserState(externalId, { favorite: !circle.favorite });
+      setDetail((current) => current ? { ...current, ...next, works: current.works, series: current.series } : current);
     } catch (error) {
-      toast.notify(toastFromError(error, "Circle note save failed."));
+      toast.notify(toastFromError(error, "Circle favorite update failed."));
+    }
+  };
+
+  const saveCircleTags = async (tags: string[]) => {
+    try {
+      const result = await api.setCircleUserTags(externalId, tags);
+      setDetail((current) => current ? { ...current, userTags: result.userTags } : current);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle tags update failed."));
     }
   };
 
@@ -694,11 +724,17 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{circle.externalId}</Badge>
                   <SyncBadge state={circle.syncState} />
+                  {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
+                <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button variant={circle.favorite ? "default" : "outline"} size="sm" onClick={() => void toggleCircleFavorite()}>
+                  <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
+                  Favorite
+                </Button>
                 <Button variant="outline" size="sm" asChild>
                   <a href={dlsiteMakerURL(circle.externalId)} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-4 w-4" />
@@ -723,64 +759,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <Stat label="Playable" value={String(playableCount)} />
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
-              <Card>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Star className="h-4 w-4 fill-current text-primary" />
-                    User rating
-                  </div>
-                  {isEditingState ? (
-                    <select
-                      className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={ratingDraft}
-                      onChange={(event) => setRatingDraft(Number(event.target.value))}
-                    >
-                      <option value={0}>Unrated</option>
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <option key={value} value={value}>
-                          {value}/5
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="text-2xl font-semibold">{circle.rating !== null && circle.rating > 0 ? `${circle.rating}/5` : "Unrated"}</div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      setRatingDraft(circle.rating ?? 0);
-                      setNoteDraft(circle.note);
-                      setIsEditingState((value) => !value);
-                    }}
-                  >
-                    {isEditingState ? "Cancel" : "Edit rating"}
-                  </Button>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <NotebookPen className="h-4 w-4 text-primary" />
-                    User note
-                  </div>
-                  {isEditingState ? (
-                    <textarea
-                      className="min-h-24 w-full resize-y rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={noteDraft}
-                      onChange={(event) => setNoteDraft(event.target.value)}
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{circle.note || "No note yet."}</p>
-                  )}
-                  <Button variant="outline" size="sm" disabled={!isEditingState} onClick={() => void saveUserState()}>
-                    Save note
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
           </CardContent>
         </Card>
 
@@ -1261,6 +1239,7 @@ function emptyCircleDetail(externalId: string): CircleDetail {
     rating: null,
     note: "",
     favorite: false,
+    userTags: [],
     localWorks: 0,
     playableWorks: 0,
     remoteWorks: 0,

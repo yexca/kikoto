@@ -169,6 +169,24 @@ CREATE TABLE user_party_state (
   PRIMARY KEY(user_id, party_id)
 );
 
+CREATE TABLE user_party_tag (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, name)
+);
+
+CREATE TABLE user_party_tag_assignment (
+  user_id INTEGER NOT NULL REFERENCES user_account(id) ON DELETE CASCADE,
+  party_id INTEGER NOT NULL REFERENCES party(id) ON DELETE CASCADE,
+  user_party_tag_id INTEGER NOT NULL REFERENCES user_party_tag(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, party_id, user_party_tag_id)
+);
+
 CREATE INDEX idx_party_external_id_lookup
   ON party_external_id(provider_id, id_type, external_id);
 
