@@ -195,8 +195,8 @@ export function LibraryPage() {
   const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
   const workScope = localScope;
-  const activePrimaryTab: "local" | "tracked" | "remote_sources" | "database" =
-    activeTab.kind === "source" ? "remote_sources" : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
+  const activePrimaryTab: "local" | "tracked" | "database" | null =
+    activeTab.kind === "source" ? null : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
@@ -394,13 +394,8 @@ export function LibraryPage() {
     }
   };
 
-  const changePrimaryTab = (tab: "local" | "tracked" | "remote_sources") => {
+  const changePrimaryTab = (tab: "local" | "tracked") => {
     setIsDatabaseMenuOpen(false);
-    if (tab === "remote_sources") {
-      const preferred = activeTab.kind === "source" && activeTab.source.enabled ? activeTab.source : sources.find((source) => source.enabled) ?? sources[0];
-      if (preferred) changeTab({ kind: "source", source: preferred });
-      return;
-    }
     changeLocalScope(tab);
   };
 
@@ -721,7 +716,13 @@ export function LibraryPage() {
         />
       )}
 
-      <LibraryPrimaryTabs active={activePrimaryTab} remoteDisabled={sources.length === 0} onChange={changePrimaryTab} />
+      <LibraryPrimaryTabs
+        active={activePrimaryTab}
+        activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
+        sources={sources}
+        onChange={changePrimaryTab}
+        onSourceChange={(source) => changeTab({ kind: "source", source })}
+      />
       {activePrimaryTab === "database" && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary" className="gap-1.5">
@@ -733,7 +734,6 @@ export function LibraryPage() {
 
       {activeTab.kind === "source" ? (
         <div className="space-y-3">
-          <RemoteSourceTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
           <RemoteSourcePanel
             source={activeTab.source}
             result={remoteResult}
@@ -858,12 +858,16 @@ const databaseScopeItems: { value: LocalLibraryScope; label: string; description
 
 function LibraryPrimaryTabs({
   active,
-  remoteDisabled,
+  activeSourceId,
+  sources,
   onChange,
+  onSourceChange,
 }: {
-  active: "local" | "tracked" | "remote_sources" | "database";
-  remoteDisabled: boolean;
-  onChange: (tab: "local" | "tracked" | "remote_sources") => void;
+  active: "local" | "tracked" | "database" | null;
+  activeSourceId: number | null;
+  sources: LibrarySource[];
+  onChange: (tab: "local" | "tracked") => void;
+  onSourceChange: (source: LibrarySource) => void;
 }) {
   return (
     <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
@@ -873,19 +877,8 @@ function LibraryPrimaryTabs({
       <TabButton active={active === "tracked"} onClick={() => onChange("tracked")} icon={<GitBranchPlus className="h-4 w-4" />}>
         Tracked
       </TabButton>
-      <TabButton active={active === "remote_sources"} onClick={() => onChange("remote_sources")} icon={<Cloud className="h-4 w-4" />} disabled={remoteDisabled}>
-        Remote Sources
-      </TabButton>
-    </div>
-  );
-}
-
-function RemoteSourceTabs({ activeTab, sources, onChange }: { activeTab: Extract<LibraryTab, { kind: "source" }>; sources: LibrarySource[]; onChange: (tab: LibraryTab) => void }) {
-  if (sources.length <= 1) return null;
-  return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card/60 p-1">
       {sources.map((source) => (
-        <TabButton key={source.id} active={activeTab.source.id === source.id} onClick={() => onChange({ kind: "source", source })} icon={<Cloud className="h-4 w-4" />} disabled={!source.enabled}>
+        <TabButton key={source.id} active={activeSourceId === source.id} onClick={() => onSourceChange(source)} icon={<Cloud className="h-4 w-4" />} disabled={!source.enabled}>
           {source.displayName}
         </TabButton>
       ))}
