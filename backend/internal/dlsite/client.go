@@ -3,6 +3,7 @@ package dlsite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"time"
 )
 
+var ErrNoProduct = errors.New("dlsite product not found")
+
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
@@ -23,32 +26,32 @@ type Client struct {
 }
 
 type Product struct {
-	WorkNo            string               `json:"workno"`
-	ProductID         string               `json:"product_id"`
-	SiteID            string               `json:"site_id"`
-	SiteIDTouch       string               `json:"site_id_touch"`
-	MakerID           string               `json:"maker_id"`
-	MakerName         string               `json:"maker_name"`
-	ProductName       string               `json:"product_name"`
-	WorkName          string               `json:"work_name"`
-	WorkNameKana      string               `json:"work_name_kana"`
-	Intro             string               `json:"intro"`
-	IntroShort        string               `json:"intro_s"`
-	RegistDate        string               `json:"regist_date"`
-	AgeCategoryString string               `json:"age_category_string"`
-	WorkType          string               `json:"work_type"`
-	WorkTypeString    string               `json:"work_type_string"`
-	ImageMain         Image                `json:"image_main"`
-	ImageThumb        Image                `json:"image_thum"`
-	ImageThumbMini    Image                `json:"image_thum_mini"`
-	Genres            []Genre              `json:"genres"`
-	Creators          map[string][]Creator `json:"creaters"`
-	TranslationInfo   TranslationInfo      `json:"translation_info"`
-	Raw               json.RawMessage      `json:"-"`
-	ProductRaw        json.RawMessage      `json:"-"`
-	DynamicRaw        json.RawMessage      `json:"-"`
-	RateAverage2DP    *float64             `json:"-"`
-	Language          string               `json:"-"`
+	WorkNo            string          `json:"workno"`
+	ProductID         string          `json:"product_id"`
+	SiteID            string          `json:"site_id"`
+	SiteIDTouch       string          `json:"site_id_touch"`
+	MakerID           string          `json:"maker_id"`
+	MakerName         string          `json:"maker_name"`
+	ProductName       string          `json:"product_name"`
+	WorkName          string          `json:"work_name"`
+	WorkNameKana      string          `json:"work_name_kana"`
+	Intro             string          `json:"intro"`
+	IntroShort        string          `json:"intro_s"`
+	RegistDate        string          `json:"regist_date"`
+	AgeCategoryString string          `json:"age_category_string"`
+	WorkType          string          `json:"work_type"`
+	WorkTypeString    string          `json:"work_type_string"`
+	ImageMain         Image           `json:"image_main"`
+	ImageThumb        Image           `json:"image_thum"`
+	ImageThumbMini    Image           `json:"image_thum_mini"`
+	Genres            []Genre         `json:"genres"`
+	Creators          Creators        `json:"creaters"`
+	TranslationInfo   TranslationInfo `json:"translation_info"`
+	Raw               json.RawMessage `json:"-"`
+	ProductRaw        json.RawMessage `json:"-"`
+	DynamicRaw        json.RawMessage `json:"-"`
+	RateAverage2DP    *float64        `json:"-"`
+	Language          string          `json:"-"`
 }
 
 type TranslationInfo struct {
@@ -77,17 +80,41 @@ type Creator struct {
 	Classification string `json:"classification"`
 }
 
+type Creators map[string][]Creator
+
+func (c *Creators) UnmarshalJSON(data []byte) error {
+	var grouped map[string][]Creator
+	if err := json.Unmarshal(data, &grouped); err == nil {
+		*c = grouped
+		return nil
+	}
+	var flat []Creator
+	if err := json.Unmarshal(data, &flat); err != nil {
+		return err
+	}
+	grouped = map[string][]Creator{}
+	for _, creator := range flat {
+		classification := strings.TrimSpace(creator.Classification)
+		if classification == "" {
+			classification = "unknown"
+		}
+		grouped[classification] = append(grouped[classification], creator)
+	}
+	*c = grouped
+	return nil
+}
+
 type MakerProfile struct {
-	MakerID      string   `json:"maker_id"`
-	MakerName    string   `json:"maker_name"`
-	SiteID       string   `json:"site_id"`
-	URL          string   `json:"url"`
-	WorkCodes    []string `json:"work_codes"`
+	MakerID      string        `json:"maker_id"`
+	MakerName    string        `json:"maker_name"`
+	SiteID       string        `json:"site_id"`
+	URL          string        `json:"url"`
+	WorkCodes    []string      `json:"work_codes"`
 	Series       []MakerSeries `json:"series"`
-	RawHTML      string   `json:"raw_html"`
-	PagesFetched int      `json:"pages_fetched"`
-	ReachedEnd   bool     `json:"reached_end"`
-	TotalWorks   int      `json:"total_works"`
+	RawHTML      string        `json:"raw_html"`
+	PagesFetched int           `json:"pages_fetched"`
+	ReachedEnd   bool          `json:"reached_end"`
+	TotalWorks   int           `json:"total_works"`
 }
 
 type MakerSeries struct {
@@ -299,7 +326,7 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 		return Product{}, err
 	}
 	if len(raws) == 0 {
-		return Product{}, fmt.Errorf("dlsite %s returned no product for %s", site, workno)
+		return Product{}, fmt.Errorf("%w: dlsite %s returned no product for %s", ErrNoProduct, site, workno)
 	}
 
 	var product Product

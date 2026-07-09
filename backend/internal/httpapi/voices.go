@@ -17,6 +17,7 @@ import (
 
 const voiceRemotePageSize = 48
 const voiceRemoteSourceTimeout = 5 * time.Second
+const unknownVoiceActorName = "unknown"
 
 type voiceSummary struct {
 	PersonID        int64              `json:"personId"`
@@ -762,6 +763,9 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 }
 
 func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, voiceName string) ([]voiceRemoteSourceSet, error) {
+	if isUnknownVoiceActorName(voiceName) {
+		return []voiceRemoteSourceSet{}, nil
+	}
 	sources, err := s.loadRemoteSourcesForAvailability(ctx)
 	if err != nil {
 		return nil, err
@@ -997,6 +1001,9 @@ func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCred
 	if len(actors) == 0 {
 		actors = parseKikoeruVoiceActors(snapshot.Raw)
 	}
+	if len(actors) == 0 {
+		actors = []string{unknownVoiceActorName}
+	}
 	seenActor := map[string]bool{}
 	for _, actor := range actors {
 		name := strings.TrimSpace(actor)
@@ -1024,6 +1031,10 @@ func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCred
 		}
 	}
 	return nil
+}
+
+func isUnknownVoiceActorName(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), unknownVoiceActorName)
 }
 
 func upsertPerson(ctx context.Context, tx *sql.Tx, name string) (int64, error) {

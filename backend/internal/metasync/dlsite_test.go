@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -12,9 +13,13 @@ import (
 
 type fakeDLsiteClient struct {
 	products map[string]dlsite.Product
+	errors   map[string]error
 }
 
 func (f fakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite.Product, error) {
+	if err := f.errors[workno]; err != nil {
+		return dlsite.Product{}, err
+	}
 	return f.products[workno], nil
 }
 
@@ -61,6 +66,37 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	}
 	if snapshotCount != 1 {
 		t.Fatalf("snapshotCount = %d", snapshotCount)
+	}
+}
+
+func TestSyncAllRecordsNoProductReviewCandidate(t *testing.T) {
+	db := openTestDB(t)
+	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
+		errors: map[string]error{
+			"RJ0123456": dlsite.ErrNoProduct,
+		},
+	})
+
+	result, err := syncer.SyncAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.SyncedWorks != 0 || result.FailedWorks != 0 || len(result.ReviewCandidates) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	var candidateType, externalKey, status, payload string
+	if err := db.QueryRow(`
+		SELECT candidate_type, external_key, status, payload_json
+		FROM workflow_candidate
+	`).Scan(&candidateType, &externalKey, &status, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if candidateType != "dlsite_unavailable_work" || externalKey != "RJ0123456" || status != "pending" {
+		t.Fatalf("candidate = %s/%s/%s", candidateType, externalKey, status)
+	}
+	if !strings.Contains(payload, `"reason":"dlsite_not_found"`) {
+		t.Fatalf("payload = %s", payload)
 	}
 }
 
