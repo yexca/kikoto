@@ -307,6 +307,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const toast = useToast();
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [remoteMatches, setRemoteMatches] = useState<VoiceRemoteSourceSet[]>([]);
+  const [isRemoteLoading, setIsRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<WorkFilter>("all");
@@ -322,6 +325,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   useEffect(() => {
     setIsLoading(true);
+    setRemoteMatches([]);
+    setRemoteError("");
     api.getVoice(personId).then((item) => {
       setDetail(item);
       setMessage("");
@@ -331,8 +336,37 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }).finally(() => setIsLoading(false));
   }, [personId]);
 
+  const loadRemoteMatches = async (notify = false) => {
+    setIsRemoteLoading(true);
+    setRemoteError("");
+    try {
+      const result = await api.getVoiceRemoteMatches(personId);
+      setRemoteMatches(result.remoteMatches);
+      const failed = result.remoteMatches.filter((source) => source.status === "error" || source.status === "timeout");
+      if (failed.length > 0 || notify) {
+        const timedOut = failed.some((source) => source.status === "timeout");
+        const message = failed.length > 0
+          ? `${failed.length} remote source${failed.length === 1 ? "" : "s"} ${timedOut ? "timed out or failed" : "failed"}.`
+          : "Remote matches refreshed.";
+        if (failed.length > 0) toast.info(message);
+        else toast.success(message);
+      }
+    } catch (error) {
+      const fallback = error instanceof Error ? error.message : "Remote matches unavailable.";
+      setRemoteError(fallback);
+      toast.notify(toastFromError(error, "Remote matches unavailable."));
+    } finally {
+      setIsRemoteLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!detail) return;
+    void loadRemoteMatches(false);
+  }, [detail?.personId]);
+
   const knownWorks = detail?.works ?? [];
-  const remoteWorks = useMemo(() => (detail?.remoteMatches ?? []).flatMap((source) => source.works), [detail]);
+  const remoteWorks = useMemo(() => remoteMatches.flatMap((source) => source.works), [remoteMatches]);
   const mergedWorks = useMemo(() => {
     const map = new Map<string, VoiceKnownWork | VoiceRemoteWork>();
     knownWorks.forEach((work) => map.set(work.primaryCode, work));
@@ -389,7 +423,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const refreshDetail = async () => {
     const item = await api.getVoice(personId);
-    setDetail(item);
+    setDetail((current) => item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item);
+    void loadRemoteMatches(false);
   };
 
   const saveVoiceTags = async (tags: string[]) => {
@@ -582,7 +617,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   };
 
   if (isLoading) {
-    return <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading voice actor</div>;
+    return <VoiceDetailSkeleton />;
   }
 
   if (!detail) {
@@ -644,7 +679,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             onMerged={() => void refreshDetail()}
             onMessage={setMessage}
           />
-          <RemoteSourcePanel sources={detail.remoteMatches} />
+          <RemoteSourcePanel
+            sources={remoteMatches}
+            loading={isRemoteLoading}
+            error={remoteError}
+            onRetry={() => void loadRemoteMatches(true)}
+          />
         </div>
       </section>
 
@@ -723,7 +763,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onEnsureWork={() => ensureVoiceWorkForList(work)}
             />
           ))}
-          {pageWorks.length === 0 && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
+          {isRemoteLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} />}
+          {pageWorks.length === 0 && !isRemoteLoading && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
         </div>
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
       </section>
@@ -1110,29 +1151,93 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
   };
 }
 
-function RemoteSourcePanel({ sources }: { sources: VoiceRemoteSourceSet[] }) {
+function RemoteSourcePanel({ sources, loading, error, onRetry }: { sources: VoiceRemoteSourceSet[]; loading: boolean; error: string; onRetry: () => void }) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div>
-          <h3 className="font-semibold">Remote Sources</h3>
-          <p className="text-sm text-muted-foreground">Queried with Kikoeru voice search syntax and recorded as workflow runs.</p>
-        </div>
-        {sources.map((source) => (
-          <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{source.displayName}</div>
-                <div className="text-xs text-muted-foreground">{source.total || source.works.length} matches · {source.elapsedMs} ms</div>
-              </div>
-              <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
-            </div>
-            {source.error && <div className="mt-2 text-xs text-destructive">{source.error}</div>}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">Remote Sources</h3>
+            <p className="text-sm text-muted-foreground">Queried after local detail renders, so source outages do not block the page.</p>
           </div>
-        ))}
-        {sources.length === 0 && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">No Kikoeru-compatible sources are configured.</div>}
+          <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
+        </div>
+        {loading && sources.length === 0 ? <RemoteSourceSkeleton /> : sources.map((source) => (
+            <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{source.displayName}</div>
+                  <div className="text-xs text-muted-foreground">{source.total || source.works.length} matches · {source.elapsedMs} ms</div>
+                </div>
+                <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
+              </div>
+              {source.error && <div className="mt-2 text-xs text-destructive">{source.error}</div>}
+            </div>
+          ))}
+        {loading && sources.length > 0 && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches</div>}
+        {error && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
+        {!loading && sources.length === 0 && !error && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">No Kikoeru-compatible sources are configured.</div>}
       </CardContent>
     </Card>
+  );
+}
+
+function RemoteSourceSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 2 }, (_, index) => (
+        <div key={index} className="space-y-2 rounded-md border bg-background p-3">
+          <EntitySkeletonLine className="h-4 w-32" />
+          <EntitySkeletonLine className="h-3 w-24" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function VoiceRemoteWorkSkeletonCards({ count }: { count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <Card key={`remote-loading-${index}`}>
+          <CardContent className="space-y-3 p-3">
+            <EntitySkeletonLine className="aspect-[3/4] w-full" />
+            <EntitySkeletonLine className="h-4 w-3/4" />
+            <EntitySkeletonLine className="h-3 w-1/2" />
+          </CardContent>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+function VoiceDetailSkeleton() {
+  return (
+    <div className="space-y-5">
+      <EntitySkeletonLine className="h-9 w-32" />
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Card>
+          <CardContent className="space-y-4 p-5">
+            <EntitySkeletonLine className="h-5 w-24" />
+            <EntitySkeletonLine className="h-9 w-64" />
+            <EntitySkeletonLine className="h-5 w-80" />
+            <div className="grid gap-3 sm:grid-cols-5">
+              {Array.from({ length: 5 }, (_, index) => <EntitySkeletonLine key={index} className="h-20 w-full" />)}
+            </div>
+          </CardContent>
+        </Card>
+        <div className="space-y-5">
+          <Card><CardContent className="space-y-3 p-4"><EntitySkeletonLine className="h-5 w-32" /><EntitySkeletonLine className="h-10 w-full" /></CardContent></Card>
+          <Card><CardContent className="space-y-3 p-4"><EntitySkeletonLine className="h-5 w-32" /><RemoteSourceSkeleton /></CardContent></Card>
+        </div>
+      </section>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
+        <VoiceRemoteWorkSkeletonCards count={6} />
+      </div>
+    </div>
   );
 }
 

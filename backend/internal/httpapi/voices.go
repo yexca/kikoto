@@ -16,6 +16,7 @@ import (
 )
 
 const voiceRemotePageSize = 48
+const voiceRemoteSourceTimeout = 5 * time.Second
 
 type voiceSummary struct {
 	PersonID        int64              `json:"personId"`
@@ -218,11 +219,6 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	matches, err := s.searchVoiceRemoteSources(r.Context(), summary.PersonID, summary.DisplayName)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
 	aliases, err := s.loadVoiceAliases(r.Context(), personID)
 	if err != nil {
 		writeError(w, err)
@@ -232,7 +228,34 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		voiceDetail
 		AliasRecords []voiceAlias `json:"aliasRecords"`
-	}{voiceDetail: voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: matches}, AliasRecords: aliases})
+	}{voiceDetail: voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: []voiceRemoteSourceSet{}}, AliasRecords: aliases})
+}
+
+func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	matches, err := s.searchVoiceRemoteSources(r.Context(), summary.PersonID, summary.DisplayName)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"personId": personID, "remoteMatches": matches})
 }
 
 func (s *Server) listVoiceAliasCandidates(w http.ResponseWriter, r *http.Request) {
@@ -779,12 +802,18 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			continue
 		}
 		started := time.Now()
+		sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
 		client := kikoeruClientForSource(source)
-		page, err := client.ListWorks(ctx, 1, voiceRemotePageSize, keyword)
+		page, err := client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
+		cancel()
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			result.Status = "error"
+			if errors.Is(err, context.DeadlineExceeded) || sourceCtx.Err() == context.DeadlineExceeded {
+				result.Status = "timeout"
+			} else {
+				result.Status = "error"
+			}
 			result.Error = err.Error()
 			results = append(results, result)
 			continue
