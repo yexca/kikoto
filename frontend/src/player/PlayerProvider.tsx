@@ -19,6 +19,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 
 import { Button } from "@/components/ui/button";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
+import { useAuth } from "@/auth/AuthProvider";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -70,6 +71,7 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const auth = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [queue, setQueue] = useState<PlayerTrack[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -200,6 +202,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
+    if (!auth.user) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
     const position = completed ? audio.duration || audio.currentTime : audio.currentTime;

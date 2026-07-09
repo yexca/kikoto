@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
+import { useAuth } from "@/auth/AuthProvider";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -75,6 +76,7 @@ type FavoriteEntity = "works" | "circles" | "voices";
 
 export function FavoritesPage() {
   const toast = useToast();
+  const auth = useAuth();
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>("works");
@@ -103,6 +105,10 @@ export function FavoritesPage() {
   const requestSeq = useRef(0);
 
   useEffect(() => {
+    if (!auth.user) {
+      setFavoriteLists([]);
+      return;
+    }
     let cancelled = false;
     api.listFavoriteLists()
       .then((lists) => {
@@ -114,9 +120,15 @@ export function FavoritesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [auth.user]);
 
   useEffect(() => {
+    if (!auth.user) {
+      setCircles([]);
+      setVoices([]);
+      setIsEntitiesLoading(false);
+      return;
+    }
     let cancelled = false;
     setIsEntitiesLoading(true);
     Promise.all([api.listCircles(), api.listVoices()])
@@ -134,9 +146,18 @@ export function FavoritesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [auth.user]);
 
   useEffect(() => {
+    if (!auth.user) {
+      setWorks([]);
+      setTotalWorks(0);
+      setShelfTotal(0);
+      setListCounts({});
+      setStatusCounts({});
+      setIsLoading(false);
+      return;
+    }
     const seq = ++requestSeq.current;
     setIsLoading(true);
     api.listFavoriteWorksPage(page, pageSize, query, activeList, statusFilter, availabilityFilter)
@@ -157,7 +178,7 @@ export function FavoritesPage() {
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
       });
-  }, [activeList, availabilityFilter, page, pageSize, query, statusFilter]);
+  }, [activeList, availabilityFilter, auth.user, page, pageSize, query, statusFilter]);
 
   useEffect(() => {
     setPage(1);
@@ -176,6 +197,16 @@ export function FavoritesPage() {
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
+
+  if (!auth.user) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          Sign in to view and manage your favorites.
+        </CardContent>
+      </Card>
+    );
+  }
 
   const openWork = (work: Work) => {
     window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites" }, "", `/${work.primaryCode}`);

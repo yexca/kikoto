@@ -98,8 +98,12 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       .finally(() => setIsSettingsLoading(false));
 
   useEffect(() => {
+    if (!canManageSources) {
+      setIsSettingsLoading(false);
+      return;
+    }
     void reload();
-  }, []);
+  }, [canManageSources]);
 
   const saveRuntimeSettings = async () => {
     if (saveSuffixError) {

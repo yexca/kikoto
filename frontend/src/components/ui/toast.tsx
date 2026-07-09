@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
 
 export type ToastKind = "success" | "info" | "warning" | "error";
 
@@ -69,6 +70,9 @@ export function useToast() {
 }
 
 export function toastFromError(error: unknown, fallback: string): ToastInput {
+  if (error instanceof ApiError && error.status === 401) {
+    return { kind: "warning", message: "Please sign in to use this feature." };
+  }
   return { kind: "error", message: error instanceof Error ? error.message : fallback };
 }
 

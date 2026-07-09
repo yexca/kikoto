@@ -183,11 +183,8 @@ type voiceRemoteWork struct {
 }
 
 func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
-	summaries, err := s.loadVoiceSummaries(r.Context(), user.ID)
+	userID := optionalUserID(r.Context())
+	summaries, err := s.loadVoiceSummaries(r.Context(), userID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -196,16 +193,13 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
+	summary, err := s.loadVoiceSummary(r.Context(), userID, personID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
@@ -214,7 +208,7 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	works, err := s.loadVoiceKnownWorks(r.Context(), user.ID, personID)
+	works, err := s.loadVoiceKnownWorks(r.Context(), userID, personID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -232,16 +226,13 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	personID, err := parseInt64PathValue(r, "personId")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
 		return
 	}
-	summary, err := s.loadVoiceSummary(r.Context(), user.ID, personID)
+	summary, err := s.loadVoiceSummary(r.Context(), userID, personID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "voice actor not found"})
@@ -436,7 +427,7 @@ func (s *Server) undoVoiceMergeReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateVoiceUserState(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:write")
+	user, ok := s.requirePermission(w, r, "favorites:write")
 	if !ok {
 		return
 	}

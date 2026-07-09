@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type WorkProgressSummary } from "@/lib/api";
 
 export type WorkCardBadge = {
@@ -350,6 +351,7 @@ export function WorkCardListButton({
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [resolvedWorkId, setResolvedWorkId] = useState<number | null>(null);
   const [lists, setLists] = useState<FavoriteList[]>([]);
@@ -391,7 +393,10 @@ export function WorkCardListButton({
         setSelected(new Set(workLists.filter((list) => list.selected).map((list) => list.id)));
       })
       .catch((nextError) => {
-        if (!cancelled) setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+        if (!cancelled) {
+          toast.notify(toastFromError(nextError, "Favorite lists could not be loaded."));
+          setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -419,6 +424,7 @@ export function WorkCardListButton({
       onSaved?.(result.favorite, effectiveWorkId);
       setOpen(false);
     } catch (nextError) {
+      toast.notify(toastFromError(nextError, "Favorite lists could not be saved."));
       setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be saved.");
     } finally {
       setSaving(false);
@@ -448,6 +454,7 @@ export function WorkCardListButton({
               setOpen(true);
             })
             .catch((nextError) => {
+              toast.notify(toastFromError(nextError, "Work could not be tracked."));
               setError(nextError instanceof Error ? nextError.message : "Work could not be tracked.");
             })
             .finally(() => setResolving(false));

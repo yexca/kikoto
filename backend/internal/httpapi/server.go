@@ -293,17 +293,14 @@ func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
 		writeError(w, err)
 		return
 	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
 	if pagedRequest {
-		s.listWorksPageFast(w, r, user.ID)
+		s.listWorksPageFast(w, r, userID)
 		return
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
@@ -373,14 +370,14 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
 			AND user_work_state.user_id = ?
 		ORDER BY work.created_at DESC
-	`, user.ID)
+	`, userID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	defer rows.Close()
 
-	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows)
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1052,17 +1049,14 @@ type fileLocationDetail struct {
 }
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
 		return
 	}
 
-	work, err := s.loadWorkDetail(r.Context(), user.ID, id)
+	work, err := s.loadWorkDetail(r.Context(), userID, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
@@ -1696,9 +1690,6 @@ func (s *Server) logicalWorkMediaCode(ctx context.Context, workID int64) (string
 }
 
 func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	code := normalizeDLsiteCode(r.PathValue("code"))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
@@ -1717,9 +1708,6 @@ func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
-		return
-	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
@@ -1849,9 +1837,6 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	path, _, err := s.localMediaPath(r, r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -1861,9 +1846,6 @@ func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	path, relPath, err := s.localMediaPath(r, r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -1894,9 +1876,6 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) downloadMedia(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	path, relPath, err := s.mediaDownloadPath(r, r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})

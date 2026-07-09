@@ -28,6 +28,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
+import { useAuth } from "@/auth/AuthProvider";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -304,6 +305,7 @@ function VoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice:
 }
 
 function VoiceDetailPage({ personId }: { personId: number }) {
+  const auth = useAuth();
   const toast = useToast();
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -672,13 +674,15 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         </Card>
 
         <div className="space-y-5">
-          <AliasReviewPanel
-            personId={detail.personId}
-            aliases={detail.aliasRecords ?? []}
-            onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
-            onMerged={() => void refreshDetail()}
-            onMessage={setMessage}
-          />
+          {auth.hasPermission("metadata:sync") && (
+            <AliasReviewPanel
+              personId={detail.personId}
+              aliases={detail.aliasRecords ?? []}
+              onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+              onMerged={() => void refreshDetail()}
+              onMessage={setMessage}
+            />
+          )}
           <RemoteSourcePanel
             sources={remoteMatches}
             loading={isRemoteLoading}

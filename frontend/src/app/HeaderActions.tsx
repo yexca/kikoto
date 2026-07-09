@@ -10,6 +10,7 @@ import {
   Database,
   ListChecks,
   Loader2,
+  LogIn,
   LogOut,
   Moon,
   Play,
@@ -32,9 +33,10 @@ import { api, type CurrentUser, type WorkflowRun } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type HeaderActionsProps = {
-  user: CurrentUser;
+  user: CurrentUser | null;
   hasPermission: (permission: string) => boolean;
   onLogout: () => void;
+  onOpenLogin: () => void;
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
   onOpenCommandPalette: () => void;
@@ -42,7 +44,7 @@ type HeaderActionsProps = {
 
 type SystemAction = "local_scan" | "dlsite_sync" | "recover_stale";
 
-export function HeaderActions({ user, hasPermission, onLogout, onOpenPage, onOpenPath, onOpenCommandPalette }: HeaderActionsProps) {
+export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOpenPage, onOpenPath, onOpenCommandPalette }: HeaderActionsProps) {
   const canRunWorkflows = hasPermission("workflows:run");
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
@@ -200,46 +202,53 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenPage, onOpe
         </HeaderPopover>
       </div>
 
-      <HeaderPopover
-        open={userOpen}
-        onOpenChange={setUserOpen}
-        trigger={
-          <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{userInitial(user)}</span>
-            <span className="hidden min-w-0 text-left sm:block">
-              <span className="block max-w-32 truncate text-xs font-medium leading-4">{user.displayName || user.username}</span>
-              <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">{user.role}{user.devMode ? " · dev" : ""}</span>
-            </span>
-            <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
-          </Button>
-        }
-        align="right"
-      >
-        <div className="w-72">
-          <div className="border-b p-3">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{userInitial(user)}</span>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
-                <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
+      {user ? (
+        <HeaderPopover
+          open={userOpen}
+          onOpenChange={setUserOpen}
+          trigger={
+            <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{userInitial(user)}</span>
+              <span className="hidden min-w-0 text-left sm:block">
+                <span className="block max-w-32 truncate text-xs font-medium leading-4">{user.displayName || user.username}</span>
+                <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">{user.role}{user.devMode ? " · dev" : ""}</span>
+              </span>
+              <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
+            </Button>
+          }
+          align="right"
+        >
+          <div className="w-72">
+            <div className="border-b p-3">
+              <div className="flex items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{userInitial(user)}</span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
+                  <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge variant="outline">{user.role}</Badge>
+                {user.devMode && <Badge variant="warning">dev mode</Badge>}
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="outline">{user.role}</Badge>
-              {user.devMode && <Badge variant="warning">dev mode</Badge>}
-            </div>
+            <MenuList>
+              <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setUserOpen(false); onOpenPage("settings"); }} />
+              {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setUserOpen(false); onOpenPage("users"); }} />}
+              {user.devMode ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground">Dev mode session does not require sign out.</div>
+              ) : (
+                <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setUserOpen(false); onLogout(); }} />
+              )}
+            </MenuList>
           </div>
-          <MenuList>
-            <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setUserOpen(false); onOpenPage("settings"); }} />
-            {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setUserOpen(false); onOpenPage("users"); }} />}
-            {user.devMode ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">Dev mode session does not require sign out.</div>
-            ) : (
-              <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setUserOpen(false); onLogout(); }} />
-            )}
-          </MenuList>
-        </div>
-      </HeaderPopover>
+        </HeaderPopover>
+      ) : (
+        <Button variant="outline" className="h-10 gap-2 px-3" onClick={onOpenLogin}>
+          <LogIn className="h-4 w-4" />
+          <span className="hidden sm:inline">Sign in</span>
+        </Button>
+      )}
     </div>
   );
 }

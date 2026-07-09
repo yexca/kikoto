@@ -191,6 +191,14 @@ func userFromContext(ctx context.Context) (currentUser, bool) {
 	return user, ok
 }
 
+func optionalUserID(ctx context.Context) int64 {
+	user, ok := userFromContext(ctx)
+	if !ok {
+		return 0
+	}
+	return user.ID
+}
+
 func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, permission string) (currentUser, bool) {
 	user, ok := userFromContext(r.Context())
 	if !ok {

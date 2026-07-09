@@ -844,6 +844,21 @@ export function assetURL(path: string) {
   return `${API_BASE}${path}`;
 }
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function responseError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => ({ error: fallback }));
+  return new ApiError(payload.error ?? fallback, response.status);
+}
+
 export function mediaDownloadURL(locationId: number) {
   return assetURL(`/api/media/${locationId}/download`);
 }
@@ -851,7 +866,7 @@ export function mediaDownloadURL(locationId: number) {
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { credentials: "include" });
   if (!response.ok) {
-    throw new Error(`GET ${path} failed with ${response.status}`);
+    throw await responseError(response, `GET ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -859,7 +874,7 @@ async function getJSON<T>(path: string): Promise<T> {
 async function postJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { method: "POST", credentials: "include" });
   if (!response.ok) {
-    throw new Error(`POST ${path} failed with ${response.status}`);
+    throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -872,8 +887,7 @@ async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: `POST ${path} failed with ${response.status}` }));
-    throw new Error(payload.error ?? `POST ${path} failed with ${response.status}`);
+    throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -886,8 +900,7 @@ async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: `PATCH ${path} failed with ${response.status}` }));
-    throw new Error(payload.error ?? `PATCH ${path} failed with ${response.status}`);
+    throw await responseError(response, `PATCH ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -900,8 +913,7 @@ async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: `PUT ${path} failed with ${response.status}` }));
-    throw new Error(payload.error ?? `PUT ${path} failed with ${response.status}`);
+    throw await responseError(response, `PUT ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -909,8 +921,7 @@ async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
 async function deleteJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: `DELETE ${path} failed with ${response.status}` }));
-    throw new Error(payload.error ?? `DELETE ${path} failed with ${response.status}`);
+    throw await responseError(response, `DELETE ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

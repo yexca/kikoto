@@ -35,6 +35,7 @@ function AuthenticatedApp() {
   const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
     [auth],
@@ -85,10 +86,6 @@ function AuthenticatedApp() {
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
-  }
-
-  if (!auth.user) {
-    return <LoginPage />;
   }
 
   return (
@@ -150,6 +147,7 @@ function AuthenticatedApp() {
                 user={auth.user}
                 hasPermission={auth.hasPermission}
                 onLogout={() => void auth.logout()}
+                onOpenLogin={() => setLoginOpen(true)}
                 onOpenPage={openPage}
                 onOpenPath={openPath}
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}
@@ -166,7 +164,8 @@ function AuthenticatedApp() {
               {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
               {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
               {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-              {page === "users" && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
+              {page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
+              {page === "users" && !auth.user && <PlaceholderPage title="Users" />}
               {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />
               )}
@@ -203,8 +202,19 @@ function AuthenticatedApp() {
           onOpenPage={openPage}
           onOpenPath={openPath}
         />
+        {loginOpen && <LoginOverlay onClose={() => setLoginOpen(false)} />}
       </div>
     </PlayerProvider>
+  );
+}
+
+function LoginOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onMouseDown={onClose}>
+      <div onMouseDown={(event) => event.stopPropagation()}>
+        <LoginPage embedded onSuccess={onClose} />
+      </div>
+    </div>
   );
 }
 

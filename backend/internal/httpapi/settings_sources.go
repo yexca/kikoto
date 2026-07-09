@@ -393,9 +393,6 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cacheEnabled":          s.settingBool(r, "remote_cache_enabled", false),
 		"directoryRoutingRules": s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
@@ -551,9 +548,6 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, code, display_name, source_type, enabled, config_json
 		FROM file_source
@@ -732,10 +726,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requirePermission(w, r, "library:read")
-	if !ok {
-		return
-	}
+	userID := optionalUserID(r.Context())
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
@@ -779,7 +770,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummaries(r.Context(), user.ID, remotePage.Works)
+	works, err := s.remoteWorkSummaries(r.Context(), userID, remotePage.Works)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -805,9 +796,6 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
@@ -858,9 +846,6 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
-		return
-	}
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
