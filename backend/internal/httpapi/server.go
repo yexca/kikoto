@@ -343,6 +343,12 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 				FROM work_source_presence AS presence
 				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 				WHERE presence.work_id = work.id
+					OR presence.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
 			) AS source_presence,
 			(
 				SELECT snapshot_json
@@ -507,7 +513,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.Series = metadata.Series
 		item.SeriesTitleID = s.seriesTitleIDForWork(ctx, item.PrimaryCode)
 		if len(item.Availability) == 0 {
-			item.Availability = availabilityBadges(availableLocationTypes.String)
+			item.Availability = availabilityBadgesWithPresence(availableLocationTypes.String, item.SourcePresence)
 		}
 		progress, err := s.workProgressSummary(ctx, userID, progressWorkID)
 		if err != nil {
@@ -617,19 +623,18 @@ func libraryListWhere(scope string, status string, queryText string) (string, []
 	case "local":
 		clauses = append(clauses, `EXISTS (
 			SELECT 1
-			FROM media_file_location AS scope_location
-			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
+			FROM work_source_presence AS scope_presence
 			WHERE (
-					scope_item.work_id = work.id
-					OR scope_item.work_id IN (
+					scope_presence.work_id = work.id
+					OR scope_presence.work_id IN (
 						SELECT sibling.work_id
 						FROM work_edition AS current_edition
 						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
 						WHERE current_edition.work_id = work.id
 					)
 				)
-				AND scope_location.location_type = 'local'
-				AND scope_location.availability = 'available'
+				AND scope_presence.presence_type = 'local'
+				AND scope_presence.availability = 'available'
 		)`)
 	case "tracked":
 		clauses = append(clauses, `EXISTS (
@@ -656,19 +661,18 @@ func libraryListWhere(scope string, status string, queryText string) (string, []
 		)`)
 		clauses = append(clauses, `NOT EXISTS (
 			SELECT 1
-			FROM media_file_location AS scope_location
-			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
+			FROM work_source_presence AS scope_presence
 			WHERE (
-					scope_item.work_id = work.id
-					OR scope_item.work_id IN (
+					scope_presence.work_id = work.id
+					OR scope_presence.work_id IN (
 						SELECT sibling.work_id
 						FROM work_edition AS current_edition
 						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
 						WHERE current_edition.work_id = work.id
 					)
 				)
-				AND scope_location.location_type = 'local'
-				AND scope_location.availability = 'available'
+				AND scope_presence.presence_type = 'local'
+				AND scope_presence.availability = 'available'
 		)`)
 	case "no_source":
 		clauses = append(clauses, libraryNoSourceWhereClause())
@@ -879,6 +883,12 @@ func libraryListBaseSelectSQL(where string, includeMetadataSortColumns bool) str
 				FROM work_source_presence AS presence
 				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 				WHERE presence.work_id = work.id
+					OR presence.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
 			) AS source_presence,
 			(
 				SELECT snapshot_json
@@ -1056,6 +1066,11 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
+		writeError(w, err)
+		return
+	}
+
 	work, err := s.loadWorkDetail(r.Context(), userID, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1079,13 +1094,13 @@ func workMatchesListScope(work libraryWorkSummary, scope string) bool {
 	case "", "all":
 		return true
 	case "local":
-		return stringSliceContainsFold(work.Availability, "local")
+		return workHasAvailableSourcePresenceType(work, "local")
 	case "tracked":
 		return workHasAvailableSourcePresenceType(work, "tracked")
 	case "remote":
 		return workHasAvailableSourcePresenceType(work, "remote_source") &&
 			!workHasAvailableSourcePresenceType(work, "tracked") &&
-			!stringSliceContainsFold(work.Availability, "local")
+			!workHasAvailableSourcePresenceType(work, "local")
 	case "no_source":
 		return len(work.SourcePresence) == 0 && len(work.Availability) == 0
 	default:
@@ -1342,7 +1357,7 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 	`, code).Scan(&trackCount, &availableLocations, &locationTypes); err != nil {
 		return 0, 0, nil, false
 	}
-	return trackCount, availableLocations, availabilityBadges(locationTypes.String), true
+	return trackCount, availableLocations, availabilityBadgesWithPresence(locationTypes.String, s.sourcePresenceForCode(ctx, code)), true
 }
 
 func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
@@ -1356,11 +1371,20 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 			COALESCE(presence.remote_id, ''),
 			COALESCE(presence.source_url, '')
 		FROM work_source_presence AS presence
-		INNER JOIN work ON work.id = presence.work_id
 		LEFT JOIN file_source AS source ON source.id = presence.file_source_id
-		WHERE UPPER(work.primary_code) = UPPER(?)
+		WHERE presence.work_id IN (
+			SELECT work.id
+			FROM work
+			WHERE UPPER(work.primary_code) = UPPER(?)
+			UNION
+			SELECT sibling.work_id
+			FROM work AS current_work
+			INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+			INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+			WHERE UPPER(current_work.primary_code) = UPPER(?)
+		)
 		ORDER BY presence.presence_type, source.display_name, presence.file_source_id
-	`, code)
+	`, code, code)
 	if err != nil {
 		return nil
 	}
@@ -3419,6 +3443,156 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	return work, nil
 }
 
+func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) error {
+	var existing int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM media_item AS item
+		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		WHERE (
+				item.work_id = ?
+				OR item.work_id IN (
+					SELECT sibling.work_id
+					FROM work_edition AS current_edition
+					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+					WHERE current_edition.work_id = ?
+				)
+			)
+			AND location.location_type = 'local'
+			AND location.availability = 'available'
+	`, workID, workID).Scan(&existing); err != nil {
+		return err
+	}
+	if existing > 0 {
+		return nil
+	}
+
+	var targetWorkID int64
+	var fileSourceID int64
+	var relPath string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT presence.work_id, presence.file_source_id, presence.source_url
+		FROM work_source_presence AS presence
+		INNER JOIN file_source AS source ON source.id = presence.file_source_id
+		WHERE (
+				presence.work_id = ?
+				OR presence.work_id IN (
+					SELECT sibling.work_id
+					FROM work_edition AS current_edition
+					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+					WHERE current_edition.work_id = ?
+				)
+			)
+			AND presence.presence_type = 'local'
+			AND presence.availability = 'available'
+			AND source.source_type = 'local_folder'
+		ORDER BY CASE WHEN presence.work_id = ? THEN 0 ELSE 1 END, source.priority ASC, presence.updated_at DESC
+		LIMIT 1
+	`, workID, workID, workID).Scan(&targetWorkID, &fileSourceID, &relPath); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return s.indexLocalMediaForWork(ctx, targetWorkID, fileSourceID, relPath)
+}
+
+func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
+	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
+	if relPath == "" {
+		return nil
+	}
+	root, err := filepath.Abs(s.cfg.DataRoot)
+	if err != nil {
+		return err
+	}
+	workPath := filepath.Join(root, filepath.FromSlash(relPath))
+	workPath, err = filepath.Abs(workPath)
+	if err != nil {
+		return err
+	}
+	if !isPathWithinRoot(root, workPath) {
+		return fmt.Errorf("local work path escapes data root")
+	}
+
+	files, err := localfs.CollectWorkFiles(root, workPath)
+	if err != nil {
+		return err
+	}
+	var code string
+	var title string
+	if err := s.db.QueryRowContext(ctx, "SELECT primary_code, title FROM work WHERE id = ?", workID).Scan(&code, &title); err != nil {
+		return err
+	}
+	folder := localfs.WorkFolder{
+		Code:    strings.ToUpper(strings.TrimSpace(code)),
+		Title:   title,
+		AbsPath: workPath,
+		RelPath: relPath,
+		Files:   files,
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	audioTrackNo := 1
+	seenPaths := map[string]bool{}
+	for _, file := range files {
+		seenPaths[file.RelPath] = true
+		kind := localFileKind(file.WorkRelPath)
+		trackNo := 0
+		if kind == "audio" {
+			trackNo = audioTrackNo
+			audioTrackNo++
+		}
+		mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
+		if err != nil {
+			return err
+		}
+		if _, err := upsertDetectedLocation(ctx, tx, mediaItemID, fileSourceID, file); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE work_source_presence
+		SET raw_json = ?,
+			last_checked_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE work_id = ?
+			AND file_source_id = ?
+			AND presence_type = 'local'
+	`, mustJSON(map[string]any{
+		"code":                 folder.Code,
+		"title":                folder.Title,
+		"rel_path":             filepath.ToSlash(folder.RelPath),
+		"files":                len(files),
+		"file_tree_scanned":    true,
+		"file_tree_scanned_at": time.Now().UTC().Format("2006-01-02 15:04:05"),
+	}), workID, fileSourceID); err != nil {
+		return err
+	}
+	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	go s.probeLocalDurationsForFiles(context.Background(), fileSourceID, files)
+	return nil
+}
+
+func isPathWithinRoot(root string, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
 func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workResolveResponse, error) {
 	code = normalizeDLsiteCode(code)
 	if code == "" {
@@ -4301,11 +4475,10 @@ func (s *Server) localWorkCodesNeedingRemoteAvailability(ctx context.Context, so
 		WHERE work.primary_code <> ''
 			AND EXISTS (
 				SELECT 1
-				FROM media_item AS item
-				INNER JOIN media_file_location AS location ON location.media_item_id = item.id
-				WHERE item.work_id = work.id
-					AND location.location_type = 'local'
-					AND location.availability = 'available'
+				FROM work_source_presence AS local_presence
+				WHERE local_presence.work_id = work.id
+					AND local_presence.presence_type = 'local'
+					AND local_presence.availability = 'available'
 			)
 			AND (
 	`
@@ -4539,11 +4712,10 @@ type localScanResult struct {
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
 
-	workFolders, scanSummary, err := localfs.Discover(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
+	workFolders, scanSummary, err := localfs.DiscoverFolders(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
 	if err != nil {
 		return localScanResult{}, err
 	}
-	probeLocalAudioDurations(ctx, workFolders)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -4589,7 +4761,6 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 	updatedLocations := 0
 	skippedLocations := 0
 	newWorkCodes := []string{}
-	seenLocationPaths := map[string]bool{}
 	seenWorkIDs := map[int64]bool{}
 	for _, folder := range workFolders {
 		_, existedBefore := s.workIDForCode(ctx, folder.Code)
@@ -4608,49 +4779,17 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 			SourceURL:    filepath.ToSlash(folder.RelPath),
 			Availability: "available",
 			RawJSON: mustJSON(map[string]any{
-				"code":     folder.Code,
-				"title":    folder.Title,
-				"rel_path": filepath.ToSlash(folder.RelPath),
-				"files":    len(folder.Files),
+				"code":              folder.Code,
+				"title":             folder.Title,
+				"rel_path":          filepath.ToSlash(folder.RelPath),
+				"files":             len(folder.Files),
+				"file_tree_scanned": false,
 			}),
 		}); err != nil {
 			return localScanResult{}, err
 		}
-
-		audioTrackNo := 1
-		for _, file := range folder.Files {
-			seenLocationPaths[file.RelPath] = true
-			exists, err := localLocationExists(ctx, tx, fileSourceID, file)
-			if err != nil {
-				return localScanResult{}, err
-			}
-			if exists {
-				if err := refreshLocalDurationIfMissing(ctx, tx, fileSourceID, file); err != nil {
-					return localScanResult{}, err
-				}
-				skippedLocations++
-				continue
-			}
-			kind := localFileKind(file.WorkRelPath)
-			trackNo := 0
-			if kind == "audio" {
-				trackNo = audioTrackNo
-				audioTrackNo++
-			}
-			mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
-			if err != nil {
-				return localScanResult{}, err
-			}
-			if _, err := upsertDetectedLocation(ctx, tx, mediaItemID, fileSourceID, file); err != nil {
-				return localScanResult{}, err
-			}
-			updatedLocations++
-		}
 	}
-	missingLocations, err := markMissingLocalLocations(ctx, tx, fileSourceID, seenLocationPaths)
-	if err != nil {
-		return localScanResult{}, err
-	}
+	missingLocations := 0
 	if err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs); err != nil {
 		return localScanResult{}, err
 	}
@@ -4847,6 +4986,23 @@ func probeLocalAudioDurations(ctx context.Context, folders []localfs.WorkFolder)
 	}
 }
 
+func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID int64, files []localfs.LocalFile) {
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	for _, file := range files {
+		if localFileKind(file.WorkRelPath) != "audio" {
+			continue
+		}
+		duration, ok := probeAudioDurationSeconds(probeCtx, file.AbsPath)
+		if !ok {
+			continue
+		}
+		if err := s.updateLocalDuration(probeCtx, fileSourceID, file, duration); err != nil {
+			return
+		}
+	}
+}
+
 func probeAudioDurationSeconds(ctx context.Context, path string) (int64, bool) {
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -5036,6 +5192,39 @@ func refreshLocalDurationIfMissing(ctx context.Context, tx *sql.Tx, fileSourceID
 	return err
 }
 
+func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, file localfs.LocalFile, durationSeconds int64) error {
+	if durationSeconds <= 0 {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET duration_seconds = COALESCE(duration_seconds, ?)
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+			AND path = ?
+			AND size_bytes = ?
+			AND availability = 'available'
+			AND duration_seconds IS NULL
+	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE media_item
+		SET duration_seconds = COALESCE(duration_seconds, ?)
+		WHERE id IN (
+			SELECT media_item_id
+			FROM media_file_location
+			WHERE file_source_id = ?
+				AND location_type = 'local'
+				AND path = ?
+				AND size_bytes = ?
+				AND availability = 'available'
+		)
+			AND duration_seconds IS NULL
+	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes)
+	return err
+}
+
 func nullableDuration(value *int64) any {
 	if value == nil || *value <= 0 {
 		return nil
@@ -5067,6 +5256,47 @@ func markMissingLocalLocations(ctx context.Context, tx *sql.Tx, fileSourceID int
 			AND location_type = 'local'
 			AND availability = 'available'
 	`, fileSourceID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	missingIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			return 0, err
+		}
+		if !seenPaths[path] {
+			missingIDs = append(missingIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, id := range missingIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE media_file_location
+			SET availability = 'missing',
+				last_checked_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, id); err != nil {
+			return 0, err
+		}
+	}
+	return len(missingIDs), nil
+}
+
+func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID int64, fileSourceID int64, seenPaths map[string]bool) (int, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT location.id, location.path
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = ?
+			AND location.file_source_id = ?
+			AND location.location_type = 'local'
+			AND location.availability = 'available'
+	`, workID, fileSourceID)
 	if err != nil {
 		return 0, err
 	}
@@ -5479,6 +5709,38 @@ func availabilityBadges(rawTypes string) []string {
 		return []string{"missing"}
 	}
 	return badges
+}
+
+func availabilityBadgesWithPresence(rawTypes string, presence []sourcePresenceItem) []string {
+	badges := availabilityBadges(rawTypes)
+	hasLocalPresence := false
+	for _, item := range presence {
+		if item.Type == "local" && item.Availability == "available" {
+			hasLocalPresence = true
+			break
+		}
+	}
+	if !hasLocalPresence {
+		return badges
+	}
+	filtered := make([]string, 0, len(badges)+1)
+	hasLocalBadge := false
+	for _, badge := range badges {
+		if badge == "missing" {
+			continue
+		}
+		if badge == "local" {
+			hasLocalBadge = true
+		}
+		filtered = append(filtered, badge)
+	}
+	if !hasLocalBadge {
+		filtered = append([]string{"local"}, filtered...)
+	}
+	if len(filtered) == 0 {
+		return []string{"local"}
+	}
+	return filtered
 }
 
 func (s *Server) coverURL(primaryCode string) string {

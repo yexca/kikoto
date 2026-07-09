@@ -48,6 +48,22 @@ type Options struct {
 }
 
 func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
+	workFolders, summary, err := DiscoverFolders(root, options)
+	if err != nil {
+		return nil, Summary{}, err
+	}
+	for i := range workFolders {
+		files, err := CollectWorkFiles(root, workFolders[i].AbsPath)
+		if err != nil {
+			return nil, Summary{}, err
+		}
+		workFolders[i].Files = files
+		summary.ScannedFiles += len(files)
+	}
+	return workFolders, summary, nil
+}
+
+func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error) {
 	if options.ScanDepth <= 0 {
 		options.ScanDepth = 2
 	}
@@ -102,14 +118,6 @@ func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 	summary.CandidateFolders = len(candidates)
 	workFolders := chooseDeepest(candidates)
 	summary.DuplicateGroups = duplicateGroups(workFolders)
-	for i := range workFolders {
-		files, err := collectFiles(absRoot, workFolders[i].AbsPath)
-		if err != nil {
-			return nil, Summary{}, err
-		}
-		workFolders[i].Files = files
-		summary.ScannedFiles += len(files)
-	}
 
 	sort.Slice(workFolders, func(i, j int) bool {
 		return workFolders[i].RelPath < workFolders[j].RelPath
@@ -174,6 +182,18 @@ func chooseDeepest(candidates []WorkFolder) []WorkFolder {
 		}
 	}
 	return chosen
+}
+
+func CollectWorkFiles(root string, workPath string) ([]LocalFile, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	absWorkPath, err := filepath.Abs(workPath)
+	if err != nil {
+		return nil, err
+	}
+	return collectFiles(absRoot, absWorkPath)
 }
 
 func collectFiles(root string, workPath string) ([]LocalFile, error) {
