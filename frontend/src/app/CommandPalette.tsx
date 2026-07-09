@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, FileAudio, Search, X } from "lucide-react";
 
 import { commandActions } from "@/app/HeaderActions";
-import { type PageID } from "@/app/navigation";
+import { type NavigationItem, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -12,15 +12,16 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hasPermission: (permission: string) => boolean;
+  visibleNavItems: readonly NavigationItem[];
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
 };
 
-export function CommandPalette({ open, onOpenChange, hasPermission, onOpenPage, onOpenPath }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, hasPermission, visibleNavItems, onOpenPage, onOpenPath }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const baseActions = useMemo(() => commandActions({ hasPermission, onOpenPage, onOpenPath }), [hasPermission, onOpenPage, onOpenPath]);
+  const baseActions = useMemo(() => commandActions({ hasPermission, visibleNavItems, onOpenPage, onOpenPath }), [hasPermission, visibleNavItems, onOpenPage, onOpenPath]);
   const cleanQuery = query.trim();
   const codeMatch = WORK_CODE_PATTERN.test(cleanQuery);
   const actions = useMemo(() => {

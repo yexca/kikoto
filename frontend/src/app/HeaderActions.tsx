@@ -25,7 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { navItems, type PageID } from "@/app/navigation";
+import { type NavigationItem, type PageID } from "@/app/navigation";
 import { applyThemeMode, getStoredThemeMode, resolvedThemeMode, storeThemeMode, type ThemeMode, watchSystemTheme } from "@/app/theme";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -342,14 +342,15 @@ function userInitial(user: CurrentUser) {
 
 export function commandActions({
   hasPermission,
+  visibleNavItems,
   onOpenPage,
   onOpenPath,
 }: {
   hasPermission: (permission: string) => boolean;
+  visibleNavItems: readonly NavigationItem[];
   onOpenPage: (id: PageID) => void;
   onOpenPath: (path: string, state?: unknown) => void;
 }) {
-  const visibleNavItems = navItems.filter((item) => !item.permission || hasPermission(item.permission));
   return [
     ...visibleNavItems.map((item) => ({
       id: `page:${item.id}`,

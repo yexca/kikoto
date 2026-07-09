@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
-import { navItems, type PageID } from "@/app/navigation";
+import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) =
 const CreatorWorksPage = lazy(() => import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })));
 const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
 
-const mobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
+const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "settings"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 
@@ -36,11 +36,21 @@ function AuthenticatedApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const authState = auth.user ? "authenticated" : "anonymous";
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => !item.permission || auth.hasPermission(item.permission)),
-    [auth],
+    () => visibleNavigationItems({ state: authState, hasPermission: auth.hasPermission }),
+    [auth.hasPermission, authState],
   );
+  const mobileNavItems = useMemo(() => {
+    const preferred = preferredMobileTabs
+      .map((id) => visibleNavItems.find((item) => item.id === id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (preferred.length >= 4) return preferred.slice(0, 4);
+    const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
+    return [...preferred, ...additions].slice(0, 4);
+  }, [visibleNavItems]);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
+  const canAccessCurrentPage = canAccessPage(page, authState, auth.hasPermission);
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -157,15 +167,15 @@ function AuthenticatedApp() {
 
           <Suspense fallback={<PageLoading />}>
             <div className="px-4 py-5 lg:px-6">
-              {page === "library" && <LibraryPage />}
-              {page === "favorites" && <FavoritesPage />}
-              {page === "circles" && <CirclesPage />}
-              {page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-              {page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
-              {page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-              {page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
-              {page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-              {page === "users" && !auth.user && <PlaceholderPage title="Users" />}
+              {!canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
+              {canAccessCurrentPage && page === "library" && <LibraryPage />}
+              {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
+              {canAccessCurrentPage && page === "circles" && <CirclesPage />}
+              {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
+              {canAccessCurrentPage && page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
+              {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+              {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} />}
+              {canAccessCurrentPage && page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
               {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />
               )}
@@ -175,17 +185,15 @@ function AuthenticatedApp() {
 
         <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur lg:hidden">
           <nav className="grid grid-cols-4">
-            {mobileTabs.map((id) => {
-              const item = visibleNavItems.find((navItem) => navItem.id === id);
-              if (!item) return null;
+            {mobileNavItems.map((item) => {
               return (
                 <button
-                  key={id}
+                  key={item.id}
                   className={cn(
                     "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
-                    page === id && "bg-muted text-foreground",
+                    page === item.id && "bg-muted text-foreground",
                   )}
-                  onClick={() => openPage(id)}
+                  onClick={() => openPage(item.id)}
                 >
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -199,6 +207,7 @@ function AuthenticatedApp() {
           open={commandPaletteOpen}
           onOpenChange={setCommandPaletteOpen}
           hasPermission={auth.hasPermission}
+          visibleNavItems={visibleNavItems}
           onOpenPage={openPage}
           onOpenPath={openPath}
         />
@@ -282,6 +291,28 @@ function PlaceholderPage({ title }: { title: string }) {
     <section className="rounded-lg border bg-card p-5">
       <h2 className="text-lg font-semibold">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">This surface is reserved for the next product slice.</p>
+    </section>
+  );
+}
+
+function AccessRequiredPage({ page, onOpenLogin }: { page: PageID; onOpenLogin: () => void }) {
+  const item = navItems.find((navItem) => navItem.id === page);
+  const title = item?.label ?? "This page";
+  const needsLogin = item?.audience === "authenticated";
+  return (
+    <section className="rounded-lg border bg-card p-6">
+      <div className="mb-3 grid h-10 w-10 place-items-center rounded-md bg-secondary text-secondary-foreground">
+        <Lock className="h-5 w-5" />
+      </div>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {needsLogin ? "Sign in to access this page." : "Your account does not have permission to access this page."}
+      </p>
+      {needsLogin && (
+        <Button className="mt-4" onClick={onOpenLogin}>
+          Sign in
+        </Button>
+      )}
     </section>
   );
 }
