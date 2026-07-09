@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -29,6 +30,9 @@ type DLsiteSyncer struct {
 	client        DLsiteClient
 	cacheRoot     string
 	languages     []string
+	requestDelay  time.Duration
+	backoff       time.Duration
+	maxBackoff    time.Duration
 	triggerType   string
 	triggerReason string
 }
@@ -68,6 +72,22 @@ func (s *DLsiteSyncer) WithCacheRoot(cacheRoot string) *DLsiteSyncer {
 
 func (s *DLsiteSyncer) WithLanguages(languages []string) *DLsiteSyncer {
 	s.languages = normalizeLanguages(languages)
+	return s
+}
+
+func (s *DLsiteSyncer) WithRequestPacing(requestDelay time.Duration, backoff time.Duration, maxBackoff time.Duration) *DLsiteSyncer {
+	if requestDelay < 0 {
+		requestDelay = 0
+	}
+	if backoff < 0 {
+		backoff = 0
+	}
+	if maxBackoff < 0 {
+		maxBackoff = 0
+	}
+	s.requestDelay = requestDelay
+	s.backoff = backoff
+	s.maxBackoff = maxBackoff
 	return s
 }
 
@@ -134,7 +154,7 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 					if err := s.applyProduct(ctx, baseWorkID, baseProduct); err != nil {
 						result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
 					} else if s.cacheRoot != "" {
-						if _, err := s.client.DownloadCover(ctx, baseProduct, s.cacheRoot); err != nil {
+						if _, err := s.downloadCover(ctx, baseProduct); err != nil {
 							result.Failures = append(result.Failures, fmt.Sprintf("%s base cover: %s", baseCode, err.Error()))
 						}
 					}
@@ -142,7 +162,7 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 			}
 		}
 		if s.cacheRoot != "" {
-			if _, err := s.client.DownloadCover(ctx, product, s.cacheRoot); err != nil {
+			if _, err := s.downloadCover(ctx, product); err != nil {
 				result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", target.PrimaryCode, err.Error()))
 			}
 		}
@@ -174,16 +194,82 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 		return 0, err
 	}
 	if s.cacheRoot != "" {
-		_, _ = s.client.DownloadCover(ctx, product, s.cacheRoot)
+		_, _ = s.downloadCover(ctx, product)
 	}
 	return workID, nil
 }
 
 func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
-	if client, ok := s.client.(DLsiteClientWithOptions); ok {
-		return client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: s.languages})
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := s.waitRequestDelay(ctx); err != nil {
+			return dlsite.Product{}, err
+		}
+		var product dlsite.Product
+		var err error
+		if client, ok := s.client.(DLsiteClientWithOptions); ok {
+			product, err = client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: s.languages})
+		} else {
+			product, err = s.client.FetchProduct(ctx, workno)
+		}
+		if err == nil {
+			return product, nil
+		}
+		lastErr = err
+		if errors.Is(err, dlsite.ErrNoProduct) || !dlsite.IsRetryableHTTPError(err) || attempt >= 2 {
+			return dlsite.Product{}, err
+		}
+		if err := sleepWithContext(ctx, s.retryBackoff(err, attempt)); err != nil {
+			return dlsite.Product{}, err
+		}
 	}
-	return s.client.FetchProduct(ctx, workno)
+	return dlsite.Product{}, lastErr
+}
+
+func (s *DLsiteSyncer) downloadCover(ctx context.Context, product dlsite.Product) (string, error) {
+	if err := s.waitRequestDelay(ctx); err != nil {
+		return "", err
+	}
+	return s.client.DownloadCover(ctx, product, s.cacheRoot)
+}
+
+func (s *DLsiteSyncer) waitRequestDelay(ctx context.Context) error {
+	return sleepWithContext(ctx, s.requestDelay)
+}
+
+func (s *DLsiteSyncer) retryBackoff(err error, attempt int) time.Duration {
+	var statusErr dlsite.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		if retryAfter := dlsite.RetryAfterDuration(statusErr.RetryAfter); retryAfter > 0 {
+			return s.clampBackoff(retryAfter)
+		}
+	}
+	delay := s.backoff * time.Duration(attempt+1)
+	return s.clampBackoff(delay)
+}
+
+func (s *DLsiteSyncer) clampBackoff(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+	if s.maxBackoff > 0 && delay > s.maxBackoff {
+		return s.maxBackoff
+	}
+	return delay
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {

@@ -14,9 +14,19 @@ import (
 type fakeDLsiteClient struct {
 	products map[string]dlsite.Product
 	errors   map[string]error
+	failures map[string][]error
+	calls    map[string]int
 }
 
 func (f fakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite.Product, error) {
+	if f.calls != nil {
+		f.calls[workno]++
+	}
+	if len(f.failures[workno]) > 0 {
+		err := f.failures[workno][0]
+		f.failures[workno] = f.failures[workno][1:]
+		return dlsite.Product{}, err
+	}
 	if err := f.errors[workno]; err != nil {
 		return dlsite.Product{}, err
 	}
@@ -97,6 +107,39 @@ func TestSyncAllRecordsNoProductReviewCandidate(t *testing.T) {
 	}
 	if !strings.Contains(payload, `"reason":"dlsite_not_found"`) {
 		t.Fatalf("payload = %s", payload)
+	}
+}
+
+func TestSyncAllRetriesRateLimitedProduct(t *testing.T) {
+	db := openTestDB(t)
+	calls := map[string]int{}
+	raw := json.RawMessage(`{"workno":"RJ0123456","product_name":"DLsite title"}`)
+	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
+		calls: calls,
+		failures: map[string][]error{
+			"RJ0123456": {
+				dlsite.HTTPStatusError{Operation: "dlsite maniax", Status: "429 Too Many Requests", StatusCode: 429},
+			},
+		},
+		products: map[string]dlsite.Product{
+			"RJ0123456": {
+				WorkNo:      "RJ0123456",
+				SiteID:      "maniax",
+				ProductName: "DLsite title",
+				Raw:         raw,
+			},
+		},
+	}).WithRequestPacing(0, 0, 0)
+
+	result, err := syncer.SyncAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.SyncedWorks != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if calls["RJ0123456"] != 2 {
+		t.Fatalf("calls = %d, want 2", calls["RJ0123456"])
 	}
 }
 
