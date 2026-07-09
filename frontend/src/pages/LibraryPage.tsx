@@ -29,6 +29,7 @@ import {
   ExternalLink,
   Cloud,
   Languages,
+  LayoutGrid,
   ListChecks,
   MoreHorizontal,
   Pause,
@@ -152,6 +153,7 @@ export function LibraryPage() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
+  const [isDatabaseMenuOpen, setIsDatabaseMenuOpen] = useState(false);
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
@@ -182,12 +184,15 @@ export function LibraryPage() {
   const remoteRequestSeq = useRef(0);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
+  const databaseMenuRef = useRef<HTMLDivElement | null>(null);
   const searchTokens = useMemo(() => parseSearchTokens(searchQuery), [searchQuery]);
   const debouncedSearchTokens = useMemo(() => parseSearchTokens(debouncedSearchQuery), [debouncedSearchQuery]);
   const debouncedRemoteSearchTokens = useMemo(() => parseSearchTokens(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
   const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchTokens), [debouncedRemoteSearchTokens]);
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchTokens), [debouncedSearchTokens]);
   const workScope = localScope;
+  const activePrimaryTab: "local" | "tracked" | "remote_sources" | "database" =
+    activeTab.kind === "source" ? "remote_sources" : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
@@ -318,6 +323,24 @@ export function LibraryPage() {
     updateRemoteSourceState(activeTab.source.id, { page: 1, query: remoteSearchQuery });
   }, [activeTab, remoteSearchQuery]);
 
+  useEffect(() => {
+    if (!isDatabaseMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (databaseMenuRef.current?.contains(target)) return;
+      setIsDatabaseMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsDatabaseMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDatabaseMenuOpen]);
+
   const openWork = (work: Work) => {
     const path = `/${work.primaryCode}`;
     window.history.pushState({ returnTo: pathForLibraryTab(activeTab), returnLabel: "Back to library" }, "", path);
@@ -346,6 +369,7 @@ export function LibraryPage() {
   const changeTab = (tab: LibraryTab) => {
     setActiveTab(tab);
     if (tab.kind === "all") setLocalScope("local");
+    setIsDatabaseMenuOpen(false);
     setSelectedRemoteTarget(null);
     const path = pathForLibraryTab(tab);
     if (window.location.pathname !== path) {
@@ -355,8 +379,25 @@ export function LibraryPage() {
   };
 
   const changeLocalScope = (scope: LocalLibraryScope) => {
+    setActiveTab({ kind: "all" });
     setLocalScope(scope);
     setWorkPage(1);
+    setSelectedRemoteTarget(null);
+    const path = pathForLocalScope(scope);
+    if (path && window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+      window.dispatchEvent(new Event("kikoto:navigation"));
+    }
+  };
+
+  const changePrimaryTab = (tab: "local" | "tracked" | "remote_sources") => {
+    setIsDatabaseMenuOpen(false);
+    if (tab === "remote_sources") {
+      const preferred = activeTab.kind === "source" && activeTab.source.enabled ? activeTab.source : sources.find((source) => source.enabled) ?? sources[0];
+      if (preferred) changeTab({ kind: "source", source: preferred });
+      return;
+    }
+    changeLocalScope(tab);
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
@@ -613,6 +654,21 @@ export function LibraryPage() {
           <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
           <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={setLibrarySort} onDirectionChange={setSortDirection} />
           <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={setStatusFilter} />
+          <div ref={databaseMenuRef} className="relative">
+            <IconButton title="Data" onClick={() => setIsDatabaseMenuOpen((value) => !value)}>
+              <Database className="h-4 w-4" />
+              {activePrimaryTab === "database" && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
+            </IconButton>
+            {isDatabaseMenuOpen && (
+              <DatabaseViewMenu
+                value={localScope}
+                onChange={(scope) => {
+                  changeLocalScope(scope);
+                  setIsDatabaseMenuOpen(false);
+                }}
+              />
+            )}
+          </div>
         </div>
       </section>
       {activeFilterCount > 0 && (
@@ -654,39 +710,49 @@ export function LibraryPage() {
         />
       )}
 
-      <LibraryTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
+      <LibraryPrimaryTabs active={activePrimaryTab} remoteDisabled={sources.length === 0} onChange={changePrimaryTab} />
+      {activePrimaryTab === "database" && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="gap-1.5">
+            <Database className="h-3.5 w-3.5" />
+            Database view · {localScopeLabel(localScope)}
+          </Badge>
+        </div>
+      )}
 
       {activeTab.kind === "source" ? (
-        <RemoteSourcePanel
-          source={activeTab.source}
-          result={remoteResult}
-          loading={isRemoteLoading}
-          viewState={activeRemoteSourceState}
-          searchTokens={searchTokens}
-          onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
-          onPageSizeChange={(value) => {
-            updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
-          }}
-          onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
-          onTagOpen={addTagSearchToken}
-          onWorkStateChanged={(primaryCode, patch) => {
-            setRemoteResult((current) => current ? {
-              ...current,
-              works: current.works.map((item) => item.primaryCode === primaryCode ? { ...item, ...patch } : item),
-            } : current);
-          }}
-          onSynced={async (workId) => {
-            if (workId <= 0) {
-              await refreshCurrentWorksPage();
-              return;
-            }
-            const detail = await api.getWork(workId);
-            openWorkCodeRoute(detail.primaryCode);
-          }}
-        />
+        <div className="space-y-3">
+          <RemoteSourceTabs activeTab={activeTab} sources={sources} onChange={changeTab} />
+          <RemoteSourcePanel
+            source={activeTab.source}
+            result={remoteResult}
+            loading={isRemoteLoading}
+            viewState={activeRemoteSourceState}
+            searchTokens={searchTokens}
+            onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
+            onPageSizeChange={(value) => {
+              updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
+            }}
+            onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
+            onTagOpen={addTagSearchToken}
+            onWorkStateChanged={(primaryCode, patch) => {
+              setRemoteResult((current) => current ? {
+                ...current,
+                works: current.works.map((item) => item.primaryCode === primaryCode ? { ...item, ...patch } : item),
+              } : current);
+            }}
+            onSynced={async (workId) => {
+              if (workId <= 0) {
+                await refreshCurrentWorksPage();
+                return;
+              }
+              const detail = await api.getWork(workId);
+              openWorkCodeRoute(detail.primaryCode);
+            }}
+          />
+        </div>
       ) : (
         <div className="space-y-3">
-          <LocalScopeTabs value={localScope} onChange={changeLocalScope} />
           {localPagination}
           <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
             {pagedWorks.map((work) => (
@@ -758,36 +824,44 @@ export function LibraryPage() {
 type LibraryTab = { kind: "all" } | { kind: "source"; source: LibrarySource };
 type LocalLibraryScope = "all" | "local" | "tracked" | "remote" | "no_source";
 
-const localScopeTabs: { value: LocalLibraryScope; label: string; icon: ReactNode }[] = [
-  { value: "local", label: "Local", icon: <HardDrive className="h-4 w-4" /> },
-  { value: "tracked", label: "Tracked", icon: <GitBranchPlus className="h-4 w-4" /> },
-  { value: "remote", label: "Remote", icon: <Cloud className="h-4 w-4" /> },
-  { value: "no_source", label: "No source", icon: <CloudOff className="h-4 w-4" /> },
-  { value: "all", label: "All", icon: <Database className="h-4 w-4" /> },
+const databaseScopeItems: { value: LocalLibraryScope; label: string; description: string; icon: ReactNode }[] = [
+  { value: "all", label: "All records", description: "Every unified work row in the local database.", icon: <Database className="h-4 w-4" /> },
+  { value: "local", label: "Local records", description: "Works with available local files.", icon: <HardDrive className="h-4 w-4" /> },
+  { value: "tracked", label: "Tracked records", description: "Works intentionally tracked from a source.", icon: <GitBranchPlus className="h-4 w-4" /> },
+  { value: "remote", label: "Known remote", description: "Works known from remote source presence.", icon: <Cloud className="h-4 w-4" /> },
+  { value: "no_source", label: "No source", description: "Metadata-only works without current source presence.", icon: <CloudOff className="h-4 w-4" /> },
 ];
 
-function LibraryTabs({
-  activeTab,
-  sources,
+function LibraryPrimaryTabs({
+  active,
+  remoteDisabled,
   onChange,
 }: {
-  activeTab: LibraryTab;
-  sources: LibrarySource[];
-  onChange: (tab: LibraryTab) => void;
+  active: "local" | "tracked" | "remote_sources" | "database";
+  remoteDisabled: boolean;
+  onChange: (tab: "local" | "tracked" | "remote_sources") => void;
 }) {
   return (
     <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
-      <TabButton active={activeTab.kind === "all"} onClick={() => onChange({ kind: "all" })} icon={<Database className="h-4 w-4" />}>
-        Library
+      <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
+        Local
       </TabButton>
+      <TabButton active={active === "tracked"} onClick={() => onChange("tracked")} icon={<GitBranchPlus className="h-4 w-4" />}>
+        Tracked
+      </TabButton>
+      <TabButton active={active === "remote_sources"} onClick={() => onChange("remote_sources")} icon={<Cloud className="h-4 w-4" />} disabled={remoteDisabled}>
+        Remote Sources
+      </TabButton>
+    </div>
+  );
+}
+
+function RemoteSourceTabs({ activeTab, sources, onChange }: { activeTab: Extract<LibraryTab, { kind: "source" }>; sources: LibrarySource[]; onChange: (tab: LibraryTab) => void }) {
+  if (sources.length <= 1) return null;
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card/60 p-1">
       {sources.map((source) => (
-        <TabButton
-          key={source.id}
-          active={activeTab.kind === "source" && activeTab.source.id === source.id}
-          onClick={() => onChange({ kind: "source", source })}
-          icon={<Cloud className="h-4 w-4" />}
-          disabled={!source.enabled}
-        >
+        <TabButton key={source.id} active={activeTab.source.id === source.id} onClick={() => onChange({ kind: "source", source })} icon={<Cloud className="h-4 w-4" />} disabled={!source.enabled}>
           {source.displayName}
         </TabButton>
       ))}
@@ -795,16 +869,33 @@ function LibraryTabs({
   );
 }
 
-function LocalScopeTabs({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
+function DatabaseViewMenu({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card/60 p-1">
-      {localScopeTabs.map((tab) => (
-        <TabButton key={tab.value} active={value === tab.value} onClick={() => onChange(tab.value)} icon={tab.icon}>
-          {tab.label}
-        </TabButton>
-      ))}
+    <div className="absolute right-0 z-30 mt-2 w-64 rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
+      <div className="px-2 py-1.5">
+        <div className="text-sm font-medium">Database view</div>
+      </div>
+      <div className="mt-1 space-y-1">
+        {databaseScopeItems.map((item) => (
+          <button
+            key={item.value}
+            className={`flex w-full items-start gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted ${value === item.value ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+            onClick={() => onChange(item.value)}
+          >
+            <span className="mt-0.5 shrink-0">{item.icon}</span>
+            <span className="min-w-0">
+              <span className="block font-medium text-foreground">{item.label}</span>
+              <span className="block text-xs leading-5 text-muted-foreground">{item.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
+}
+
+function localScopeLabel(scope: LocalLibraryScope) {
+  return databaseScopeItems.find((item) => item.value === scope)?.label ?? "Database records";
 }
 
 function TabButton({
@@ -1468,7 +1559,7 @@ function ColumnPicker({
   return (
     <div className="relative" ref={popoverRef}>
       <IconButton title={`Columns: ${currentValue}`} onClick={() => setOpen((value) => !value)}>
-        <FolderTree className="h-4 w-4" />
+        <LayoutGrid className="h-4 w-4" />
       </IconButton>
       {open && (
         <div className="absolute right-0 z-30 mt-2 flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
@@ -5961,6 +6052,19 @@ function pathForLibraryTab(tab: LibraryTab) {
       return `/${encodeURIComponent(sourceRouteKey(tab.source))}`;
     default:
       return "/";
+  }
+}
+
+function pathForLocalScope(scope: LocalLibraryScope) {
+  switch (scope) {
+    case "tracked":
+      return "/tracked";
+    case "no_source":
+      return "/no-source";
+    case "local":
+      return "/";
+    default:
+      return null;
   }
 }
 
