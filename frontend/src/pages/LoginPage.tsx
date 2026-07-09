@@ -7,7 +7,7 @@ import { useAuth } from "@/auth/AuthProvider";
 
 export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean; onSuccess?: () => void }) {
   const auth = useAuth();
-  const [username, setUsername] = useState("root");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
