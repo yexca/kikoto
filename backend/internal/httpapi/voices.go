@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -156,6 +157,7 @@ type voiceRemoteSourceSet struct {
 	DisplayName string            `json:"displayName"`
 	Status      string            `json:"status"`
 	Error       string            `json:"error"`
+	DebugError  string            `json:"debugError,omitempty"`
 	ElapsedMS   int64             `json:"elapsedMs"`
 	Total       int               `json:"total"`
 	Works       []voiceRemoteWork `json:"works"`
@@ -791,8 +793,8 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			continue
 		}
 		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-			result.Status = "error"
-			result.Error = "source has no API endpoint"
+			result.Status = "misconfigured"
+			result.Error = "Remote source API endpoint is not configured."
 			results = append(results, result)
 			continue
 		}
@@ -804,12 +806,8 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			if errors.Is(err, context.DeadlineExceeded) || sourceCtx.Err() == context.DeadlineExceeded {
-				result.Status = "timeout"
-			} else {
-				result.Status = "error"
-			}
-			result.Error = err.Error()
+			result.Status, result.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
+			result.DebugError = err.Error()
 			results = append(results, result)
 			continue
 		}
@@ -853,6 +851,38 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 	}
 	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
 	return results, err
+}
+
+func voiceRemoteSourceErrorStatus(err error, ctxErr error) (string, string) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctxErr, context.DeadlineExceeded) {
+		return "timeout", "Remote source timed out."
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout", "Remote source timed out."
+	}
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return "invalid_response", "Remote source returned an invalid response."
+	}
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		return "invalid_response", "Remote source returned an invalid response."
+	}
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "api url is not configured"):
+		return "misconfigured", "Remote source API endpoint is not configured."
+	case strings.Contains(message, "connection refused"),
+		strings.Contains(message, "no such host"),
+		strings.Contains(message, "network is unreachable"),
+		strings.Contains(message, "server misbehaving"):
+		return "unavailable", "Remote source is unavailable."
+	case strings.Contains(message, "remote source returned http"):
+		return "unavailable", "Remote source is unavailable."
+	default:
+		return "error", "Remote source is unavailable."
+	}
 }
 
 func (s *Server) recordVoiceRemoteSearchWorkflow(ctx context.Context, personID int64, voiceName string, keyword string, results []voiceRemoteSourceSet) (int64, error) {
@@ -914,10 +944,11 @@ func voiceRemoteSearchOutput(results []voiceRemoteSourceSet) map[string]any {
 	output := map[string]any{}
 	for _, result := range results {
 		output[result.SourceCode] = map[string]any{
-			"status":  result.Status,
-			"total":   result.Total,
-			"matches": len(result.Works),
-			"error":   result.Error,
+			"status":      result.Status,
+			"total":       result.Total,
+			"matches":     len(result.Works),
+			"error":       result.Error,
+			"debug_error": result.DebugError,
 		}
 	}
 	return output

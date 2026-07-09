@@ -776,6 +776,7 @@ export type VoiceRemoteSourceSet = {
   displayName: string;
   status: string;
   error: string;
+  debugError?: string;
   elapsedMs: number;
   total: number;
   works: VoiceRemoteWork[];
