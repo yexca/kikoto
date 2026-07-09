@@ -985,6 +985,8 @@ export const api = {
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
   getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
+  getVoiceRemoteMatches: (personId: number | string) =>
+    getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[] }>(`/api/voices/${encodeURIComponent(String(personId))}/remote-matches`),
   listVoiceAliasCandidates: (personId: number, query = "") =>
     getJSON<VoiceAliasCandidate[]>(
       `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
