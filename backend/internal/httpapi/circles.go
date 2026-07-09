@@ -75,6 +75,7 @@ type circleSeries struct {
 type circleCatalogWork struct {
 	WorkID           *int64              `json:"workId"`
 	PrimaryCode      string              `json:"primaryCode"`
+	RemoteCode       string              `json:"remoteCode"`
 	Title            string              `json:"title"`
 	ReleaseDate      *string             `json:"releaseDate"`
 	UpdatedAt        string              `json:"updatedAt"`
@@ -1110,6 +1111,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	}
 	defer rows.Close()
 	works := []circleCatalogWork{}
+	seen := map[string]int{}
 	for rows.Next() {
 		var item circleCatalogWork
 		var release sql.NullString
@@ -1120,6 +1122,20 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var seriesLink string
 		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
 			return nil, err
+		}
+		originalCode := item.PrimaryCode
+		ref, err := s.canonicalWorkForCode(ctx, item.PrimaryCode)
+		if err != nil {
+			return nil, err
+		}
+		if ref.Known && ref.Code != "" {
+			item.PrimaryCode = ref.Code
+			if !strings.EqualFold(originalCode, ref.Code) {
+				item.RemoteCode = originalCode
+			}
+			if ref.WorkID > 0 {
+				item.WorkID = &ref.WorkID
+			}
 		}
 		item.Series, item.SeriesTitleID = parseSeriesLink(seriesLink)
 		metadata := parseDLsiteSnapshot(snapshot)
@@ -1133,10 +1149,13 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		if item.ReleaseDate != nil {
 			item.UpdatedAt = *item.ReleaseDate
 		}
-		item.WorkID = nullableInt64(workID)
+		if item.WorkID == nil {
+			item.WorkID = nullableInt64(workID)
+		}
 		item.Favorite = favorite != 0
 		item.DLsiteAvailable = dlsiteAvailable != 0
 		item.CoverURL = s.coverURL(item.PrimaryCode)
+		item.DLsiteURL = firstNonEmpty(dlsiteURL(item.PrimaryCode), item.DLsiteURL)
 		item.Circle = metadata.Circle
 		item.CircleExternalID = metadata.CircleExternalID
 		tags, err := s.workSourceTags(ctx, partyID, item.PrimaryCode)
@@ -1159,9 +1178,89 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 				item.Remote = true
 			}
 		}
+		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
+		if index, ok := seen[key]; ok {
+			mergeCircleCatalogWork(&works[index], item)
+			continue
+		}
+		seen[key] = len(works)
 		works = append(works, item)
 	}
 	return works, rows.Err()
+}
+
+func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
+	if target.WorkID == nil {
+		target.WorkID = item.WorkID
+	}
+	if target.RemoteCode == "" {
+		target.RemoteCode = item.RemoteCode
+	}
+	if target.Title == "" || strings.EqualFold(target.Title, target.PrimaryCode) {
+		target.Title = item.Title
+	}
+	if target.ReleaseDate == nil {
+		target.ReleaseDate = item.ReleaseDate
+	}
+	if target.UpdatedAt == "" {
+		target.UpdatedAt = item.UpdatedAt
+	}
+	if target.Circle == "" {
+		target.Circle = item.Circle
+		target.CircleExternalID = item.CircleExternalID
+	}
+	if len(target.Tags) == 0 {
+		target.Tags = item.Tags
+	}
+	if target.Rating == nil {
+		target.Rating = item.Rating
+	}
+	if target.Sales == nil {
+		target.Sales = item.Sales
+	}
+	if target.Series == "" {
+		target.Series = item.Series
+		target.SeriesTitleID = item.SeriesTitleID
+	}
+	if target.CatalogStatus != "imported" && item.CatalogStatus == "imported" {
+		target.CatalogStatus = item.CatalogStatus
+	}
+	target.DLsiteAvailable = target.DLsiteAvailable || item.DLsiteAvailable
+	if target.ListeningMark == "" || target.ListeningMark == "none" {
+		target.ListeningMark = item.ListeningMark
+	}
+	target.Favorite = target.Favorite || item.Favorite
+	target.Local = target.Local || item.Local
+	target.Remote = target.Remote || item.Remote
+	target.SourceTags = mergeCircleSourceStats(target.SourceTags, item.SourceTags)
+	if target.Progress.MediaItemID == nil {
+		target.Progress = item.Progress
+	}
+}
+
+func mergeCircleSourceStats(left []circleSourceStat, right []circleSourceStat) []circleSourceStat {
+	result := append([]circleSourceStat{}, left...)
+	seen := map[string]int{}
+	for index, item := range result {
+		seen[circleSourceStatKey(item)] = index
+	}
+	for _, item := range right {
+		key := circleSourceStatKey(item)
+		if index, ok := seen[key]; ok {
+			result[index].Count += item.Count
+			continue
+		}
+		seen[key] = len(result)
+		result = append(result, item)
+	}
+	return result
+}
+
+func circleSourceStatKey(item circleSourceStat) string {
+	if item.SourceID != nil {
+		return fmt.Sprintf("%s:%d", item.Key, *item.SourceID)
+	}
+	return item.Key
 }
 
 func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleSeries, error) {
@@ -1244,10 +1343,20 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 		INNER JOIN media_item AS item ON item.work_id = work.id
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
-		WHERE UPPER(work.primary_code) = UPPER(?)
+		WHERE work.id IN (
+				SELECT family_work.id
+				FROM work AS family_work
+				WHERE UPPER(family_work.primary_code) = UPPER(?)
+				UNION
+				SELECT sibling.work_id
+				FROM work AS current_work
+				INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+				WHERE UPPER(current_work.primary_code) = UPPER(?)
+			)
 			AND location.availability = 'available'
 		GROUP BY source.id, source.display_name, location.location_type
-	`, code)
+	`, code, code)
 	if err != nil {
 		return nil, err
 	}
@@ -1274,11 +1383,19 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
 		WHERE catalog.party_id = ?
-			AND UPPER(catalog.primary_code) = UPPER(?)
+			AND UPPER(catalog.primary_code) IN (
+				SELECT UPPER(?)
+				UNION
+				SELECT UPPER(sibling.primary_code)
+				FROM work AS current_work
+				INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+				WHERE UPPER(current_work.primary_code) = UPPER(?)
+			)
 			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
-	`, partyID, code)
+	`, partyID, code, code)
 	if err != nil {
 		return nil, err
 	}
@@ -1311,12 +1428,22 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 		FROM work
 		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
-		WHERE UPPER(work.primary_code) = UPPER(?)
+		WHERE work.id IN (
+				SELECT family_work.id
+				FROM work AS family_work
+				WHERE UPPER(family_work.primary_code) = UPPER(?)
+				UNION
+				SELECT sibling.work_id
+				FROM work AS current_work
+				INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+				WHERE UPPER(current_work.primary_code) = UPPER(?)
+			)
 			AND presence.presence_type = 'source'
 			AND presence.availability = 'available'
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
-	`, code)
+	`, code, code)
 	if err != nil {
 		return nil, err
 	}

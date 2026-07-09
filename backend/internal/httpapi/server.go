@@ -1325,6 +1325,75 @@ func (s *Server) workIDForCode(ctx context.Context, code string) (int64, bool) {
 	return id, true
 }
 
+type canonicalWorkRef struct {
+	WorkID int64
+	Code   string
+	Known  bool
+}
+
+func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonicalWorkRef, error) {
+	code = normalizeDLsiteCode(code)
+	if code == "" {
+		return canonicalWorkRef{}, nil
+	}
+	var canonicalID sql.NullInt64
+	var canonicalCode string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT logical.canonical_work_id, logical.canonical_code
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE UPPER(edition.primary_code) = UPPER(?)
+	`, code).Scan(&canonicalID, &canonicalCode)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return canonicalWorkRef{}, err
+	}
+	if err == nil {
+		canonicalCode = normalizeDLsiteCode(canonicalCode)
+		if canonicalID.Valid {
+			return canonicalWorkRef{WorkID: canonicalID.Int64, Code: canonicalCode, Known: true}, nil
+		}
+		if id, ok := s.workIDForCode(ctx, canonicalCode); ok {
+			return canonicalWorkRef{WorkID: id, Code: canonicalCode, Known: true}, nil
+		}
+		return canonicalWorkRef{Code: canonicalCode, Known: false}, nil
+	}
+	if id, ok := s.workIDForCode(ctx, code); ok {
+		return canonicalWorkRef{WorkID: id, Code: code, Known: true}, nil
+	}
+	return canonicalWorkRef{Code: code, Known: false}, nil
+}
+
+func (s *Server) familyWorkIDsForCode(ctx context.Context, code string) ([]int64, error) {
+	code = normalizeDLsiteCode(code)
+	if code == "" {
+		return []int64{}, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT work.id
+		FROM work
+		WHERE UPPER(work.primary_code) = UPPER(?)
+		UNION
+		SELECT sibling.work_id
+		FROM work AS current_work
+		INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+		INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+		WHERE UPPER(current_work.primary_code) = UPPER(?)
+	`, code, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int64, int64, []string, bool) {
 	var trackCount int64
 	var availableLocations int64

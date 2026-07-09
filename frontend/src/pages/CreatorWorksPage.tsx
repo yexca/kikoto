@@ -587,12 +587,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setMessage("");
     try {
       const paths = Array.from(fetchSelection.selectedPaths);
-      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
       if (hasRemoteFetchConflicts(plan)) {
         setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       await refreshDetail();
@@ -1314,9 +1314,13 @@ function voiceWorkDLsiteURL(work: VoiceKnownWork | VoiceRemoteWork) {
 
 function voiceWorkRemoteTarget(work: VoiceKnownWork | VoiceRemoteWork): { sourceId: number; code: string } | null {
   if (!work.primaryCode) return null;
-  if ("sourceId" in work) return { sourceId: work.sourceId, code: work.primaryCode };
+  if ("sourceId" in work) return { sourceId: work.sourceId, code: work.remoteCode || work.primaryCode };
   const remoteSource = work.sourceTags.find((tag) => tag.sourceId !== null && tag.sourceId !== undefined && tag.key !== "cache");
-  return remoteSource?.sourceId ? { sourceId: remoteSource.sourceId, code: work.primaryCode } : null;
+  return remoteSource?.sourceId ? { sourceId: remoteSource.sourceId, code: work.remoteCode || work.primaryCode } : null;
+}
+
+function remoteDetailActionCode(detail: RemoteWorkDetail) {
+  return detail.remoteCode || detail.primaryCode;
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {

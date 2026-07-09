@@ -552,7 +552,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const syncResult = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_mark_interest");
+      const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
       toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
       const next = await api.getCircle(externalId);
@@ -570,7 +570,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const trackCatalogWorkForState = async (work: CircleCatalogWork, reason: string) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return null;
-    const syncResult = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, reason);
+    const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
   };
 
@@ -653,7 +653,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     works.forEach((work) => {
       const target = circleWorkRemoteTarget(work);
       if (!target) return;
-      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), work.primaryCode]);
+      groups.set(target.sourceId, [...(groups.get(target.sourceId) ?? []), target.code]);
     });
     return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
   };
@@ -663,7 +663,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const detail = await api.getRemoteSourceWork(target.sourceId, work.primaryCode);
+      const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
       setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
     } catch (error) {
       toast.notify(toastFromError(error, "Remote directory failed."));
@@ -677,12 +677,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     try {
       const paths = Array.from(fetchSelection.selectedPaths);
-      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
       if (hasRemoteFetchConflicts(plan)) {
         setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, fetchSelection.detail.primaryCode, paths);
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
@@ -698,7 +698,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const result = await api.trackRemoteSourceWork(target.sourceId, work.primaryCode, "circle_card_fetch");
+      const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_card_fetch");
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       setDetail(await api.getCircle(externalId));
     } catch (error) {
@@ -1402,9 +1402,13 @@ function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
   return circleWorkRemoteTarget(work) !== null;
 }
 
-function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number } | null {
+function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number; code: string } | null {
   const remote = sourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
-  return remote?.sourceId ? { sourceId: remote.sourceId } : null;
+  return remote?.sourceId ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode } : null;
+}
+
+function remoteDetailActionCode(detail: RemoteWorkDetail) {
+  return detail.remoteCode || detail.primaryCode;
 }
 
 function isTranslationCircle(externalId: string) {

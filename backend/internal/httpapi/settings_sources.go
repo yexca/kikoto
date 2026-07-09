@@ -168,6 +168,7 @@ type librarySource struct {
 type remoteWorkSummary struct {
 	RemoteID       string   `json:"remoteId"`
 	PrimaryCode    string   `json:"primaryCode"`
+	RemoteCode     string   `json:"remoteCode"`
 	Title          string   `json:"title"`
 	ReleaseDate    string   `json:"releaseDate"`
 	UpdatedAt      string   `json:"updatedAt"`
@@ -188,6 +189,7 @@ type remoteWorkDetail struct {
 	SourceName      string              `json:"sourceName"`
 	RemoteID        string              `json:"remoteId"`
 	PrimaryCode     string              `json:"primaryCode"`
+	RemoteCode      string              `json:"remoteCode"`
 	Title           string              `json:"title"`
 	CoverURL        string              `json:"coverUrl"`
 	SourceURL       string              `json:"sourceUrl"`
@@ -1372,22 +1374,22 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 
 func (s *Server) sourceAvailabilityFlags(ctx context.Context, sourceID int64, workCode string) (sourceAvailabilityState, error) {
 	var flags sourceAvailabilityState
-	var workID sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", workCode).Scan(&workID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return flags, nil
-		}
+	ref, err := s.canonicalWorkForCode(ctx, workCode)
+	if err != nil {
 		return flags, err
 	}
-	flags.WorkID = nullableInt64(workID)
-	flags.HasRemote = s.workHasLocationType(ctx, workID.Int64, sourceID, "remote_stream")
-	if !flags.HasRemote {
-		flags.HasRemote = s.workHasSourcePresence(ctx, workID.Int64, sourceID, sourcePresenceTypeRemoteSource, "available")
+	if !ref.Known || ref.WorkID <= 0 {
+		return flags, nil
 	}
-	flags.HasCache = s.workHasLocationType(ctx, workID.Int64, sourceID, "cache")
-	flags.HasLocal = s.workHasLocationType(ctx, workID.Int64, 0, "local")
-	if !flags.HasLocal {
-		flags.HasLocal = s.workHasSourcePresence(ctx, workID.Int64, 0, "local", "available")
+	flags.WorkID = &ref.WorkID
+	ids, err := s.familyWorkIDsForCode(ctx, ref.Code)
+	if err != nil {
+		return flags, err
+	}
+	for _, workID := range ids {
+		flags.HasRemote = flags.HasRemote || s.workHasLocationType(ctx, workID, sourceID, "remote_stream") || s.workHasSourcePresence(ctx, workID, sourceID, sourcePresenceTypeRemoteSource, "available")
+		flags.HasCache = flags.HasCache || s.workHasLocationType(ctx, workID, sourceID, "cache")
+		flags.HasLocal = flags.HasLocal || s.workHasLocationType(ctx, workID, 0, "local") || s.workHasSourcePresence(ctx, workID, 0, "local", "available")
 	}
 	return flags, nil
 }
@@ -1696,21 +1698,28 @@ func remoteWorkSummaryMatchesToken(work remoteWorkSummary, token listSearchToken
 
 func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []kikoeru.Work) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
+	seen := map[string]int{}
 	for _, work := range works {
 		code := normalizedRemoteWorkCode(work)
-		var workID sql.NullInt64
+		displayCode := code
+		ref, err := s.canonicalWorkForCode(ctx, code)
+		if err != nil {
+			return nil, err
+		}
+		var workID *int64
 		var favorite bool
-		if code != "" {
-			if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
-			if workID.Valid {
+		if ref.Code != "" {
+			displayCode = ref.Code
+		}
+		if ref.Known && ref.WorkID > 0 {
+			workID = &ref.WorkID
+			if workID != nil {
 				var favoriteInt int
 				if err := s.db.QueryRowContext(ctx, `
 					SELECT COALESCE(favorite, 0)
 					FROM user_work_state
 					WHERE user_id = ? AND work_id = ?
-				`, userID, workID.Int64).Scan(&favoriteInt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				`, userID, *workID).Scan(&favoriteInt); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return nil, err
 				} else if err == nil {
 					favorite = favoriteInt != 0
@@ -1731,13 +1740,14 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			circle = work.Circle.Name
 		}
 		status := "remote_only"
-		if workID.Valid {
+		if workID != nil {
 			status = "synced"
 		}
-		result = append(result, remoteWorkSummary{
+		item := remoteWorkSummary{
 			RemoteID:       strconv.FormatInt(work.ID, 10),
-			PrimaryCode:    code,
-			Title:          firstNonEmpty(work.Title, work.Name, code),
+			PrimaryCode:    displayCode,
+			RemoteCode:     code,
+			Title:          firstNonEmpty(work.Title, work.Name, displayCode),
 			ReleaseDate:    work.Release,
 			UpdatedAt:      work.Release,
 			CoverURL:       firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
@@ -1747,9 +1757,26 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			Tags:           tags,
 			ImportStatus:   status,
 			RemotePlayable: true,
-			WorkID:         nullableInt64(workID),
+			WorkID:         workID,
 			Favorite:       favorite,
-		})
+		}
+		key := strings.ToUpper(strings.TrimSpace(displayCode))
+		if index, ok := seen[key]; ok {
+			existing := &result[index]
+			existing.RemotePlayable = existing.RemotePlayable || item.RemotePlayable
+			existing.Favorite = existing.Favorite || item.Favorite
+			if existing.WorkID == nil {
+				existing.WorkID = item.WorkID
+				existing.ImportStatus = item.ImportStatus
+			}
+			if existing.RemoteCode == "" || strings.EqualFold(item.RemoteCode, item.PrimaryCode) {
+				existing.RemoteCode = item.RemoteCode
+				existing.RemoteID = item.RemoteID
+			}
+			continue
+		}
+		seen[key] = len(result)
+		result = append(result, item)
 	}
 	return result, nil
 }
@@ -3578,11 +3605,17 @@ func sortedStringKeys(values map[string]bool) []string {
 
 func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkDetail, error) {
 	code := normalizedRemoteWorkCode(work)
-	var workID sql.NullInt64
-	if code != "" {
-		if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return remoteWorkDetail{}, err
-		}
+	displayCode := code
+	ref, err := s.canonicalWorkForCode(ctx, code)
+	if err != nil {
+		return remoteWorkDetail{}, err
+	}
+	var workID *int64
+	if ref.Code != "" {
+		displayCode = ref.Code
+	}
+	if ref.Known && ref.WorkID > 0 {
+		workID = &ref.WorkID
 	}
 	tags := make([]string, 0, len(work.Tags))
 	for _, tag := range work.Tags {
@@ -3601,7 +3634,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		circle = work.Circle.Name
 	}
 	status := "remote_only"
-	if workID.Valid {
+	if workID != nil {
 		status = "synced"
 	}
 	var duration *int64
@@ -3622,8 +3655,9 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		SourceCode:      source.Code,
 		SourceName:      source.DisplayName,
 		RemoteID:        strconv.FormatInt(work.ID, 10),
-		PrimaryCode:     code,
-		Title:           firstNonEmpty(work.Title, work.Name, code),
+		PrimaryCode:     displayCode,
+		RemoteCode:      code,
+		Title:           firstNonEmpty(work.Title, work.Name, displayCode),
 		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 		SourceURL:       work.SourceURL,
 		Circle:          circle,
@@ -3635,7 +3669,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		Tags:            tags,
 		VoiceActors:     voiceActors,
 		ImportStatus:    status,
-		WorkID:          nullableInt64(workID),
+		WorkID:          workID,
 		Tracks:          remoteTrackDetails(source.Code, code, tracks, "", locationState),
 	}, nil
 }
