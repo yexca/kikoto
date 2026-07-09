@@ -580,22 +580,49 @@ func voiceSummaryQuery(where string) string {
 				FROM person_alias AS alias
 				WHERE alias.person_id = person.id
 			), '') AS aliases,
-			COUNT(DISTINCT credit.work_id) AS known_works,
+			COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code)) AS known_works,
 			COUNT(DISTINCT CASE WHEN EXISTS (
 				SELECT 1 FROM media_file_location AS location
 				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = credit.work_id AND location.location_type = 'local' AND location.availability = 'available'
-			) THEN credit.work_id END) AS local_works,
+				WHERE item.work_id IN (
+						SELECT work.id
+						UNION
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+					AND location.location_type = 'local'
+					AND location.availability = 'available'
+			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS local_works,
 			COUNT(DISTINCT CASE WHEN EXISTS (
 				SELECT 1 FROM media_file_location AS location
 				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = credit.work_id AND location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available'
-			) THEN credit.work_id END) AS remote_works,
+				WHERE item.work_id IN (
+						SELECT work.id
+						UNION
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+					AND location.location_type IN ('remote_stream', 'remote_download')
+					AND location.availability = 'available'
+			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS remote_works,
 			COUNT(DISTINCT CASE WHEN EXISTS (
 				SELECT 1 FROM media_file_location AS location
 				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id = credit.work_id AND location.location_type = 'cache' AND location.availability = 'available'
-			) THEN credit.work_id END) AS cached_works,
+				WHERE item.work_id IN (
+						SELECT work.id
+						UNION
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = work.id
+					)
+					AND location.location_type = 'cache'
+					AND location.availability = 'available'
+			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS cached_works,
 			MAX(work.updated_at) AS last_seen_at,
 			state.rating,
 			COALESCE(state.note, '') AS note,
@@ -603,6 +630,8 @@ func voiceSummaryQuery(where string) string {
 		FROM person
 		INNER JOIN work_credit AS credit ON credit.person_id = person.id AND credit.role = 'voice_actor'
 		INNER JOIN work ON work.id = credit.work_id
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		LEFT JOIN user_person_state AS state ON state.person_id = person.id AND state.user_id = ?
 		` + where + `
 		GROUP BY person.id, person.display_name, state.rating, state.note, state.favorite

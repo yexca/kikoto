@@ -1323,6 +1323,7 @@ type workSourcePresence struct {
 	FileSourceID int64
 	PresenceType string
 	RemoteID     string
+	RemoteCode   string
 	SourceURL    string
 	Availability string
 	RawJSON      string
@@ -1343,12 +1344,20 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 	if presence.RawJSON == "" {
 		presence.RawJSON = "{}"
 	}
+	presence.RemoteCode = normalizeDLsiteCode(presence.RemoteCode)
+	if presence.RemoteCode == "" {
+		presence.RemoteCode = normalizeDLsiteCode(remoteCodeFromRawJSON(presence.RawJSON))
+	}
+	if err := ensureWorkSourcePresenceRemoteCodeColumn(ctx, tx); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO work_source_presence (
 			work_id,
 			file_source_id,
 			presence_type,
 			remote_id,
+			remote_code,
 			source_url,
 			availability,
 			raw_json,
@@ -1356,9 +1365,10 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 			last_checked_at,
 			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(work_id, file_source_id, presence_type) DO UPDATE SET
 			remote_id = excluded.remote_id,
+			remote_code = excluded.remote_code,
 			source_url = excluded.source_url,
 			availability = excluded.availability,
 			raw_json = excluded.raw_json,
@@ -1368,7 +1378,33 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 			END,
 			last_checked_at = excluded.last_checked_at,
 			updated_at = CURRENT_TIMESTAMP
-	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.SourceURL, presence.Availability, presence.RawJSON)
+	`, presence.WorkID, presence.FileSourceID, presence.PresenceType, presence.RemoteID, presence.RemoteCode, presence.SourceURL, presence.Availability, presence.RawJSON)
+	return err
+}
+
+func ensureWorkSourcePresenceRemoteCodeColumn(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "PRAGMA table_info(work_source_presence)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if strings.EqualFold(name, "remote_code") {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "ALTER TABLE work_source_presence ADD COLUMN remote_code TEXT NOT NULL DEFAULT ''")
 	return err
 }
 
@@ -1539,6 +1575,7 @@ func (s *Server) recordAvailabilityPresence(ctx context.Context, tx *sql.Tx, cod
 			FileSourceID: result.SourceID,
 			PresenceType: sourcePresenceTypeRemoteSource,
 			RemoteID:     result.RemoteID,
+			RemoteCode:   result.PrimaryCode,
 			Availability: availability,
 			RawJSON: mustJSON(map[string]any{
 				"status":       result.Status,
@@ -1850,6 +1887,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		FileSourceID: source.ID,
 		PresenceType: "tracked",
 		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
+		RemoteCode:   workCode,
 		SourceURL:    remoteWork.SourceURL,
 		Availability: "available",
 		RawJSON:      string(rawWork),
@@ -2209,6 +2247,7 @@ func (s *Server) trackRemoteCollectionWork(ctx context.Context, source remoteSou
 		FileSourceID: source.ID,
 		PresenceType: "tracked",
 		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
+		RemoteCode:   normalizedRemoteWorkCode(remoteWork),
 		SourceURL:    remoteWork.SourceURL,
 		Availability: "available",
 		RawJSON: mustJSON(map[string]any{
@@ -4143,6 +4182,24 @@ func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status 
 
 func normalizedRemoteWorkCode(work kikoeru.Work) string {
 	return kikoeru.WorkCode(work)
+}
+
+func remoteCodeFromRawJSON(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var payload struct {
+		WorkNo        string `json:"workno"`
+		WorkNoAlt     string `json:"work_no"`
+		ProductID     string `json:"product_id"`
+		SourceID      string `json:"source_id"`
+		ProductIDAlt  string `json:"productId"`
+		ProductIDText string `json:"productID"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return ""
+	}
+	return firstNonEmpty(payload.WorkNo, payload.WorkNoAlt, payload.ProductID, payload.ProductIDAlt, payload.ProductIDText, payload.SourceID)
 }
 
 func isNotFoundLikeError(err error) bool {

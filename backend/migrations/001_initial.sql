@@ -360,6 +360,7 @@ CREATE TABLE work_source_presence (
   file_source_id INTEGER NOT NULL REFERENCES file_source(id) ON DELETE CASCADE,
   presence_type TEXT NOT NULL DEFAULT 'location',
   remote_id TEXT NOT NULL DEFAULT '',
+  remote_code TEXT NOT NULL DEFAULT '',
   source_url TEXT NOT NULL DEFAULT '',
   availability TEXT NOT NULL DEFAULT 'unknown',
   raw_json TEXT NOT NULL DEFAULT '{}',

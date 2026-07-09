@@ -298,6 +298,10 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if err := s.ensureWorkSourcePresenceSchema(r.Context()); err != nil {
+		writeError(w, err)
+		return
+	}
 	pagedRequest := r.URL.Query().Has("page") || r.URL.Query().Has("pageSize") || r.URL.Query().Has("q") || r.URL.Query().Has("scope") || r.URL.Query().Has("status")
 	if pagedRequest {
 		s.listWorksPageFast(w, r, userID)
@@ -338,7 +342,8 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 						COALESCE(source.code, '') || '|' ||
 						COALESCE(source.display_name, '') || '|' ||
 						COALESCE(presence.remote_id, '') || '|' ||
-						COALESCE(presence.source_url, '')
+						COALESCE(presence.source_url, '') || '|' ||
+						COALESCE(presence.remote_code, '')
 				)
 				FROM work_source_presence AS presence
 				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
@@ -686,16 +691,29 @@ func libraryListWhere(scope string, status string, queryText string) (string, []
 		clauses = append(clauses, searchWhere)
 		args = append(args, searchArgs...)
 	}
-	clauses = append(clauses, `NOT EXISTS (
-		SELECT 1
-		FROM work_edition AS edition
-		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-		WHERE edition.work_id = work.id
-			AND logical.canonical_work_id IS NOT NULL
-			AND logical.canonical_work_id <> work.id
-			AND edition.is_canonical = 0
-	)`)
+	clauses = append(clauses, libraryCanonicalVisibleWhereClause())
 	return strings.Join(clauses, " AND "), args
+}
+
+func libraryCanonicalVisibleWhereClause() string {
+	return `(
+		NOT EXISTS (
+			SELECT 1
+			FROM work_edition AS edition
+			WHERE edition.work_id = work.id
+		)
+		OR EXISTS (
+			SELECT 1
+			FROM work_edition AS edition
+			INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+			WHERE edition.work_id = work.id
+				AND (
+					edition.is_canonical = 1
+					OR logical.canonical_work_id IS NULL
+					OR logical.canonical_work_id = work.id
+				)
+		)
+	)`
 }
 
 func librarySearchWhere(queryText string) (string, []any) {
@@ -878,7 +896,8 @@ func libraryListBaseSelectSQL(where string, includeMetadataSortColumns bool) str
 						COALESCE(source.code, '') || '|' ||
 						COALESCE(source.display_name, '') || '|' ||
 						COALESCE(presence.remote_id, '') || '|' ||
-						COALESCE(presence.source_url, '')
+						COALESCE(presence.source_url, '') || '|' ||
+						COALESCE(presence.remote_code, '')
 				)
 				FROM work_source_presence AS presence
 				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
@@ -970,6 +989,7 @@ type sourcePresenceItem struct {
 	FileSourceCode string `json:"fileSourceCode"`
 	FileSourceName string `json:"fileSourceName"`
 	RemoteID       string `json:"remoteId"`
+	RemoteCode     string `json:"remoteCode"`
 	SourceURL      string `json:"sourceUrl"`
 }
 
@@ -1430,6 +1450,9 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 }
 
 func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
+	if err := s.ensureWorkSourcePresenceSchema(ctx); err != nil {
+		return nil
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			presence.presence_type,
@@ -1438,7 +1461,8 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 			COALESCE(source.code, ''),
 			COALESCE(source.display_name, ''),
 			COALESCE(presence.remote_id, ''),
-			COALESCE(presence.source_url, '')
+			COALESCE(presence.source_url, ''),
+			COALESCE(presence.remote_code, '')
 		FROM work_source_presence AS presence
 		LEFT JOIN file_source AS source ON source.id = presence.file_source_id
 		WHERE presence.work_id IN (
@@ -1471,7 +1495,7 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 		return nil
 	}
 	items := []sourcePresenceItem{}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for _, part := range strings.Split(raw, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -1501,6 +1525,9 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 			if len(fields) > 6 {
 				item.SourceURL = strings.TrimSpace(fields[6])
 			}
+			if len(fields) > 7 {
+				item.RemoteCode = strings.TrimSpace(fields[7])
+			}
 		} else {
 			presenceType, availability, ok := strings.Cut(part, ":")
 			if !ok {
@@ -1516,10 +1543,11 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 			item.Availability = "unknown"
 		}
 		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
-		if seen[key] {
+		if index, ok := seen[key]; ok {
+			mergeSourcePresenceItem(&items[index], item)
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(items)
 		items = append(items, item)
 	}
 	return items
@@ -1527,7 +1555,7 @@ func parseSourcePresenceSummary(raw string) []sourcePresenceItem {
 
 func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 	items := []sourcePresenceItem{}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for rows.Next() {
 		var item sourcePresenceItem
 		if err := rows.Scan(
@@ -1538,6 +1566,7 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 			&item.FileSourceName,
 			&item.RemoteID,
 			&item.SourceURL,
+			&item.RemoteCode,
 		); err != nil {
 			return nil, err
 		}
@@ -1548,13 +1577,26 @@ func scanSourcePresenceRows(rows *sql.Rows) ([]sourcePresenceItem, error) {
 			item.Availability = "unknown"
 		}
 		key := fmt.Sprintf("%s:%d:%s", strings.ToLower(item.Type), item.FileSourceID, strings.ToLower(item.Availability))
-		if seen[key] {
+		if index, ok := seen[key]; ok {
+			mergeSourcePresenceItem(&items[index], item)
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(items)
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func mergeSourcePresenceItem(target *sourcePresenceItem, item sourcePresenceItem) {
+	if target.RemoteCode == "" {
+		target.RemoteCode = item.RemoteCode
+	}
+	if target.RemoteID == "" {
+		target.RemoteID = item.RemoteID
+	}
+	if target.SourceURL == "" {
+		target.SourceURL = item.SourceURL
+	}
 }
 
 func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {
@@ -1589,6 +1631,32 @@ func (s *Server) ensureLogicalWorkSchema(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Server) ensureWorkSourcePresenceSchema(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info(work_source_presence)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if strings.EqualFold(name, "remote_code") {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE work_source_presence ADD COLUMN remote_code TEXT NOT NULL DEFAULT ''")
+	return err
 }
 
 func (s *Server) syncWorkEditionForWorkFromSnapshot(ctx context.Context, workID int64, primaryCode string, metadata dlsiteSnapshotMetadata) error {

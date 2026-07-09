@@ -730,7 +730,14 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
 	setDefaultCircleState(item)
 	var catalogWorks int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT primary_code) FROM party_catalog_item WHERE party_id = ?", item.ID).Scan(&catalogWorks); err != nil {
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
+		FROM party_catalog_item AS catalog
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE catalog.party_id = ?
+	`, item.ID).Scan(&catalogWorks); err != nil {
 		return err
 	}
 	item.CatalogWorks = catalogWorks
@@ -826,10 +833,13 @@ func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary
 
 func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
 	query, args := int64InQuery(`
-		SELECT party_id, COUNT(DISTINCT primary_code)
-		FROM party_catalog_item
-		WHERE party_id IN (%s)
-		GROUP BY party_id
+		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
+		FROM party_catalog_item AS catalog
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE catalog.party_id IN (%s)
+		GROUP BY catalog.party_id
 	`, partyIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -850,9 +860,11 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 
 func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []int64) (map[int64]int, map[int64]int, error) {
 	query, args := int64InQuery(`
-		SELECT relation.party_id, location.location_type, COUNT(DISTINCT work.id)
+		SELECT relation.party_id, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_party AS relation
 		INNER JOIN work ON work.id = relation.work_id
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		INNER JOIN media_item AS item ON item.work_id = work.id
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
 		WHERE relation.party_id IN (%s)
@@ -884,10 +896,13 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 	}
 
 	query, args = int64InQuery(`
-		SELECT catalog.party_id, COUNT(DISTINCT catalog.primary_code)
+		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM party_catalog_item AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id IN (%s)
 			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 			AND source.enabled = 1
@@ -912,11 +927,13 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 		return nil, nil, err
 	}
 	query, args = int64InQuery(`
-		SELECT relation.party_id, COUNT(DISTINCT work.id)
+		SELECT relation.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_party AS relation
 		INNER JOIN work ON work.id = relation.work_id
 		INNER JOIN work_source_presence AS presence ON presence.work_id = work.id
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE relation.party_id IN (%s)
 			AND presence.presence_type = 'source'
 			AND presence.availability = 'available'
@@ -956,9 +973,11 @@ func int64InQuery(template string, values []int64) (string, []any) {
 
 func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circleSourceStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT source.id, source.display_name, location.location_type, COUNT(DISTINCT work.id)
+		SELECT source.id, source.display_name, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_party AS relation
 		INNER JOIN work ON work.id = relation.work_id
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		INNER JOIN media_item AS item ON item.work_id = work.id
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
@@ -1005,10 +1024,13 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		return nil, err
 	}
 	remoteRows, err := s.db.QueryContext(ctx, `
-		SELECT source.id, source.display_name, COUNT(DISTINCT catalog.primary_code)
+		SELECT source.id, source.display_name, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM party_catalog_item AS catalog
 		INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id
 		INNER JOIN file_source AS source ON provider.code = 'kikoeru_source_' || source.code
+		LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id = ?
 			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
 			AND source.enabled = 1
@@ -2031,6 +2053,7 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 		FileSourceID: source.ID,
 		PresenceType: sourcePresenceTypeRemoteSource,
 		RemoteID:     strconv.FormatInt(remoteWork.ID, 10),
+		RemoteCode:   normalizedRemoteWorkCode(remoteWork),
 		SourceURL:    remoteWork.SourceURL,
 		Availability: "available",
 		RawJSON:      string(raw),
