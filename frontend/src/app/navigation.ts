@@ -1,10 +1,11 @@
 import {
   Activity,
   Heart,
+  Info,
   Library,
+  MicVocal,
   Settings,
   ShieldCheck,
-  MicVocal,
   Users,
   Workflow,
 } from "lucide-react";
@@ -21,13 +22,14 @@ type NavItem = {
 
 export const navItems = [
   { id: "library", label: "Library", path: "/", icon: Library, audience: "public", permission: undefined },
+  { id: "favorites", label: "Favorites", path: "/favorites", icon: Heart, audience: "authenticated", permission: undefined },
   { id: "circles", label: "Circles", path: "/circles", icon: Users, audience: "public", permission: undefined },
   { id: "voice-actors", label: "Voice Actors", path: "/voices", icon: MicVocal, audience: "public", permission: undefined },
-  { id: "favorites", label: "Favorites", path: "/favorites", icon: Heart, audience: "authenticated", permission: undefined },
-  { id: "settings", label: "Settings", path: "/settings", icon: Settings, audience: "authenticated", permission: undefined },
   { id: "workflows", label: "Workflows", path: "/workflows", icon: Workflow, audience: "admin", permission: "workflows:run" },
   { id: "activity", label: "Activity", path: "/activity", icon: Activity, audience: "admin", permission: "workflows:run" },
   { id: "users", label: "Users", path: "/users", icon: ShieldCheck, audience: "admin", permission: "users:manage" },
+  { id: "settings", label: "Settings", path: "/settings", icon: Settings, audience: "authenticated", permission: undefined },
+  { id: "about", label: "About", path: "/about", icon: Info, audience: "public", permission: undefined },
 ] as const satisfies readonly NavItem[];
 
 export type PageID = (typeof navItems)[number]["id"];
