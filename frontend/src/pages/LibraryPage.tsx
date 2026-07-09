@@ -438,7 +438,7 @@ export function LibraryPage() {
     try {
       const paths = Array.from(trackedFetchSelection.selectedPaths);
       const localPaths = Array.from(trackedFetchSelection.selectedLocalPaths);
-      const plan = await api.planRemoteSourceWorkFetch(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths, localPaths);
+      const plan = await api.planRemoteSourceWorkFetch(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths);
       if (!trackedFetchSelection.plan && remoteFetchNeedsLocalReview(plan)) {
         setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchLocalReview(plan) } : current);
         return;
@@ -447,7 +447,7 @@ export function LibraryPage() {
         setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, trackedFetchSelection.detail.primaryCode, paths, localPaths);
+      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths);
       setTrackedFetchSelection((current) => current ? { ...current, message: `Fetch queued as workflow run #${result.runId}.` } : current);
       setTrackedFetchSelection(null);
       await refreshCurrentWorksPage();
@@ -985,7 +985,7 @@ function RemoteSourcePanel({
     }
     setIsSyncingCode(work.primaryCode);
     try {
-      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), reason);
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onSynced(result.workId);
       return result.workId;
@@ -1030,7 +1030,7 @@ function RemoteSourcePanel({
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map((work) => work.primaryCode) });
+      const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map(remoteWorkActionCode) });
       toast.success(`Bulk workflow #${parent.runId}: tracked ${parent.synced} remote-only works.`);
       await onSynced(0);
     } catch (error) {
@@ -1048,7 +1048,7 @@ function RemoteSourcePanel({
   const runBulkSaveSelected = async () => {
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map((work) => work.primaryCode) });
+      const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map(remoteWorkActionCode) });
       toast.success(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
       await onSynced(0);
     } catch (error) {
@@ -1063,7 +1063,7 @@ function RemoteSourcePanel({
     if (!work.primaryCode) return;
     setIsSyncingCode(work.primaryCode);
     try {
-      const detail = await api.getRemoteSourceWork(source.id, work.primaryCode);
+      const detail = await api.getRemoteSourceWork(source.id, remoteWorkActionCode(work));
       const root = buildRemoteTree(detail.tracks);
       setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)), selectedLocalPaths: new Set(), plan: null, message: "" });
     } catch (error) {
@@ -1079,7 +1079,7 @@ function RemoteSourcePanel({
     const localPaths = Array.from(saveSelection.selectedLocalPaths);
     setIsSyncingCode(saveSelection.work.primaryCode);
     try {
-      const plan = await api.planRemoteSourceWorkFetch(source.id, saveSelection.detail.primaryCode, paths, localPaths);
+      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths);
       if (!saveSelection.plan && remoteFetchNeedsLocalReview(plan)) {
         setSaveSelection((current) => current ? { ...current, plan, message: formatRemoteFetchLocalReview(plan) } : current);
         return;
@@ -1088,7 +1088,7 @@ function RemoteSourcePanel({
         setSaveSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(source.id, saveSelection.detail.primaryCode, paths, localPaths);
+      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths);
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       await onSynced(0);
       setSaveSelection(null);
@@ -1118,7 +1118,7 @@ function RemoteSourcePanel({
   const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
     setIsSyncingCode(work.primaryCode);
     try {
-      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "mark_interest");
+      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), "mark_interest");
       await api.updateWorkUserState(result.workId, { listeningStatus: status });
       toast.success(`Tracked and marked ${result.primaryCode}.`);
       await onSynced(result.workId);
@@ -1134,7 +1134,7 @@ function RemoteSourcePanel({
     if (!work.primaryCode) return null;
     setIsSyncingCode(work.primaryCode);
     try {
-      const result = await api.trackRemoteSourceWork(source.id, work.primaryCode, "list_remote");
+      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
       toast.success(`Tracked ${result.primaryCode} for list selection.`);
       return result.workId;
     } catch (error) {
@@ -2177,7 +2177,7 @@ function RemoteWorkDetailView({
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(source.id, detail.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorksChanged();
       onOpenLocal(result.workId);
@@ -2193,7 +2193,7 @@ function RemoteWorkDetailView({
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(source.id, detail.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
       await onWorksChanged();
       setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
       return result.workId;
@@ -2226,7 +2226,7 @@ function RemoteWorkDetailView({
     setMessage("");
     setSavePlanMessage("");
     try {
-      const plan = await api.planRemoteSourceWorkFetch(source.id, detail.primaryCode, selectedPaths, selectedLocalPaths);
+      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), selectedPaths, selectedLocalPaths);
       if (!savePlan && remoteFetchNeedsLocalReview(plan)) {
         setSavePlan(plan);
         setSavePlanMessage(formatRemoteFetchLocalReview(plan));
@@ -2237,7 +2237,7 @@ function RemoteWorkDetailView({
         setSavePlanMessage(formatRemoteFetchPlanConflict(plan));
         return;
       }
-      const result = await api.fetchRemoteSourceWork(source.id, detail.primaryCode, selectedPaths, selectedLocalPaths);
+      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(detail), selectedPaths, selectedLocalPaths);
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
@@ -2629,7 +2629,7 @@ function WorkDetailView({
     setMessage("");
     setSavePlanMessage("");
     try {
-      const plan = await api.planRemoteSourceWorkFetch(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths, selectedLocalPaths);
+      const plan = await api.planRemoteSourceWorkFetch(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), selectedPaths, selectedLocalPaths);
       if (!savePlan && remoteFetchNeedsLocalReview(plan)) {
         setSavePlan(plan);
         setSavePlanMessage(formatRemoteFetchLocalReview(plan));
@@ -2640,7 +2640,7 @@ function WorkDetailView({
         setSavePlanMessage(formatRemoteFetchPlanConflict(plan));
         return;
       }
-      const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, selectedPaths, selectedLocalPaths);
+      const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), selectedPaths, selectedLocalPaths);
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
@@ -2660,7 +2660,7 @@ function WorkDetailView({
     setMessage("");
     try {
       if (selectedRemoteSource?.detail?.primaryCode) {
-        const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
+        const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), "manual_track");
         toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
         await onWorksChanged();
         openRemoteLocal(result.workId);
@@ -2681,7 +2681,7 @@ function WorkDetailView({
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, "manual_track");
+      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), "manual_track");
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId);
       await onWorksChanged();
@@ -2699,7 +2699,7 @@ function WorkDetailView({
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, selectedRemoteSource.detail.primaryCode, reason);
+      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), reason);
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       setRemoteSources((items) => items.map((item) => item.source.id === selectedRemoteSource.source.id
         ? { ...item, summary: { ...item.summary, workId: result.workId, hasRemote: true } }
@@ -6232,7 +6232,15 @@ function sourceRouteKey(source: LibrarySource) {
 }
 
 function remoteWorkRouteCode(work: RemoteWork) {
-  return work.primaryCode || work.remoteId;
+  return remoteWorkActionCode(work);
+}
+
+function remoteWorkActionCode(work: RemoteWork) {
+  return work.remoteCode || work.primaryCode || work.remoteId;
+}
+
+function remoteDetailActionCode(detail: RemoteWorkDetail) {
+  return detail.remoteCode || detail.primaryCode || detail.remoteId;
 }
 
 function remoteAvailabilityRouteCode(summary: SourceAvailabilitySource, fallbackCode: string) {

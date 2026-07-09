@@ -130,6 +130,7 @@ type voiceDetail struct {
 type voiceKnownWork struct {
 	WorkID           int64               `json:"workId"`
 	PrimaryCode      string              `json:"primaryCode"`
+	RemoteCode       string              `json:"remoteCode"`
 	Title            string              `json:"title"`
 	ReleaseDate      *string             `json:"releaseDate"`
 	UpdatedAt        string              `json:"updatedAt"`
@@ -169,6 +170,7 @@ type voiceRemoteWork struct {
 	SourceName     string   `json:"sourceName"`
 	RemoteID       string   `json:"remoteId"`
 	PrimaryCode    string   `json:"primaryCode"`
+	RemoteCode     string   `json:"remoteCode"`
 	Title          string   `json:"title"`
 	ReleaseDate    string   `json:"releaseDate"`
 	UpdatedAt      string   `json:"updatedAt"`
@@ -712,13 +714,30 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 	}
 	defer rows.Close()
 	works := []voiceKnownWork{}
+	seen := map[string]int{}
 	for rows.Next() {
 		row, err := scanVoiceWorkRow(rows)
 		if err != nil {
 			return nil, err
 		}
+		ref, err := s.canonicalWorkForCode(ctx, row.PrimaryCode)
+		if err != nil {
+			return nil, err
+		}
+		displayCode := row.PrimaryCode
+		displayWorkID := row.ID
+		remoteCode := ""
+		if ref.Known && ref.Code != "" {
+			displayCode = ref.Code
+			if !strings.EqualFold(row.PrimaryCode, ref.Code) {
+				remoteCode = row.PrimaryCode
+			}
+			if ref.WorkID > 0 {
+				displayWorkID = ref.WorkID
+			}
+		}
 		metadata := parseDLsiteSnapshot(row.Snapshot)
-		sourceTags, err := s.workSourceTagsByCode(ctx, row.PrimaryCode)
+		sourceTags, err := s.workSourceTagsByCode(ctx, displayCode)
 		if err != nil {
 			return nil, err
 		}
@@ -728,7 +747,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				metadata.CircleExternalID = externalID
 			}
 		}
-		progress, err := s.workProgressSummary(ctx, userID, row.ID)
+		progress, err := s.workProgressSummary(ctx, userID, displayWorkID)
 		if err != nil {
 			return nil, err
 		}
@@ -737,14 +756,15 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 		if releaseDate != nil {
 			updatedAt = *releaseDate
 		}
-		works = append(works, voiceKnownWork{
-			WorkID:           row.ID,
-			PrimaryCode:      row.PrimaryCode,
+		item := voiceKnownWork{
+			WorkID:           displayWorkID,
+			PrimaryCode:      displayCode,
+			RemoteCode:       remoteCode,
 			Title:            row.Title,
 			ReleaseDate:      releaseDate,
 			UpdatedAt:        updatedAt,
-			CoverURL:         s.coverURL(row.PrimaryCode),
-			DLsiteURL:        dlsiteURL(row.PrimaryCode),
+			CoverURL:         s.coverURL(displayCode),
+			DLsiteURL:        dlsiteURL(displayCode),
 			Circle:           metadata.Circle,
 			CircleExternalID: metadata.CircleExternalID,
 			Rating:           metadata.Rating,
@@ -754,14 +774,73 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			SeriesTitleID:    row.SeriesTitleID,
 			ListeningMark:    row.ListeningStatus,
 			Favorite:         row.Favorite,
-			Local:            row.HasLocal,
-			Remote:           row.HasRemote,
-			Cache:            row.HasCache,
+			Local:            row.HasLocal || sourceStatsContain(sourceTags, "local"),
+			Remote:           row.HasRemote || sourceStatsContain(sourceTags, "remote"),
+			Cache:            row.HasCache || sourceStatsContain(sourceTags, "cache"),
 			SourceTags:       sourceTags,
 			Progress:         progress,
-		})
+		}
+		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
+		if index, ok := seen[key]; ok {
+			mergeVoiceKnownWork(&works[index], item)
+			continue
+		}
+		seen[key] = len(works)
+		works = append(works, item)
 	}
 	return works, rows.Err()
+}
+
+func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
+	if target.Title == "" || strings.EqualFold(target.Title, target.PrimaryCode) {
+		target.Title = item.Title
+	}
+	if target.RemoteCode == "" {
+		target.RemoteCode = item.RemoteCode
+	}
+	if target.ReleaseDate == nil {
+		target.ReleaseDate = item.ReleaseDate
+	}
+	if target.UpdatedAt == "" {
+		target.UpdatedAt = item.UpdatedAt
+	}
+	if target.Circle == "" {
+		target.Circle = item.Circle
+		target.CircleExternalID = item.CircleExternalID
+	}
+	if target.Rating == nil {
+		target.Rating = item.Rating
+	}
+	if target.Sales == nil {
+		target.Sales = item.Sales
+	}
+	if len(target.Tags) == 0 {
+		target.Tags = item.Tags
+	}
+	if target.Series == "" {
+		target.Series = item.Series
+		target.SeriesTitleID = item.SeriesTitleID
+	}
+	if target.ListeningMark == "" || target.ListeningMark == "none" {
+		target.ListeningMark = item.ListeningMark
+	}
+	target.Favorite = target.Favorite || item.Favorite
+	target.Local = target.Local || item.Local
+	target.Remote = target.Remote || item.Remote
+	target.Cache = target.Cache || item.Cache
+	target.SourceTags = mergeCircleSourceStats(target.SourceTags, item.SourceTags)
+	if target.Progress.MediaItemID == nil {
+		target.Progress = item.Progress
+	}
+}
+
+func sourceStatsContain(items []circleSourceStat, key string) bool {
+	for _, item := range items {
+		if item.Key == key || (key == "remote" && strings.HasPrefix(item.Key, "source:")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, voiceName string) ([]voiceRemoteSourceSet, error) {
@@ -821,6 +900,14 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 		}
 		for _, remoteWork := range page.Works {
 			code := normalizedRemoteWorkCode(remoteWork)
+			displayCode := code
+			ref, err := s.canonicalWorkForCode(ctx, code)
+			if err != nil {
+				return nil, err
+			}
+			if ref.Code != "" {
+				displayCode = ref.Code
+			}
 			flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
 			if err != nil {
 				return nil, err
@@ -830,8 +917,9 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				SourceCode:     source.Code,
 				SourceName:     source.DisplayName,
 				RemoteID:       fmt.Sprintf("%d", remoteWork.ID),
-				PrimaryCode:    code,
-				Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, code),
+				PrimaryCode:    displayCode,
+				RemoteCode:     code,
+				Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, displayCode),
 				ReleaseDate:    remoteWork.Release,
 				UpdatedAt:      remoteWork.Release,
 				CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
@@ -1767,23 +1855,26 @@ func (s *Server) loadVoiceUserTags(ctx context.Context, userID int64, personID i
 }
 
 func (s *Server) workSourceTagsByCode(ctx context.Context, code string) ([]circleSourceStat, error) {
-	var workID int64
-	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return []circleSourceStat{}, nil
-		}
-		return nil, err
-	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(*)
 		FROM media_file_location AS location
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
-		WHERE item.work_id = ?
+		WHERE item.work_id IN (
+				SELECT work.id
+				FROM work
+				WHERE UPPER(work.primary_code) = UPPER(?)
+				UNION
+				SELECT sibling.work_id
+				FROM work AS current_work
+				INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+				WHERE UPPER(current_work.primary_code) = UPPER(?)
+			)
 			AND location.availability = 'available'
 		GROUP BY source.id, source.display_name, location.location_type
 		ORDER BY source.priority ASC, source.display_name ASC
-	`, workID)
+	`, code, code)
 	if err != nil {
 		return nil, err
 	}

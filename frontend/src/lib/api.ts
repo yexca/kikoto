@@ -240,6 +240,7 @@ export type RemoteWorksResponse = {
 export type RemoteWork = {
   remoteId: string;
   primaryCode: string;
+  remoteCode: string;
   title: string;
   releaseDate: string;
   updatedAt: string;
@@ -277,6 +278,7 @@ export type RemoteWorkDetail = {
   sourceName: string;
   remoteId: string;
   primaryCode: string;
+  remoteCode: string;
   title: string;
   coverUrl: string;
   sourceUrl: string;
@@ -635,6 +637,7 @@ export type CircleSummary = {
 export type CircleCatalogWork = {
   workId: number | null;
   primaryCode: string;
+  remoteCode: string;
   title: string;
   releaseDate: string | null;
   updatedAt: string;
@@ -727,6 +730,7 @@ export type VoiceMergeReview = {
 export type VoiceKnownWork = {
   workId: number;
   primaryCode: string;
+  remoteCode: string;
   title: string;
   releaseDate: string | null;
   updatedAt: string;
@@ -754,6 +758,7 @@ export type VoiceRemoteWork = {
   sourceName: string;
   remoteId: string;
   primaryCode: string;
+  remoteCode: string;
   title: string;
   releaseDate: string;
   updatedAt: string;
