@@ -1200,6 +1200,9 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 				item.Remote = true
 			}
 		}
+		if err := s.applyManualOverridesToCircleWork(ctx, &item); err != nil {
+			return nil, err
+		}
 		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
 		if index, ok := seen[key]; ok {
 			mergeCircleCatalogWork(&works[index], item)

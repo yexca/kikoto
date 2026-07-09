@@ -50,6 +50,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/works/{id}/manual-overrides", s.getWorkManualOverrides)
+	mux.HandleFunc("PATCH /api/works/{id}/manual-overrides", s.updateWorkManualOverrides)
+	mux.HandleFunc("DELETE /api/works/{id}/manual-overrides/{field}", s.deleteWorkManualOverride)
+	mux.HandleFunc("GET /api/works/{id}/cover-candidates", s.listWorkCoverCandidates)
+	mux.HandleFunc("POST /api/works/{id}/cover-override", s.setWorkCoverOverride)
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
@@ -509,6 +514,9 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
 		item.SeriesTitleID = s.seriesTitleIDForWork(ctx, item.PrimaryCode)
+		if err := s.applyManualOverridesToSummary(ctx, &item); err != nil {
+			return nil, err
+		}
 		if len(item.Availability) == 0 {
 			item.Availability = availabilityBadgesWithPresence(availableLocationTypes.String, item.SourcePresence)
 		}
@@ -1007,6 +1015,8 @@ type workDetail struct {
 	RatingCount      *int64               `json:"ratingCount"`
 	Sales            *int64               `json:"sales"`
 	Series           string               `json:"series"`
+	SeriesTitleID    string               `json:"seriesTitleId"`
+	SeriesCircleID   string               `json:"seriesCircleExternalId"`
 	DLsiteFetchedAt  string               `json:"dlsiteFetchedAt"`
 	Tags             []string             `json:"tags"`
 	VoiceActors      []string             `json:"voiceActors"`
@@ -1014,6 +1024,7 @@ type workDetail struct {
 	ListeningStatus  string               `json:"listeningStatus"`
 	Favorite         bool                 `json:"favorite"`
 	Translations     []workTranslation    `json:"translations"`
+	ManualOverrides  workManualOverrides  `json:"manualOverrides"`
 	SourcePresence   []sourcePresenceItem `json:"sourcePresence"`
 	MediaItems       []mediaItemDetail    `json:"mediaItems"`
 }
@@ -3323,6 +3334,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.RatingCount = metadata.RatingCount
 	work.Sales = metadata.Sales
 	work.Series = metadata.Series
+	work.SeriesTitleID = s.seriesTitleIDForWork(ctx, work.PrimaryCode)
+	work.SeriesCircleID = work.CircleExternalID
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
 	work.VoiceCredits = []voiceCredit{}
@@ -3358,6 +3371,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		work.VoiceCredits = append(work.VoiceCredits, credit)
 	}
 	if err := creditRows.Err(); err != nil {
+		return workDetail{}, err
+	}
+	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
 		return workDetail{}, err
 	}
 

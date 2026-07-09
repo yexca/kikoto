@@ -809,6 +809,9 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			SourceTags:       sourceTags,
 			Progress:         progress,
 		}
+		if err := s.applyManualOverridesToVoiceWork(ctx, &item); err != nil {
+			return nil, err
+		}
 		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
 		if index, ok := seen[key]; ok {
 			mergeVoiceKnownWork(&works[index], item)
