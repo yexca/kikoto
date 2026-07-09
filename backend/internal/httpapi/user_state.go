@@ -131,10 +131,6 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.ensureLogicalWorkSchema(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	page := queryInt(r, "page", 1)
 	pageSize := queryInt(r, "pageSize", 24)
 	if page < 1 {
