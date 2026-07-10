@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
@@ -29,6 +30,7 @@ import (
 
 type Server struct {
 	db                   *sql.DB
+	accountStore         *account.Store
 	libraryStore         *library.Store
 	cfg                  config.Config
 	circleAutoRefreshMu  sync.Mutex
@@ -37,7 +39,10 @@ type Server struct {
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
-	return &Server{db: db, libraryStore: library.NewStore(db), cfg: cfg, circleAutoRefreshing: map[int64]bool{}}
+	return &Server{
+		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), cfg: cfg,
+		circleAutoRefreshing: map[int64]bool{},
+	}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -211,56 +216,30 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID int64
-	var passwordHash string
-	if err := s.db.QueryRowContext(r.Context(), `
-		SELECT account.id, credential.password_hash
-		FROM user_account AS account
-		INNER JOIN user_password_credential AS credential ON credential.user_id = account.id
-		WHERE account.username = ? AND account.enabled = 1
-	`, username).Scan(&userID, &passwordHash); err != nil {
+	session, err := s.accountStore.Authenticate(r.Context(), username, password, time.Now())
+	if errors.Is(err, sql.ErrNoRows) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
 		return
 	}
-	if !verifyPassword(password, passwordHash) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid username or password"})
-		return
-	}
-
-	sessionID, err := newSessionID()
 	if err != nil {
-		writeError(w, err)
-		return
-	}
-	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
-	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO user_session (id, user_id, expires_at)
-		VALUES (?, ?, ?)
-	`, sessionID, userID, expiresAt.Format("2006-01-02 15:04:05")); err != nil {
 		writeError(w, err)
 		return
 	}
 
 	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    sessionID,
+		Value:    session.ID,
 		Path:     "/",
-		Expires:  expiresAt,
+		Expires:  session.ExpiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-
-	user, err := s.loadUserByID(r.Context(), userID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": user})
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": session.User})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
-		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM user_session WHERE id = ?", cookie.Value)
+		_ = s.accountStore.DeleteSession(r.Context(), cookie.Value)
 	}
 	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,
