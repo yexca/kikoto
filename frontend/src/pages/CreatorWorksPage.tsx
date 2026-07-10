@@ -67,6 +67,10 @@ export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
   if (kind !== "voice") {
     return <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">Circle creator view has moved to Circles.</div>;
   }
+  return <VoiceCreatorWorksPage />;
+}
+
+function VoiceCreatorWorksPage() {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     const syncPath = () => setPath(window.location.pathname);

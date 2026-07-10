@@ -19,6 +19,8 @@ import (
 
 var ErrNoProduct = errors.New("dlsite product not found")
 
+const maxDLsiteJSONBytes int64 = 8 << 20
+
 type HTTPStatusError struct {
 	Operation  string
 	Status     string
@@ -368,7 +370,7 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 		return Product{}, HTTPStatusError{Operation: "dlsite " + site, Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
-	body, err := io.ReadAll(response.Body)
+	body, err := readLimitedBody(response.Body, maxDLsiteJSONBytes)
 	if err != nil {
 		return Product{}, err
 	}
@@ -565,7 +567,7 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 		return nil, nil, HTTPStatusError{Operation: "dlsite dynamic", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
-	body, err := io.ReadAll(response.Body)
+	body, err := readLimitedBody(response.Body, maxDLsiteJSONBytes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -590,6 +592,17 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 		rating = dynamic.RateAverage
 	}
 	return raw, rating, nil
+}
+
+func readLimitedBody(body io.Reader, maxBytes int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxBytes)
+	}
+	return data, nil
 }
 
 func combinedRaw(productRaw json.RawMessage, dynamicRaw json.RawMessage) json.RawMessage {

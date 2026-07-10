@@ -275,46 +275,46 @@ func (s *Server) loadWorkManualOverrides(ctx context.Context, workID int64) (wor
 		if err := rows.Scan(&row.FieldName, &row.ValueJSON, &row.AssetPath); err != nil {
 			return workManualOverrides{}, err
 		}
-		switch row.FieldName {
-		case "title":
-			var value string
-			if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil && strings.TrimSpace(value) != "" {
-				value = strings.TrimSpace(value)
-				overrides.Title = &value
-			}
-		case "circle":
-			var value manualOverrideEntity
-			if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
-				if entity := normalizeManualEntity(&value); entity != nil {
-					overrides.Circle = entity
-				}
-			}
-		case "series":
-			var value manualOverrideSeries
-			if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
-				if series := normalizeManualSeries(&value); series != nil {
-					overrides.Series = series
-				}
-			}
-		case "voice_actors":
-			var value []manualOverridePerson
-			if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
-				overrides.VoiceActors = normalizeManualPeople(value)
-			}
-		case "cover":
-			if cover := s.manualCoverOverride(row.AssetPath, row.ValueJSON); cover != nil {
-				overrides.Cover = cover
-			}
-		}
+		s.applyManualOverrideRow(&overrides, row)
 	}
 	return overrides, rows.Err()
 }
 
-func (s *Server) applyManualOverridesToSummary(ctx context.Context, work *libraryWorkSummary) error {
-	overrides, err := s.loadWorkManualOverrides(ctx, work.ID)
-	if err != nil {
-		return err
+func (s *Server) applyManualOverrideRow(overrides *workManualOverrides, row manualOverrideRow) {
+	switch row.FieldName {
+	case "title":
+		var value string
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil && strings.TrimSpace(value) != "" {
+			value = strings.TrimSpace(value)
+			overrides.Title = &value
+		}
+	case "circle":
+		var value manualOverrideEntity
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
+			if entity := normalizeManualEntity(&value); entity != nil {
+				overrides.Circle = entity
+			}
+		}
+	case "series":
+		var value manualOverrideSeries
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
+			if series := normalizeManualSeries(&value); series != nil {
+				overrides.Series = series
+			}
+		}
+	case "voice_actors":
+		var value []manualOverridePerson
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
+			overrides.VoiceActors = normalizeManualPeople(value)
+		}
+	case "cover":
+		if cover := s.manualCoverOverride(row.AssetPath, row.ValueJSON); cover != nil {
+			overrides.Cover = cover
+		}
 	}
+}
+
+func applyManualOverridesToLibrarySummary(work *libraryWorkSummary, overrides workManualOverrides) {
 	if overrides.Title != nil {
 		work.Title = *overrides.Title
 	}
@@ -332,6 +332,14 @@ func (s *Server) applyManualOverridesToSummary(ctx context.Context, work *librar
 	if len(overrides.VoiceActors) > 0 {
 		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
 	}
+}
+
+func (s *Server) applyManualOverridesToSummary(ctx context.Context, work *libraryWorkSummary) error {
+	overrides, err := s.loadWorkManualOverrides(ctx, work.ID)
+	if err != nil {
+		return err
+	}
+	applyManualOverridesToLibrarySummary(work, overrides)
 	return nil
 }
 

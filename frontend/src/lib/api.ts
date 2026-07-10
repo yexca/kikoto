@@ -948,8 +948,8 @@ export function mediaDownloadURL(locationId: number) {
   return assetURL(`/api/media/${locationId}/download`);
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { credentials: "include" });
+async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, { credentials: "include", signal });
   if (!response.ok) {
     throw await responseError(response, `GET ${path} failed with ${response.status}`);
   }
@@ -1024,9 +1024,10 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc") =>
+  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc", signal?: AbortSignal) =>
     getJSON<WorksPage>(
       `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      signal,
     ),
   listFavoriteWorksPage: (page = 1, pageSize = 24, query = "", listId: number | "all" = "all", status = "all", availability = "all") =>
     getJSON<FavoriteWorksPage>(
@@ -1034,12 +1035,13 @@ export const api = {
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
-  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "") =>
+  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", signal?: AbortSignal) =>
     getJSON<RemoteWorksResponse>(
       `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      signal,
     ),
-  getRemoteSourceWork: (id: number, code: string) =>
-    getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`),
+  getRemoteSourceWork: (id: number, code: string, signal?: AbortSignal) =>
+    getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`, signal),
   getSourceAvailability: (code: string) =>
     getJSON<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`),
   checkSourceAvailability: (code: string, sourceId = 0) =>
@@ -1058,7 +1060,7 @@ export const api = {
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
-  getWork: (id: number) => getJSON<WorkDetail>(`/api/works/${id}`),
+  getWork: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}`, signal),
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
   updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
@@ -1076,7 +1078,7 @@ export const api = {
     getJSON<MetadataSuggestionResponse<SeriesSuggestion>>(
       `/api/metadata-suggestions/series?q=${encodeURIComponent(query)}&limit=${limit}${circleId.trim() ? `&circleId=${encodeURIComponent(circleId.trim())}` : ""}`,
     ),
-  resolveWorkCode: (code: string) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`),
+  resolveWorkCode: (code: string, signal?: AbortSignal) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
   createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
   updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>

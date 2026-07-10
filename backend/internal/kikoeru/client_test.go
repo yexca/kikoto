@@ -16,6 +16,21 @@ func TestWorkCodeFallsBackToOriginalWorkID(t *testing.T) {
 	}
 }
 
+func TestReadLimitedJSONBodyRejectsOversizedResponse(t *testing.T) {
+	if _, err := readLimitedJSONBody(endlessTestReader{}); err == nil {
+		t.Fatal("readLimitedJSONBody() accepted an oversized response")
+	}
+}
+
+type endlessTestReader struct{}
+
+func (endlessTestReader) Read(buffer []byte) (int, error) {
+	for index := range buffer {
+		buffer[index] = 'x'
+	}
+	return len(buffer), nil
+}
+
 func TestListWorksFallsBackToLocalFilterWhenSearchFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

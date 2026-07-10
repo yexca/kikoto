@@ -20,6 +20,7 @@ type Client struct {
 }
 
 const CompatibilityNumber178 = "number178"
+const maxKikoeruJSONBytes int64 = 32 << 20
 
 type Work struct {
 	ID                 int64    `json:"id"`
@@ -248,15 +249,15 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
 	}
+	bytes, err := readLimitedJSONBody(resp.Body)
+	if err != nil {
+		return err
+	}
 	if value, ok := target.(*string); ok {
-		bytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
 		*value = string(bytes)
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(target)
+	return json.Unmarshal(bytes, target)
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, payload any, target any) error {
@@ -282,7 +283,22 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, target 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
 	}
-	return json.NewDecoder(resp.Body).Decode(target)
+	bytes, err := readLimitedJSONBody(resp.Body)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(bytes, target)
+}
+
+func readLimitedJSONBody(body io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxKikoeruJSONBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxKikoeruJSONBytes {
+		return nil, fmt.Errorf("remote source response exceeds %d bytes", maxKikoeruJSONBytes)
+	}
+	return data, nil
 }
 
 func cloneValues(values url.Values) url.Values {

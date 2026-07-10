@@ -118,3 +118,28 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 		t.Fatalf("normalized Unicode tags = %d, want 2", count)
 	}
 }
+
+func TestMigrateAddsQueryIndexes(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "indexed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	for table, index := range map[string]string{
+		"metadata_snapshot": "idx_metadata_snapshot_work_provider_latest",
+		"work":              "idx_work_primary_code_upper",
+		"work_edition":      "idx_work_edition_primary_code_upper",
+		"party_series_work": "idx_party_series_work_code_upper",
+	} {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM pragma_index_list(?) WHERE name = ?", table, index).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("index %s on %s count = %d, want 1", index, table, count)
+		}
+	}
+}

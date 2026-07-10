@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,14 @@ type PlayerContextValue = {
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+type LibraryPlayerContextValue = {
+  currentLocationId: number | null;
+  playQueue: (tracks: PlayerTrack[], locationId: number) => void;
+  playNext: (track: PlayerTrack) => void;
+  appendQueue: (tracks: PlayerTrack[]) => void;
+};
+
+const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
 const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
 
@@ -308,7 +316,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isPlaying, currentTrack]);
 
-  const playQueue = (tracks: PlayerTrack[], locationId: number) => {
+  const playQueue = useCallback((tracks: PlayerTrack[], locationId: number) => {
     if (tracks.length === 0) return;
     const normalizedTracks = tracks.map(withQueueIdentity);
     const nextIndex = Math.max(
@@ -318,7 +326,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setQueue(normalizedTracks);
     setCurrentIndex(nextIndex);
     setIsPlaying(true);
-  };
+  }, []);
 
   const selectTrack = (index: number) => {
     if (index < 0 || index >= queue.length) return;
@@ -448,19 +456,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
   };
 
-  const playNext = (track: PlayerTrack) => {
+  const playNext = useCallback((track: PlayerTrack) => {
     const nextTrack = withQueueIdentity(track);
     setQueue((items) => {
       const next = [...items];
       next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
       return next;
     });
-  };
+  }, [currentIndex]);
 
-  const appendQueue = (tracks: PlayerTrack[]) => {
+  const appendQueue = useCallback((tracks: PlayerTrack[]) => {
     if (tracks.length === 0) return;
     setQueue((items) => [...items, ...tracks.map(withQueueIdentity)]);
-  };
+  }, []);
 
   const moveQueueItem = (queueItemId: string, direction: -1 | 1) => {
     setQueue((items) => {
@@ -629,27 +637,38 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }),
     [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, playbackRate, sleepTimer, sleepRemainingSeconds, mode],
   );
+  const libraryValue = useMemo<LibraryPlayerContextValue>(
+    () => ({
+      currentLocationId: currentTrack?.locationId ?? null,
+      playQueue,
+      playNext,
+      appendQueue,
+    }),
+    [currentTrack?.locationId, playQueue, playNext, appendQueue],
+  );
 
   return (
-    <PlayerContext.Provider value={value}>
-      {children}
-      <audio
-        ref={audioRef}
-        preload="metadata"
-        onTimeUpdate={(event) => {
-          setCurrentTime(event.currentTarget.currentTime);
-          saveProgress(false);
-        }}
-        onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => {
-          saveProgress(false, true);
-          setIsPlaying(false);
-        }}
-        onEnded={handleEnded}
-        onError={tryNextLocation}
-      />
-    </PlayerContext.Provider>
+    <LibraryPlayerContext.Provider value={libraryValue}>
+      <PlayerContext.Provider value={value}>
+        {children}
+        <audio
+          ref={audioRef}
+          preload="metadata"
+          onTimeUpdate={(event) => {
+            setCurrentTime(event.currentTarget.currentTime);
+            saveProgress(false);
+          }}
+          onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => {
+            saveProgress(false, true);
+            setIsPlaying(false);
+          }}
+          onEnded={handleEnded}
+          onError={tryNextLocation}
+        />
+      </PlayerContext.Provider>
+    </LibraryPlayerContext.Provider>
   );
 }
 
@@ -657,6 +676,14 @@ export function usePlayer() {
   const value = useContext(PlayerContext);
   if (!value) {
     throw new Error("usePlayer must be used inside PlayerProvider");
+  }
+  return value;
+}
+
+export function useLibraryPlayer() {
+  const value = useContext(LibraryPlayerContext);
+  if (!value) {
+    throw new Error("useLibraryPlayer must be used inside PlayerProvider");
   }
   return value;
 }

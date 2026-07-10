@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/httpapi"
@@ -13,6 +16,8 @@ import (
 
 func main() {
 	cfg := config.Load()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	db, err := storage.Open(cfg.DatabasePath)
 	if err != nil {
@@ -31,7 +36,7 @@ func main() {
 		slog.Error("bootstrap root user", "error", err)
 		os.Exit(1)
 	}
-	if err := server.SeedRemoteSourcesFromConfig(context.Background()); err != nil {
+	if err := server.SeedRemoteSourcesFromConfig(ctx); err != nil {
 		slog.Error("seed remote sources", "error", err)
 		os.Exit(1)
 	}
@@ -40,13 +45,29 @@ func main() {
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
 	go func() {
-		if err := server.RunStartupWorkflows(context.Background()); err != nil {
+		if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("run startup workflows", "error", err)
 		}
 	}()
-	go server.StartJobRunner(context.Background())
+	go server.StartJobRunner(ctx)
 
-	if err := http.ListenAndServe(cfg.HTTPAddr, server.Routes()); err != nil {
+	httpServer := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           server.Routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("graceful shutdown", "error", err)
+		}
+	}()
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("http server stopped", "error", err)
 		os.Exit(1)
 	}

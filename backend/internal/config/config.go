@@ -15,6 +15,7 @@ type Config struct {
 	LocalScanDepth      int
 	DevMode             bool
 	SessionCookieSecure bool
+	AllowedOrigins      []string
 	RootUsername        string
 	RootPassword        string
 	RemoteSourceSeeds   []RemoteSourceSeed
@@ -40,10 +41,25 @@ func Load() Config {
 		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
 		DevMode:             envBool("KIKOTO_DEV_MODE", false),
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
+		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
 		RootPassword:        env("KIKOTO_ROOT_PASSWORD", "change-me"),
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
 	}
+}
+
+func envList(key string) []string {
+	values := []string{}
+	seen := map[string]bool{}
+	for _, value := range strings.Split(os.Getenv(key), ",") {
+		value = strings.TrimRight(strings.TrimSpace(value), "/")
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		values = append(values, value)
+	}
+	return values
 }
 
 func env(key, fallback string) string {

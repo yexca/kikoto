@@ -180,7 +180,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows)
+	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows, true)
 	if err != nil {
 		writeError(w, err)
 		return

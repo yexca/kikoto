@@ -140,7 +140,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
-	apiHandler := withCORS(s.authMiddleware(mux))
+	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(mux), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
 		return apiHandler
 	}
@@ -389,7 +389,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows)
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows, false)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -444,7 +444,7 @@ type pendingLibraryWorkRow struct {
 	partyLink              string
 }
 
-func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sql.Rows) ([]libraryWorkSummary, error) {
+func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sql.Rows, canonicalFiltered bool) ([]libraryWorkSummary, error) {
 	pending := []pendingLibraryWorkRow{}
 	for rows.Next() {
 		var item pendingLibraryWorkRow
@@ -488,44 +488,21 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item := row.item
 		item.SourcePresence = parseSourcePresenceSummary(row.sourcePresence)
 		metadata := parseDLsiteSnapshot(row.snapshot)
-		familyMediaCode := item.PrimaryCode
-		progressWorkID := item.ID
-		if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
-			return nil, err
-		} else if !visible {
-			continue
-		}
-		if mediaCode, ok, err := s.logicalWorkMediaCode(ctx, item.ID); err != nil {
-			return nil, err
-		} else if ok {
-			familyMediaCode = mediaCode
-		} else {
-			if metadata.BaseCode != "" && s.workCodeExists(ctx, metadata.BaseCode) {
+		if !canonicalFiltered {
+			if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
+				return nil, err
+			} else if !visible {
 				continue
 			}
-			for _, translation := range metadata.LanguageEditions {
-				if strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
-					continue
-				}
-				if workID, ok := s.workIDForCode(ctx, translation.PrimaryCode); ok {
-					if hasMedia, err := s.workHasMedia(ctx, workID); err == nil && hasMedia {
-						familyMediaCode = translation.PrimaryCode
-						break
-					}
-				}
-			}
 		}
-		if !strings.EqualFold(familyMediaCode, item.PrimaryCode) {
-			item.MediaEditionCode = familyMediaCode
-			item.OfficialTranslation = true
-			if trackCount, availableLocations, availability, ok := s.workAvailabilityForCode(ctx, familyMediaCode); ok {
-				item.TrackCount = trackCount
-				item.AvailableLocations = availableLocations
-				item.Availability = availability
-			}
-			item.SourcePresence = s.sourcePresenceForCode(ctx, familyMediaCode)
-			if workID, ok := s.workIDForCode(ctx, familyMediaCode); ok {
-				progressWorkID = workID
+		if metadata.BaseCode != "" && s.workCodeExists(ctx, metadata.BaseCode) {
+			continue
+		}
+		item.mediaWorkID = item.ID
+		item.availableLocationTypes = row.availableLocationTypes
+		for _, translation := range metadata.LanguageEditions {
+			if !strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
+				item.fallbackEditionCodes = append(item.fallbackEditionCodes, translation.PrimaryCode)
 			}
 		}
 		item.ReleaseDate = metadata.ReleaseDate
@@ -543,19 +520,10 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
-		item.SeriesTitleID = s.seriesTitleIDForWork(ctx, item.PrimaryCode)
-		if err := s.applyManualOverridesToSummary(ctx, &item); err != nil {
-			return nil, err
-		}
-		if len(item.Availability) == 0 {
-			item.Availability = availabilityBadgesWithPresence(row.availableLocationTypes, item.SourcePresence)
-		}
-		progress, err := s.workProgressSummary(ctx, userID, progressWorkID)
-		if err != nil {
-			return nil, err
-		}
-		item.Progress = progress
 		works = append(works, item)
+	}
+	if err := s.enrichLibraryWorkSummaries(ctx, userID, works); err != nil {
+		return nil, err
 	}
 	return works, nil
 }
@@ -592,7 +560,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		return
 	}
 	defer rows.Close()
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows)
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows, true)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1026,31 +994,34 @@ func (s *Server) seriesTitleIDForWork(ctx context.Context, code string) string {
 }
 
 type libraryWorkSummary struct {
-	ID                  int64                `json:"id"`
-	PrimaryCode         string               `json:"primaryCode"`
-	Title               string               `json:"title"`
-	CreatedAt           string               `json:"createdAt"`
-	UpdatedAt           string               `json:"updatedAt"`
-	ReleaseDate         *string              `json:"releaseDate"`
-	CoverURL            string               `json:"coverUrl"`
-	DLsiteURL           string               `json:"dlsiteUrl"`
-	Circle              string               `json:"circle"`
-	CircleExternalID    string               `json:"circleExternalId"`
-	Rating              *float64             `json:"rating"`
-	Sales               *int64               `json:"sales"`
-	Tags                []string             `json:"tags"`
-	VoiceActors         []string             `json:"voiceActors"`
-	Series              string               `json:"series"`
-	SeriesTitleID       string               `json:"seriesTitleId"`
-	TrackCount          int64                `json:"trackCount"`
-	AvailableLocations  int64                `json:"availableLocations"`
-	Availability        []string             `json:"availability"`
-	SourcePresence      []sourcePresenceItem `json:"sourcePresence"`
-	Progress            workProgressSummary  `json:"progress"`
-	ListeningStatus     string               `json:"listeningStatus"`
-	Favorite            bool                 `json:"favorite"`
-	MediaEditionCode    string               `json:"mediaEditionCode"`
-	OfficialTranslation bool                 `json:"officialTranslation"`
+	ID                     int64                `json:"id"`
+	PrimaryCode            string               `json:"primaryCode"`
+	Title                  string               `json:"title"`
+	CreatedAt              string               `json:"createdAt"`
+	UpdatedAt              string               `json:"updatedAt"`
+	ReleaseDate            *string              `json:"releaseDate"`
+	CoverURL               string               `json:"coverUrl"`
+	DLsiteURL              string               `json:"dlsiteUrl"`
+	Circle                 string               `json:"circle"`
+	CircleExternalID       string               `json:"circleExternalId"`
+	Rating                 *float64             `json:"rating"`
+	Sales                  *int64               `json:"sales"`
+	Tags                   []string             `json:"tags"`
+	VoiceActors            []string             `json:"voiceActors"`
+	Series                 string               `json:"series"`
+	SeriesTitleID          string               `json:"seriesTitleId"`
+	TrackCount             int64                `json:"trackCount"`
+	AvailableLocations     int64                `json:"availableLocations"`
+	Availability           []string             `json:"availability"`
+	SourcePresence         []sourcePresenceItem `json:"sourcePresence"`
+	Progress               workProgressSummary  `json:"progress"`
+	ListeningStatus        string               `json:"listeningStatus"`
+	Favorite               bool                 `json:"favorite"`
+	MediaEditionCode       string               `json:"mediaEditionCode"`
+	OfficialTranslation    bool                 `json:"officialTranslation"`
+	mediaWorkID            int64
+	availableLocationTypes string
+	fallbackEditionCodes   []string
 }
 
 type sourcePresenceItem struct {
@@ -6091,40 +6062,4 @@ func safeCachePath(root string, relPath string) (string, error) {
 		return "", fmt.Errorf("path escapes cache root")
 	}
 	return absPath, nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-}
-
-func mustJSON(value any) string {
-	bytes, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return string(bytes)
-}
-
-func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

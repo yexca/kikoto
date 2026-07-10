@@ -87,6 +87,21 @@ import {
 } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import {
+  columnOptions,
+  defaultLibraryBrowseState,
+  libraryBrowseSearch,
+  libraryBrowseStateFromSearch,
+  libraryLocation,
+  localPageSize,
+  localWorkPageSizeOptions,
+  readLibraryBrowseState,
+  writeLibraryBrowseState,
+  type LibraryBrowseState,
+  type LibraryColumnCount,
+  type LibraryViewMode,
+  type LocalWorkPageSize,
+} from "@/pages/libraryBrowseState";
+import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
@@ -99,7 +114,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import { type PlayerTrack, type PlayerTrackLocation, usePlayer } from "@/player/PlayerProvider";
+import { type PlayerTrack, type PlayerTrackLocation, useLibraryPlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
 const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
@@ -111,11 +126,6 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "relisten", label: "Relisten" },
   { value: "paused", label: "Paused" },
 ];
-const localWorkPageSizeOptions = [24, 48] as const;
-type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
-const columnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
-type LibraryColumnCount = (typeof columnOptions)[number];
-type LibraryViewMode = "grid" | "masonry";
 const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "recent", label: "Recently added" },
   { value: "release", label: "Release date" },
@@ -129,31 +139,6 @@ const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
-type LibraryBrowseState = {
-	query: string;
-	page: number;
-	pageSize: number;
-	status: ListeningStatus | "all";
-	sort: LibrarySort;
-	direction: SortDirection;
-	view: LibraryViewMode;
-	mobileColumns: LibraryColumnCount;
-	desktopColumns: LibraryColumnCount;
-	scrollY: number;
-};
-const defaultLibraryBrowseState: LibraryBrowseState = {
-	query: "",
-	page: 1,
-	pageSize: 24,
-	status: "all",
-	sort: "recent",
-	direction: "desc",
-	view: "grid",
-	mobileColumns: 1,
-	desktopColumns: 6,
-	scrollY: 0,
-};
-const libraryBrowseStoragePrefix = "kikoto:library-browse:";
 type SearchClauseKind =
   | "text"
   | "code"
@@ -331,11 +316,12 @@ export function LibraryPage() {
       skipNextLibraryEffect.current = false;
       return;
     }
+    const controller = new AbortController();
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
 	setIsLibraryLoading(true);
     api
-      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection)
+      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, controller.signal)
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
@@ -345,14 +331,16 @@ export function LibraryPage() {
 		completeResultsUpdate();
       })
       .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         if (requestSeq !== libraryRequestSeq.current) return;
         setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
         setOptimisticLibrarySearchClauses(null);
 		pendingResultsScroll.current = false;
 	  })
 	  .finally(() => {
-		if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
+		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
 	  });
+    return () => controller.abort();
   }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
@@ -382,15 +370,17 @@ export function LibraryPage() {
       skipNextRemoteEffect.current = false;
       return;
     }
+    const controller = new AbortController();
     const sourceState = remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState;
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then((result) => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, controller.signal).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
-    }).catch(() => {
+    }).catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult({
         sourceId: activeTab.source.id,
@@ -401,8 +391,9 @@ export function LibraryPage() {
         status: "unavailable",
       });
     }).finally(() => {
-      if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
+      if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
+    return () => controller.abort();
   }, [activeTab, remoteSearchQuery, remoteSourceStates]);
 
   useEffect(() => {
@@ -410,22 +401,26 @@ export function LibraryPage() {
       setSelectedWork(null);
       return;
     }
+    const controller = new AbortController();
     const work = works.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
     if (work) {
       setSelectedWorkPreview(work);
-      api.getWork(work.id).then((detail) => {
+      api.getWork(work.id, controller.signal).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-          void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
+          void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode, controller.signal);
           return;
         }
         setSelectedWork(detail);
-      }).catch(() => setSelectedWork(null));
-      return;
+      }).catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setSelectedWork(null);
+      });
+      return () => controller.abort();
     }
     setSelectedWorkPreview(null);
     if (works.length > 0) {
-      void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode);
+      void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedCode, controller.signal);
     }
+    return () => controller.abort();
   }, [selectedCode, works]);
 
   useEffect(() => {
@@ -460,9 +455,26 @@ export function LibraryPage() {
 
 	useEffect(() => {
 		if (selectedCode !== null || selectedRemoteTarget !== null) return;
-		const rememberScroll = () => writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+		let pendingWrite: number | null = null;
+		const flushScroll = () => {
+			if (pendingWrite !== null) window.clearTimeout(pendingWrite);
+			pendingWrite = null;
+			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+		};
+		const rememberScroll = () => {
+			if (pendingWrite !== null) return;
+			pendingWrite = window.setTimeout(flushScroll, 150);
+		};
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "hidden") flushScroll();
+		};
 		window.addEventListener("scroll", rememberScroll, { passive: true });
-		return () => window.removeEventListener("scroll", rememberScroll);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		return () => {
+			window.removeEventListener("scroll", rememberScroll);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			flushScroll();
+		};
 	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
@@ -2354,7 +2366,7 @@ function RemoteWorkDetailView({
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
-  const player = usePlayer();
+  const player = useLibraryPlayer();
 
   useEffect(() => {
     let cancelled = false;
@@ -2377,11 +2389,14 @@ function RemoteWorkDetailView({
     setSelectedLocalSavePaths(new Set());
     setSavePlan(null);
     setSavePlanMessage("");
-    api.getRemoteSourceWork(source.id, code).then(setDetail).catch((error) => {
+    const controller = new AbortController();
+    api.getRemoteSourceWork(source.id, code, controller.signal).then(setDetail).catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       const text = error instanceof Error ? error.message : "Remote preview failed.";
       setMessage(text);
       toast.notify({ kind: "error", message: text });
     });
+    return () => controller.abort();
   }, [source.id, code]);
 
   useEffect(() => {
@@ -2565,7 +2580,7 @@ function RemoteWorkDetailView({
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
         directoryRoutingRules={directoryRoutingRules}
-        currentLocationId={player.currentTrack?.locationId ?? null}
+        currentLocationId={player.currentLocationId}
         emptyLabel="No remote files detected."
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
         selectionModal={isSaveSelectionOpen ? (
@@ -2660,7 +2675,7 @@ function WorkDetailView({
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
   const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
   const selectedLocalPaths = useMemo(() => Array.from(selectedLocalSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedLocalSavePaths]);
-  const player = usePlayer();
+  const player = useLibraryPlayer();
   const directoryTitle = "Directory";
   const workHasNoLinkedSource = Boolean(work && workHasNoSource(work));
   const showNoSourceDirectory = workHasNoLinkedSource && !selectedRemoteSource && !selectedTrackedPresence;
@@ -2743,15 +2758,18 @@ function WorkDetailView({
 
   useEffect(() => {
     if (!selectedRemoteSource || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
+    const controller = new AbortController();
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
-    api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode)
+    api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode, controller.signal)
       .then((detail) => {
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
       })
       .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
       });
+    return () => controller.abort();
   }, [selectedRemoteSourceID, selectedRemoteWorkCode]);
 
   useEffect(() => {
@@ -3172,7 +3190,7 @@ function WorkDetailView({
         onDirectoryModeChange={setDirectoryMode}
         root={tree}
         directoryRoutingRules={directoryRoutingRules}
-        currentLocationId={player.currentTrack?.locationId ?? null}
+        currentLocationId={player.currentLocationId}
         emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
         toolbar={message ? <DirectoryMessage message={message} /> : undefined}
         selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
@@ -6053,7 +6071,7 @@ function normalizeDirectoryMatchText(value: string) {
   return value
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[＿_\-.\[\]()【】]/g, " ")
+    .replace(/[-＿_.[\]()【】]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -6604,17 +6622,19 @@ async function resolveAndOpenWork(
   code: string,
   setSelectedWork: (work: WorkDetail | null) => void,
   setSelectedCode: (code: string | null) => void,
+  signal?: AbortSignal,
 ) {
   try {
-    const resolved = await api.resolveWorkCode(code);
-    const work = await api.getWork(resolved.workId);
+    const resolved = await api.resolveWorkCode(code, signal);
+    const work = await api.getWork(resolved.workId, signal);
     setSelectedWork(work);
     if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
       window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}`);
       setSelectedCode(resolved.resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
     setSelectedWork(null);
   }
 }
@@ -7047,85 +7067,6 @@ function pathForActiveLibrary(tab: LibraryTab, scope: LocalLibraryScope) {
 
 function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope) {
 	return tab.kind === "source" ? `source:${tab.source.id}` : `scope:${scope}`;
-}
-
-function readLibraryBrowseState(key: string): LibraryBrowseState | null {
-	try {
-		const raw = window.sessionStorage.getItem(`${libraryBrowseStoragePrefix}${key}`);
-		return raw ? libraryBrowseStateFromValue(JSON.parse(raw), defaultLibraryBrowseState) : null;
-	} catch {
-		return null;
-	}
-}
-
-function writeLibraryBrowseState(key: string, state: LibraryBrowseState) {
-	try {
-		window.sessionStorage.setItem(`${libraryBrowseStoragePrefix}${key}`, JSON.stringify(state));
-	} catch {
-		// Browsing still works when session storage is unavailable.
-	}
-}
-
-function libraryBrowseStateFromSearch(search: string, fallback: LibraryBrowseState): LibraryBrowseState {
-	const params = new URLSearchParams(search);
-	return libraryBrowseStateFromValue({
-		query: params.has("q") ? params.get("q") : fallback.query,
-		page: params.has("page") ? Number(params.get("page")) : fallback.page,
-		pageSize: params.has("pageSize") ? Number(params.get("pageSize")) : fallback.pageSize,
-		status: params.has("status") ? params.get("status") : fallback.status,
-		sort: params.has("sort") ? params.get("sort") : fallback.sort,
-		direction: params.has("direction") ? params.get("direction") : fallback.direction,
-		view: params.has("view") ? params.get("view") : fallback.view,
-		mobileColumns: params.has("mobileColumns") ? Number(params.get("mobileColumns")) : fallback.mobileColumns,
-		desktopColumns: params.has("desktopColumns") ? Number(params.get("desktopColumns")) : fallback.desktopColumns,
-		scrollY: fallback.scrollY,
-	}, fallback);
-}
-
-function libraryBrowseStateFromValue(value: Partial<Record<keyof LibraryBrowseState, unknown>>, fallback: LibraryBrowseState): LibraryBrowseState {
-	const page = Number(value.page);
-	const pageSize = Number(value.pageSize);
-	const mobileColumns = Number(value.mobileColumns);
-	const desktopColumns = Number(value.desktopColumns);
-	const scrollY = Number(value.scrollY);
-	const status = typeof value.status === "string" && (value.status === "all" || listeningStatusOptions.some((option) => option.value === value.status))
-		? value.status as ListeningStatus | "all"
-		: fallback.status;
-	const sort = typeof value.sort === "string" && librarySortOptions.some((option) => option.value === value.sort) ? value.sort as LibrarySort : fallback.sort;
-	return {
-		query: typeof value.query === "string" ? value.query : fallback.query,
-		page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : fallback.page,
-		pageSize: Number.isFinite(pageSize) && pageSize >= 1 && pageSize <= 100 ? Math.floor(pageSize) : fallback.pageSize,
-		status,
-		sort,
-		direction: value.direction === "asc" || value.direction === "desc" ? value.direction : fallback.direction,
-		view: value.view === "grid" || value.view === "masonry" ? value.view : fallback.view,
-		mobileColumns: columnOptions.includes(mobileColumns as LibraryColumnCount) ? mobileColumns as LibraryColumnCount : fallback.mobileColumns,
-		desktopColumns: columnOptions.includes(desktopColumns as LibraryColumnCount) ? desktopColumns as LibraryColumnCount : fallback.desktopColumns,
-		scrollY: Number.isFinite(scrollY) && scrollY >= 0 ? scrollY : fallback.scrollY,
-	};
-}
-
-function libraryBrowseSearch(state: LibraryBrowseState) {
-	const params = new URLSearchParams();
-	if (state.query.trim()) params.set("q", state.query);
-	params.set("page", String(state.page));
-	params.set("pageSize", String(state.pageSize));
-	params.set("sort", state.sort);
-	params.set("direction", state.direction);
-	params.set("status", state.status);
-	params.set("view", state.view);
-	params.set("mobileColumns", String(state.mobileColumns));
-	params.set("desktopColumns", String(state.desktopColumns));
-	return `?${params.toString()}`;
-}
-
-function libraryLocation(path: string, state: LibraryBrowseState) {
-	return `${path}${libraryBrowseSearch(state)}`;
-}
-
-function localPageSize(value: number): LocalWorkPageSize {
-	return value === 48 ? 48 : 24;
 }
 
 function localScopeFromPath(path: string): LocalLibraryScope {
