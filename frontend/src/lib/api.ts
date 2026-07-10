@@ -314,6 +314,9 @@ export type RemoteWorksResponse = {
   pageSize: number;
   total: number;
   status: string;
+  sort: LibrarySort;
+  direction: SortDirection;
+  sortApplied: boolean;
 };
 
 export type RemoteWork = {
@@ -332,6 +335,7 @@ export type RemoteWork = {
   remotePlayable: boolean;
   workId: number | null;
   favorite: boolean;
+  listeningStatus: ListeningStatus;
 };
 
 export type RemoteTrack = {
@@ -465,6 +469,8 @@ export type RemoteWorkSaveResult = {
   cachedFiles: number;
   promotedFiles: number;
   plan: RemoteWorkSaveSummary;
+  requestId: string;
+  deduplicated: boolean;
 };
 
 export type WorkSourceUntrackResult = {
@@ -1035,9 +1041,9 @@ export const api = {
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
-  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", signal?: AbortSignal) =>
+  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", sort: LibrarySort = "recent", direction: SortDirection = "desc", signal?: AbortSignal) =>
     getJSON<RemoteWorksResponse>(
-      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   getRemoteSourceWork: (id: number, code: string, signal?: AbortSignal) =>
@@ -1052,8 +1058,8 @@ export const api = {
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
   planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = []) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths }),
-  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = []) =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths }),
+  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "") =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>

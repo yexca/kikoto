@@ -87,6 +87,39 @@ func TestListWorksFallsBackWithoutSortParamsForNumber178(t *testing.T) {
 	}
 }
 
+func TestListWorksSortedForwardsOrderAndDirection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("order"); got != "dl_count" {
+			t.Fatalf("order = %q, want dl_count", got)
+		}
+		if got := r.URL.Query().Get("sort"); got != "asc" {
+			t.Fatalf("sort = %q, want asc", got)
+		}
+		writeTestJSON(t, w, WorksPage{Works: []Work{{SourceID: "RJ00000001"}}})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+	if _, err := client.ListWorksSorted(context.Background(), 1, 12, "", "dl_count", "asc"); err != nil {
+		t.Fatalf("ListWorksSorted() error = %v", err)
+	}
+}
+
+func TestTagNamePrefersRequestedLocalization(t *testing.T) {
+	tag := Tag{
+		Name: "中文",
+		I18n: map[string]LocalizedTag{
+			"ja-jp": {Name: "日本語"},
+		},
+	}
+	if got := TagName(tag, "ja_JP"); got != "日本語" {
+		t.Fatalf("TagName() = %q, want 日本語", got)
+	}
+	if got := TagName(tag, "fr-fr"); got != "中文" {
+		t.Fatalf("TagName() fallback = %q, want 中文", got)
+	}
+}
+
 func TestPopularWorksPostsRecommenderRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/recommender/popular" || r.Method != http.MethodPost {

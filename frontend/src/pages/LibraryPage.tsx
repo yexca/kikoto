@@ -59,6 +59,7 @@ import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
   api,
+  ApiError,
   assetURL,
   mediaDownloadURL,
   type LibrarySource,
@@ -76,6 +77,7 @@ import {
   type RemoteWork,
   type RemoteWorkDetail,
   type RemoteWorkSavePlan,
+  type RemoteWorkSaveResult,
   type SourceAvailabilitySource,
   type SourcePresenceItem,
   type SeriesSuggestion,
@@ -134,6 +136,42 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "rating", label: "Rating" },
   { value: "sales", label: "Sales" },
 ];
+
+function remoteLibrarySort(value: LibrarySort): LibrarySort {
+  return value === "release" || value === "rating" || value === "sales" ? value : "recent";
+}
+
+function createFetchRequestID() {
+  const random = typeof window.crypto?.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `fetch:${random}`;
+}
+
+function openActivity() {
+  window.history.pushState({}, "", "/activity");
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWorkSaveResult) {
+  toast.notify({
+    kind: "success",
+    message: result.deduplicated
+      ? `Fetch was already queued as workflow run #${result.runId}.`
+      : `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`,
+    actionLabel: "Activity",
+    onAction: openActivity,
+  });
+}
+
+function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>) {
+  toast.notify({
+    kind: "warning",
+    message: "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
+    actionLabel: "Activity",
+    onAction: openActivity,
+  });
+}
 const librarySearchDebounceMs = 400;
 const remoteSearchDebounceMs = 600;
 
@@ -203,7 +241,7 @@ export function LibraryPage() {
 	const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
-  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
+  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string; requestId: string } | null>(null);
   const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
@@ -238,8 +276,8 @@ export function LibraryPage() {
 		setSearchQuery(state.query);
 		setDebouncedSearchQuery(state.query);
 		setDebouncedRemoteSearchQuery(state.query);
-		setStatusFilter(state.status);
-		setLibrarySort(state.sort);
+		setStatusFilter(tab.kind === "source" ? "all" : state.status);
+		setLibrarySort(tab.kind === "source" ? remoteLibrarySort(state.sort) : state.sort);
 		setSortDirection(state.direction);
 		setViewMode(state.view);
 		setMobileColumns(state.mobileColumns);
@@ -375,7 +413,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, controller.signal).then((result) => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, controller.signal).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -389,12 +427,15 @@ export function LibraryPage() {
         pageSize: sourceState.pageSize,
         total: 0,
         status: "unavailable",
+        sort: remoteLibrarySort(librarySort),
+        direction: sortDirection,
+        sortApplied: false,
       });
     }).finally(() => {
       if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
     return () => controller.abort();
-  }, [activeTab, remoteSearchQuery, remoteSourceStates]);
+  }, [activeTab, librarySort, remoteSearchQuery, remoteSourceStates, sortDirection]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -590,7 +631,7 @@ export function LibraryPage() {
     setIsTrackedFetching(true);
     try {
       const detail = await api.getRemoteSourceWork(source.id, sourcePresenceActionCode(presence, work.primaryCode));
-      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), selectedLocalPaths: new Set(), plan: null, message: "" });
+      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), selectedLocalPaths: new Set(), plan: null, message: "", requestId: createFetchRequestID() });
     } finally {
       setIsTrackedFetching(false);
     }
@@ -599,22 +640,37 @@ export function LibraryPage() {
   const fetchTrackedSelection = async () => {
     if (!trackedFetchSelection) return;
     setIsTrackedFetching(true);
+    const paths = Array.from(trackedFetchSelection.selectedPaths);
+    const localPaths = Array.from(trackedFetchSelection.selectedLocalPaths);
     try {
-      const paths = Array.from(trackedFetchSelection.selectedPaths);
-      const localPaths = Array.from(trackedFetchSelection.selectedLocalPaths);
       const plan = await api.planRemoteSourceWorkFetch(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths);
       if (!trackedFetchSelection.plan && remoteFetchNeedsLocalReview(plan)) {
         setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchLocalReview(plan) } : current);
+        setIsTrackedFetching(false);
         return;
       }
       if (hasRemoteFetchConflicts(plan)) {
         setTrackedFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        setIsTrackedFetching(false);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths);
-      setTrackedFetchSelection((current) => current ? { ...current, message: `Fetch queued as workflow run #${result.runId}.` } : current);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Fetch plan failed."));
+      setIsTrackedFetching(false);
+      return;
+    }
+    try {
+      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths, trackedFetchSelection.requestId);
+      notifyFetchQueued(toast, result);
       setTrackedFetchSelection(null);
-      await refreshCurrentWorksPage();
+      try {
+        await refreshCurrentWorksPage();
+      } catch (error) {
+        toast.notify({ kind: "warning", message: error instanceof Error ? `Fetch was queued, but Library refresh failed: ${error.message}` : "Fetch was queued, but Library refresh failed." });
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) toast.notify(toastFromError(error, "Fetch submission failed."));
+      else notifyFetchUnconfirmed(toast);
     } finally {
       setIsTrackedFetching(false);
     }
@@ -659,7 +715,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setIsRemoteLoading(true);
     if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
-    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query).then((result) => {
+    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -672,6 +728,9 @@ export function LibraryPage() {
         pageSize: sourceState.pageSize,
         total: 0,
         status: "unavailable",
+        sort: remoteLibrarySort(librarySort),
+        direction: sortDirection,
+        sortApplied: false,
       });
     }).finally(() => {
       if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
@@ -789,12 +848,14 @@ export function LibraryPage() {
 	};
 	const changeLibrarySort = (sort: LibrarySort) => {
 		queueResultsScroll();
-		setWorkPage(1);
+		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+		else setWorkPage(1);
 		setLibrarySort(sort);
 	};
 	const changeSortDirection = (direction: SortDirection) => {
 		queueResultsScroll();
-		setWorkPage(1);
+		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+		else setWorkPage(1);
 		setSortDirection(direction);
 	};
 	const changeStatusFilter = (status: ListeningStatus | "all") => {
@@ -808,8 +869,9 @@ export function LibraryPage() {
       pageSize={workPageSize}
       totalItems={workTotal}
       totalPages={totalWorkPages}
+	  pageSizeOptions={localWorkPageSizeOptions}
 	  onPageChange={changeWorkPage}
-	  onPageSizeChange={changeWorkPageSize}
+	  onPageSizeChange={(value) => changeWorkPageSize(value as LocalWorkPageSize)}
     />
   );
 
@@ -853,7 +915,7 @@ export function LibraryPage() {
             onDesktopColumnsChange={setDesktopColumns}
           />
 		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} />
-		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={changeStatusFilter} />
+		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
           <div ref={databaseMenuRef} className="relative">
             <IconButton title="Data" onClick={() => setIsDatabaseMenuOpen((value) => !value)}>
               <Database className="h-4 w-4" />
@@ -937,6 +999,9 @@ export function LibraryPage() {
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
             searchClauses={searchClauses}
+			viewMode={viewMode}
+			mobileColumns={mobileColumns}
+			desktopColumns={desktopColumns}
 			onClearSearch={() => setSearchQuery("")}
 			onPageChange={(page) => {
 			  queueResultsScroll();
@@ -1169,6 +1234,9 @@ function RemoteSourcePanel({
   loading,
   viewState,
   searchClauses,
+	viewMode,
+	mobileColumns,
+	desktopColumns,
 	onClearSearch,
   onPageChange,
   onPageSizeChange,
@@ -1182,12 +1250,15 @@ function RemoteSourcePanel({
   loading: boolean;
   viewState: RemoteSourceViewState;
   searchClauses: SearchClause[];
+	viewMode: LibraryViewMode;
+	mobileColumns: LibraryColumnCount;
+	desktopColumns: LibraryColumnCount;
 	onClearSearch: () => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
-  onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite">>) => void;
+  onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>) => void;
   onSynced: (workID: number) => Promise<void>;
 }) {
   const toast = useToast();
@@ -1198,7 +1269,7 @@ function RemoteSourcePanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
-  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
+  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string; requestId: string } | null>(null);
   const { page, pageSize } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
@@ -1229,8 +1300,20 @@ function RemoteSourcePanel({
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
   const selectedSaveable = selectedWorks;
   const selectionActive = selectionMode;
-  const canGoNext = result !== null && result.works.length >= pageSize;
-  const canGoPrevious = page > 1;
+  const totalItems = result?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const remotePagination = (
+    <WorkPagination
+      page={currentPage}
+      pageSize={pageSize}
+      totalItems={totalItems}
+      totalPages={totalPages}
+      pageSizeOptions={[12, 24, 48, 96]}
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+    />
+  );
 
   useEffect(() => {
     setBulkCodes((current) => new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))));
@@ -1288,7 +1371,7 @@ function RemoteSourcePanel({
     try {
       const detail = await api.getRemoteSourceWork(source.id, remoteWorkActionCode(work));
       const root = buildRemoteTree(detail.tracks);
-      setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)), selectedLocalPaths: new Set(), plan: null, message: "" });
+      setSaveSelection({ work, detail, selectedPaths: new Set(remoteSelectablePaths(root)), selectedLocalPaths: new Set(), plan: null, message: "", requestId: createFetchRequestID() });
     } catch (error) {
       toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
@@ -1305,18 +1388,31 @@ function RemoteSourcePanel({
       const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths);
       if (!saveSelection.plan && remoteFetchNeedsLocalReview(plan)) {
         setSaveSelection((current) => current ? { ...current, plan, message: formatRemoteFetchLocalReview(plan) } : current);
+        setIsSyncingCode(null);
         return;
       }
       if (hasRemoteFetchConflicts(plan)) {
         setSaveSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
+        setIsSyncingCode(null);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths);
-      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
-      await onSynced(0);
-      setSaveSelection(null);
     } catch (error) {
-      toast.notify(toastFromError(error, "Fetch failed."));
+      toast.notify(toastFromError(error, "Fetch plan failed."));
+      setIsSyncingCode(null);
+      return;
+    }
+    try {
+      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths, saveSelection.requestId);
+      notifyFetchQueued(toast, result);
+      setSaveSelection(null);
+      try {
+        await onSynced(0);
+      } catch (error) {
+        toast.notify({ kind: "warning", message: error instanceof Error ? `Fetch was queued, but Library refresh failed: ${error.message}` : "Fetch was queued, but Library refresh failed." });
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) toast.notify(toastFromError(error, "Fetch submission failed."));
+      else notifyFetchUnconfirmed(toast);
     } finally {
       setIsSyncingCode(null);
     }
@@ -1329,6 +1425,7 @@ function RemoteSourcePanel({
       const workId = work.workId ?? await syncWork(work, "mark_interest");
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
+      onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
       toast.success(`Tracked and marked ${work.primaryCode}.`);
       await onSynced(workId);
     } catch (error) {
@@ -1386,34 +1483,10 @@ function RemoteSourcePanel({
           </Button>
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
           <Badge variant="secondary">{result?.status ?? "loading"}</Badge>
+          {result?.status === "ok" && !result.sortApplied && <Badge variant="warning">source order fallback</Badge>}
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
-        <div className="text-xs text-muted-foreground">
-          Page {page}
-          {result?.total ? ` · ${result.total} works` : ""}
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-            value={pageSize}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            aria-label="Remote page size"
-          >
-            {[12, 24, 48, 96].map((value) => (
-              <option key={value} value={value}>
-                {value} / page
-              </option>
-            ))}
-          </select>
-          <IconButton title="Previous page" disabled={!canGoPrevious || isInitialLoading} onClick={() => onPageChange(Math.max(1, page - 1))}>
-            <ChevronLeft className="h-4 w-4" />
-          </IconButton>
-          <IconButton title="Next page" disabled={!canGoNext || isInitialLoading} onClick={() => onPageChange(page + 1)}>
-            <ChevronRight className="h-4 w-4" />
-          </IconButton>
-        </div>
-      </div>
+      {remotePagination}
       {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
         <div className="text-muted-foreground">{selectedWorks.length} selected</div>
         <div className="flex flex-wrap gap-2">
@@ -1433,7 +1506,7 @@ function RemoteSourcePanel({
         </div>
       </div>}
       {isInitialLoading ? (
-        <RemoteWorkGridSkeleton />
+        <RemoteWorkGridSkeleton viewMode={viewMode} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
       ) : visibleWorks.length === 0 ? (
         <Card>
 		  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
@@ -1444,32 +1517,39 @@ function RemoteSourcePanel({
       ) : (
         <div className="space-y-2">
           {isRefreshing && <div className="rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">Refreshing remote results...</div>}
-          <section className={workGridClassName()} style={workGridStyle(2, 6)}>
+          <section
+            className={viewMode === "masonry" ? workMasonryClassName() : workGridClassName()}
+            style={viewMode === "masonry" ? workMasonryStyle(mobileColumns, desktopColumns) : workGridStyle(mobileColumns, desktopColumns)}
+          >
             {visibleWorks.map((work) => (
-              <RemoteWorkCard
-                key={work.remoteId}
-                work={work}
-                source={source}
-                selected={bulkCodes.has(work.primaryCode)}
-                selectable={Boolean(work.primaryCode)}
-                selectionActive={selectionActive}
-                isBusy={isSyncingCode === work.primaryCode}
-                onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
-                onOpen={() => onOpenPreview(work)}
-                onFetch={() => void syncWork(work, "manual_track")}
-                onTagOpen={onTagOpen}
-                onMark={(status) => void markRemoteWork(work, status)}
-                onSave={() => void openSaveSelection(work)}
-                onEnsureWork={() => ensureRemoteWorkForList(work)}
-                onListSaved={(workId, favorite) => {
-                  onWorkStateChanged(work.primaryCode, { workId, favorite });
-                  void onSynced(0);
-                }}
-              />
+              <div key={work.remoteId} className={viewMode === "masonry" ? "mb-4 [break-inside:avoid]" : "h-full"}>
+                <RemoteWorkCard
+                  work={work}
+                  source={source}
+                  selected={bulkCodes.has(work.primaryCode)}
+                  selectable={Boolean(work.primaryCode)}
+                  selectionActive={selectionActive}
+                  isBusy={isSyncingCode === work.primaryCode}
+                  onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
+                  onOpen={() => onOpenPreview(work)}
+                  onFetch={() => void syncWork(work, "manual_track")}
+                  onTagOpen={onTagOpen}
+                  onMark={(status) => void markRemoteWork(work, status)}
+                  onSave={() => void openSaveSelection(work)}
+                  onEnsureWork={() => ensureRemoteWorkForList(work)}
+                  onListSaved={(workId, favorite) => {
+                    onWorkStateChanged(work.primaryCode, { workId, favorite });
+                    void onSynced(0);
+                  }}
+                />
+              </div>
             ))}
           </section>
         </div>
       )}
+      {viewMode === "masonry"
+        ? <CompactWorkPagination page={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+        : remotePagination}
       {saveConfirm && (
         <SaveConfirmModal
           count={saveConfirm.codes.length}
@@ -1634,7 +1714,7 @@ function RemoteWorkCard({
               ensureWorkId={onEnsureWork}
               onSaved={(favorite, workId) => onListSaved(workId, favorite)}
             />
-            <WorkCardQuickMarkButton value="none" disabled={isBusy || !work.primaryCode} onChange={onMark} />
+            <WorkCardQuickMarkButton value={work.listeningStatus} disabled={isBusy || !work.primaryCode} onChange={onMark} />
             </>
           )}
         />
@@ -1643,11 +1723,22 @@ function RemoteWorkCard({
   );
 }
 
-function RemoteWorkGridSkeleton() {
+function RemoteWorkGridSkeleton({
+  viewMode,
+  mobileColumns,
+  desktopColumns,
+}: {
+  viewMode: LibraryViewMode;
+  mobileColumns: LibraryColumnCount;
+  desktopColumns: LibraryColumnCount;
+}) {
   return (
-    <section className={workGridClassName()} style={workGridStyle(2, 6)}>
+    <section
+      className={viewMode === "masonry" ? workMasonryClassName() : workGridClassName()}
+      style={viewMode === "masonry" ? workMasonryStyle(mobileColumns, desktopColumns) : workGridStyle(mobileColumns, desktopColumns)}
+    >
       {Array.from({ length: 12 }, (_, index) => (
-        <div key={index} className="overflow-hidden rounded-lg border bg-card">
+        <div key={index} className={viewMode === "masonry" ? "mb-4 overflow-hidden rounded-lg border bg-card [break-inside:avoid]" : "overflow-hidden rounded-lg border bg-card"}>
           <div className="aspect-[4/5] animate-pulse bg-muted" />
           <div className="space-y-2 p-3">
             <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
@@ -1898,8 +1989,10 @@ function SortPicker({
 }) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-  const disabled = activeTab.kind === "source";
-  const label = disabled ? "Source order" : librarySortOptions.find((option) => option.value === value)?.label ?? "Sort";
+  const options = activeTab.kind === "source"
+	? librarySortOptions.filter((option) => ["recent", "release", "rating", "sales"].includes(option.value))
+	: librarySortOptions;
+  const label = options.find((option) => option.value === value)?.label ?? "Sort";
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
   const nextDirection = direction === "asc" ? "desc" : "asc";
   return (
@@ -1907,25 +2000,23 @@ function SortPicker({
       <div className="inline-flex rounded-md border bg-background">
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          title={disabled ? "Source order" : `Sort: ${label}`}
-          aria-label={disabled ? "Source order" : `Sort: ${label}`}
-          disabled={disabled}
+          title={`Sort: ${label}`}
+          aria-label={`Sort: ${label}`}
           onClick={() => setOpen((current) => !current)}
         >
           <ArrowUpDown className="h-4 w-4" />
         </button>
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          title={disabled ? "Source order" : direction === "asc" ? "Ascending" : "Descending"}
-          aria-label={disabled ? "Source order" : direction === "asc" ? "Ascending" : "Descending"}
-          disabled={disabled}
+          title={direction === "asc" ? "Ascending" : "Descending"}
+          aria-label={direction === "asc" ? "Ascending" : "Descending"}
           onClick={() => onDirectionChange(nextDirection)}
         >
           {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
         </button>
       </div>
-	  <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} onOpenChange={setOpen} className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm">
-          {librarySortOptions.map((option) => (
+	  <AnchoredPopover open={open} anchorRef={popoverRef} onOpenChange={setOpen} className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm">
+          {options.map((option) => (
             <button
               key={option.value}
 			  className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
@@ -1946,10 +2037,12 @@ function SortPicker({
 function FilterPicker({
   value,
   activeCount,
+  disabled = false,
   onChange,
 }: {
   value: ListeningStatus | "all";
   activeCount: number;
+  disabled?: boolean;
   onChange: (value: ListeningStatus | "all") => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1957,11 +2050,11 @@ function FilterPicker({
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
   return (
     <div className="relative" ref={popoverRef}>
-      <IconButton title={activeCount > 0 ? `Filters: ${activeCount} active` : "Filters"} onClick={() => setOpen((current) => !current)}>
+      <IconButton title={disabled ? "Mark filters are unavailable for source browsing" : activeCount > 0 ? `Filters: ${activeCount} active` : "Filters"} disabled={disabled} onClick={() => setOpen((current) => !current)}>
         <Filter className="h-4 w-4" />
         {activeCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
       </IconButton>
-      <AnchoredPopover open={open} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
+      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
           <button
             className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
             aria-pressed={value === "all"}
@@ -2102,15 +2195,17 @@ function WorkPagination({
   pageSize,
   totalItems,
   totalPages,
+  pageSizeOptions,
   onPageChange,
   onPageSizeChange,
 }: {
   page: number;
-  pageSize: LocalWorkPageSize;
+  pageSize: number;
   totalItems: number;
   totalPages: number;
+  pageSizeOptions: readonly number[];
   onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: LocalWorkPageSize) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }) {
   const [jumpPage, setJumpPage] = useState(String(page));
 
@@ -2133,10 +2228,10 @@ function WorkPagination({
         <select
           className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value) as LocalWorkPageSize)}
+          onChange={(event) => onPageSizeChange(Number(event.target.value))}
           aria-label="Works per page"
         >
-          {localWorkPageSizeOptions.map((value) => (
+          {pageSizeOptions.map((value) => (
             <option key={value} value={value}>
               {value} / page
             </option>

@@ -126,6 +126,90 @@ async function seedPlayer(page: Page, track = persistedTrack) {
   }, track);
 }
 
+async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void) {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/auth/me") {
+      await route.fulfill({ json: { authenticated: false } });
+      return;
+    }
+    if (url.pathname === "/api/library-sources") {
+      await route.fulfill({ json: [{ id: 1, code: "example_remote", displayName: "Example Remote", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true }] });
+      return;
+    }
+    if (url.pathname === "/api/runtime-settings") {
+      await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      return;
+    }
+    if (url.pathname === "/api/works") {
+      await route.fulfill({ json: { works: [work], page: 1, pageSize: 24, total: 1 } });
+      return;
+    }
+    if (url.pathname === "/api/remote-sources/1/works") {
+      onRemoteRequest(url);
+      const pageNumber = Number(url.searchParams.get("page") ?? "1");
+      const sort = url.searchParams.get("sort") ?? "recent";
+      await route.fulfill({
+        json: {
+          sourceId: 1,
+          page: pageNumber,
+          pageSize: 24,
+          total: 30,
+          status: "ok",
+          sort,
+          direction: url.searchParams.get("direction") ?? "desc",
+          sortApplied: true,
+          works: [{
+            remoteId: String(pageNumber),
+            primaryCode: pageNumber === 1 ? "RJ09999991" : "RJ09999992",
+            remoteCode: pageNumber === 1 ? "RJ09999991" : "RJ09999992",
+            title: pageNumber === 1 ? "Remote Japanese work" : "Remote page two work",
+            releaseDate: "2026-04-03",
+            updatedAt: "2026-04-03",
+            coverUrl: "",
+            circle: "Remote circle",
+            rating: 4.5,
+            sales: 100,
+            tags: ["退廃/背徳/インモラル"],
+            importStatus: "remote_only",
+            remotePlayable: true,
+            workId: null,
+            favorite: false,
+            listeningStatus: "none",
+          }],
+        },
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: "Not mocked" } });
+  });
+}
+
+test("remote source reuses library layout, source sorting, localized tags, and bottom pagination", async ({ page }) => {
+  const requests: URL[] = [];
+  await mockRemoteSource(page, (url) => requests.push(url));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "退廃/背徳/インモラル", exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 / 2 · 30 works", { exact: true })).toHaveCount(2);
+  await expect(page.getByTitle("Mark filters are unavailable for source browsing")).toBeDisabled();
+
+  await page.getByRole("button", { name: "Sort: Recently added" }).click();
+  await page.getByRole("button", { name: "Sales", exact: true }).click();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "sales")).toBe(true);
+
+  await page.getByRole("button", { name: "View: Grid" }).click();
+  await page.getByRole("button", { name: "Masonry", exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("masonry");
+  await expect(page.locator("section[class*='column-count']")).toBeVisible();
+
+  await page.getByTitle("Next page").last().click();
+  await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
+});
+
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {
   const requests: string[] = [];
   await mockApplication(page, (url) => requests.push(url.searchParams.get("q") ?? ""));

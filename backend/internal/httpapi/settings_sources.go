@@ -148,12 +148,15 @@ type fileSourceEndpoint struct {
 }
 
 type remoteWorksResponse struct {
-	SourceID int64               `json:"sourceId"`
-	Works    []remoteWorkSummary `json:"works"`
-	Page     int                 `json:"page"`
-	PageSize int                 `json:"pageSize"`
-	Total    int                 `json:"total"`
-	Status   string              `json:"status"`
+	SourceID    int64               `json:"sourceId"`
+	Works       []remoteWorkSummary `json:"works"`
+	Page        int                 `json:"page"`
+	PageSize    int                 `json:"pageSize"`
+	Total       int                 `json:"total"`
+	Status      string              `json:"status"`
+	Sort        string              `json:"sort"`
+	Direction   string              `json:"direction"`
+	SortApplied bool                `json:"sortApplied"`
 }
 
 type librarySource struct {
@@ -166,21 +169,22 @@ type librarySource struct {
 }
 
 type remoteWorkSummary struct {
-	RemoteID       string   `json:"remoteId"`
-	PrimaryCode    string   `json:"primaryCode"`
-	RemoteCode     string   `json:"remoteCode"`
-	Title          string   `json:"title"`
-	ReleaseDate    string   `json:"releaseDate"`
-	UpdatedAt      string   `json:"updatedAt"`
-	CoverURL       string   `json:"coverUrl"`
-	Circle         string   `json:"circle"`
-	Rating         *float64 `json:"rating"`
-	Sales          *int64   `json:"sales"`
-	Tags           []string `json:"tags"`
-	ImportStatus   string   `json:"importStatus"`
-	RemotePlayable bool     `json:"remotePlayable"`
-	WorkID         *int64   `json:"workId"`
-	Favorite       bool     `json:"favorite"`
+	RemoteID        string   `json:"remoteId"`
+	PrimaryCode     string   `json:"primaryCode"`
+	RemoteCode      string   `json:"remoteCode"`
+	Title           string   `json:"title"`
+	ReleaseDate     string   `json:"releaseDate"`
+	UpdatedAt       string   `json:"updatedAt"`
+	CoverURL        string   `json:"coverUrl"`
+	Circle          string   `json:"circle"`
+	Rating          *float64 `json:"rating"`
+	Sales           *int64   `json:"sales"`
+	Tags            []string `json:"tags"`
+	ImportStatus    string   `json:"importStatus"`
+	RemotePlayable  bool     `json:"remotePlayable"`
+	WorkID          *int64   `json:"workId"`
+	Favorite        bool     `json:"favorite"`
+	ListeningStatus string   `json:"listeningStatus"`
 }
 
 type remoteWorkDetail struct {
@@ -302,6 +306,7 @@ type remoteCollectionRunResult struct {
 type remoteWorkSaveRequest struct {
 	Paths      []string `json:"paths"`
 	LocalPaths []string `json:"localPaths"`
+	RequestID  string   `json:"requestId"`
 }
 
 type remoteWorkFetchJobPayload struct {
@@ -309,6 +314,7 @@ type remoteWorkFetchJobPayload struct {
 	WorkCode   string   `json:"work_code"`
 	Paths      []string `json:"paths"`
 	LocalPaths []string `json:"local_paths"`
+	RequestID  string   `json:"request_id"`
 }
 
 type remoteWorkSavePlan struct {
@@ -367,6 +373,8 @@ type remoteWorkSaveResult struct {
 	CachedFiles   int                   `json:"cachedFiles"`
 	PromotedFiles int                   `json:"promotedFiles"`
 	Plan          remoteWorkSaveSummary `json:"plan"`
+	RequestID     string                `json:"requestId"`
+	Deduplicated  bool                  `json:"deduplicated"`
 }
 
 type remoteWorkSaveConflictError struct {
@@ -381,6 +389,7 @@ func (err remoteWorkSaveConflictError) Error() string {
 }
 
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
+var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
@@ -748,13 +757,16 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !source.Enabled {
+		sortName, _ := remoteSourceSort(r.URL.Query().Get("sort"))
 		writeJSON(w, http.StatusOK, remoteWorksResponse{
-			SourceID: id,
-			Works:    []remoteWorkSummary{},
-			Page:     queryInt(r, "page", 1),
-			PageSize: queryInt(r, "pageSize", 24),
-			Total:    0,
-			Status:   "disabled",
+			SourceID:  id,
+			Works:     []remoteWorkSummary{},
+			Page:      queryInt(r, "page", 1),
+			PageSize:  queryInt(r, "pageSize", 24),
+			Total:     0,
+			Status:    "disabled",
+			Sort:      sortName,
+			Direction: remoteSortDirection(r.URL.Query().Get("direction")),
 		})
 		return
 	}
@@ -764,15 +776,18 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		pageSize = 24
 	}
 	plan := planRemoteSourceQuery(r.URL.Query().Get("q"))
+	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
+	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
-	remotePage, err := client.ListWorks(r.Context(), page, pageSize, plan.PushdownQuery)
+	remotePage, err := client.ListWorksSorted(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction)
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummaries(r.Context(), userID, remotePage.Works)
+	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	works, err := s.remoteWorkSummaries(r.Context(), userID, remotePage.Works, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -788,13 +803,36 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		total = remotePage.Pagination.Count
 	}
 	writeJSON(w, http.StatusOK, remoteWorksResponse{
-		SourceID: id,
-		Works:    works,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-		Status:   "ok",
+		SourceID:    id,
+		Works:       works,
+		Page:        page,
+		PageSize:    pageSize,
+		Total:       total,
+		Status:      "ok",
+		Sort:        sortName,
+		Direction:   direction,
+		SortApplied: remotePage.SortApplied,
 	})
+}
+
+func remoteSourceSort(value string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "release":
+		return "release", "release"
+	case "rating":
+		return "rating", "rate_average_2dp"
+	case "sales":
+		return "sales", "dl_count"
+	default:
+		return "recent", "create_date"
+	}
+}
+
+func remoteSortDirection(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "asc") {
+		return "asc"
+	}
+	return "desc"
 }
 
 func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
@@ -839,7 +877,8 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, tracks)
+	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, tracks, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1137,8 +1176,28 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths)
+	payload.RequestID = strings.TrimSpace(payload.RequestID)
+	if payload.RequestID != "" && !validRemoteFetchRequestID(payload.RequestID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid fetch request id"})
+		return
+	}
+	if payload.RequestID != "" {
+		if existing, found, err := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); err != nil {
+			writeError(w, err)
+			return
+		} else if found {
+			writeJSON(w, http.StatusAccepted, existing)
+			return
+		}
+	}
+	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.RequestID)
 	if err != nil {
+		if payload.RequestID != "" {
+			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
+				writeJSON(w, http.StatusAccepted, existing)
+				return
+			}
+		}
 		var conflict remoteWorkSaveConflictError
 		if errors.As(err, &conflict) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
@@ -1750,7 +1809,7 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 	}
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []kikoeru.Work) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
 	for _, work := range works {
@@ -1762,6 +1821,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 		}
 		var workID *int64
 		var favorite bool
+		listeningStatus := "none"
 		if ref.Code != "" {
 			displayCode = ref.Code
 		}
@@ -1770,10 +1830,10 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			if workID != nil {
 				var favoriteInt int
 				if err := s.db.QueryRowContext(ctx, `
-					SELECT COALESCE(favorite, 0)
+					SELECT COALESCE(favorite, 0), COALESCE(listening_status, 'none')
 					FROM user_work_state
 					WHERE user_id = ? AND work_id = ?
-				`, userID, *workID).Scan(&favoriteInt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				`, userID, *workID).Scan(&favoriteInt, &listeningStatus); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return nil, err
 				} else if err == nil {
 					favorite = favoriteInt != 0
@@ -1782,8 +1842,8 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 		}
 		tags := []string{}
 		for _, tag := range work.Tags {
-			if strings.TrimSpace(tag.Name) != "" {
-				tags = append(tags, tag.Name)
+			if name := kikoeru.TagName(tag, language); name != "" {
+				tags = append(tags, name)
 			}
 			if len(tags) >= 4 {
 				break
@@ -1798,27 +1858,31 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			status = "synced"
 		}
 		item := remoteWorkSummary{
-			RemoteID:       strconv.FormatInt(work.ID, 10),
-			PrimaryCode:    displayCode,
-			RemoteCode:     code,
-			Title:          firstNonEmpty(work.Title, work.Name, displayCode),
-			ReleaseDate:    work.Release,
-			UpdatedAt:      work.Release,
-			CoverURL:       firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
-			Circle:         circle,
-			Rating:         work.RateAverage2DP,
-			Sales:          work.DLCount,
-			Tags:           tags,
-			ImportStatus:   status,
-			RemotePlayable: true,
-			WorkID:         workID,
-			Favorite:       favorite,
+			RemoteID:        strconv.FormatInt(work.ID, 10),
+			PrimaryCode:     displayCode,
+			RemoteCode:      code,
+			Title:           firstNonEmpty(work.Title, work.Name, displayCode),
+			ReleaseDate:     work.Release,
+			UpdatedAt:       work.Release,
+			CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
+			Circle:          circle,
+			Rating:          work.RateAverage2DP,
+			Sales:           work.DLCount,
+			Tags:            tags,
+			ImportStatus:    status,
+			RemotePlayable:  true,
+			WorkID:          workID,
+			Favorite:        favorite,
+			ListeningStatus: listeningStatus,
 		}
 		key := strings.ToUpper(strings.TrimSpace(displayCode))
 		if index, ok := seen[key]; ok {
 			existing := &result[index]
 			existing.RemotePlayable = existing.RemotePlayable || item.RemotePlayable
 			existing.Favorite = existing.Favorite || item.Favorite
+			if existing.ListeningStatus == "none" {
+				existing.ListeningStatus = item.ListeningStatus
+			}
 			if existing.WorkID == nil {
 				existing.WorkID = item.WorkID
 				existing.ImportStatus = item.ImportStatus
@@ -2480,7 +2544,8 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 	return plan, nil
 }
 
-func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string) (remoteWorkSaveResult, error) {
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestID string) (remoteWorkSaveResult, error) {
+	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -2508,7 +2573,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	runInput := remoteWorkFetchJobPayload{SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths}
+	runInput := remoteWorkFetchJobPayload{SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths, RequestID: requestID}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -2566,10 +2631,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	return remoteWorkSaveResult{
+	result := remoteWorkSaveResult{
 		RunID:       runID,
 		JobID:       jobID,
 		WorkID:      workID,
@@ -2577,7 +2639,24 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		Status:      "queued",
 		SaveRoot:    plan.SaveRoot,
 		Plan:        plan.Summary,
-	}, nil
+		RequestID:   requestID,
+	}
+	if requestID != "" {
+		resultJSON, err := json.Marshal(result)
+		if err != nil {
+			return remoteWorkSaveResult{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO remote_fetch_request (request_id, source_id, work_code, workflow_run_id, result_json)
+			VALUES (?, ?, ?, ?, ?)
+		`, requestID, sourceID, requestedCode, runID, string(resultJSON)); err != nil {
+			return remoteWorkSaveResult{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	return result, nil
 }
 
 func remoteWorkFetchDefinition() map[string]any {
@@ -3160,6 +3239,36 @@ func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, 
 	return id, code, payload, true
 }
 
+func validRemoteFetchRequestID(value string) bool {
+	return remoteFetchRequestIDPattern.MatchString(strings.TrimSpace(value))
+}
+
+func (s *Server) remoteFetchRequestResult(ctx context.Context, requestID string, sourceID int64, code string) (remoteWorkSaveResult, bool, error) {
+	var storedSourceID int64
+	var storedCode string
+	var raw string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT source_id, work_code, result_json
+		FROM remote_fetch_request
+		WHERE request_id = ?
+	`, requestID).Scan(&storedSourceID, &storedCode, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteWorkSaveResult{}, false, nil
+	}
+	if err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	if storedSourceID != sourceID || !strings.EqualFold(strings.TrimSpace(storedCode), strings.TrimSpace(code)) {
+		return remoteWorkSaveResult{}, false, fmt.Errorf("fetch request id was already used for another work")
+	}
+	var result remoteWorkSaveResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	result.Deduplicated = true
+	return result, true, nil
+}
+
 func remoteWorkCodeFromPath(r *http.Request) string {
 	return strings.TrimSpace(r.PathValue("code"))
 }
@@ -3659,7 +3768,7 @@ func sortedStringKeys(values map[string]bool) []string {
 	return keys
 }
 
-func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkDetail, error) {
+func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track, language string) (remoteWorkDetail, error) {
 	code := normalizedRemoteWorkCode(work)
 	displayCode := code
 	ref, err := s.canonicalWorkForCode(ctx, code)
@@ -3675,8 +3784,8 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 	}
 	tags := make([]string, 0, len(work.Tags))
 	for _, tag := range work.Tags {
-		if strings.TrimSpace(tag.Name) != "" {
-			tags = append(tags, tag.Name)
+		if name := kikoeru.TagName(tag, language); name != "" {
+			tags = append(tags, name)
 		}
 	}
 	voiceActors := make([]string, 0, len(work.VAs))

@@ -52,7 +52,12 @@ type Circle struct {
 }
 
 type Tag struct {
-	ID   int64  `json:"id"`
+	ID   int64                   `json:"id"`
+	Name string                  `json:"name"`
+	I18n map[string]LocalizedTag `json:"i18n"`
+}
+
+type LocalizedTag struct {
 	Name string `json:"name"`
 }
 
@@ -62,8 +67,9 @@ type VA struct {
 }
 
 type WorksPage struct {
-	Works      []Work     `json:"works"`
-	Pagination Pagination `json:"pagination"`
+	Works       []Work     `json:"works"`
+	Pagination  Pagination `json:"pagination"`
+	SortApplied bool       `json:"-"`
 }
 
 type Pagination struct {
@@ -106,11 +112,23 @@ func (c *Client) Health(ctx context.Context) error {
 }
 
 func (c *Client) ListWorks(ctx context.Context, page int, pageSize int, keyword string) (WorksPage, error) {
+	return c.ListWorksSorted(ctx, page, pageSize, keyword, "create_date", "desc")
+}
+
+func (c *Client) ListWorksSorted(ctx context.Context, page int, pageSize int, keyword string, order string, direction string) (WorksPage, error) {
 	params := url.Values{}
 	params.Set("page", strconv.Itoa(page))
 	params.Set("pageSize", strconv.Itoa(pageSize))
-	params.Set("order", "create_date")
-	params.Set("sort", "desc")
+	order = strings.TrimSpace(order)
+	if order == "" {
+		order = "create_date"
+	}
+	direction = strings.ToLower(strings.TrimSpace(direction))
+	if direction != "asc" && direction != "desc" {
+		direction = "desc"
+	}
+	params.Set("order", order)
+	params.Set("sort", direction)
 	plainParams := cloneValues(params)
 	plainParams.Del("order")
 	plainParams.Del("sort")
@@ -126,6 +144,7 @@ func (c *Client) ListWorks(ctx context.Context, page int, pageSize int, keyword 
 		}
 		if keyword == "" {
 			if fallbackErr := c.get(ctx, path, plainParams, &result); fallbackErr == nil {
+				result.SortApplied = false
 				return result, nil
 			}
 		}
@@ -136,10 +155,23 @@ func (c *Client) ListWorks(ctx context.Context, page int, pageSize int, keyword 
 			if plainFallbackErr := c.get(ctx, "/api/works", plainParams, &result); plainFallbackErr != nil {
 				return WorksPage{}, err
 			}
+			result.SortApplied = false
+		} else {
+			result.SortApplied = true
 		}
 		result.Works = filterWorks(result.Works, keyword)
+		return result, nil
 	}
+	result.SortApplied = true
 	return result, nil
+}
+
+func TagName(tag Tag, language string) string {
+	language = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(language), "_", "-"))
+	if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
+		return strings.TrimSpace(localized.Name)
+	}
+	return strings.TrimSpace(tag.Name)
 }
 
 func (c *Client) PopularWorks(ctx context.Context, page int, pageSize int) (WorksPage, error) {
