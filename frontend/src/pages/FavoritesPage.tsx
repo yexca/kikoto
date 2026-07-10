@@ -22,6 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { useAuth } from "@/auth/AuthProvider";
@@ -487,15 +488,15 @@ export function FavoritesPage() {
 
       {selectionMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <label className="flex items-center gap-2 text-muted-foreground">
-            <input
-              type="checkbox"
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Checkbox
               checked={allPagedWorksSelected}
               disabled={works.length === 0}
-              onChange={(event) => togglePagedSelection(event.target.checked)}
+              onCheckedChange={togglePagedSelection}
+              aria-label="Select current page"
             />
             {selectedWorks.length} selected
-          </label>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>Select page</Button>
             <Button variant="outline" size="sm" onClick={() => {
@@ -1161,10 +1162,10 @@ function ListMembershipPopover({
         {isLoading ? (
           <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading lists...</div>
         ) : favoriteLists.length > 0 ? favoriteLists.map((list) => (
-          <label key={list.id} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm hover:bg-muted">
-            <input type="checkbox" checked={selectedIDs.has(list.id)} onChange={(event) => toggleList(list.id, event.target.checked)} />
+          <div key={list.id} className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted ${selectedIDs.has(list.id) ? "border-primary/30 bg-primary/10" : "bg-background"}`} onClick={() => toggleList(list.id, !selectedIDs.has(list.id))}>
+            <Checkbox checked={selectedIDs.has(list.id)} onCheckedChange={(checked) => toggleList(list.id, checked)} onClick={(event) => event.stopPropagation()} aria-label={`${selectedIDs.has(list.id) ? "Remove from" : "Add to"} ${list.name}`} />
             <span className="min-w-0 flex-1 truncate">{list.name}</span>
-          </label>
+          </div>
         )) : (
           <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
         )}

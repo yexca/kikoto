@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   api,
@@ -1723,10 +1724,10 @@ function TriggerModal({
               ))}
             </select>
           </Field>
-          <label className="flex items-end gap-2 pb-2 text-sm">
-            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-            Enabled
-          </label>
+          <div className="flex items-center gap-2 self-end pb-1 text-sm">
+            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enable trigger" />
+            <span>Enabled</span>
+          </div>
         </div>
         <Field label="Schedule JSON">
           <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduleJson} onChange={(event) => setScheduleJson(event.target.value)} />
@@ -1885,14 +1886,14 @@ function ConfigFields({
           const value = config[field];
           if (kind === "boolean") {
             return (
-              <label key={field} className="flex h-9 items-center gap-2 rounded-md border bg-card px-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={Boolean(value)}
-                  onChange={(event) => updateField(field, event.target.checked)}
-                />
+              <div key={field} className="flex h-9 items-center justify-between gap-2 rounded-md border bg-card px-3 text-sm">
                 <span>{field}</span>
-              </label>
+                <Switch
+                  checked={Boolean(value)}
+                  onCheckedChange={(checked) => updateField(field, checked)}
+                  aria-label={`Toggle ${field}`}
+                />
+              </div>
             );
           }
           return (

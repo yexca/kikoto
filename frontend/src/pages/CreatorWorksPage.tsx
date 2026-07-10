@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
@@ -722,14 +723,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </div>
         </div>
         {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <label className="flex items-center gap-2 text-muted-foreground">
-            <input
-              type="checkbox"
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Checkbox
               checked={selectablePageWorks.length > 0 && selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))}
-              onChange={(event) => toggleVisibleSelection(event.target.checked)}
+              onCheckedChange={toggleVisibleSelection}
+              aria-label="Select visible works"
             />
             {selectedWorks.length} selected
-          </label>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>Select all</Button>
             <Button variant="outline" size="sm" onClick={() => {

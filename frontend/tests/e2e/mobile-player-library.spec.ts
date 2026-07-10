@@ -73,6 +73,10 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
       await route.fulfill({ json: { authenticated: false } });
       return;
     }
+    if (url.pathname === "/api/works/1/user-state" && route.request().method() === "PATCH") {
+      await route.fulfill({ status: 401, json: { error: "login required" } });
+      return;
+    }
     if (url.pathname === "/api/library-sources") {
       await route.fulfill({ json: [] });
       return;
@@ -138,6 +142,37 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.x).toBeGreaterThanOrEqual(0);
   expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
+
+  await page.getByRole("button", { name: "All records" }).click();
+  await page.getByRole("button", { name: "Sort: Recently added" }).click();
+  const selectedSort = page.getByRole("button", { name: "Recently added", exact: true });
+  await expect(selectedSort).toHaveClass(/bg-primary\/10/);
+  expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
+});
+
+test("anonymous quick marks show an actionable toast above protected mobile controls", async ({ page }) => {
+  await mockApplication(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Mark: Unmarked" }).click();
+  await expect(page.getByRole("button", { name: "Unmarked", exact: true })).toHaveClass(/bg-primary\/10/);
+  await page.getByRole("button", { name: "Want", exact: true }).click();
+  await expect(page.getByText("Please sign in to use this feature.")).toBeVisible();
+
+  const toastViewport = page.locator('[aria-live="polite"]');
+  const [toastBox, protectedBoxes] = await Promise.all([
+    toastViewport.boundingBox(),
+    page.locator("[data-toast-avoid]").evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { bottom: rect.bottom, top: rect.top };
+    })),
+  ]);
+  expect(toastBox).not.toBeNull();
+  const protectedBottom = Math.max(...protectedBoxes.filter((rect) => rect.bottom > 0).map((rect) => rect.bottom));
+  expect(toastBox!.y).toBeGreaterThanOrEqual(protectedBottom + 10);
+
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
 test("library request failures are not presented as an empty collection", async ({ page }) => {
@@ -259,6 +294,9 @@ test("failed sources fall back automatically and the sleep timer survives a relo
   await page.getByRole("button", { name: "Sleep timer" }).click();
   await expect(page.getByRole("button", { name: "30 min" })).toBeVisible();
   await expect(page.getByRole("button", { name: "60 min" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Finish current track" })).toHaveAttribute("data-state", "unchecked");
+  const sleepPopover = page.getByRole("button", { name: "30 min" }).locator("xpath=ancestor::div[contains(@class, 'fixed')]");
+  expect((await sleepPopover.boundingBox())!.width).toBeLessThanOrEqual(230);
   await page.getByRole("button", { name: "Custom" }).click();
   const customMinutes = page.getByRole("spinbutton", { name: "Custom sleep minutes" });
   await expect(customMinutes).toBeVisible();

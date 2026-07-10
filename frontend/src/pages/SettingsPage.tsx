@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type AppSettings, type DirectoryRoutingRule, type FileSource } from "@/lib/api";
 
@@ -624,10 +625,10 @@ function DirectoryRuleEditor({
               onChange={(event) => onPatch({ weight: Number(event.target.value) })}
             />
           </label>
-          <label className="flex min-h-9 items-center justify-between gap-3 self-end rounded-md border px-3 text-sm">
+          <div className="flex min-h-9 items-center justify-between gap-3 self-end rounded-md border px-3 text-sm">
             <span className="font-medium">Enabled</span>
-            <input type="checkbox" checked={rule.enabled} onChange={(event) => onPatch({ enabled: event.target.checked })} />
-          </label>
+            <Switch checked={rule.enabled} onCheckedChange={(enabled) => onPatch({ enabled })} aria-label="Enable routing rule" />
+          </div>
         </div>
         <Button variant="outline" size="icon" aria-label="Remove rule" onClick={onRemove}>
           <Trash2 className="h-4 w-4" />
@@ -1083,10 +1084,10 @@ function CacheFetchSettings({
             <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Backoff max" value={`${remoteMaxBackoff}s`} />
           </div>
           <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
+            <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
               <span className="font-medium">Cache remote playback</span>
-              <input type="checkbox" checked={cacheEnabled} onChange={(event) => onCacheEnabledChange(event.target.checked)} />
-            </label>
+              <Switch checked={cacheEnabled} onCheckedChange={onCacheEnabledChange} aria-label="Cache remote playback" />
+            </div>
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Total limit GB</span>
               <input
@@ -1256,18 +1257,18 @@ function SourceModal({
             </label>
           </div>
           <div className="grid gap-2 rounded-md border p-3 text-sm">
-            <label className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <span className="font-medium">Enabled</span>
-              <input type="checkbox" checked={source.enabled} onChange={(event) => patch({ enabled: event.target.checked })} />
-            </label>
-            <label className="flex items-center justify-between gap-3">
+              <Switch checked={source.enabled} onCheckedChange={(enabled) => patch({ enabled })} aria-label="Enable source" />
+            </div>
+            <div className="flex items-center justify-between gap-3">
               <span className="font-medium">Cache this source</span>
-              <input
-                type="checkbox"
+              <Switch
                 checked={source.config.cacheEnabled ?? false}
-                onChange={(event) => patch({ config: { ...source.config, cacheEnabled: event.target.checked } })}
+                onCheckedChange={(cacheEnabled) => patch({ config: { ...source.config, cacheEnabled } })}
+                aria-label="Cache this source"
               />
-            </label>
+            </div>
           </div>
           <div className="grid gap-1 text-sm">
             <span className="font-medium">Save path template</span>

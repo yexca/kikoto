@@ -467,7 +467,8 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 		}
 		candidate.Path = filepath.ToSlash(candidate.Path)
 		candidate.FileName = filepath.Base(candidate.Path)
-		candidate.PreviewURL = fmt.Sprintf("/api/media/%d/asset", candidate.LocationID)
+		revision := sha1.Sum([]byte(fmt.Sprintf("%s:%d", candidate.Path, size.Int64)))
+		candidate.PreviewURL = fmt.Sprintf("/api/media/%d/asset?v=%s", candidate.LocationID, hex.EncodeToString(revision[:])[:12])
 		candidate.SizeBytes = nullableInt64(size)
 		candidate.Selected = selectedPath != "" && strings.EqualFold(selectedPath, candidate.Path)
 		candidates = append(candidates, candidate)

@@ -53,6 +53,7 @@ import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
@@ -159,6 +160,7 @@ const editableSearchClauseKinds: { value: SearchClauseKind; label: string }[] = 
 ];
 
 export function LibraryPage() {
+  const toast = useToast();
   const [works, setWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
@@ -406,11 +408,15 @@ export function LibraryPage() {
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
-    const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-    setWorks((items) =>
-      items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
-    );
-    setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
+    try {
+      const result = await api.updateWorkUserState(workID, { listeningStatus: status });
+      setWorks((items) =>
+        items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
+      );
+      setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
+    } catch (error) {
+      toast.notify(toastFromError(error, "Mark update failed."));
+    }
   };
 
   const untrackWorkSource = async () => {
@@ -626,7 +632,7 @@ export function LibraryPage() {
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div className="flex min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:max-w-xl">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
@@ -908,7 +914,8 @@ function DatabaseViewMenu({ value, onChange }: { value: LocalLibraryScope; onCha
         {databaseScopeItems.map((item) => (
           <button
             key={item.value}
-            className={`flex w-full items-start gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted ${value === item.value ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+            className={`flex w-full items-start gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted ${value === item.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+            aria-pressed={value === item.value}
             onClick={() => onChange(item.value)}
           >
             <span className="mt-0.5 shrink-0">{item.icon}</span>
@@ -1630,7 +1637,8 @@ function LayoutPicker({
             return (
               <button
                 key={option.value}
-                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted ${viewMode === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted ${viewMode === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+                aria-pressed={viewMode === option.value}
                 onClick={() => {
                   onViewModeChange(option.value);
                   setViewOpen(false);
@@ -1646,7 +1654,8 @@ function LayoutPicker({
           {options.map((option) => (
             <button
               key={option}
-              className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              aria-pressed={currentValue === option}
               title={`${option} ${option === 1 ? "column" : "columns"}`}
               aria-label={`${option} ${option === 1 ? "column" : "columns"}`}
               onClick={() => setColumns(option)}
@@ -1700,11 +1709,12 @@ function SortPicker({
           {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
         </button>
       </div>
-      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-1 text-sm shadow-lg">
+      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="w-[min(12rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-1 text-sm shadow-lg">
           {librarySortOptions.map((option) => (
             <button
               key={option.value}
-              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "text-foreground" : "text-muted-foreground"}`}
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              aria-pressed={value === option.value}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
@@ -1739,7 +1749,8 @@ function FilterPicker({
       </IconButton>
       <AnchoredPopover open={open} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
           <button
-            className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+            aria-pressed={value === "all"}
             title="All marks"
             aria-label="All marks"
             onClick={() => {
@@ -1754,7 +1765,8 @@ function FilterPicker({
             return (
               <button
                 key={option.value}
-                className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+                aria-pressed={value === option.value}
                 title={option.label}
                 aria-label={option.label}
                 onClick={() => {
@@ -4593,7 +4605,7 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       locationType: location.locationType,
       streamUrl: location.streamUrl,
       downloadUrl: location.downloadUrl,
-      assetUrl: location.locationType === "local" ? `/api/media/${location.id}/asset` : location.downloadUrl,
+      assetUrl: location.locationType === "local" ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes) : location.downloadUrl,
       sizeBytes: location.sizeBytes,
       durationSeconds: location.durationSeconds ?? item.durationSeconds,
       availability: location.availability,
@@ -4977,7 +4989,7 @@ function RemoteFetchLocalTreeNode({
           <button className="rounded p-0.5 hover:bg-background" onClick={() => setOpen((value) => !value)} title={open ? "Collapse" : "Expand"} aria-label={open ? "Collapse" : "Expand"}>
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
-          <input type="checkbox" checked={checked} ref={(input) => { if (input) input.indeterminate = mixed; }} disabled={disabled || descendantItems.length === 0} onChange={toggleNode} />
+          <Checkbox checked={checked} indeterminate={mixed} disabled={disabled || descendantItems.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
           <Folder className="h-4 w-4 text-primary" />
           <span className="min-w-0 flex-1 truncate" title={node.path}>{node.name}</span>
           <span className="text-xs text-muted-foreground">{selectedCount}/{descendantItems.length}</span>
@@ -4998,7 +5010,7 @@ function RemoteFetchLocalTreeNode({
         return (
           <label key={`${item.path}:${item.remotePath ?? ""}`} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
             <span className="w-5" />
-            <input type="checkbox" checked={selected} disabled={disabled} onChange={(event) => onSelect(item.fullPath, event.target.checked)} />
+            <Checkbox checked={selected} disabled={disabled} onCheckedChange={(checked) => onSelect(item.fullPath, checked)} aria-label={`Select ${item.name}`} />
             <HardDrive className="h-4 w-4 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate" title={item.fullPath}>{item.name}</span>
             <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
@@ -5049,7 +5061,7 @@ function RemoteSaveSelectionNode({
           <button className="rounded p-0.5 hover:bg-background" disabled={!hasChildren} onClick={() => setOpen((value) => !value)} title={open ? "Collapse" : "Expand"} aria-label={open ? "Collapse" : "Expand"}>
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
-          <input type="checkbox" checked={checked} ref={(input) => { if (input) input.indeterminate = mixed; }} disabled={disabled || nodePaths.length === 0} onChange={toggleNode} />
+          <Checkbox checked={checked} indeterminate={mixed} disabled={disabled || nodePaths.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
           <Folder className="h-4 w-4 text-primary" />
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
           <span className="text-xs text-muted-foreground">{checkedCount}/{nodePaths.length}</span>
@@ -5071,16 +5083,16 @@ function RemoteSaveSelectionNode({
         const plan = planByPath.get(path);
         return (
           <label key={path} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
-            <input
-              type="checkbox"
+            <Checkbox
               checked={selectedPaths.has(path)}
               disabled={disabled}
-              onChange={(event) => {
+              onCheckedChange={(checked) => {
                 const next = new Set(selectedPaths);
-                if (event.target.checked) next.add(path);
+                if (checked) next.add(path);
                 else next.delete(path);
                 onChange(next);
               }}
+              aria-label={`Select ${file.title}`}
             />
             {fileIcon(file)}
             <span className="min-w-0 flex-1 truncate">{file.title}</span>
@@ -5636,10 +5648,10 @@ function ManagedFileRow({
           const key = mediaDeleteTargetKey(target);
           return (
             <label key={key} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs hover:bg-muted">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selectedKeys.has(key)}
-                onChange={(event) => onToggleTarget(target, event.target.checked)}
+                onCheckedChange={(checked) => onToggleTarget(target, checked)}
+                aria-label={`Select ${target.kind === "cache" ? "cache" : "local"} copy`}
               />
               <span>{target.kind === "cache" ? "Cache" : "Local"}</span>
             </label>
@@ -6479,6 +6491,11 @@ function splitSearchParts(value: string) {
     }
   }
   return parts;
+}
+
+function versionedMediaAssetURL(locationId: number, fingerprint: string, sizeBytes: number | null) {
+  const revision = `${fingerprint}:${sizeBytes ?? "unknown"}`;
+  return `/api/media/${locationId}/asset?v=${encodeURIComponent(revision)}`;
 }
 
 function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {

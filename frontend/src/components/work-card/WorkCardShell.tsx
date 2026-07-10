@@ -4,8 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type WorkProgressSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export type WorkCardBadge = {
   key?: string;
@@ -323,7 +325,7 @@ export function WorkCardQuickMarkButton({
             const shouldOpenAbove = availableBelow < 280;
             setOpenAbove(shouldOpenAbove);
             if (isMobile && rect) {
-              const menuWidth = 160;
+              const menuWidth = 176;
               const menuHeight = 280;
               const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.right - menuWidth));
               const desiredTop = shouldOpenAbove ? rect.top - menuHeight - 8 : rect.bottom + 8;
@@ -340,26 +342,31 @@ export function WorkCardQuickMarkButton({
       </WorkCardActionButton>
       {open && (
         <div
-          className={`${mobilePosition ? "fixed z-50" : "absolute right-0 z-30"} max-h-[calc(100dvh-2rem)] w-40 overflow-y-auto rounded-md border border-border bg-card p-1 text-card-foreground shadow-2xl ${
+          className={`${mobilePosition ? "fixed z-50" : "absolute right-0 z-30"} max-h-[calc(100dvh-2rem)] w-44 overflow-y-auto rounded-lg border border-border bg-card p-1 text-card-foreground shadow-2xl ${
             mobilePosition ? "" : openAbove ? "bottom-10" : "top-10"
           }`}
           style={mobilePosition ?? undefined}
         >
           {quickMarkOptions.map((option) => {
             const meta = quickMarkMeta(option.value);
+            const selected = option.value === value;
             return (
               <button
                 key={option.value}
-                className="flex min-h-11 w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-muted"
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted",
+                  selected && "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15",
+                )}
+                aria-pressed={selected}
                 onClick={(event) => {
                   event.stopPropagation();
                   setOpen(false);
                   onChange(option.value);
                 }}
               >
-                <meta.icon className={`h-3.5 w-3.5 ${option.value === value && meta.active ? meta.className : ""}`} />
+                <meta.icon className={`h-3.5 w-3.5 ${selected && meta.active ? meta.className : ""}`} />
                 <span className="min-w-0 flex-1">{option.label}</span>
-                {option.value === value && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                {selected && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
               </button>
             );
           })}
@@ -502,10 +509,22 @@ export function WorkCardListButton({
             {loading ? (
               <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">Loading lists...</div>
             ) : lists.length > 0 ? lists.map((list) => (
-              <label key={list.id} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-sm hover:bg-muted">
-                <input type="checkbox" checked={selected.has(list.id)} onChange={(event) => toggle(list.id, event.target.checked)} />
+              <div
+                key={list.id}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-sm hover:bg-muted",
+                  selected.has(list.id) && "border-primary/30 bg-primary/10",
+                )}
+                onClick={() => toggle(list.id, !selected.has(list.id))}
+              >
+                <Checkbox
+                  checked={selected.has(list.id)}
+                  onCheckedChange={(checked) => toggle(list.id, checked)}
+                  onClick={(event) => event.stopPropagation()}
+                  aria-label={`${selected.has(list.id) ? "Remove from" : "Add to"} ${list.name}`}
+                />
                 <span className="min-w-0 flex-1 truncate">{list.name}</span>
-              </label>
+              </div>
             )) : (
               <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
             )}
@@ -545,9 +564,9 @@ export function WorkCardSelection({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="absolute right-3 top-3 z-10 rounded-md bg-background/90 px-2 py-1 text-xs" onClick={(event) => event.stopPropagation()}>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
-    </label>
+    <div className="absolute right-3 top-3 z-10 rounded-md bg-background/90 p-1.5 shadow-sm" onClick={(event) => event.stopPropagation()}>
+      <Checkbox checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label="Select work" />
+    </div>
   );
 }
 

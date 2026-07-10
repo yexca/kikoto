@@ -23,7 +23,9 @@ import {
 } from "lucide-react";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
@@ -1213,8 +1215,8 @@ export function PlayerDock() {
             {player.sleepTimer && <span className="text-[10px]">{player.sleepTimer.waitingForTrackEnd ? "Track" : formatSleepRemaining(player.sleepRemainingSeconds)}</span>}
           </Button>
 
-          {isSleepOpen && (
-            <div ref={sleepPopoverRef} className="absolute bottom-11 right-0 z-20 w-64 rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
+          <AnchoredPopover open={isSleepOpen} anchorRef={sleepButtonRef} className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl">
+            <div ref={sleepPopoverRef} className="p-2">
               <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
                 <span>Sleep timer</span>
                 {player.sleepTimer && <span>{player.sleepTimer.waitingForTrackEnd ? "Finishing track" : formatSleepRemaining(player.sleepRemainingSeconds)}</span>}
@@ -1224,12 +1226,9 @@ export function PlayerDock() {
                   <span className="block font-medium">Finish current track</span>
                   <span className="block text-xs text-muted-foreground">After the timer expires</span>
                 </span>
-                <input
-                  type="checkbox"
-                  role="switch"
+                <Switch
                   checked={finishCurrentTrack}
-                  onChange={(event) => {
-                    const enabled = event.currentTarget.checked;
+                  onCheckedChange={(enabled) => {
                     setFinishCurrentTrack(enabled);
                     if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
                   }}
@@ -1280,7 +1279,7 @@ export function PlayerDock() {
                 </button>
               )}
             </div>
-          )}
+          </AnchoredPopover>
           </div>
         </div>
       </div>

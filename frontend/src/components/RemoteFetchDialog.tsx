@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { RemoteTrack, RemoteWorkSavePlan } from "@/lib/api";
 
 type RemoteFetchNode = {
@@ -116,14 +117,12 @@ function RemoteFetchTreeNode({
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
         ) : <span className="w-5" />}
-        <input
-          type="checkbox"
+        <Checkbox
           checked={checked}
-          ref={(element) => {
-            if (element) element.indeterminate = partial;
-          }}
+          indeterminate={partial}
           disabled={disabled || childLeaves.length === 0}
-          onChange={(event) => toggle(event.target.checked)}
+          onCheckedChange={toggle}
+          aria-label={`Select ${node.name}`}
         />
         {isFolder ? <Folder className="h-4 w-4 text-primary" /> : <FileAudio className="h-4 w-4 text-muted-foreground" />}
         <span className="min-w-0 flex-1 truncate">{node.name}</span>

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -287,7 +288,7 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
 		return
 	}
-	http.ServeFile(w, r, path)
+	serveRevalidatedFile(w, r, path, relPath)
 }
 
 func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
@@ -2021,12 +2022,21 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
-	path, _, err := s.localMediaPath(r, r.PathValue("id"))
+	path, relPath, err := s.localMediaPath(r, r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	http.ServeFile(w, r, path)
+	serveRevalidatedFile(w, r, path, relPath)
+}
+
+func serveRevalidatedFile(w http.ResponseWriter, r *http.Request, filePath string, identity string) {
+	if info, err := os.Stat(filePath); err == nil {
+		revision := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d", filepath.ToSlash(identity), info.Size(), info.ModTime().UnixNano())))
+		w.Header().Set("Cache-Control", "private, no-cache")
+		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", revision[:16]))
+	}
+	http.ServeFile(w, r, filePath)
 }
 
 func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
@@ -5928,8 +5938,8 @@ func (s *Server) coverURL(primaryCode string) string {
 	for _, extension := range []string{".jpg", ".jpeg", ".png", ".webp"} {
 		file := coverAssetRelativePath(code, extension)
 		path := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(file))
-		if _, err := os.Stat(path); err == nil {
-			return "/api/assets/covers/" + file
+		if info, err := os.Stat(path); err == nil {
+			return fmt.Sprintf("/api/assets/covers/%s?v=%s-%s", file, strconv.FormatInt(info.Size(), 36), strconv.FormatInt(info.ModTime().UnixNano(), 36))
 		}
 	}
 	return ""

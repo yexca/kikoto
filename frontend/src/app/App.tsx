@@ -4,6 +4,7 @@ import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
+import { LOGIN_REQUEST_EVENT } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
@@ -95,6 +96,12 @@ function AuthenticatedApp() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    const openLogin = () => setLoginOpen(true);
+    window.addEventListener(LOGIN_REQUEST_EVENT, openLogin);
+    return () => window.removeEventListener(LOGIN_REQUEST_EVENT, openLogin);
+  }, []);
+
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
   }
@@ -148,7 +155,7 @@ function AuthenticatedApp() {
         </aside>
 
         <main className="min-w-0">
-          <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
+          <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur" data-toast-avoid>
             <div className="flex min-h-16 items-center justify-between gap-3 px-4 lg:px-6">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>

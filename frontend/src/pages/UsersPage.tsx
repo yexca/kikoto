@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Crown, Plus, RefreshCw, Save, Shield, Trash2
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type ManagedUser } from "@/lib/api";
 
@@ -670,23 +671,7 @@ function SwitchField({
         <div className="text-sm font-medium">{label}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
       </div>
-      <Button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        variant={checked ? "default" : "outline"}
-        size="icon"
-        className={`relative h-6 w-11 shrink-0 rounded-full p-0 ${
-          checked ? "border-primary" : "bg-muted hover:bg-muted/80"
-        }`}
-        onClick={() => onChange(!checked)}
-      >
-        <span
-          className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform ${
-            checked ? "translate-x-5" : "translate-x-0.5"
-          }`}
-        />
-      </Button>
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
     </div>
   );
 }
