@@ -136,6 +136,17 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
 });
 
+test("library request failures are not presented as an empty collection", async ({ page }) => {
+  await mockApplication(page);
+  await page.route("**/api/works?**", (route) => route.fulfill({ status: 500, json: { error: "database temporarily unavailable" } }));
+  await page.goto("/");
+
+  await expect(page.getByText("Library could not be loaded.")).toBeVisible();
+  await expect(page.getByText("database temporarily unavailable")).toBeVisible();
+  await expect(page.getByText("No local works match this view.")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
 test("full player collapses from the upper content area and double-tapping its cover opens work detail", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page);

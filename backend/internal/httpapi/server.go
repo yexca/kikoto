@@ -435,34 +435,58 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, works)
 }
 
+type pendingLibraryWorkRow struct {
+	item                   libraryWorkSummary
+	snapshot               string
+	availableLocationTypes string
+	sourcePresence         string
+	partyLink              string
+}
+
 func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sql.Rows) ([]libraryWorkSummary, error) {
-	works := []libraryWorkSummary{}
+	pending := []pendingLibraryWorkRow{}
 	for rows.Next() {
-		var item libraryWorkSummary
+		var item pendingLibraryWorkRow
 		var snapshot sql.NullString
 		var availableLocationTypes sql.NullString
 		var sourcePresence sql.NullString
 		var partyLink sql.NullString
 		var favorite int
 		if err := rows.Scan(
-			&item.ID,
-			&item.PrimaryCode,
-			&item.Title,
-			&item.CreatedAt,
-			&item.TrackCount,
-			&item.AvailableLocations,
+			&item.item.ID,
+			&item.item.PrimaryCode,
+			&item.item.Title,
+			&item.item.CreatedAt,
+			&item.item.TrackCount,
+			&item.item.AvailableLocations,
 			&availableLocationTypes,
 			&sourcePresence,
 			&snapshot,
 			&partyLink,
-			&item.ListeningStatus,
+			&item.item.ListeningStatus,
 			&favorite,
 		); err != nil {
 			return nil, err
 		}
-		item.Favorite = favorite != 0
-		item.SourcePresence = parseSourcePresenceSummary(sourcePresence.String)
-		metadata := parseDLsiteSnapshot(snapshot.String)
+		item.item.Favorite = favorite != 0
+		item.snapshot = snapshot.String
+		item.availableLocationTypes = availableLocationTypes.String
+		item.sourcePresence = sourcePresence.String
+		item.partyLink = partyLink.String
+		pending = append(pending, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	works := make([]libraryWorkSummary, 0, len(pending))
+	for _, row := range pending {
+		item := row.item
+		item.SourcePresence = parseSourcePresenceSummary(row.sourcePresence)
+		metadata := parseDLsiteSnapshot(row.snapshot)
 		familyMediaCode := item.PrimaryCode
 		progressWorkID := item.ID
 		if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
@@ -507,7 +531,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
 		item.CircleExternalID = metadata.CircleExternalID
-		if name, externalID := parsePartyLink(partyLink.String); name != "" {
+		if name, externalID := parsePartyLink(row.partyLink); name != "" {
 			item.Circle = name
 			item.CircleExternalID = externalID
 		}
@@ -521,7 +545,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 			return nil, err
 		}
 		if len(item.Availability) == 0 {
-			item.Availability = availabilityBadgesWithPresence(availableLocationTypes.String, item.SourcePresence)
+			item.Availability = availabilityBadgesWithPresence(row.availableLocationTypes, item.SourcePresence)
 		}
 		progress, err := s.workProgressSummary(ctx, userID, progressWorkID)
 		if err != nil {
@@ -530,7 +554,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.Progress = progress
 		works = append(works, item)
 	}
-	return works, rows.Err()
+	return works, nil
 }
 
 func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
@@ -1817,23 +1841,34 @@ func (s *Server) logicalWorkMediaCode(ctx context.Context, workID int64) (string
 	if err != nil {
 		return "", false, err
 	}
-	defer rows.Close()
+	type editionCandidate struct {
+		workID int64
+		code   string
+	}
+	candidates := []editionCandidate{}
 	for rows.Next() {
-		var editionWorkID int64
-		var code string
-		if err := rows.Scan(&editionWorkID, &code); err != nil {
+		var candidate editionCandidate
+		if err := rows.Scan(&candidate.workID, &candidate.code); err != nil {
+			_ = rows.Close()
 			return "", false, err
 		}
-		hasMedia, err := s.workHasMedia(ctx, editionWorkID)
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return "", false, err
+	}
+	if err := rows.Close(); err != nil {
+		return "", false, err
+	}
+	for _, candidate := range candidates {
+		hasMedia, err := s.workHasMedia(ctx, candidate.workID)
 		if err != nil {
 			return "", false, err
 		}
 		if hasMedia {
-			return code, true, nil
+			return candidate.code, true, nil
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return "", false, err
 	}
 	return "", false, nil
 }

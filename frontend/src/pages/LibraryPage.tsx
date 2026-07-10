@@ -172,7 +172,7 @@ export function LibraryPage() {
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<Work | null>(null);
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
-  const [isAPIAvailable, setIsAPIAvailable] = useState(false);
+  const [libraryLoadError, setLibraryLoadError] = useState("");
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -222,20 +222,19 @@ export function LibraryPage() {
       return;
     }
     const requestSeq = ++libraryRequestSeq.current;
+    setLibraryLoadError("");
     api
       .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection)
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
         setWorkTotal(page.total);
-        setIsAPIAvailable(true);
+        setLibraryLoadError("");
         setOptimisticLibrarySearchClauses(null);
       })
-      .catch(() => {
+      .catch((error) => {
         if (requestSeq !== libraryRequestSeq.current) return;
-        setWorks([]);
-        setWorkTotal(0);
-        setIsAPIAvailable(false);
+        setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
         setOptimisticLibrarySearchClauses(null);
       });
   }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
@@ -478,17 +477,16 @@ export function LibraryPage() {
 
   const loadLibraryWorksNow = (query: string, page = 1) => {
     const requestSeq = ++libraryRequestSeq.current;
+    setLibraryLoadError("");
     api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection).then((result) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks(result.works);
       setWorkTotal(result.total);
-      setIsAPIAvailable(true);
+      setLibraryLoadError("");
       setOptimisticLibrarySearchClauses(null);
-    }).catch(() => {
+    }).catch((error) => {
       if (requestSeq !== libraryRequestSeq.current) return;
-      setWorks([]);
-      setWorkTotal(0);
-      setIsAPIAvailable(false);
+      setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
       setOptimisticLibrarySearchClauses(null);
     });
   };
@@ -521,7 +519,7 @@ export function LibraryPage() {
     const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection);
     setWorks(page.works);
     setWorkTotal(page.total);
-    setIsAPIAvailable(true);
+    setLibraryLoadError("");
   };
 
   const updateSearchClauses = (clauses: SearchClause[]) => {
@@ -773,8 +771,13 @@ export function LibraryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {localPagination}
-          {visibleWorks.length === 0 ? (
+          {!libraryLoadError && localPagination}
+          {libraryLoadError ? (
+            <LibraryLoadErrorCard
+              message={libraryLoadError}
+              onRetry={() => loadLibraryWorksNow(librarySearchQuery, currentWorkPage)}
+            />
+          ) : visibleWorks.length === 0 ? (
             <EmptyLibraryWorksCard scope={localScope} />
           ) : viewMode === "masonry" ? (
             <section className={workMasonryClassName()} style={workMasonryStyle(mobileColumns, desktopColumns)}>
@@ -816,11 +819,11 @@ export function LibraryPage() {
               ))}
             </section>
           )}
-          {viewMode === "masonry" ? (
+          {!libraryLoadError && (viewMode === "masonry" ? (
             <CompactWorkPagination page={currentWorkPage} totalPages={totalWorkPages} onPageChange={setWorkPage} />
           ) : (
             localPagination
-          )}
+          ))}
         </div>
       )}
       {untrackTarget && (
@@ -6476,6 +6479,23 @@ function splitSearchParts(value: string) {
     }
   }
   return parts;
+}
+
+function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Card className="border-destructive/35">
+      <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-destructive">Library could not be loaded.</div>
+          <div className="mt-1 text-xs text-muted-foreground">{message}</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCw className="h-4 w-4" />
+          Retry
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause | null {
