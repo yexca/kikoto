@@ -170,17 +170,12 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	offset := (page - 1) * pageSize
-	query := libraryListSelectSQL(where, "recent", "desc") + " LIMIT ? OFFSET ?"
-	queryArgs := append([]any{user.ID}, args...)
-	queryArgs = append(queryArgs, pageSize, offset)
-	rows, err := s.db.QueryContext(r.Context(), query, queryArgs...)
+	rawWorks, err := s.libraryStore.ListMatching(r.Context(), user.ID, where, args, page, pageSize)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
-	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rows, true)
+	works, err := s.scanLibraryWorkRows(r.Context(), user.ID, rawWorks, true)
 	if err != nil {
 		writeError(w, err)
 		return

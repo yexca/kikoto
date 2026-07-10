@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -29,6 +29,7 @@ import (
 
 type Server struct {
 	db                   *sql.DB
+	libraryStore         *library.Store
 	cfg                  config.Config
 	circleAutoRefreshMu  sync.Mutex
 	circleAutoRefreshing map[int64]bool
@@ -36,7 +37,7 @@ type Server struct {
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
-	return &Server{db: db, cfg: cfg, circleAutoRefreshing: map[int64]bool{}}
+	return &Server{db: db, libraryStore: library.NewStore(db), cfg: cfg, circleAutoRefreshing: map[int64]bool{}}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -308,186 +309,29 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		s.listWorksPageFast(w, r, userID)
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			work.id,
-			work.primary_code,
-			work.title,
-			work.created_at,
-			(
-				SELECT COUNT(*)
-				FROM media_item
-				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
-			) AS track_count,
-			(
-				SELECT COUNT(*)
-				FROM media_file_location
-				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
-				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
-					AND media_file_location.availability = 'available'
-			) AS available_locations,
-			(
-				SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type)
-				FROM media_file_location
-				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
-				WHERE media_item.work_id = work.id
-					AND media_file_location.availability = 'available'
-			) AS available_location_types,
-			(
-				SELECT GROUP_CONCAT(
-					DISTINCT presence.presence_type || '|' ||
-						presence.availability || '|' ||
-						presence.file_source_id || '|' ||
-						COALESCE(source.code, '') || '|' ||
-						COALESCE(source.display_name, '') || '|' ||
-						COALESCE(presence.remote_id, '') || '|' ||
-						COALESCE(presence.source_url, '') || '|' ||
-						COALESCE(presence.remote_code, '')
-				)
-				FROM work_source_presence AS presence
-				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
-				WHERE presence.work_id = work.id
-					OR presence.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-			) AS source_presence,
-			(
-				SELECT snapshot_json
-				FROM metadata_snapshot
-				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-				WHERE metadata_snapshot.work_id = work.id
-					AND metadata_provider.code = 'dlsite'
-				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-				LIMIT 1
-			) AS snapshot_json,
-			(
-				SELECT party.display_name || '|' || external.external_id
-				FROM work_party AS relation
-				INNER JOIN party ON party.id = relation.party_id
-				LEFT JOIN party_external_id AS external ON external.party_id = party.id
-					AND external.is_primary = 1
-				WHERE relation.work_id = work.id
-					AND relation.role = 'circle'
-				ORDER BY relation.updated_at DESC
-				LIMIT 1
-			) AS party_link,
-			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-			COALESCE(user_work_state.favorite, 0) AS favorite
-		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
-			AND user_work_state.user_id = ?
-		ORDER BY work.created_at DESC
-	`, userID)
+	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
-
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows, false)
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, rawWorks, false)
 	if err != nil {
 		writeError(w, err)
-		return
-	}
-
-	if pagedRequest {
-		query := strings.TrimSpace(r.URL.Query().Get("q"))
-		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
-		status := strings.TrimSpace(r.URL.Query().Get("status"))
-		filtered := make([]libraryWorkSummary, 0, len(works))
-		for _, item := range works {
-			if !workMatchesListScope(item, scope) {
-				continue
-			}
-			if status != "" && status != "all" && item.ListeningStatus != status {
-				continue
-			}
-			if query != "" && !workMatchesListQuery(item, query) {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		page := queryInt(r, "page", 1)
-		pageSize := queryInt(r, "pageSize", 24)
-		if pageSize < 1 || pageSize > 100 {
-			pageSize = 24
-		}
-		start := (page - 1) * pageSize
-		if start > len(filtered) {
-			start = len(filtered)
-		}
-		end := start + pageSize
-		if end > len(filtered) {
-			end = len(filtered)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"works":    filtered[start:end],
-			"page":     page,
-			"pageSize": pageSize,
-			"total":    len(filtered),
-		})
 		return
 	}
 	writeJSON(w, http.StatusOK, works)
 }
 
-type pendingLibraryWorkRow struct {
-	item                   libraryWorkSummary
-	snapshot               string
-	availableLocationTypes string
-	sourcePresence         string
-	partyLink              string
-}
-
-func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sql.Rows, canonicalFiltered bool) ([]libraryWorkSummary, error) {
-	pending := []pendingLibraryWorkRow{}
-	for rows.Next() {
-		var item pendingLibraryWorkRow
-		var snapshot sql.NullString
-		var availableLocationTypes sql.NullString
-		var sourcePresence sql.NullString
-		var partyLink sql.NullString
-		var favorite int
-		if err := rows.Scan(
-			&item.item.ID,
-			&item.item.PrimaryCode,
-			&item.item.Title,
-			&item.item.CreatedAt,
-			&item.item.TrackCount,
-			&item.item.AvailableLocations,
-			&availableLocationTypes,
-			&sourcePresence,
-			&snapshot,
-			&partyLink,
-			&item.item.ListeningStatus,
-			&favorite,
-		); err != nil {
-			return nil, err
+func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool) ([]libraryWorkSummary, error) {
+	works := make([]libraryWorkSummary, 0, len(rows))
+	for _, row := range rows {
+		item := libraryWorkSummary{
+			ID: row.ID, PrimaryCode: row.PrimaryCode, Title: row.Title, CreatedAt: row.CreatedAt,
+			TrackCount: row.TrackCount, AvailableLocations: row.AvailableLocations,
+			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite,
 		}
-		item.item.Favorite = favorite != 0
-		item.snapshot = snapshot.String
-		item.availableLocationTypes = availableLocationTypes.String
-		item.sourcePresence = sourcePresence.String
-		item.partyLink = partyLink.String
-		pending = append(pending, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-
-	works := make([]libraryWorkSummary, 0, len(pending))
-	for _, row := range pending {
-		item := row.item
-		item.SourcePresence = parseSourcePresenceSummary(row.sourcePresence)
-		metadata := parseDLsiteSnapshot(row.snapshot)
+		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
+		metadata := parseDLsiteSnapshot(row.Snapshot)
 		if !canonicalFiltered {
 			if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
 				return nil, err
@@ -499,7 +343,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 			continue
 		}
 		item.mediaWorkID = item.ID
-		item.availableLocationTypes = row.availableLocationTypes
+		item.availableLocationTypes = row.AvailableLocationTypes
 		for _, translation := range metadata.LanguageEditions {
 			if !strings.EqualFold(translation.PrimaryCode, item.PrimaryCode) {
 				item.fallbackEditionCodes = append(item.fallbackEditionCodes, translation.PrimaryCode)
@@ -511,7 +355,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 		item.DLsiteURL = dlsiteURL(item.PrimaryCode)
 		item.Circle = metadata.Circle
 		item.CircleExternalID = metadata.CircleExternalID
-		if name, externalID := parsePartyLink(row.partyLink); name != "" {
+		if name, externalID := parsePartyLink(row.PartyLink); name != "" {
 			item.Circle = name
 			item.CircleExternalID = externalID
 		}
@@ -529,449 +373,31 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 }
 
 func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userID int64) {
-	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	queryText := strings.TrimSpace(r.URL.Query().Get("q"))
-	sortKey := strings.TrimSpace(r.URL.Query().Get("sort"))
-	sortDirection := strings.TrimSpace(r.URL.Query().Get("direction"))
-	page := queryInt(r, "page", 1)
-	pageSize := queryInt(r, "pageSize", 24)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 24
-	}
-	where, args := libraryListWhere(scope, status, queryText)
-	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
-	countArgs := append([]any{userID}, args...)
-	var total int
-	if err := s.db.QueryRowContext(r.Context(), countQuery, countArgs...).Scan(&total); err != nil {
-		writeError(w, err)
-		return
-	}
-	offset := (page - 1) * pageSize
-	query := libraryListSelectSQL(where, sortKey, sortDirection) + " LIMIT ? OFFSET ?"
-	queryArgs := append([]any{userID}, args...)
-	queryArgs = append(queryArgs, pageSize, offset)
-	rows, err := s.db.QueryContext(r.Context(), query, queryArgs...)
+	page, err := s.libraryStore.ListPage(r.Context(), library.ListOptions{
+		UserID: userID, Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 24),
+		Scope:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))),
+		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
+		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
+	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, rows, true)
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, page.Works, true)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"works":    works,
-		"page":     page,
-		"pageSize": pageSize,
-		"total":    total,
+		"page":     page.Page,
+		"pageSize": page.PageSize,
+		"total":    page.Total,
 	})
 }
 
-func libraryListOrderBy(sortKey string, direction string) (string, bool) {
-	sortKey, direction = normalizeLibrarySort(sortKey, direction)
-	switch sortKey {
-	case "release":
-		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction, false
-	case "code":
-		return "work.primary_code " + direction + ", work.id " + direction, false
-	case "title":
-		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction, false
-	case "rating":
-		return "latest_dlsite_rating IS NULL ASC, latest_dlsite_rating " + direction + ", created_at " + direction + ", id " + direction, true
-	case "sales":
-		return "latest_dlsite_sales IS NULL ASC, latest_dlsite_sales " + direction + ", created_at " + direction + ", id " + direction, true
-	default:
-		return "work.created_at " + direction + ", work.id " + direction, false
-	}
-}
-
-func normalizeLibrarySort(sortKey string, direction string) (string, string) {
-	sortKey = strings.ToLower(strings.TrimSpace(sortKey))
-	direction = strings.ToUpper(strings.TrimSpace(direction))
-	switch sortKey {
-	case "release_desc":
-		sortKey, direction = "release", "DESC"
-	case "release_asc":
-		sortKey, direction = "release", "ASC"
-	case "code_asc":
-		sortKey, direction = "code", "ASC"
-	case "title_asc":
-		sortKey, direction = "title", "ASC"
-	case "rating_desc":
-		sortKey, direction = "rating", "DESC"
-	case "sales_desc":
-		sortKey, direction = "sales", "DESC"
-	}
-	switch sortKey {
-	case "recent", "release", "code", "title", "rating", "sales":
-	default:
-		sortKey = "recent"
-	}
-	if direction != "ASC" && direction != "DESC" {
-		direction = "DESC"
-	}
-	return sortKey, direction
-}
-
-func libraryListWhere(scope string, status string, queryText string) (string, []any) {
-	clauses := []string{"1 = 1"}
-	args := []any{}
-	switch scope {
-	case "local":
-		clauses = append(clauses, `EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE (
-					scope_presence.work_id = work.id
-					OR scope_presence.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-				)
-				AND scope_presence.presence_type = 'local'
-				AND scope_presence.availability = 'available'
-		)`)
-	case "tracked":
-		clauses = append(clauses, `EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE scope_presence.work_id = work.id
-				AND scope_presence.presence_type = 'tracked'
-				AND scope_presence.availability = 'available'
-		)`)
-	case "remote":
-		clauses = append(clauses, `EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE scope_presence.work_id = work.id
-				AND scope_presence.presence_type = 'source'
-				AND scope_presence.availability = 'available'
-		)`)
-		clauses = append(clauses, `NOT EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE scope_presence.work_id = work.id
-				AND scope_presence.presence_type = 'tracked'
-				AND scope_presence.availability = 'available'
-		)`)
-		clauses = append(clauses, `NOT EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE (
-					scope_presence.work_id = work.id
-					OR scope_presence.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-				)
-				AND scope_presence.presence_type = 'local'
-				AND scope_presence.availability = 'available'
-		)`)
-	case "no_source":
-		clauses = append(clauses, libraryNoSourceWhereClause())
-	}
-	if status != "" && status != "all" {
-		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
-		args = append(args, status)
-	}
-	searchWhere, searchArgs := librarySearchWhere(queryText)
-	if searchWhere != "" {
-		clauses = append(clauses, searchWhere)
-		args = append(args, searchArgs...)
-	}
-	clauses = append(clauses, libraryCanonicalVisibleWhereClause())
-	return strings.Join(clauses, " AND "), args
-}
-
-func libraryCanonicalVisibleWhereClause() string {
-	return `(
-		NOT EXISTS (
-			SELECT 1
-			FROM work_edition AS edition
-			WHERE edition.work_id = work.id
-		)
-		OR EXISTS (
-			SELECT 1
-			FROM work_edition AS edition
-			INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-			WHERE edition.work_id = work.id
-				AND (
-					edition.is_canonical = 1
-					OR logical.canonical_work_id IS NULL
-					OR logical.canonical_work_id = work.id
-				)
-		)
-	)`
-}
-
 func librarySearchWhere(queryText string) (string, []any) {
-	searchClauses := parseListSearchClauses(queryText)
-	if len(searchClauses) == 0 {
-		return "", nil
-	}
-	clauses := []string{}
-	args := []any{}
-	for _, clause := range searchClauses {
-		needle := strings.TrimSpace(clause.Value)
-		if needle == "" {
-			continue
-		}
-		like := "%" + strings.ToLower(needle) + "%"
-		switch clause.Kind {
-		case "code":
-			clauses = append(clauses, "LOWER(work.primary_code) LIKE ?")
-			args = append(args, like)
-		case "circle":
-			clauses = append(clauses, `(EXISTS (
-				SELECT 1
-				FROM work_party AS search_relation
-				INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
-				LEFT JOIN party_external_id AS search_external ON search_external.party_id = search_party.id
-				WHERE search_relation.work_id = work.id
-					AND search_relation.role = 'circle'
-					AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
-			) OR `+manualOverrideFieldLikeClause("circle")+`)`)
-			args = append(args, like, like, like)
-		case "voice_actor":
-			clauses = append(clauses, `(EXISTS (
-				SELECT 1
-				FROM work_credit AS search_credit
-				INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
-				WHERE search_credit.work_id = work.id
-					AND search_credit.role = 'voice_actor'
-					AND LOWER(search_person.display_name) LIKE ?
-			) OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
-			args = append(args, like, like)
-		case "tag":
-			clauses = append(clauses, normalizedTagLikeClause(false))
-			args = append(args, like)
-		case "exclude_tag":
-			clauses = append(clauses, normalizedTagLikeClause(true))
-			args = append(args, like)
-		case "rating_min":
-			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", numericListClauseValue(needle)))
-		case "sales_min":
-			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListClauseValue(needle)))
-		default:
-			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+normalizedTagLikeClause(false)+` OR `+latestSnapshotLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
-			args = append(args, like, like, like, like, like)
-		}
-	}
-	if len(clauses) == 0 {
-		return "", nil
-	}
-	return "(" + strings.Join(clauses, " AND ") + ")", args
-}
-
-func manualOverrideFieldLikeClause(field string) string {
-	return `EXISTS (
-		SELECT 1
-		FROM work_manual_override AS search_override
-		WHERE search_override.work_id = work.id
-			AND search_override.field_name = '` + field + `'
-			AND LOWER(search_override.value_json) LIKE ?
-	)`
-}
-
-func normalizedTagLikeClause(negated bool) string {
-	prefix := "EXISTS"
-	if negated {
-		prefix = "NOT EXISTS"
-	}
-	return prefix + ` (
-		SELECT 1
-		FROM work_tag AS search_work_tag
-		INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id
-		WHERE search_work_tag.work_id = work.id
-			AND search_tag.namespace = 'dlsite'
-			AND LOWER(search_tag.display_name) LIKE ?
-	)`
-}
-
-func manualOverrideAnyLikeClause(fields ...string) string {
-	quoted := make([]string, 0, len(fields))
-	for _, field := range fields {
-		quoted = append(quoted, "'"+field+"'")
-	}
-	return `EXISTS (
-		SELECT 1
-		FROM work_manual_override AS search_override
-		WHERE search_override.work_id = work.id
-			AND search_override.field_name IN (` + strings.Join(quoted, ",") + `)
-			AND LOWER(search_override.value_json) LIKE ?
-	)`
-}
-
-func latestSnapshotLikeClause(negated bool) string {
-	operator := "LIKE"
-	if negated {
-		operator = "NOT LIKE"
-	}
-	return `(LOWER(COALESCE((
-		SELECT snapshot_json
-		FROM metadata_snapshot AS search_snapshot
-		INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id
-		WHERE search_snapshot.work_id = work.id
-			AND search_provider.code = 'dlsite'
-		ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC
-		LIMIT 1
-	), '')) ` + operator + ` ?)`
-}
-
-func latestSnapshotNumericClause(kind string, operator string, value float64) string {
-	if operator != ">=" && operator != "<=" {
-		operator = ">="
-	}
-	path := "$.product.rate_average_2dp"
-	fallback := path
-	if kind == "sales" {
-		path = "$.dynamic.dl_count"
-		fallback = "$.product.sales_count"
-	}
-	return fmt.Sprintf(`COALESCE((
-		SELECT CAST(COALESCE(json_extract(search_snapshot.snapshot_json, '%s'), json_extract(search_snapshot.snapshot_json, '%s')) AS REAL)
-		FROM metadata_snapshot AS search_snapshot
-		INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id
-		WHERE search_snapshot.work_id = work.id
-			AND search_provider.code = 'dlsite'
-		ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC
-		LIMIT 1
-	), 0) %s %g`, path, fallback, operator, value)
-}
-
-func libraryListSelectSQL(where string, sortKey string, direction string) string {
-	orderBy, needsMetadataSort := libraryListOrderBy(sortKey, direction)
-	if needsMetadataSort {
-		return `SELECT
-				id,
-				primary_code,
-				title,
-				created_at,
-				track_count,
-				available_locations,
-				available_location_types,
-				source_presence,
-				snapshot_json,
-				party_link,
-				listening_status,
-				favorite
-			FROM (` + libraryListBaseSelectSQL(where, true) + `) AS library_rows
-		ORDER BY ` + orderBy
-	}
-	return libraryListBaseSelectSQL(where, false) + " ORDER BY " + orderBy
-}
-
-func libraryListBaseSelectSQL(where string, includeMetadataSortColumns bool) string {
-	metadataSortColumns := ""
-	if includeMetadataSortColumns {
-		metadataSortColumns = `,
-			(
-				SELECT json_extract(snapshot_json, '$.product.rate_average_2dp')
-				FROM metadata_snapshot
-				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-				WHERE metadata_snapshot.work_id = work.id
-					AND metadata_provider.code = 'dlsite'
-				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-				LIMIT 1
-			) AS latest_dlsite_rating,
-			(
-				SELECT COALESCE(
-					json_extract(snapshot_json, '$.dynamic.dl_count'),
-					json_extract(snapshot_json, '$.product.dl_count'),
-					json_extract(snapshot_json, '$.product.sales_count')
-				)
-				FROM metadata_snapshot
-				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-				WHERE metadata_snapshot.work_id = work.id
-					AND metadata_provider.code = 'dlsite'
-				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-				LIMIT 1
-			) AS latest_dlsite_sales`
-	}
-	return `
-		SELECT
-			work.id,
-			work.primary_code,
-			work.title,
-			work.created_at,
-			(
-				SELECT COUNT(*)
-				FROM media_item
-				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
-			) AS track_count,
-			(
-				SELECT COUNT(*)
-				FROM media_file_location
-				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
-				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
-					AND media_file_location.availability = 'available'
-			) AS available_locations,
-			(
-				SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type)
-				FROM media_file_location
-				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
-				WHERE media_item.work_id = work.id
-					AND media_file_location.availability = 'available'
-			) AS available_location_types,
-			(
-				SELECT GROUP_CONCAT(
-					DISTINCT presence.presence_type || '|' ||
-						presence.availability || '|' ||
-						presence.file_source_id || '|' ||
-						COALESCE(source.code, '') || '|' ||
-						COALESCE(source.display_name, '') || '|' ||
-						COALESCE(presence.remote_id, '') || '|' ||
-						COALESCE(presence.source_url, '') || '|' ||
-						COALESCE(presence.remote_code, '')
-				)
-				FROM work_source_presence AS presence
-				LEFT JOIN file_source AS source ON source.id = presence.file_source_id
-				WHERE presence.work_id = work.id
-					OR presence.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-			) AS source_presence,
-			(
-				SELECT snapshot_json
-				FROM metadata_snapshot
-				INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-				WHERE metadata_snapshot.work_id = work.id
-					AND metadata_provider.code = 'dlsite'
-				ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-				LIMIT 1
-			) AS snapshot_json,
-			(
-				SELECT party.display_name || '|' || external.external_id
-				FROM work_party AS relation
-				INNER JOIN party ON party.id = relation.party_id
-				LEFT JOIN party_external_id AS external ON external.party_id = party.id
-					AND external.is_primary = 1
-				WHERE relation.work_id = work.id
-					AND relation.role = 'circle'
-				ORDER BY relation.updated_at DESC
-				LIMIT 1
-			) AS party_link,
-			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-			COALESCE(user_work_state.favorite, 0) AS favorite` + metadataSortColumns + `
-		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id
-			AND user_work_state.user_id = ?
-		WHERE ` + where
+	return library.SearchWhere(queryText)
 }
 
 func (s *Server) seriesTitleIDForWork(ctx context.Context, code string) string {
@@ -1157,211 +583,10 @@ func (s *Server) workCodeExists(ctx context.Context, code string) bool {
 	return ok
 }
 
-func workMatchesListScope(work libraryWorkSummary, scope string) bool {
-	switch strings.ToLower(strings.TrimSpace(scope)) {
-	case "", "all":
-		return true
-	case "local":
-		return workHasAvailableSourcePresenceType(work, "local")
-	case "tracked":
-		return workHasAvailableSourcePresenceType(work, "tracked")
-	case "remote":
-		return workHasAvailableSourcePresenceType(work, sourcePresenceTypeRemoteSource) &&
-			!workHasAvailableSourcePresenceType(work, "tracked") &&
-			!workHasAvailableSourcePresenceType(work, "local")
-	case "no_source":
-		return len(work.SourcePresence) == 0 && len(work.Availability) == 0
-	default:
-		return true
-	}
-}
-
-func libraryNoSourceWhereClause() string {
-	return `NOT EXISTS (
-			SELECT 1
-			FROM work_source_presence AS scope_presence
-			WHERE scope_presence.work_id = work.id
-				OR scope_presence.work_id IN (
-					SELECT sibling.work_id
-					FROM work_edition AS current_edition
-					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-					WHERE current_edition.work_id = work.id
-				)
-		)
-		AND NOT EXISTS (
-			SELECT 1
-			FROM media_file_location AS scope_location
-			INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
-			WHERE (
-					scope_item.work_id = work.id
-					OR scope_item.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-				)
-				AND scope_location.availability = 'available'
-		)`
-}
-
-func workMatchesListQuery(work libraryWorkSummary, query string) bool {
-	clauses := parseListSearchClauses(query)
-	if len(clauses) == 0 {
-		return true
-	}
-	for _, clause := range clauses {
-		if !workMatchesListClause(work, clause) {
-			return false
-		}
-	}
-	return true
-}
-
-type listSearchClause struct {
-	Kind  string
-	Value string
-}
+type listSearchClause = library.SearchClause
 
 func parseListSearchClauses(query string) []listSearchClause {
-	clauses := []listSearchClause{}
-	rest := strings.TrimSpace(query)
-	wrappedPattern := regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
-	rest = wrappedPattern.ReplaceAllStringFunc(rest, func(match string) string {
-		parts := wrappedPattern.FindStringSubmatch(match)
-		if len(parts) == 3 {
-			if clause, ok := listSearchClauseFromKey(parts[1], parts[2]); ok {
-				clauses = append(clauses, clause)
-			}
-		}
-		return " "
-	})
-	parts := splitListSearchParts(rest)
-	for index := 0; index < len(parts); index++ {
-		part := strings.TrimSpace(parts[index])
-		if part == "" {
-			continue
-		}
-		if key, ok := strings.CutSuffix(part, ":"); ok && index+1 < len(parts) {
-			if clause, matched := listSearchClauseFromKey(key, parts[index+1]); matched {
-				clauses = append(clauses, clause)
-				index++
-				continue
-			}
-		}
-		if key, value, ok := strings.Cut(part, ":"); ok {
-			if clause, matched := listSearchClauseFromKey(key, value); matched {
-				clauses = append(clauses, clause)
-				continue
-			}
-		}
-		kind := "text"
-		if isListWorkCode(part) {
-			kind = "code"
-		}
-		clauses = append(clauses, listSearchClause{Kind: kind, Value: part})
-	}
-	return clauses
-}
-
-func splitListSearchParts(value string) []string {
-	parts := []string{}
-	pattern := regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)`)
-	for _, match := range pattern.FindAllStringSubmatch(value, -1) {
-		switch {
-		case match[1] != "":
-			parts = append(parts, match[1]+":"+match[2])
-		case match[3] != "":
-			parts = append(parts, match[3]+":"+match[4])
-		case match[5] != "":
-			parts = append(parts, match[5])
-		case match[6] != "":
-			parts = append(parts, match[6])
-		case match[7] != "":
-			parts = append(parts, match[7])
-		}
-	}
-	return parts
-}
-
-func isListWorkCode(value string) bool {
-	return regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`).MatchString(strings.TrimSpace(value))
-}
-
-func listSearchClauseFromKey(key string, value string) (listSearchClause, bool) {
-	key = strings.ToLower(strings.TrimSpace(key))
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return listSearchClause{}, false
-	}
-	switch key {
-	case "circle":
-		return listSearchClause{Kind: "circle", Value: value}, true
-	case "va", "voice", "creator":
-		return listSearchClause{Kind: "voice_actor", Value: value}, true
-	case "tag", "tagw":
-		return listSearchClause{Kind: "tag", Value: value}, true
-	case "-tag", "-tagw":
-		return listSearchClause{Kind: "exclude_tag", Value: value}, true
-	case "rate", "rating":
-		return listSearchClause{Kind: "rating_min", Value: value}, true
-	case "sell", "sales":
-		return listSearchClause{Kind: "sales_min", Value: value}, true
-	case "duration":
-		return listSearchClause{Kind: "duration_min", Value: value}, true
-	case "-duration":
-		return listSearchClause{Kind: "duration_max", Value: value}, true
-	case "age":
-		return listSearchClause{Kind: "age", Value: value}, true
-	case "lang", "language":
-		return listSearchClause{Kind: "language", Value: value}, true
-	default:
-		return listSearchClause{}, false
-	}
-}
-
-func workMatchesListClause(work libraryWorkSummary, clause listSearchClause) bool {
-	needle := strings.ToLower(strings.TrimSpace(clause.Value))
-	if needle == "" {
-		return true
-	}
-	switch clause.Kind {
-	case "code":
-		return strings.Contains(strings.ToLower(work.PrimaryCode), needle)
-	case "circle":
-		return strings.Contains(strings.ToLower(work.Circle), needle) || strings.Contains(strings.ToLower(work.CircleExternalID), needle)
-	case "voice_actor":
-		return stringSliceContainsSubstringFold(work.VoiceActors, needle)
-	case "tag":
-		return stringSliceContainsSubstringFold(work.Tags, needle)
-	case "exclude_tag":
-		return !stringSliceContainsSubstringFold(work.Tags, needle)
-	case "rating_min":
-		return work.Rating != nil && *work.Rating >= numericListClauseValue(needle)
-	case "sales_min":
-		return work.Sales != nil && float64(*work.Sales) >= numericListClauseValue(needle)
-	case "age":
-		return stringSliceContainsSubstringFold(append([]string{work.PrimaryCode, work.Title}, work.Tags...), needle)
-	case "language":
-		return stringSliceContainsSubstringFold(append([]string{work.Title}, work.Tags...), needle)
-	default:
-		values := []string{work.PrimaryCode, work.Title, work.Circle, work.CircleExternalID}
-		if work.ReleaseDate != nil {
-			values = append(values, *work.ReleaseDate)
-		}
-		values = append(values, work.Tags...)
-		values = append(values, work.VoiceActors...)
-		return stringSliceContainsSubstringFold(values, needle)
-	}
-}
-
-func stringSliceContainsFold(values []string, target string) bool {
-	for _, value := range values {
-		if strings.EqualFold(value, target) {
-			return true
-		}
-	}
-	return false
+	return library.ParseSearchClauses(query)
 }
 
 func stringSliceContainsSubstringFold(values []string, needle string) bool {
@@ -1373,22 +598,8 @@ func stringSliceContainsSubstringFold(values []string, needle string) bool {
 	return false
 }
 
-func workHasAvailableSourcePresenceType(work libraryWorkSummary, presenceType string) bool {
-	for _, presence := range work.SourcePresence {
-		if strings.EqualFold(presence.Type, presenceType) && strings.EqualFold(presence.Availability, "available") {
-			return true
-		}
-	}
-	return false
-}
-
 func numericListClauseValue(value string) float64 {
-	cleaned := regexp.MustCompile(`[^0-9.]`).ReplaceAllString(value, "")
-	parsed, err := strconv.ParseFloat(cleaned, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
+	return library.NumericClauseValue(value)
 }
 
 func (s *Server) workIDForCode(ctx context.Context, code string) (int64, bool) {
