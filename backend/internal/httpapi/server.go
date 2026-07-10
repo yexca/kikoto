@@ -32,6 +32,7 @@ type Server struct {
 	db                   *sql.DB
 	accountStore         *account.Store
 	libraryStore         *library.Store
+	workflowStore        *workflow.Store
 	cfg                  config.Config
 	circleAutoRefreshMu  sync.Mutex
 	circleAutoRefreshing map[int64]bool
@@ -40,7 +41,7 @@ type Server struct {
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
-		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), cfg: cfg,
+		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		circleAutoRefreshing: map[int64]bool{},
 	}
 }
@@ -3206,130 +3207,16 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
-	page := queryInt(r, "page", 1)
-	pageSize := queryInt(r, "pageSize", 25)
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 25
-	}
-	offset := (page - 1) * pageSize
-	view := strings.TrimSpace(r.URL.Query().Get("view"))
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	workflowCode := strings.TrimSpace(r.URL.Query().Get("workflowCode"))
-	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-
-	conditions := []string{"1 = 1"}
-	args := []any{}
-	switch view {
-	case "running":
-		conditions = append(conditions, "run.status IN ('queued', 'running')")
-	case "failed":
-		conditions = append(conditions, "run.status = 'failed'")
-	case "review":
-		conditions = append(conditions, `(
-			EXISTS (
-				SELECT 1
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')
-			)
-			OR (
-				(
-					run.status IN ('partial', 'skipped')
-					OR EXISTS (
-						SELECT 1
-						FROM workflow_node_run
-						WHERE workflow_node_run.workflow_run_id = run.id
-							AND workflow_node_run.status IN ('partial', 'skipped')
-					)
-				)
-				AND NOT EXISTS (
-					SELECT 1
-					FROM workflow_run_review
-					WHERE workflow_run_review.workflow_run_id = run.id
-						AND workflow_run_review.status = 'reviewed'
-				)
-			)
-		)`)
-	case "completed", "history", "logs":
-		conditions = append(conditions, "run.status NOT IN ('queued', 'running')")
-	}
-	if status != "" && status != "all" {
-		conditions = append(conditions, "run.status = ?")
-		args = append(args, status)
-	}
-	if workflowCode != "" && workflowCode != "all" {
-		conditions = append(conditions, "run.workflow_code = ?")
-		args = append(args, workflowCode)
-	}
-	if query != "" {
-		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ?)")
-		like := "%" + query + "%"
-		args = append(args, like, like, like)
-	}
-	whereSQL := strings.Join(conditions, " AND ")
-	var total int64
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM workflow_run AS run WHERE "+whereSQL, args...).Scan(&total); err != nil {
-		writeError(w, err)
-		return
-	}
-	queryArgs := append([]any{}, args...)
-	queryArgs = append(queryArgs, pageSize, offset)
-	rows, err := s.db.QueryContext(r.Context(), workflowRunSelectSQL()+`
-		FROM workflow_run AS run
-		WHERE `+whereSQL+`
-		ORDER BY run.created_at DESC, run.id DESC
-		LIMIT ? OFFSET ?
-	`, queryArgs...)
+	page, err := s.workflowStore.ListRuns(r.Context(), workflow.ListRunsOptions{
+		Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 25),
+		View: strings.TrimSpace(r.URL.Query().Get("view")), Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		WorkflowCode: strings.TrimSpace(r.URL.Query().Get("workflowCode")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
+	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	defer rows.Close()
-
-	runs := []workflowRunRecord{}
-	for rows.Next() {
-		var item workflowRunRecord
-		var definitionID sql.NullInt64
-		var triggerID sql.NullInt64
-		var reviewedByUserID sql.NullInt64
-		if err := rows.Scan(
-			&item.ID,
-			&item.WorkflowCode,
-			&item.DisplayName,
-			&item.Status,
-			&item.TriggerType,
-			&item.TriggerReason,
-			&item.CreatedAt,
-			&item.StartedAt,
-			&item.FinishedAt,
-			&item.SummaryJSON,
-			&item.NodeRunCount,
-			&item.CompletedNodeRuns,
-			&item.FailedNodeRuns,
-			&item.SkippedNodeRuns,
-			&item.JobCount,
-			&item.CompletedJobs,
-			&item.FailedJobs,
-			&item.SkippedJobs,
-			&item.CandidateCount,
-			&item.PendingCandidates,
-			&item.AcceptedCandidates,
-			&item.RejectedCandidates,
-			&item.ReviewedAt,
-			&reviewedByUserID,
-			&definitionID,
-			&triggerID,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		item.ReviewedByUserID = nullableInt64(reviewedByUserID)
-		item.DefinitionID = nullableInt64(definitionID)
-		item.TriggerID = nullableInt64(triggerID)
-		runs = append(runs, item)
-	}
-
-	writeJSON(w, http.StatusOK, workflowRunsPageRecord{Runs: runs, Page: page, PageSize: pageSize, Total: total})
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request) {
@@ -3340,53 +3227,10 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			definition.id,
-			definition.code,
-			definition.display_name,
-			definition.description,
-			definition.definition_json,
-			definition.scope,
-			definition.editable,
-			definition.owner_user_id,
-			(
-				SELECT COUNT(*)
-				FROM workflow_trigger
-				WHERE workflow_trigger.workflow_definition_id = definition.id
-			) AS trigger_count,
-			definition.created_at,
-			definition.updated_at
-		FROM workflow_definition AS definition
-		ORDER BY definition.display_name ASC
-	`)
+	definitions, err := s.workflowStore.ListDefinitions(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return
-	}
-	defer rows.Close()
-	definitions := []workflowDefinitionRecord{}
-	for rows.Next() {
-		var item workflowDefinitionRecord
-		var ownerUserID sql.NullInt64
-		if err := rows.Scan(
-			&item.ID,
-			&item.Code,
-			&item.DisplayName,
-			&item.Description,
-			&item.DefinitionJSON,
-			&item.Scope,
-			&item.Editable,
-			&ownerUserID,
-			&item.TriggerCount,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		item.OwnerUserID = nullableInt64(ownerUserID)
-		definitions = append(definitions, item)
 	}
 	writeJSON(w, http.StatusOK, definitions)
 }
@@ -3395,60 +3239,10 @@ func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			trigger.id,
-			trigger.workflow_definition_id,
-			definition.code,
-			trigger.display_name,
-			trigger.trigger_type,
-			trigger.enabled,
-			trigger.schedule_json,
-			trigger.config_json,
-			trigger.next_run_at,
-			trigger.last_run_at,
-			trigger.last_success_at,
-			trigger.last_error_message,
-			trigger.created_at,
-			trigger.updated_at
-		FROM workflow_trigger AS trigger
-		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		ORDER BY trigger.enabled DESC, trigger.display_name ASC
-	`)
+	triggers, err := s.workflowStore.ListTriggers(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return
-	}
-	defer rows.Close()
-	triggers := []workflowTriggerRecord{}
-	for rows.Next() {
-		var item workflowTriggerRecord
-		var nextRunAt sql.NullString
-		var lastRunAt sql.NullString
-		var lastSuccessAt sql.NullString
-		if err := rows.Scan(
-			&item.ID,
-			&item.WorkflowDefinitionID,
-			&item.WorkflowCode,
-			&item.DisplayName,
-			&item.TriggerType,
-			&item.Enabled,
-			&item.ScheduleJSON,
-			&item.ConfigJSON,
-			&nextRunAt,
-			&lastRunAt,
-			&lastSuccessAt,
-			&item.LastErrorMessage,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		item.NextRunAt = nullableString(nextRunAt)
-		item.LastRunAt = nullableString(lastRunAt)
-		item.LastSuccessAt = nullableString(lastSuccessAt)
-		triggers = append(triggers, item)
 	}
 	writeJSON(w, http.StatusOK, triggers)
 }

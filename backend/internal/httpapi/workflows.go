@@ -545,62 +545,12 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
 		return
 	}
-	run, err := s.loadWorkflowRun(r.Context(), id)
+	detail, err := s.workflowStore.LoadRunDetail(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
 			return
 		}
-		writeError(w, err)
-		return
-	}
-	nodeRows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			id,
-			node_id,
-			node_type,
-			display_name,
-			position,
-			status,
-			input_json,
-			output_json,
-			error_message,
-			COALESCE(started_at, ''),
-			COALESCE(finished_at, ''),
-			created_at
-		FROM workflow_node_run
-		WHERE workflow_run_id = ?
-		ORDER BY position ASC, id ASC
-	`, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer nodeRows.Close()
-
-	detail := workflowRunDetailRecord{workflowRunRecord: run, NodeRuns: []workflowNodeRunRecord{}}
-	for nodeRows.Next() {
-		var node workflowNodeRunRecord
-		if err := nodeRows.Scan(
-			&node.ID,
-			&node.NodeID,
-			&node.NodeType,
-			&node.DisplayName,
-			&node.Position,
-			&node.Status,
-			&node.InputJSON,
-			&node.OutputJSON,
-			&node.ErrorMessage,
-			&node.StartedAt,
-			&node.FinishedAt,
-			&node.CreatedAt,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		detail.NodeRuns = append(detail.NodeRuns, node)
-	}
-	if err := nodeRows.Err(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -624,51 +574,8 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT
-			id,
-			workflow_run_id,
-			workflow_node_run_id,
-			workflow_job_id,
-			level,
-			event_type,
-			message,
-			detail_json,
-			created_at
-		FROM workflow_event
-		WHERE workflow_run_id = ?
-		ORDER BY created_at ASC, id ASC
-	`, id)
+	events, err := s.workflowStore.ListEvents(r.Context(), id)
 	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer rows.Close()
-
-	events := []workflowEventRecord{}
-	for rows.Next() {
-		var item workflowEventRecord
-		var nodeRunID sql.NullInt64
-		var jobID sql.NullInt64
-		if err := rows.Scan(
-			&item.ID,
-			&item.RunID,
-			&nodeRunID,
-			&jobID,
-			&item.Level,
-			&item.EventType,
-			&item.Message,
-			&item.DetailJSON,
-			&item.CreatedAt,
-		); err != nil {
-			writeError(w, err)
-			return
-		}
-		item.NodeRunID = nullableInt64(nodeRunID)
-		item.JobID = nullableInt64(jobID)
-		events = append(events, item)
-	}
-	if err := rows.Err(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -701,52 +608,7 @@ func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) loadWorkflowCandidates(ctx context.Context, runID int64) ([]workflowCandidateRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			id,
-			workflow_run_id,
-			workflow_node_run_id,
-			candidate_type,
-			external_key,
-			status,
-			payload_json,
-			decision_json,
-			created_at,
-			updated_at
-		FROM workflow_candidate
-		WHERE workflow_run_id = ?
-		ORDER BY updated_at DESC, id DESC
-	`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	candidates := []workflowCandidateRecord{}
-	for rows.Next() {
-		var item workflowCandidateRecord
-		var nodeRunID sql.NullInt64
-		if err := rows.Scan(
-			&item.ID,
-			&item.RunID,
-			&nodeRunID,
-			&item.Type,
-			&item.ExternalKey,
-			&item.Status,
-			&item.PayloadJSON,
-			&item.DecisionJSON,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		item.NodeRunID = nullableInt64(nodeRunID)
-		candidates = append(candidates, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return candidates, nil
+	return s.workflowStore.ListCandidates(ctx, runID)
 }
 
 func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request) {
@@ -1388,172 +1250,15 @@ func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (wo
 }
 
 func (s *Server) loadWorkflowRun(ctx context.Context, id int64) (workflowRunRecord, error) {
-	return s.loadWorkflowRunFrom(ctx, s.db, id)
-}
-
-type workflowRunQuerier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
+	return s.workflowStore.LoadRun(ctx, id)
 }
 
 func (s *Server) loadWorkflowRunTx(ctx context.Context, tx *sql.Tx, id int64) (workflowRunRecord, error) {
-	return s.loadWorkflowRunFrom(ctx, tx, id)
-}
-
-func (s *Server) loadWorkflowRunFrom(ctx context.Context, db workflowRunQuerier, id int64) (workflowRunRecord, error) {
-	var item workflowRunRecord
-	var definitionID sql.NullInt64
-	var triggerID sql.NullInt64
-	var reviewedByUserID sql.NullInt64
-	err := db.QueryRowContext(ctx, workflowRunSelectSQL()+`
-		FROM workflow_run AS run
-		WHERE run.id = ?
-	`, id).Scan(
-		&item.ID,
-		&item.WorkflowCode,
-		&item.DisplayName,
-		&item.Status,
-		&item.TriggerType,
-		&item.TriggerReason,
-		&item.CreatedAt,
-		&item.StartedAt,
-		&item.FinishedAt,
-		&item.SummaryJSON,
-		&item.NodeRunCount,
-		&item.CompletedNodeRuns,
-		&item.FailedNodeRuns,
-		&item.SkippedNodeRuns,
-		&item.JobCount,
-		&item.CompletedJobs,
-		&item.FailedJobs,
-		&item.SkippedJobs,
-		&item.CandidateCount,
-		&item.PendingCandidates,
-		&item.AcceptedCandidates,
-		&item.RejectedCandidates,
-		&item.ReviewedAt,
-		&reviewedByUserID,
-		&definitionID,
-		&triggerID,
-	)
-	item.ReviewedByUserID = nullableInt64(reviewedByUserID)
-	item.DefinitionID = nullableInt64(definitionID)
-	item.TriggerID = nullableInt64(triggerID)
-	return item, err
+	return s.workflowStore.LoadRunTx(ctx, tx, id)
 }
 
 func (s *Server) recordWorkflowRunEvent(ctx context.Context, runID int64, level string, eventType string, message string, detail any) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{Level: level, Type: eventType, Message: message, Detail: detail}); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func workflowRunSelectSQL() string {
-	return `
-		SELECT
-			run.id,
-			run.workflow_code,
-			run.display_name,
-			run.status,
-			run.trigger_type,
-			run.trigger_reason,
-			run.created_at,
-			COALESCE(run.started_at, ''),
-			COALESCE(run.finished_at, ''),
-			run.summary_json,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-			) AS node_run_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status = 'succeeded'
-			) AS completed_node_runs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status = 'failed'
-			) AS failed_node_runs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_node_run
-				WHERE workflow_node_run.workflow_run_id = run.id
-					AND workflow_node_run.status = 'skipped'
-			) AS skipped_node_runs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-			) AS job_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-					AND workflow_job.status = 'succeeded'
-			) AS completed_jobs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-					AND workflow_job.status = 'failed'
-			) AS failed_jobs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_job
-				WHERE workflow_job.workflow_run_id = run.id
-					AND workflow_job.status = 'skipped'
-			) AS skipped_jobs,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-			) AS candidate_count,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')
-			) AS pending_candidates,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status = 'accepted'
-			) AS accepted_candidates,
-			(
-				SELECT COUNT(*)
-				FROM workflow_candidate
-				WHERE workflow_candidate.workflow_run_id = run.id
-					AND workflow_candidate.status = 'rejected'
-			) AS rejected_candidates,
-			COALESCE((
-				SELECT review.reviewed_at
-				FROM workflow_run_review AS review
-				WHERE review.workflow_run_id = run.id
-					AND review.status = 'reviewed'
-				ORDER BY review.reviewed_at DESC, review.id DESC
-				LIMIT 1
-			), '') AS reviewed_at,
-			(
-				SELECT review.user_id
-				FROM workflow_run_review AS review
-				WHERE review.workflow_run_id = run.id
-					AND review.status = 'reviewed'
-				ORDER BY review.reviewed_at DESC, review.id DESC
-				LIMIT 1
-			) AS reviewed_by_user_id,
-			run.workflow_definition_id,
-			run.trigger_id
-	`
+	return s.workflowStore.RecordEvent(ctx, runID, level, eventType, message, detail)
 }
 
 func decodeWorkflowTriggerPayload(w http.ResponseWriter, r *http.Request) (workflowTriggerPayload, bool) {
@@ -1658,88 +1363,11 @@ func nullableInt64Value(value sql.NullInt64) int64 {
 }
 
 func (s *Server) loadWorkflowDefinition(ctx context.Context, id int64) (workflowDefinitionRecord, error) {
-	var item workflowDefinitionRecord
-	var ownerUserID sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT
-			id,
-			code,
-			display_name,
-			description,
-			definition_json,
-			scope,
-			editable,
-			owner_user_id,
-			(
-				SELECT COUNT(*)
-				FROM workflow_trigger
-				WHERE workflow_trigger.workflow_definition_id = workflow_definition.id
-			),
-			created_at,
-			updated_at
-		FROM workflow_definition
-		WHERE id = ?
-	`, id).Scan(
-		&item.ID,
-		&item.Code,
-		&item.DisplayName,
-		&item.Description,
-		&item.DefinitionJSON,
-		&item.Scope,
-		&item.Editable,
-		&ownerUserID,
-		&item.TriggerCount,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
-	item.OwnerUserID = nullableInt64(ownerUserID)
-	return item, err
+	return s.workflowStore.LoadDefinition(ctx, id)
 }
 
 func (s *Server) loadWorkflowTrigger(ctx context.Context, id int64) (workflowTriggerRecord, error) {
-	var item workflowTriggerRecord
-	var nextRunAt sql.NullString
-	var lastRunAt sql.NullString
-	var lastSuccessAt sql.NullString
-	err := s.db.QueryRowContext(ctx, `
-		SELECT
-			trigger.id,
-			trigger.workflow_definition_id,
-			definition.code,
-			trigger.display_name,
-			trigger.trigger_type,
-			trigger.enabled,
-			trigger.schedule_json,
-			trigger.config_json,
-			trigger.next_run_at,
-			trigger.last_run_at,
-			trigger.last_success_at,
-			trigger.last_error_message,
-			trigger.created_at,
-			trigger.updated_at
-		FROM workflow_trigger AS trigger
-		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		WHERE trigger.id = ?
-	`, id).Scan(
-		&item.ID,
-		&item.WorkflowDefinitionID,
-		&item.WorkflowCode,
-		&item.DisplayName,
-		&item.TriggerType,
-		&item.Enabled,
-		&item.ScheduleJSON,
-		&item.ConfigJSON,
-		&nextRunAt,
-		&lastRunAt,
-		&lastSuccessAt,
-		&item.LastErrorMessage,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-	)
-	item.NextRunAt = nullableString(nextRunAt)
-	item.LastRunAt = nullableString(lastRunAt)
-	item.LastSuccessAt = nullableString(lastSuccessAt)
-	return item, err
+	return s.workflowStore.LoadTrigger(ctx, id)
 }
 
 func insertAndIDNoTx(ctx context.Context, db *sql.DB, query string, args ...any) (int64, error) {
@@ -1773,82 +1401,5 @@ func mergeJSONObjects(raw string, patch map[string]any) map[string]any {
 }
 
 func (s *Server) markStaleWorkflowRuns(ctx context.Context, reason string) (int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, display_name, status
-		FROM workflow_run
-		WHERE status IN ('queued', 'running')
-		ORDER BY created_at ASC, id ASC
-	`)
-	if err != nil {
-		return 0, err
-	}
-	type staleRun struct {
-		id          int64
-		displayName string
-		status      string
-	}
-	staleRuns := []staleRun{}
-	for rows.Next() {
-		var run staleRun
-		if err := rows.Scan(&run.id, &run.displayName, &run.status); err != nil {
-			_ = rows.Close()
-			return 0, err
-		}
-		staleRuns = append(staleRuns, run)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	for _, run := range staleRuns {
-		summary := mustJSON(map[string]any{"error": reason, "recovered_stale": true})
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = 'failed',
-				error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END,
-				finished_at = CURRENT_TIMESTAMP
-			WHERE workflow_run_id = ?
-				AND status IN ('queued', 'running')
-		`, reason, run.id); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_job
-			SET status = 'failed',
-				error_message = CASE WHEN error_message <> '' THEN error_message ELSE ? END,
-				updated_at = CURRENT_TIMESTAMP
-			WHERE workflow_run_id = ?
-				AND status IN ('queued', 'running')
-		`, reason, run.id); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE workflow_run
-			SET status = 'failed',
-				summary_json = ?,
-				finished_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, summary, run.id); err != nil {
-			return 0, err
-		}
-		if err := workflow.InsertEvent(ctx, tx, run.id, workflow.EventSpec{
-			Level:   "warn",
-			Type:    "run.recovered_stale",
-			Message: "Stale run marked failed",
-			Detail:  map[string]any{"previous_status": run.status, "reason": reason},
-		}); err != nil {
-			return 0, err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return int64(len(staleRuns)), nil
+	return s.workflowStore.MarkStaleRuns(ctx, reason)
 }
