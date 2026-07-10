@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -4626,7 +4627,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, cover
 	if err != nil {
 		return err
 	}
-	request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+	request.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err

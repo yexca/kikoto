@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
+	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
@@ -198,7 +199,7 @@ func safeStaticPath(root string, relPath string) (string, error) {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": buildinfo.Version})
 }
 
 func (s *Server) getCurrentUser(w http.ResponseWriter, r *http.Request) {
@@ -2438,7 +2439,7 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 		if err != nil {
 			return 0, err
 		}
-		request.Header.Set("User-Agent", "Kikoto/0.1 Kikoeru-compatible client")
+		request.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			lastErr = err

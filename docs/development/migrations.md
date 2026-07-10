@@ -4,9 +4,9 @@ Database migrations live in `backend/migrations/`.
 
 ## Current Practice
 
-Kikoto is still early in product shaping. The current first-version schema may
-be represented as one initial migration rather than a long chain of compatibility
-migrations.
+`001_initial.sql` is the immutable v0.1.0 schema. Changes released in v0.1.1
+are consolidated in `002_v0_1_1.sql`; a v0.1.0 database must upgrade by running
+that single migration without rebuilding or replacing user data.
 
 ## Guidelines
 

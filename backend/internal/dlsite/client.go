@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/buildinfo"
 )
 
 var ErrNoProduct = errors.New("dlsite product not found")
@@ -194,7 +196,7 @@ func NewClient(httpClient *http.Client) *Client {
 	return &Client{
 		httpClient: httpClient,
 		baseURL:    "https://www.dlsite.com",
-		userAgent:  "Kikoto-dev/0.1",
+		userAgent:  buildinfo.UserAgent,
 	}
 }
 

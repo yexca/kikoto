@@ -22,7 +22,7 @@ export function AboutPage() {
   return (
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-5">
-        <p className="text-xs font-medium text-muted-foreground">About Kikoto</p>
+        <p className="text-xs font-medium text-muted-foreground">About Kikoto · v0.1.1</p>
         <h2 className="mt-1 text-2xl font-semibold">Project background and credits</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible

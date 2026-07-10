@@ -16,7 +16,7 @@ It defaults to `yexca/kikoto:latest`. Override `KIKOTO_IMAGE` to use a pinned
 release or GitHub Container Registry:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto:0.1.0 docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
 KIKOTO_IMAGE=ghcr.io/yexca/kikoto:latest docker compose up -d
 ```
 

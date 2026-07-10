@@ -97,7 +97,7 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tagSQL, err := os.ReadFile(filepath.Join(migrationDir, "002_normalized_work_tags.sql"))
+	tagSQL, err := os.ReadFile(filepath.Join(migrationDir, "002_v0_1_1.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +116,68 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("normalized Unicode tags = %d, want 2", count)
+	}
+}
+
+func TestMigrateUpgradesV010DatabaseWithSingleV011Migration(t *testing.T) {
+	migrationDir := filepath.Join("..", "..", "migrations")
+	initialSQL, err := os.ReadFile(filepath.Join(migrationDir, "001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v010Dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(v010Dir, "001_initial.sql"), initialSQL, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(filepath.Join(t.TempDir(), "v0.1.0.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db, v010Dir); err != nil {
+		t.Fatalf("create v0.1.0 database: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999997', 'Preserved')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(db, migrationDir); err != nil {
+		t.Fatalf("upgrade v0.1.0 database: %v", err)
+	}
+	rows, err := db.Query("SELECT filename FROM schema_migration ORDER BY filename")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var migrations []string
+	for rows.Next() {
+		var filename string
+		if err := rows.Scan(&filename); err != nil {
+			t.Fatal(err)
+		}
+		migrations = append(migrations, filename)
+	}
+	if len(migrations) != 2 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" {
+		t.Fatalf("migrations = %v", migrations)
+	}
+	for table, column := range map[string]string{
+		"work_edition":               "translation_kind",
+		"workflow_job":               "checkpoint_json",
+		"remote_fetch_manifest_item": "resolution",
+	} {
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("column %s.%s count = %d", table, column, count)
+		}
+	}
+	var preserved int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ09999997'").Scan(&preserved); err != nil {
+		t.Fatal(err)
+	}
+	if preserved != 1 {
+		t.Fatalf("preserved work count = %d", preserved)
 	}
 }
 
