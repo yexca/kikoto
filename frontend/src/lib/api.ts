@@ -425,6 +425,7 @@ export type RemoteWorkSaveSummary = {
 };
 
 export type RemoteWorkSavePlanItem = {
+  itemKey: string;
   path: string;
   kind: string;
   sizeBytes: number | null;
@@ -441,6 +442,30 @@ export type RemoteWorkSavePlanItem = {
   targetConflict: boolean;
   targetConflictReason: string;
   targetSizeBytes: number | null;
+  originalTargetPath: string;
+  resolution: RemoteFetchResolution;
+  remoteSourceId: number;
+  remoteSourceCode: string;
+  remoteSourceName: string;
+  remotePath: string;
+  sourceOptions: RemoteFetchSourceOption[];
+};
+
+export type RemoteFetchResolution = "auto" | "keep_local" | "replace" | "keep_both" | "rename" | "exclude";
+
+export type RemoteFetchFileDecision = {
+  itemKey: string;
+  sourceId: number;
+  resolution: RemoteFetchResolution;
+  targetPath: string;
+};
+
+export type RemoteFetchSourceOption = {
+  sourceId: number;
+  sourceCode: string;
+  sourceName: string;
+  path: string;
+  sizeBytes: number | null;
 };
 
 export type RemoteWorkSaveLocalFile = {
@@ -1091,10 +1116,10 @@ export const api = {
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
-  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = [], targetRoot = "") =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths, targetRoot }),
-  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "", targetRoot = "") =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId, targetRoot }),
+  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = [], targetRoot = "", decisions: RemoteFetchFileDecision[] = []) =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths, targetRoot, decisions }),
+  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "", targetRoot = "", decisions: RemoteFetchFileDecision[] = []) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId, targetRoot, decisions }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>

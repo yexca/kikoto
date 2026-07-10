@@ -32,6 +32,10 @@ func main() {
 	}
 
 	server := httpapi.NewServer(db, cfg)
+	if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
+		slog.Error("recover interrupted workflows", "error", err)
+		os.Exit(1)
+	}
 	if err := server.BootstrapRoot(nil); err != nil {
 		slog.Error("bootstrap root user", "error", err)
 		os.Exit(1)

@@ -126,6 +126,17 @@ type localCandidateCleanupPayload struct {
 	LocationIDs []int64 `json:"locationIds"`
 }
 
+type localLocationCleanupJobPayload struct {
+	CandidateID int64   `json:"candidate_id"`
+	Action      string  `json:"action"`
+	LocationIDs []int64 `json:"location_ids"`
+}
+
+type localLocationCleanupCheckpoint struct {
+	CompletedLocationIDs []int64                     `json:"completedLocationIds"`
+	Result               localCandidateCleanupResult `json:"result"`
+}
+
 func (s *Server) ensureSystemWorkflowDefinitions(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -788,34 +799,87 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 	if err != nil {
 		return localCandidateCleanupResult{}, err
 	}
-	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "running", Payload: input, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
-	}); err != nil {
+	initialResult := localCandidateCleanupResult{RunID: runID, CandidateID: candidateID, Action: action, Status: "succeeded", Failures: []string{}}
+	initialCheckpoint := localLocationCleanupCheckpoint{CompletedLocationIDs: []int64{}, Result: initialResult}
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "running", Payload: input,
+		Checkpoint: initialCheckpoint, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
+	})
+	if err != nil {
 		return localCandidateCleanupResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return localCandidateCleanupResult{}, err
 	}
+	job := workflowJobRecord{
+		ID: jobID, RunID: runID, NodeRunID: cleanupNodeID,
+		PayloadJSON: mustJSON(input), CheckpointJSON: mustJSON(initialCheckpoint),
+	}
+	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, job)
+	if err != nil {
+		return localCandidateCleanupResult{}, err
+	}
+	defer stopHeartbeat()
+	return s.performLocalLocationCleanupJob(jobCtx, job, reviewNodeID)
+}
 
-	result := localCandidateCleanupResult{RunID: runID, CandidateID: candidateID, Action: action, Status: "succeeded", Failures: []string{}}
-	for _, locationID := range locationIDs {
-		deleted, marked, err := s.cleanupLocalLocation(ctx, locationID, action == "delete_files")
-		if err != nil {
-			result.Failed++
-			result.Failures = append(result.Failures, fmt.Sprintf("%d: %s", locationID, err.Error()))
+func (s *Server) executeLocalLocationCleanupJob(ctx context.Context, job workflowJobRecord) error {
+	var reviewNodeID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id FROM workflow_node_run WHERE workflow_run_id = ? AND node_id = 'review' LIMIT 1
+	`, job.RunID).Scan(&reviewNodeID); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	_, err := s.performLocalLocationCleanupJob(ctx, job, reviewNodeID)
+	return err
+}
+
+func (s *Server) performLocalLocationCleanupJob(ctx context.Context, job workflowJobRecord, reviewNodeID int64) (localCandidateCleanupResult, error) {
+	var payload localLocationCleanupJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return localCandidateCleanupResult{}, err
+	}
+	checkpoint := localLocationCleanupCheckpoint{}
+	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return localCandidateCleanupResult{}, err
+	}
+	result := checkpoint.Result
+	if result.RunID == 0 {
+		result = localCandidateCleanupResult{RunID: job.RunID, CandidateID: payload.CandidateID, Action: payload.Action, Status: "succeeded", Failures: []string{}}
+	}
+	completed := map[int64]bool{}
+	for _, id := range checkpoint.CompletedLocationIDs {
+		completed[id] = true
+	}
+	for index, locationID := range payload.LocationIDs {
+		if completed[locationID] {
 			continue
 		}
-		if deleted {
-			result.Deleted++
+		deleted, marked, cleanupErr := s.cleanupLocalLocation(ctx, locationID, payload.Action == "delete_files")
+		if cleanupErr != nil {
+			result.Failed++
+			result.Failures = append(result.Failures, fmt.Sprintf("%d: %s", locationID, cleanupErr.Error()))
+		} else {
+			if deleted {
+				result.Deleted++
+			}
+			if marked {
+				result.Marked++
+			}
 		}
-		if marked {
-			result.Marked++
-		}
+		completed[locationID] = true
+		checkpoint.Result = result
+		checkpoint.CompletedLocationIDs = append(checkpoint.CompletedLocationIDs, locationID)
+		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, index+1, len(payload.LocationIDs))
 	}
+	result.Status = "succeeded"
 	if result.Failed > 0 {
 		result.Status = "partial"
 	}
-	if err := s.finishLocalCandidateCleanup(ctx, candidateID, runID, cleanupNodeID, reviewNodeID, result); err != nil {
+	if err := s.finishLocalCandidateCleanup(ctx, payload.CandidateID, job.RunID, job.NodeRunID, reviewNodeID, result); err != nil {
 		return localCandidateCleanupResult{}, err
 	}
 	return result, nil
@@ -1015,7 +1079,12 @@ func (s *Server) finishLocalCandidateCleanup(ctx context.Context, candidateID in
 	`, reviewStatus, mustJSON(result), candidateID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ?", status, result.Deleted+result.Marked+result.Failed, result.Deleted+result.Marked+result.Failed, strings.Join(result.Failures, "; "), runID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ?
+	`, status, result.Deleted+result.Marked+result.Failed, result.Deleted+result.Marked+result.Failed, strings.Join(result.Failures, "; "), runID); err != nil {
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{
@@ -1235,7 +1304,7 @@ func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, workflowRunActionResult{Status: "recovered", Message: "stale runs marked failed", Recovered: recovered})
+	writeJSON(w, http.StatusOK, workflowRunActionResult{Status: "recovered", Message: "recoverable jobs requeued; unsupported stale runs marked failed", Recovered: recovered})
 }
 
 func decodeWorkflowDefinitionPayload(w http.ResponseWriter, r *http.Request) (workflowDefinitionPayload, bool) {

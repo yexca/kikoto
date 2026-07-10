@@ -127,7 +127,7 @@ async function seedPlayer(page: Page, track = persistedTrack) {
   }, track);
 }
 
-async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void) {
+async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -193,11 +193,16 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void)
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ09999991/fetch-plan") {
+      const requestBody = route.request().postDataJSON() as { decisions?: Array<{ sourceId?: number; resolution?: string; targetPath?: string }> };
+      options.onFetchPlan?.(requestBody as Record<string, unknown>);
+      const decision = requestBody.decisions?.[0];
+      const unresolvedConflict = Boolean(options.conflict && (!decision?.resolution || decision.resolution === "auto"));
+      const keepBoth = decision?.resolution === "keep_both";
       await route.fulfill({ json: {
         sourceId: 1, primaryCode: "RJ09999991", saveRoot: "example_remote/RJ/015/RJ09999991",
         localFiles: [{ mediaItemId: 2, path: "Existing/RJ09999991/local.txt", sizeBytes: 4, available: true }],
-        items: [{ path: "track.mp3", kind: "audio", sizeBytes: 12, sourceKind: "remote", action: "cache_download", status: "remote_only", sourcePath: "/download", localSourcePath: "", cachePath: "remote/track.mp3", targetPath: "example_remote/RJ/015/RJ09999991/track.mp3", mediaItemId: 1, localPaths: [], targetExists: false, targetConflict: false, targetConflictReason: "", targetSizeBytes: null }],
-        summary: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: 1, promote: 1, conflict: 0 },
+        items: [{ itemKey: "remote:track.mp3", path: "track.mp3", kind: "audio", sizeBytes: 12, sourceKind: "remote", action: unresolvedConflict ? "conflict" : "cache_download", status: unresolvedConflict ? "target_conflict" : "remote_only", sourcePath: "/download", localSourcePath: "", cachePath: "remote/track.mp3", targetPath: keepBoth ? "example_remote/RJ/015/RJ09999991/track (mirror).mp3" : "example_remote/RJ/015/RJ09999991/track.mp3", originalTargetPath: "example_remote/RJ/015/RJ09999991/track.mp3", resolution: decision?.resolution ?? "auto", remoteSourceId: decision?.sourceId ?? 1, remoteSourceCode: decision?.sourceId === 2 ? "mirror" : "example_remote", remoteSourceName: decision?.sourceId === 2 ? "Mirror" : "Example Remote", remotePath: "track.mp3", sourceOptions: [{ sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", path: "track.mp3", sizeBytes: 12 }, { sourceId: 2, sourceCode: "mirror", sourceName: "Mirror", path: "track.mp3", sizeBytes: 12 }], mediaItemId: 1, localPaths: [], targetExists: unresolvedConflict, targetConflict: unresolvedConflict, targetConflictReason: unresolvedConflict ? "target exists with a different size" : "", targetSizeBytes: unresolvedConflict ? 8 : null }],
+        summary: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: unresolvedConflict ? 0 : 1, promote: unresolvedConflict ? 0 : 1, conflict: unresolvedConflict ? 1 : 0 },
         preparation: {
           requestedCode: "RJ09999991", canonicalCode: "RJ09999990", metadataStatus: "complete", warnings: [],
           editions: [
@@ -243,7 +248,6 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
   await page.getByTitle("Fetch").click();
   await expect(page.getByText("Fetch selection", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Prepare comparison" }).click();
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Origin", { exact: true })).toBeVisible();
   await expect(page.getByText("Community", { exact: true })).toBeVisible();
@@ -257,6 +261,22 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("Local files", { exact: true })).toBeVisible();
   await expect(page.getByText("Remote files", { exact: true })).toBeVisible();
   await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
+});
+
+test("mobile Fetch resolves conflicts and selects a source per file before publishing", async ({ page }) => {
+  const planBodies: Record<string, unknown>[] = [];
+  await mockRemoteSource(page, () => undefined, { conflict: true, onFetchPlan: (body) => planBodies.push(body) });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByTitle("Fetch").click();
+  await page.getByRole("button", { name: "result", exact: true }).click();
+  await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
+  await page.getByLabel("Remote source").selectOption("2");
+  await page.getByLabel("Conflict action").selectOption("keep_both");
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await expect.poll(() => planBodies.some((body) => JSON.stringify(body).includes('"sourceId":2') && JSON.stringify(body).includes('"resolution":"keep_both"'))).toBe(true);
+  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeVisible();
+  await expect(page.getByText("track (mirror).mp3", { exact: true })).toBeVisible();
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {

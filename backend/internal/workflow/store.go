@@ -4,10 +4,85 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 )
 
 type Store struct {
 	db *sql.DB
+}
+
+func (s *Store) RequeueExpiredJobs(ctx context.Context, leaseTimeout time.Duration) (int64, error) {
+	if leaseTimeout <= 0 {
+		leaseTimeout = 30 * time.Second
+	}
+	cutoff := time.Now().UTC().Add(-leaseTimeout).Format("2006-01-02 15:04:05")
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), locked_by
+		FROM workflow_job
+		WHERE status = 'running' AND recoverable = 1 AND resume_count < max_retries
+			AND COALESCE(heartbeat_at, locked_at, created_at) < ?
+		ORDER BY id ASC
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	type expiredJob struct {
+		id, runID, nodeRunID int64
+		lockedBy             string
+	}
+	jobs := []expiredJob{}
+	for rows.Next() {
+		var job expiredJob
+		if err := rows.Scan(&job.id, &job.runID, &job.nodeRunID, &job.lockedBy); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	requeued := int64(0)
+	for _, job := range jobs {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE workflow_job
+			SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL,
+				resume_count = resume_count + 1, available_at = CURRENT_TIMESTAMP,
+				error_message = '', updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND status = 'running' AND locked_by = ?
+		`, job.id, job.lockedBy)
+		if err != nil {
+			return 0, err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil || affected == 0 {
+			continue
+		}
+		if job.nodeRunID > 0 {
+			if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'queued', error_message = '', finished_at = NULL WHERE id = ? AND status = 'running'`, job.nodeRunID); err != nil {
+				return 0, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ?`, job.runID); err != nil {
+			return 0, err
+		}
+		if err := InsertEvent(ctx, tx, job.runID, EventSpec{
+			NodeRunID: job.nodeRunID, JobID: job.id, Level: "warn", Type: "job.lease_expired",
+			Message: "Expired job lease requeued from its checkpoint", Detail: map[string]any{"previous_lock": job.lockedBy},
+		}); err != nil {
+			return 0, err
+		}
+		requeued++
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return requeued, nil
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -235,7 +310,50 @@ func (s *Store) MarkStaleRuns(ctx context.Context, reason string) (int64, error)
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
+	recovered := int64(0)
 	for _, run := range staleRuns {
+		var activeJobs, recoverableJobs int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*), COALESCE(SUM(CASE WHEN recoverable = 1 AND resume_count < max_retries THEN 1 ELSE 0 END), 0)
+			FROM workflow_job
+			WHERE workflow_run_id = ? AND status IN ('queued', 'running')
+		`, run.id).Scan(&activeJobs, &recoverableJobs); err != nil {
+			return 0, err
+		}
+		if activeJobs > 0 && activeJobs == recoverableJobs {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE workflow_job
+				SET status = 'queued', locked_by = '', locked_at = NULL, heartbeat_at = NULL,
+					resume_count = resume_count + CASE WHEN status = 'running' THEN 1 ELSE 0 END,
+					available_at = CURRENT_TIMESTAMP, error_message = '', updated_at = CURRENT_TIMESTAMP
+				WHERE workflow_run_id = ? AND status IN ('queued', 'running')
+			`, run.id); err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE workflow_node_run
+				SET status = 'queued', error_message = '', finished_at = NULL
+				WHERE workflow_run_id = ? AND status IN ('queued', 'running')
+			`, run.id); err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE workflow_run
+				SET status = 'queued', finished_at = NULL,
+					summary_json = json_set(COALESCE(NULLIF(summary_json, ''), '{}'), '$.recovered', true, '$.recovery_reason', ?)
+				WHERE id = ?
+			`, reason, run.id); err != nil {
+				return 0, err
+			}
+			if err := InsertEvent(ctx, tx, run.id, EventSpec{
+				Level: "warn", Type: "run.requeued_after_restart", Message: "Interrupted run requeued from its last checkpoint",
+				Detail: map[string]any{"previous_status": run.status, "reason": reason},
+			}); err != nil {
+				return 0, err
+			}
+			recovered++
+			continue
+		}
 		summary, err := marshal(map[string]any{"error": reason, "recovered_stale": true})
 		if err != nil {
 			return 0, err
@@ -259,7 +377,7 @@ func (s *Store) MarkStaleRuns(ctx context.Context, reason string) (int64, error)
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	return int64(len(staleRuns)), nil
+	return recovered, nil
 }
 
 type rowScanner interface {

@@ -24,6 +24,9 @@ type JobSpec struct {
 	WorkerType      string
 	Status          string
 	Payload         any
+	Checkpoint      any
+	Recoverable     bool
+	MaxRetries      int
 	ProgressCurrent int
 	ProgressTotal   int
 	Error           string
@@ -144,6 +147,14 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 	if err != nil {
 		return 0, err
 	}
+	checkpointJSON, err := marshal(spec.Checkpoint)
+	if err != nil {
+		return 0, err
+	}
+	maxRetries := spec.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
 	jobID, err := insertAndID(ctx, tx, `
 		INSERT INTO workflow_job (
 			workflow_run_id,
@@ -151,16 +162,19 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 			worker_type,
 			status,
 			payload_json,
+			checkpoint_json,
+			recoverable,
+			max_retries,
 			progress_current,
 			progress_total,
 			error_message
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, payloadJSON, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, payloadJSON, checkpointJSON, spec.Recoverable, maxRetries, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
 	if err != nil {
 		return 0, err
 	}
-	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
+	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "recoverable": spec.Recoverable, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
 	if spec.Error != "" {
 		detail["error"] = spec.Error
 	}

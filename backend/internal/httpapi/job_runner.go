@@ -9,15 +9,19 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type workflowJobRecord struct {
-	ID          int64
-	RunID       int64
-	NodeRunID   int64
-	WorkerType  string
-	PayloadJSON string
-	LockedBy    string
+	ID             int64
+	RunID          int64
+	NodeRunID      int64
+	WorkerType     string
+	PayloadJSON    string
+	CheckpointJSON string
+	LockedBy       string
+	ResumeCount    int
 }
 
 func (s *Server) StartJobRunner(ctx context.Context) {
@@ -28,6 +32,9 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("requeue expired workflow jobs", "error", err)
+		}
 		if err := s.runNextQueuedWorkflowJob(ctx, runnerID); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("run queued workflow job", "error", err)
 		}
@@ -51,6 +58,16 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		return s.executeRemoteWorkFetchJob(jobCtx, job)
 	case "remote_media_cache":
 		return s.executeRemoteMediaCacheJob(jobCtx, job)
+	case "remote_popular_collection":
+		return s.executeRemotePopularCollectionJob(jobCtx, job)
+	case "media_cache_limit_cleanup":
+		return s.executeMediaCacheLimitCleanupJob(jobCtx, job)
+	case "media_cache_cleanup":
+		return s.executeMediaCacheCleanupJob(jobCtx, job)
+	case "local_media_delete":
+		return s.executeLocalMediaDeleteJob(jobCtx, job)
+	case "local_location_cleanup":
+		return s.executeLocalLocationCleanupJob(jobCtx, job)
 	default:
 		message := "unsupported workflow job type: " + job.WorkerType
 		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {
@@ -58,6 +75,28 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 		return errors.New(message)
 	}
+}
+
+func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
+	runnerID := workflowJobRunnerID()
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET locked_by = ?, locked_at = CURRENT_TIMESTAMP, heartbeat_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = 'running'
+	`, runnerID, job.ID)
+	if err != nil {
+		return ctx, func() {}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return ctx, func() {}, err
+	}
+	if rows == 0 {
+		return ctx, func() {}, errors.New("workflow job is no longer running")
+	}
+	job.LockedBy = runnerID
+	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
+	return jobCtx, stop, nil
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
@@ -69,14 +108,16 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 
 	var job workflowJobRecord
 	err = tx.QueryRowContext(ctx, `
-		SELECT job.id, job.workflow_run_id, COALESCE(job.workflow_node_run_id, 0), job.worker_type, job.payload_json
+		SELECT job.id, job.workflow_run_id, COALESCE(job.workflow_node_run_id, 0), job.worker_type, job.payload_json,
+			job.checkpoint_json, job.resume_count
 		FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
+			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
 		ORDER BY job.created_at ASC, job.id ASC
 		LIMIT 1
-	`).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON)
+	`).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return workflowJobRecord{}, false, nil
@@ -126,6 +167,21 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	}
 	job.LockedBy = runnerID
 	return job, true, nil
+}
+
+func (s *Server) updateWorkflowJobCheckpoint(ctx context.Context, jobID int64, phase string, detail any, current int, total int) error {
+	checkpoint := mustJSON(map[string]any{
+		"phase": strings.TrimSpace(phase), "detail": detail, "progressCurrent": current, "progressTotal": total,
+		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET checkpoint_json = ?, progress_current = ?, progress_total = ?,
+			heartbeat_at = CASE WHEN status = 'running' THEN CURRENT_TIMESTAMP ELSE heartbeat_at END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, checkpoint, current, total, jobID)
+	return err
 }
 
 func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobRecord, message string) error {
@@ -208,6 +264,22 @@ func workflowJobRunnerID() string {
 func decodeWorkflowJobPayload[T any](raw string, out *T) error {
 	if strings.TrimSpace(raw) == "" {
 		raw = "{}"
+	}
+	return json.Unmarshal([]byte(raw), out)
+}
+
+func decodeWorkflowJobCheckpointDetail[T any](raw string, out *T) error {
+	if strings.TrimSpace(raw) == "" {
+		raw = "{}"
+	}
+	var envelope struct {
+		Detail json.RawMessage `json:"detail"`
+	}
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		return err
+	}
+	if len(envelope.Detail) > 0 && string(envelope.Detail) != "null" {
+		return json.Unmarshal(envelope.Detail, out)
 	}
 	return json.Unmarshal([]byte(raw), out)
 }

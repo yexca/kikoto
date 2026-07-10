@@ -38,7 +38,7 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	size := int64(len(content))
 	plan := remoteWorkSavePlan{
 		SourceID: 1, PrimaryCode: "RJ01234567", SaveRoot: "remote/RJ01234567",
-		Items: []remoteWorkSavePlanItem{{Path: "track.mp3", Kind: "audio", SizeBytes: &size, SourceKind: "remote", Action: "cache_hit", CachePath: "remote/RJ01234567/track.mp3", TargetPath: "remote/RJ01234567/track.mp3"}},
+		Items: []remoteWorkSavePlanItem{{ItemKey: "remote:track.mp3", Path: "track.mp3", Kind: "audio", SizeBytes: &size, SourceKind: "remote", Action: "cache_hit", CachePath: "remote/RJ01234567/track.mp3", TargetPath: "remote/RJ01234567/track.mp3", OriginalTargetPath: "remote/RJ01234567/track.mp3", Resolution: "auto", RemoteSourceID: 1, SourcePath: "https://remote.invalid/track.mp3"}},
 	}
 	plan.Summary = summarizeRemoteSavePlan(plan.Items)
 	tx, err := db.BeginTx(ctx, nil)
@@ -50,6 +50,14 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
+	}
+	var manifestSourceID int64
+	var manifestResolution, manifestSourcePath string
+	if err := db.QueryRow(`SELECT remote_source_id, resolution, source_path FROM remote_fetch_manifest_item WHERE manifest_id = 1`).Scan(&manifestSourceID, &manifestResolution, &manifestSourcePath); err != nil {
+		t.Fatal(err)
+	}
+	if manifestSourceID != 1 || manifestResolution != "auto" || manifestSourcePath != "https://remote.invalid/track.mp3" {
+		t.Fatalf("manifest source=%d resolution=%q path=%q", manifestSourceID, manifestResolution, manifestSourcePath)
 	}
 	manifest, err := server.loadRemoteFetchManifest(ctx, 1)
 	if err != nil {

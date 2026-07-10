@@ -34,7 +34,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
-import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
+import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
@@ -361,7 +361,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
+  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; decisions: Record<string, RemoteFetchFileDecision>; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -663,9 +663,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkSaving(true);
+    toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
       const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
-      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(remoteFetchPaths(detail.tracks)), plan: null, message: "" });
+      const paths = remoteFetchPaths(detail.tracks);
+      const plan = await api.planRemoteSourceWorkFetch(target.sourceId, remoteDetailActionCode(detail), paths);
+      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(paths), decisions: {}, planDirty: false, plan, message: "" });
     } catch (error) {
       toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
@@ -678,12 +681,17 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     try {
       const paths = Array.from(fetchSelection.selectedPaths);
-      const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
+      if (!fetchSelection.plan || fetchSelection.planDirty) {
+        const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", Object.values(fetchSelection.decisions));
+        setFetchSelection((current) => current ? { ...current, plan, planDirty: false, message: hasRemoteFetchConflicts(plan) ? formatRemoteFetchPlanConflict(plan) : "" } : current);
+        return;
+      }
+      const plan = fetchSelection.plan;
       if (hasRemoteFetchConflicts(plan)) {
         setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
         return;
       }
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths);
+      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", plan.saveRoot, Object.values(fetchSelection.decisions));
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setFetchSelection(null);
       setDetail(await api.getCircle(externalId));
@@ -1004,8 +1012,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           selectedPaths={fetchSelection.selectedPaths}
           disabled={isBulkSaving}
           plan={fetchSelection.plan}
+          decisions={fetchSelection.decisions}
+          planDirty={fetchSelection.planDirty}
           message={fetchSelection.message}
           onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
+          onDecisionChange={(decision) => setFetchSelection((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
           onClose={() => setFetchSelection(null)}
           onFetch={() => void fetchSingleSelection()}
         />

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { RemoteTrack, RemoteWorkSavePlan } from "@/lib/api";
+import type { RemoteFetchFileDecision, RemoteFetchResolution, RemoteTrack, RemoteWorkSavePlan, RemoteWorkSavePlanItem } from "@/lib/api";
 
 type RemoteFetchNode = {
   name: string;
@@ -20,8 +20,11 @@ export function RemoteFetchDialog({
   selectedPaths,
   disabled,
   plan,
+  decisions = {},
+  planDirty = false,
   message,
   onChange,
+  onDecisionChange,
   onClose,
   onFetch,
 }: {
@@ -30,8 +33,11 @@ export function RemoteFetchDialog({
   selectedPaths: Set<string>;
   disabled: boolean;
   plan?: RemoteWorkSavePlan | null;
+  decisions?: Record<string, RemoteFetchFileDecision>;
+  planDirty?: boolean;
   message?: string;
   onChange: (paths: Set<string>) => void;
+  onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
   onClose: () => void;
   onFetch: () => void;
 }) {
@@ -55,6 +61,7 @@ export function RemoteFetchDialog({
           <Badge variant="secondary">{selectedPaths.size} / {leafPaths.length} files</Badge>
           {plan && plan.summary.conflict > 0 && <Badge variant="outline" className="border-destructive/40 text-destructive">{plan.summary.conflict} conflicts</Badge>}
           {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} to fetch</Badge>}
+          {planDirty && <Badge variant="outline">Changes need review</Badge>}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange(new Set(leafPaths))}>All</Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
@@ -63,7 +70,7 @@ export function RemoteFetchDialog({
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-card p-2">
           {nodes.length > 0 ? nodes.map((node) => (
-            <RemoteFetchTreeNode key={node.path} node={node} selectedPaths={selectedPaths} planByPath={planByPath} disabled={disabled} onChange={onChange} />
+            <RemoteFetchTreeNode key={node.path} node={node} selectedPaths={selectedPaths} planByPath={planByPath} decisions={decisions} disabled={disabled} onChange={onChange} onDecisionChange={onDecisionChange} />
           )) : <div className="p-3 text-sm text-muted-foreground">No remote files detected.</div>}
         </div>
         {message && <div className="border-t bg-destructive/10 px-3 py-2 text-sm text-destructive">{message}</div>}
@@ -71,7 +78,7 @@ export function RemoteFetchDialog({
           <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>
           <Button onClick={onFetch} disabled={disabled || selectedPaths.size === 0}>
             <HardDriveDownload className="h-4 w-4" />
-            Fetch
+            {!plan || planDirty ? "Review changes" : "Fetch"}
           </Button>
         </div>
       </div>
@@ -83,15 +90,19 @@ function RemoteFetchTreeNode({
   node,
   selectedPaths,
   planByPath,
+  decisions,
   disabled,
   onChange,
+  onDecisionChange,
   depth = 0,
 }: {
   node: RemoteFetchNode;
   selectedPaths: Set<string>;
-  planByPath: Map<string, { status: string; targetConflict: boolean; targetConflictReason: string }>;
+  planByPath: Map<string, RemoteWorkSavePlanItem>;
+  decisions: Record<string, RemoteFetchFileDecision>;
   disabled: boolean;
   onChange: (paths: Set<string>) => void;
+  onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
   depth?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -99,6 +110,7 @@ function RemoteFetchTreeNode({
   const childLeaves = isFolder ? flattenLeafPaths(node.children) : [node.path];
   const selectedCount = childLeaves.filter((path) => selectedPaths.has(path)).length;
   const plan = planByPath.get(node.path);
+  const decision = plan ? (decisions[plan.itemKey] ?? { itemKey: plan.itemKey, sourceId: plan.remoteSourceId, resolution: (plan.resolution || "auto") as RemoteFetchResolution, targetPath: plan.targetPath }) : null;
   const checked = childLeaves.length > 0 && selectedCount === childLeaves.length;
   const partial = selectedCount > 0 && !checked;
   const toggle = (nextChecked: boolean) => {
@@ -129,8 +141,20 @@ function RemoteFetchTreeNode({
         {plan && <span className={plan.targetConflict ? "max-w-48 truncate text-xs text-destructive" : "text-xs text-muted-foreground"} title={plan.targetConflictReason || plan.status}>{plan.status}</span>}
         {!isFolder && <span className="text-xs text-muted-foreground">{formatBytes(node.sizeBytes)}</span>}
       </div>
+      {!isFolder && plan && decision && (plan.targetConflict || decision.resolution !== "auto" || plan.sourceOptions.length > 1) && (
+        <div className="grid gap-2 border-b px-3 py-2 text-xs sm:grid-cols-2" style={{ marginLeft: `${28 + depth * 18}px` }}>
+          {plan.sourceOptions.length > 1 && (
+            <label className="space-y-1"><span className="text-muted-foreground">Remote source</span><select className="h-8 w-full rounded-md border bg-background px-2" value={decision.sourceId || plan.remoteSourceId} onChange={(event) => onDecisionChange?.({ ...decision, sourceId: Number(event.target.value) })}>{plan.sourceOptions.map((option) => <option key={option.sourceId} value={option.sourceId}>{option.sourceName}{option.path !== plan.path ? ` · ${option.path}` : ""}</option>)}</select></label>
+          )}
+          {(plan.targetConflict || decision.resolution !== "auto") && (
+            <label className="space-y-1"><span className="text-muted-foreground">Conflict action</span><select className="h-8 w-full rounded-md border bg-background px-2" value={decision.resolution} onChange={(event) => onDecisionChange?.({ ...decision, resolution: event.target.value as RemoteFetchResolution })}><option value="auto">Unresolved</option><option value="keep_local">Keep local</option><option value="replace">Replace</option><option value="keep_both">Keep both</option><option value="rename">Rename incoming</option><option value="exclude">Exclude</option></select></label>
+          )}
+          {decision.resolution === "rename" && <label className="space-y-1 sm:col-span-2"><span className="text-muted-foreground">Target path</span><input className="h-8 w-full rounded-md border bg-background px-2" value={decision.targetPath} onChange={(event) => onDecisionChange?.({ ...decision, targetPath: event.target.value })} /></label>}
+          {plan.targetConflictReason && <div className="text-destructive sm:col-span-2">{plan.targetConflictReason}</div>}
+        </div>
+      )}
       {isFolder && open && node.children.map((child) => (
-        <RemoteFetchTreeNode key={child.path} node={child} selectedPaths={selectedPaths} planByPath={planByPath} disabled={disabled} onChange={onChange} depth={depth + 1} />
+        <RemoteFetchTreeNode key={child.path} node={child} selectedPaths={selectedPaths} planByPath={planByPath} decisions={decisions} disabled={disabled} onChange={onChange} onDecisionChange={onDecisionChange} depth={depth + 1} />
       ))}
     </div>
   );
@@ -163,13 +187,9 @@ export function remoteFetchPaths(tracks: RemoteTrack[]) {
 }
 
 function planItemsByPath(plan?: RemoteWorkSavePlan | null) {
-  const items = new Map<string, { status: string; targetConflict: boolean; targetConflictReason: string }>();
+  const items = new Map<string, RemoteWorkSavePlanItem>();
   for (const item of plan?.items ?? []) {
-    items.set(item.path, {
-      status: item.status,
-      targetConflict: item.targetConflict,
-      targetConflictReason: item.targetConflictReason,
-    });
+    items.set(item.path, item);
   }
   return items;
 }

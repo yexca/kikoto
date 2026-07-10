@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
@@ -116,7 +118,7 @@ func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
 	}
 
 	count, err := NewStore(db).MarkStaleRuns(ctx, "restart")
-	if err != nil || count != 1 {
+	if err != nil || count != 0 {
 		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
 	}
 	var runStatus, nodeStatus, jobStatus string
@@ -135,6 +137,101 @@ func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
 	var eventCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'run.recovered_stale'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
 		t.Fatalf("recovery events = %d, %v", eventCount, err)
+	}
+}
+
+func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
+	db := openWorkflowTestDB(t)
+	ctx := context.Background()
+	tx, _ := db.BeginTx(ctx, nil)
+	definitionID, err := EnsureDefinition(ctx, tx, "recoverable_flow", "Recoverable flow", "Test checkpoint recovery", map[string]any{"nodes": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := InsertRun(ctx, tx, definitionID, "recoverable_flow", "Recoverable flow", "running", "startup", "test", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "run", NodeType: "materialize_cache", DisplayName: "Run", Position: 1, Status: "running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobID, err := InsertJob(ctx, tx, runID, JobSpec{
+		NodeRunID: nodeID, WorkerType: "test", Status: "running", Recoverable: true, MaxRetries: 3,
+		Checkpoint: map[string]any{"phase": "download", "index": 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := NewStore(db).MarkStaleRuns(ctx, "restart")
+	if err != nil || count != 1 {
+		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
+	}
+	var runStatus, nodeStatus, jobStatus, checkpoint string
+	var resumeCount int
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", runID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status FROM workflow_node_run WHERE id = ?", nodeID).Scan(&nodeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status, checkpoint_json, resume_count FROM workflow_job WHERE id = ?", jobID).Scan(&jobStatus, &checkpoint, &resumeCount); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "queued" || nodeStatus != "queued" || jobStatus != "queued" || resumeCount != 1 {
+		t.Fatalf("statuses = run %s, node %s, job %s, resumes %d", runStatus, nodeStatus, jobStatus, resumeCount)
+	}
+	if !strings.Contains(checkpoint, `"phase":"download"`) {
+		t.Fatalf("checkpoint was not preserved: %s", checkpoint)
+	}
+	var eventCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'run.requeued_after_restart'", runID).Scan(&eventCount); err != nil || eventCount != 1 {
+		t.Fatalf("requeue events = %d, %v", eventCount, err)
+	}
+}
+
+func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
+	db := openWorkflowTestDB(t)
+	ctx := context.Background()
+	tx, _ := db.BeginTx(ctx, nil)
+	definitionID, err := EnsureDefinition(ctx, tx, "lease_flow", "Lease flow", "Test lease recovery", map[string]any{"nodes": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := InsertRun(ctx, tx, definitionID, "lease_flow", "Lease flow", "running", "manual", "test", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "run", NodeType: "execute", DisplayName: "Run", Position: 1, Status: "running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobID, err := InsertJob(ctx, tx, runID, JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "running", Recoverable: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`UPDATE workflow_job SET locked_by = 'expired-runner', locked_at = '2000-01-01 00:00:00', heartbeat_at = '2000-01-01 00:00:00' WHERE id = ?`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := NewStore(db).RequeueExpiredJobs(ctx, time.Second)
+	if err != nil || count != 1 {
+		t.Fatalf("RequeueExpiredJobs() = %d, %v", count, err)
+	}
+	var status, lock string
+	var resumes int
+	if err := db.QueryRow(`SELECT status, locked_by, resume_count FROM workflow_job WHERE id = ?`, jobID).Scan(&status, &lock, &resumes); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" || lock != "" || resumes != 1 {
+		t.Fatalf("job status=%s lock=%q resumes=%d", status, lock, resumes)
 	}
 }
 

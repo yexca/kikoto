@@ -52,6 +52,9 @@ func createRemoteFetchManifest(ctx context.Context, tx *sql.Tx, runID int64, job
 		return 0, err
 	}
 	for _, item := range plan.Items {
+		if item.Action == "exclude" {
+			continue
+		}
 		relativePath, err := fetchPathRelativeToRoot(plan.SaveRoot, item.TargetPath)
 		if err != nil {
 			return 0, err
@@ -59,9 +62,11 @@ func createRemoteFetchManifest(ctx context.Context, tx *sql.Tx, runID int64, job
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO remote_fetch_manifest_item (
 				manifest_id, relative_path, target_path, source_kind,
-				action, expected_size_bytes, state
-			) VALUES (?, ?, ?, ?, ?, ?, 'planned')
-		`, manifestID, relativePath, item.TargetPath, item.SourceKind, item.Action, item.SizeBytes); err != nil {
+				action, expected_size_bytes, remote_source_id, source_path,
+				original_target_path, resolution, state
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned')
+		`, manifestID, relativePath, item.TargetPath, item.SourceKind, item.Action, item.SizeBytes,
+			nullablePositiveInt64(item.RemoteSourceID), item.SourcePath, item.OriginalTargetPath, item.Resolution); err != nil {
 			return 0, err
 		}
 	}
@@ -145,7 +150,7 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 	}
 
 	for _, item := range plan.Items {
-		if item.Action == "skip" {
+		if item.Action == "skip" || item.Action == "exclude" {
 			continue
 		}
 		relativePath, err := fetchPathRelativeToRoot(plan.SaveRoot, item.TargetPath)
@@ -186,7 +191,7 @@ func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remote
 	}
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "verify", "running", nil)
 	for _, item := range plan.Items {
-		if item.Action == "skip" {
+		if item.Action == "skip" || item.Action == "exclude" {
 			continue
 		}
 		relativePath, err := fetchPathRelativeToRoot(plan.SaveRoot, item.TargetPath)
@@ -339,7 +344,7 @@ func (s *Server) recordRemoteFetchManifestError(ctx context.Context, manifestID 
 func countPromotedFetchItems(items []remoteWorkSavePlanItem) int {
 	count := 0
 	for _, item := range items {
-		if item.Action != "skip" {
+		if item.Action != "skip" && item.Action != "exclude" {
 			count++
 		}
 	}
@@ -486,6 +491,9 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 		return err
 	}
 	for _, item := range plan.Items {
+		if item.Action == "exclude" {
+			continue
+		}
 		targetPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
 		if err != nil {
 			return err
@@ -497,7 +505,7 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 			return err
 		}
 	}
-	if err := s.finishFetchPresence(ctx, manifest.WorkID, manifest.RemoteSourceID, manifest.LocalSourceID, manifest.EditionCode); err != nil {
+	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID), manifest.LocalSourceID, manifest.EditionCode); err != nil {
 		return err
 	}
 	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
@@ -512,6 +520,13 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 	}
 	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", summary, manifest.WorkflowRunID)
 	return err
+}
+
+func nullablePositiveInt64(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
 }
 
 func (s *Server) requeueRemoteFetchManifest(ctx context.Context, manifest remoteFetchManifestRecord) error {
