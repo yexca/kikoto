@@ -424,6 +424,7 @@ type libraryWorkSummary struct {
 	ListeningStatus        string               `json:"listeningStatus"`
 	Favorite               bool                 `json:"favorite"`
 	MediaEditionCode       string               `json:"mediaEditionCode"`
+	MediaEditionKind       string               `json:"mediaEditionKind"`
 	OfficialTranslation    bool                 `json:"officialTranslation"`
 	mediaWorkID            int64
 	availableLocationTypes string
@@ -485,6 +486,7 @@ type workTranslation struct {
 	EditionLabel     string `json:"editionLabel"`
 	Origin           bool   `json:"origin"`
 	Official         bool   `json:"official"`
+	TranslationKind  string `json:"translationKind"`
 	Current          bool   `json:"current"`
 	HasMedia         bool   `json:"hasMedia"`
 }
@@ -3023,6 +3025,9 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 						translations[index].WorkID = item.WorkID
 						translations[index].Title = item.Title
 						translations[index].HasMedia = item.HasMedia
+						translations[index].EditionLabel = firstNonEmpty(translations[index].EditionLabel, item.EditionLabel)
+						translations[index].TranslationKind = item.TranslationKind
+						translations[index].Official = item.Official
 						if translations[index].MetadataLanguage == "" {
 							translations[index].MetadataLanguage = item.MetadataLanguage
 						}
@@ -3127,6 +3132,7 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 			edition.metadata_language,
 			edition.edition_label,
 			edition.is_canonical,
+			edition.translation_kind,
 			EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = edition.work_id)
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
@@ -3142,11 +3148,11 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 	for rows.Next() {
 		var item workTranslation
 		var workID int64
-		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.EditionLabel, &item.Origin, &item.HasMedia); err != nil {
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.EditionLabel, &item.Origin, &item.TranslationKind, &item.HasMedia); err != nil {
 			return nil, err
 		}
 		item.WorkID = &workID
-		item.Official = !item.Origin
+		item.Official = item.TranslationKind == "official"
 		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
 		translations = append(translations, item)
 	}
@@ -3157,24 +3163,51 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 }
 
 func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, translations []workTranslation) (int64, error) {
-	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
+	if hasLocal, err := s.workHasAvailableLocalMedia(ctx, currentWorkID); err != nil {
 		return 0, err
-	} else if hasMedia {
+	} else if hasLocal {
 		return currentWorkID, nil
 	}
 	for _, translation := range translations {
 		if translation.WorkID == nil || *translation.WorkID == currentWorkID {
 			continue
 		}
-		hasMedia, err := s.workHasMedia(ctx, *translation.WorkID)
+		hasLocal, err := s.workHasAvailableLocalMedia(ctx, *translation.WorkID)
 		if err != nil {
 			return 0, err
 		}
-		if hasMedia {
+		if hasLocal {
+			return *translation.WorkID, nil
+		}
+	}
+	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
+		return 0, err
+	} else if hasMedia {
+		return currentWorkID, nil
+	}
+	for _, translation := range translations {
+		if translation.WorkID != nil && *translation.WorkID != currentWorkID && translation.HasMedia {
 			return *translation.WorkID, nil
 		}
 	}
 	return currentWorkID, nil
+}
+
+func (s *Server) workHasAvailableLocalMedia(ctx context.Context, workID int64) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM media_item AS item
+			INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+			WHERE item.work_id = ?
+				AND location.location_type = 'local'
+				AND location.availability = 'available'
+		)
+	`, workID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func (s *Server) workHasMedia(ctx context.Context, workID int64) (bool, error) {
@@ -3730,6 +3763,9 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.markStaleWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
+		return err
+	}
+	if err := s.reconcileRemoteFetchManifests(ctx); err != nil {
 		return err
 	}
 	var enabled int
@@ -4746,7 +4782,8 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 			MetadataLanguage: firstNonEmpty(edition.Lang, edition.Label),
 			EditionLabel:     strings.TrimSpace(edition.Label),
 			Origin:           strings.EqualFold(code, originCode),
-			Official:         !strings.EqualFold(code, originCode),
+			Official:         false,
+			TranslationKind:  map[bool]string{true: "origin", false: "unknown"}[strings.EqualFold(code, originCode)],
 			Current:          strings.EqualFold(code, currentCode),
 		})
 	}

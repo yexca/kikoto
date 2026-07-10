@@ -8,8 +8,9 @@ import (
 )
 
 type MediaSelection struct {
-	WorkID int64
-	Code   string
+	WorkID          int64
+	Code            string
+	TranslationKind string
 }
 
 type Availability struct {
@@ -36,12 +37,22 @@ type Progress struct {
 func (s *Store) LoadMediaSelections(ctx context.Context, workIDs []int64) (map[int64]MediaSelection, error) {
 	result := map[int64]MediaSelection{}
 	query, args := int64InQuery(`
-		SELECT current.work_id, edition.work_id, edition.primary_code
+		SELECT current.work_id, edition.work_id, edition.primary_code, edition.translation_kind
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
 		WHERE current.work_id IN (%s)
 			AND EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = edition.work_id)
-		ORDER BY current.work_id, edition.is_canonical DESC, edition.primary_code ASC
+		ORDER BY current.work_id,
+			EXISTS (
+				SELECT 1
+				FROM media_item AS local_item
+				INNER JOIN media_file_location AS local_location ON local_location.media_item_id = local_item.id
+				WHERE local_item.work_id = edition.work_id
+					AND local_location.location_type = 'local'
+					AND local_location.availability = 'available'
+			) DESC,
+			edition.is_canonical DESC,
+			edition.primary_code ASC
 	`, workIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -51,7 +62,7 @@ func (s *Store) LoadMediaSelections(ctx context.Context, workIDs []int64) (map[i
 	for rows.Next() {
 		var currentID int64
 		var selection MediaSelection
-		if err := rows.Scan(&currentID, &selection.WorkID, &selection.Code); err != nil {
+		if err := rows.Scan(&currentID, &selection.WorkID, &selection.Code, &selection.TranslationKind); err != nil {
 			return nil, err
 		}
 		if _, exists := result[currentID]; !exists {
@@ -68,8 +79,9 @@ func (s *Store) LoadFallbackMediaSelections(ctx context.Context, codes []string)
 		return result, nil
 	}
 	query, args := stringInQuery(`
-		SELECT work.id, work.primary_code
+		SELECT work.id, work.primary_code, COALESCE(edition.translation_kind, 'unknown')
 		FROM work
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		WHERE UPPER(work.primary_code) IN (%s)
 			AND EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = work.id)
 	`, values)
@@ -80,7 +92,7 @@ func (s *Store) LoadFallbackMediaSelections(ctx context.Context, codes []string)
 	defer rows.Close()
 	for rows.Next() {
 		var item MediaSelection
-		if err := rows.Scan(&item.WorkID, &item.Code); err != nil {
+		if err := rows.Scan(&item.WorkID, &item.Code, &item.TranslationKind); err != nil {
 			return nil, err
 		}
 		result[strings.ToUpper(strings.TrimSpace(item.Code))] = item

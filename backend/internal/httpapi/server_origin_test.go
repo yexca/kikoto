@@ -17,7 +17,7 @@ func TestParseDLsiteSnapshotUsesLanguageEditionOrigin(t *testing.T) {
 	if !metadata.LanguageEditions[0].Origin || metadata.LanguageEditions[0].Official {
 		t.Fatalf("origin flags = %+v", metadata.LanguageEditions[0])
 	}
-	if metadata.LanguageEditions[1].Origin || !metadata.LanguageEditions[1].Official {
+	if metadata.LanguageEditions[1].Origin || metadata.LanguageEditions[1].Official || metadata.LanguageEditions[1].TranslationKind != "unknown" {
 		t.Fatalf("translation flags = %+v", metadata.LanguageEditions[1])
 	}
 }

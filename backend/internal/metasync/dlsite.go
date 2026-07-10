@@ -49,6 +49,17 @@ type DLsiteSyncResult struct {
 	Failures         []string                `json:"failures"`
 }
 
+// DLsiteFamilySyncResult describes one targeted, recursively discovered
+// language family. A missing sibling is reported without discarding products
+// that were synchronized successfully.
+type DLsiteFamilySyncResult struct {
+	RequestedCode string   `json:"requestedCode"`
+	CanonicalCode string   `json:"canonicalCode"`
+	Codes         []string `json:"codes"`
+	SyncedCodes   []string `json:"syncedCodes"`
+	Failures      []string `json:"failures"`
+}
+
 type DLsiteReviewCandidate struct {
 	WorkID  int64  `json:"workId"`
 	Code    string `json:"code"`
@@ -213,6 +224,107 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 		}
 	}
 	return workID, nil
+}
+
+// SyncFamily refreshes a requested product and every language edition that can
+// be reached from its DLsite relationship payload. Discovery is bounded and
+// de-duplicated so malformed provider relationships cannot loop forever.
+func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DLsiteFamilySyncResult, error) {
+	requestedCode = strings.ToUpper(strings.TrimSpace(requestedCode))
+	if !dlsiteWorkNoPattern.MatchString(requestedCode) {
+		return DLsiteFamilySyncResult{}, fmt.Errorf("invalid DLsite work code %q", requestedCode)
+	}
+	result := DLsiteFamilySyncResult{RequestedCode: requestedCode, Codes: []string{}, SyncedCodes: []string{}, Failures: []string{}}
+	queue := []string{requestedCode}
+	seen := map[string]bool{}
+	const maxFamilyEditions = 32
+	for len(queue) > 0 && len(seen) < maxFamilyEditions {
+		code := strings.ToUpper(strings.TrimSpace(queue[0]))
+		queue = queue[1:]
+		if seen[code] || !dlsiteWorkNoPattern.MatchString(code) {
+			continue
+		}
+		seen[code] = true
+		result.Codes = append(result.Codes, code)
+		product, err := s.fetchProduct(ctx, code)
+		if err != nil {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+			continue
+		}
+		workID, err := s.ensureWorkForProduct(ctx, product)
+		if err == nil {
+			err = s.applyProduct(ctx, workID, product)
+		}
+		if err != nil {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+			continue
+		}
+		result.SyncedCodes = append(result.SyncedCodes, code)
+		if s.cacheRoot != "" {
+			if _, err := s.downloadCover(ctx, product); err != nil {
+				result.Failures = append(result.Failures, fmt.Sprintf("%s cover: %s", code, err.Error()))
+			}
+		}
+		if base := baseProductCode(product); dlsiteWorkNoPattern.MatchString(base) {
+			queue = append(queue, base)
+			if result.CanonicalCode == "" {
+				result.CanonicalCode = base
+			}
+		}
+		for _, edition := range product.LanguageEditions {
+			queue = append(queue, strings.ToUpper(strings.TrimSpace(edition.WorkNo)))
+		}
+	}
+	if result.CanonicalCode == "" {
+		result.CanonicalCode = requestedCode
+	}
+	if err := s.classifyFamilyEditions(ctx, result.CanonicalCode); err != nil {
+		return result, err
+	}
+	if len(result.SyncedCodes) == 0 {
+		return result, fmt.Errorf("DLsite family metadata could not be synchronized: %s", strings.Join(result.Failures, "; "))
+	}
+	return result, nil
+}
+
+func (s *DLsiteSyncer) classifyFamilyEditions(ctx context.Context, canonicalCode string) error {
+	canonicalCode = strings.ToUpper(strings.TrimSpace(canonicalCode))
+	var logicalWorkID int64
+	var originMakerID string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT edition.logical_work_id, COALESCE(NULLIF(origin.maker_id, ''), '')
+		FROM work_edition AS edition
+		INNER JOIN work_edition AS origin ON origin.logical_work_id = edition.logical_work_id AND origin.is_canonical = 1
+		WHERE UPPER(edition.primary_code) = UPPER(?)
+		LIMIT 1
+	`, canonicalCode).Scan(&logicalWorkID, &originMakerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	originMakerID = strings.ToUpper(strings.TrimSpace(originMakerID))
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE work_edition
+		SET origin_maker_id = ?,
+			translation_kind = CASE
+				WHEN is_canonical = 1 THEN 'origin'
+				WHEN UPPER(maker_id) = 'RG60289' THEN 'community'
+				WHEN ? <> '' AND UPPER(maker_id) = ? THEN 'official'
+				WHEN maker_id <> '' THEN 'third_party'
+				ELSE 'unknown'
+			END,
+			classification_source = CASE
+				WHEN is_canonical = 1 THEN 'canonical'
+				WHEN UPPER(maker_id) = 'RG60289' THEN 'translation_umbrella'
+				WHEN ? <> '' AND UPPER(maker_id) = ? THEN 'maker_match'
+				WHEN maker_id <> '' THEN 'maker_mismatch'
+				ELSE 'incomplete_metadata'
+			END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE logical_work_id = ?
+	`, originMakerID, originMakerID, originMakerID, originMakerID, originMakerID, logicalWorkID)
+	return err
 }
 
 func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
@@ -449,7 +561,10 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 		return err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.classifyFamilyEditions(ctx, baseProductCode(product))
 }
 
 func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string) error {
@@ -799,8 +914,8 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 		isCanonical = 1
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, maker_id, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(work_id) DO UPDATE SET
 			logical_work_id = excluded.logical_work_id,
 			provider_id = excluded.provider_id,
@@ -809,8 +924,9 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 			metadata_language = excluded.metadata_language,
 			edition_label = excluded.edition_label,
 			is_canonical = excluded.is_canonical,
+			maker_id = CASE WHEN excluded.maker_id <> '' THEN excluded.maker_id ELSE work_edition.maker_id END,
 			updated_at = CURRENT_TIMESTAMP
-	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, editionLabel, isCanonical); err != nil {
+	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, editionLabel, isCanonical, strings.ToUpper(strings.TrimSpace(product.MakerID))); err != nil {
 		return err
 	}
 	if isCanonical == 1 {

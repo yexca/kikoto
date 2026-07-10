@@ -41,7 +41,8 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 			works[index].mediaWorkID = selection.WorkID
 			if !strings.EqualFold(selection.Code, works[index].PrimaryCode) {
 				works[index].MediaEditionCode = selection.Code
-				works[index].OfficialTranslation = true
+				works[index].MediaEditionKind = selection.TranslationKind
+				works[index].OfficialTranslation = selection.TranslationKind == "official"
 			}
 		}
 		mediaWorkIDs = append(mediaWorkIDs, works[index].mediaWorkID)

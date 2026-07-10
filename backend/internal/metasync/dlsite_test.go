@@ -210,6 +210,46 @@ func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
 	}
 }
 
+func TestSyncFamilyClassifiesMakerRelationships(t *testing.T) {
+	db := openTestDB(t)
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ0123401", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
+		{WorkNo: "RJ0123402", DisplayOrder: 2, Label: "簡体中文", Lang: "CHI_HANS"},
+		{WorkNo: "RJ0123403", DisplayOrder: 3, Label: "English", Lang: "ENG"},
+	}
+	products := map[string]dlsite.Product{
+		"RJ0123401": {WorkNo: "RJ0123401", ProductName: "Origin", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123401"}`)},
+		"RJ0123402": {WorkNo: "RJ0123402", ProductName: "Official", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123402"}`)},
+		"RJ0123403": {WorkNo: "RJ0123403", ProductName: "Community", MakerID: "RG60289", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123403"}`)},
+	}
+	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{products: products}).SyncFamily(context.Background(), "RJ0123402")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CanonicalCode != "RJ0123401" || len(result.SyncedCodes) != 3 {
+		t.Fatalf("result = %+v", result)
+	}
+	want := map[string]string{"RJ0123401": "origin", "RJ0123402": "official", "RJ0123403": "community"}
+	rows, err := db.Query("SELECT primary_code, translation_kind FROM work_edition")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code, kind string
+		if err := rows.Scan(&code, &kind); err != nil {
+			t.Fatal(err)
+		}
+		if want[code] != kind {
+			t.Fatalf("%s kind = %q, want %q", code, kind, want[code])
+		}
+		delete(want, code)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing classifications: %+v", want)
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -224,7 +264,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE metadata_provider (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE work (id INTEGER PRIMARY KEY, primary_code TEXT NOT NULL UNIQUE, work_type TEXT NOT NULL DEFAULT 'audio', title TEXT NOT NULL, title_kana TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', release_date TEXT, age_rating TEXT NOT NULL DEFAULT '', cover_asset_id INTEGER, duration_seconds INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE logical_work (id INTEGER PRIMARY KEY, canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, canonical_code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, translation_kind TEXT NOT NULL DEFAULT 'unknown', classification_source TEXT NOT NULL DEFAULT '', maker_id TEXT NOT NULL DEFAULT '', origin_maker_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE UNIQUE INDEX idx_work_edition_provider_code ON work_edition(provider_id, primary_code)`,
 		`CREATE INDEX idx_work_edition_logical_work ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
 		`CREATE TABLE work_external_id (id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), id_type TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, UNIQUE(provider_id, id_type, external_id))`,

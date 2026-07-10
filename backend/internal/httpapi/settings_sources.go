@@ -306,6 +306,7 @@ type remoteCollectionRunResult struct {
 type remoteWorkSaveRequest struct {
 	Paths      []string `json:"paths"`
 	LocalPaths []string `json:"localPaths"`
+	TargetRoot string   `json:"targetRoot"`
 	RequestID  string   `json:"requestId"`
 }
 
@@ -314,6 +315,7 @@ type remoteWorkFetchJobPayload struct {
 	WorkCode   string   `json:"work_code"`
 	Paths      []string `json:"paths"`
 	LocalPaths []string `json:"local_paths"`
+	TargetRoot string   `json:"target_root"`
 	RequestID  string   `json:"request_id"`
 }
 
@@ -324,6 +326,7 @@ type remoteWorkSavePlan struct {
 	LocalFiles  []remoteWorkSaveLocalFile `json:"localFiles"`
 	Items       []remoteWorkSavePlanItem  `json:"items"`
 	Summary     remoteWorkSaveSummary     `json:"summary"`
+	Preparation remoteFetchPreparation    `json:"preparation"`
 }
 
 type remoteWorkSaveLocalFile struct {
@@ -1160,11 +1163,13 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths)
+	preparation := s.prepareRemoteFetch(r.Context(), code)
+	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
+	attachRemoteFetchPreparation(&plan, preparation)
 	writeJSON(w, http.StatusOK, plan)
 }
 
@@ -1190,7 +1195,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.RequestID)
+	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -2372,7 +2377,7 @@ func (s *Server) finishRemoteCollectionWorkflow(ctx context.Context, runID int64
 	return tx.Commit()
 }
 
-func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string) (remoteWorkSavePlan, error) {
+func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string) (remoteWorkSavePlan, error) {
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSavePlan{}, err
@@ -2382,6 +2387,16 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
 	saveRoot := s.remoteSaveRoot(source, workCode)
+	if strings.TrimSpace(requestedTargetRoot) != "" {
+		requestedTargetRoot = filepath.ToSlash(filepath.Clean(filepath.FromSlash(requestedTargetRoot)))
+		if requestedTargetRoot != filepath.ToSlash(filepath.Clean(filepath.FromSlash(saveRoot))) {
+			validatedRoot, err := s.validateRemoteFetchTargetRoot(ctx, workCode, requestedTargetRoot)
+			if err != nil {
+				return remoteWorkSavePlan{}, err
+			}
+			saveRoot = validatedRoot
+		}
+	}
 	selected := normalizeSelectedRemotePaths(selectedPaths)
 	selectedLocal := normalizeSelectedLocalPaths(selectedLocalPaths)
 	files := flattenRemoteSaveFiles(tracks)
@@ -2544,7 +2559,7 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 	return plan, nil
 }
 
-func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestID string) (remoteWorkSaveResult, error) {
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
 	if err != nil {
@@ -2554,7 +2569,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
-	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths)
+	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths, targetRoot)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -2573,7 +2588,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	runInput := remoteWorkFetchJobPayload{SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths, RequestID: requestID}
+	runInput := remoteWorkFetchJobPayload{SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths, TargetRoot: plan.SaveRoot, RequestID: requestID}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -2604,13 +2619,25 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "promote", NodeType: "promote_cache_to_local", DisplayName: "Move cache files to local library", Position: 5, Status: "queued",
+		NodeID: "stage", NodeType: "stage_fetch_result", DisplayName: "Assemble staging directory", Position: 5, Status: "queued",
 		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
 	}); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 6, Status: "queued",
+		NodeID: "verify", NodeType: "verify_files", DisplayName: "Verify staged files", Position: 6, Status: "queued",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	}); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "promote", NodeType: "publish_staged_fetch", DisplayName: "Publish staged result", Position: 7, Status: "queued",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	}); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 8, Status: "queued",
 		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
 	}); err != nil {
 		return remoteWorkSaveResult{}, err
@@ -2622,13 +2649,17 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx)); err != nil {
+	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
+	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Payload: runInput, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
 	})
 	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := createRemoteFetchManifest(ctx, tx, runID, jobID, requestID, workID, sourceID, localSourceID, plan); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	result := remoteWorkSaveResult{
@@ -2666,7 +2697,9 @@ func remoteWorkFetchDefinition() map[string]any {
 			{"id": "tree", "type": "fetch_remote_tree"},
 			{"id": "plan", "type": "plan_save"},
 			{"id": "cache", "type": "materialize_cache"},
-			{"id": "promote", "type": "promote_cache_to_local"},
+			{"id": "stage", "type": "stage_fetch_result"},
+			{"id": "verify", "type": "verify_files"},
+			{"id": "promote", "type": "publish_staged_fetch"},
 			{"id": "sync", "type": "sync_file_locations"},
 		},
 	}
@@ -2678,7 +2711,7 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload.SourceID, payload.WorkCode, payload.Paths, payload.LocalPaths)
+	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload.SourceID, payload.WorkCode, payload.Paths, payload.LocalPaths, payload.TargetRoot)
 	if err != nil {
 		slog.Error("remote work fetch job failed", "run_id", job.RunID, "job_id", job.ID, "error", err)
 		return err
@@ -2687,7 +2720,7 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 	return nil
 }
 
-func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string) (remoteWorkSaveResult, error) {
+func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string) (remoteWorkSaveResult, error) {
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
@@ -2697,7 +2730,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
-	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths)
+	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths, targetRoot)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
@@ -2765,67 +2798,18 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads}), cacheNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", promoteNodeID); err != nil {
+	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	if err != nil {
+		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
 		return remoteWorkSaveResult{}, err
 	}
-	promoted := 0
-	for index, item := range plan.Items {
-		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "skip" {
-			continue
-		}
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if existingFileMatches(targetAbsPath, item.SizeBytes) {
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)+index+1, len(plan.Items)*2)
-			continue
-		}
-		if info, err := os.Stat(targetAbsPath); err == nil {
-			reason := fmt.Sprintf("target already exists with size %d: %s", info.Size(), item.TargetPath)
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", reason, len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, errors.New(reason)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0o755); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "copy_local" {
-			localAbsPath, err := safeDataPath(s.cfg.DataRoot, item.LocalSourcePath)
-			if err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-			if err := copyFile(localAbsPath, targetAbsPath); err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-		} else {
-			cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
-			if err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-			if err := moveFile(cacheAbsPath, targetAbsPath); err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-			if err := s.markCacheLocationUnavailable(ctx, source.ID, item.CachePath); err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-		}
-		promoted++
-		_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)+index+1, len(plan.Items)*2)
+	promoted, err := s.stageAndPublishRemoteFetch(ctx, manifest, plan)
+	if err != nil {
+		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
+		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"promoted": promoted}), promoteNodeID); err != nil {
+	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)*2, len(plan.Items)*2)
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"staged": promoted, "verified": promoted, "published": promoted, "target_root": plan.SaveRoot}), promoteNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET progress_current = ?, progress_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
@@ -2860,6 +2844,10 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		syncedLocations++
 	}
 	if err := s.finishFetchPresence(ctx, workID, source.ID, localSourceID, workCode); err != nil {
+		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
+		return remoteWorkSaveResult{}, err
+	}
+	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
 		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
 		return remoteWorkSaveResult{}, err
 	}
@@ -2973,7 +2961,7 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
-	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, nil)
+	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, nil, "")
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -3030,14 +3018,27 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 		return remoteWorkSaveResult{}, err
 	}
 	promoteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "promote", NodeType: "promote_cache_to_local", DisplayName: "Move cache files to local library", Position: 5, Status: "queued",
+		NodeID: "stage", NodeType: "stage_fetch_result", DisplayName: "Assemble staging directory", Position: 5, Status: "queued",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	})
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "verify", NodeType: "verify_files", DisplayName: "Verify staged files", Position: 6, Status: "queued",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	}); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	promoteNodeID, err = workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "promote", NodeType: "publish_staged_fetch", DisplayName: "Publish staged result", Position: 7, Status: "queued",
 		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
 	})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	syncNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 6, Status: "queued",
+		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 8, Status: "queued",
 		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
 	})
 	if err != nil {
@@ -3052,6 +3053,9 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	}
 	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
 	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if _, err := createRemoteFetchManifest(ctx, tx, runID, jobID, "", workID, sourceID, localSourceID, plan); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -3101,52 +3105,17 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads}), cacheNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", promoteNodeID); err != nil {
+	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	promoted := 0
-	for index, item := range plan.Items {
-		if item.Action == "skip" {
-			continue
-		}
-		cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if existingFileMatches(targetAbsPath, item.SizeBytes) {
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)+index+1, len(plan.Items)*2)
-			continue
-		}
-		if info, err := os.Stat(targetAbsPath); err == nil {
-			reason := fmt.Sprintf("target already exists with size %d: %s", info.Size(), item.TargetPath)
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", reason, len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, errors.New(reason)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := os.MkdirAll(filepath.Dir(targetAbsPath), 0o755); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := moveFile(cacheAbsPath, targetAbsPath); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if err := s.markCacheLocationUnavailable(ctx, source.ID, item.CachePath); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		promoted++
-		_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)+index+1, len(plan.Items)*2)
+	promoted, err := s.stageAndPublishRemoteFetch(ctx, manifest, plan)
+	if err != nil {
+		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
+		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"promoted": promoted}), promoteNodeID); err != nil {
+	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)*2, len(plan.Items)*2)
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"staged": promoted, "verified": promoted, "published": promoted, "target_root": plan.SaveRoot}), promoteNodeID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := s.db.ExecContext(ctx, `
@@ -3189,6 +3158,9 @@ func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code str
 	}
 	if err := s.finishFetchPresence(ctx, workID, source.ID, localSourceID, workCode); err != nil {
 		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
+		return remoteWorkSaveResult{}, err
+	}
+	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"locations": syncedLocations}), syncNodeID); err != nil {

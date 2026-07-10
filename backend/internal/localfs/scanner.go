@@ -82,6 +82,9 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 		if !entry.IsDir() {
 			return nil
 		}
+		if path != absRoot && isKikotoInternalDirectory(entry.Name()) {
+			return filepath.SkipDir
+		}
 
 		depth, rel, err := relativeDepth(absRoot, path)
 		if err != nil {
@@ -124,6 +127,15 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 	})
 	summary.DetectedWorks = len(workFolders)
 	return workFolders, summary, nil
+}
+
+func isKikotoInternalDirectory(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case ".kikoto-staging", ".kikoto-backup", ".kikoto-trash":
+		return true
+	default:
+		return false
+	}
 }
 
 func duplicateGroups(folders []WorkFolder) []DuplicateGroup {

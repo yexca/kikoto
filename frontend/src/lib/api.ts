@@ -23,6 +23,7 @@ export type Work = {
   listeningStatus: ListeningStatus;
   favorite: boolean;
 	mediaEditionCode: string;
+	mediaEditionKind: "origin" | "official" | "community" | "third_party" | "unknown" | "";
 	officialTranslation: boolean;
 };
 
@@ -176,6 +177,7 @@ export type WorkTranslation = {
 	editionLabel: string;
 	origin: boolean;
 	official: boolean;
+	translationKind: "origin" | "official" | "community" | "third_party" | "unknown";
   current: boolean;
   hasMedia: boolean;
 };
@@ -455,6 +457,39 @@ export type RemoteWorkSavePlan = {
   localFiles: RemoteWorkSaveLocalFile[];
   items: RemoteWorkSavePlanItem[];
   summary: RemoteWorkSaveSummary;
+  preparation: RemoteFetchPreparation;
+};
+
+export type RemoteFetchPreparation = {
+  requestedCode: string;
+  canonicalCode: string;
+  metadataStatus: "complete" | "partial" | "degraded";
+  warnings: string[];
+  editions: RemoteFetchEdition[];
+};
+
+export type RemoteFetchEdition = {
+  workId: number;
+  primaryCode: string;
+  title: string;
+  metadataLanguage: string;
+  editionLabel: string;
+  translationKind: "origin" | "official" | "community" | "third_party" | "unknown";
+  classificationSource: string;
+  makerId: string;
+  originMakerId: string;
+  origin: boolean;
+  localRoots: RemoteFetchLocalRoot[];
+  sources: SourceAvailabilitySource[];
+};
+
+export type RemoteFetchLocalRoot = {
+  id: number;
+  fileSourceId: number;
+  rootPath: string;
+  role: "managed_fetch" | "external" | "alternate";
+  state: "active" | "pending_cleanup" | "ignored";
+  primary: boolean;
 };
 
 export type RemoteWorkSaveResult = {
@@ -1056,10 +1091,10 @@ export const api = {
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
-  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = []) =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths }),
-  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "") =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId }),
+  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = [], targetRoot = "") =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths, targetRoot }),
+  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "", targetRoot = "") =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId, targetRoot }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>

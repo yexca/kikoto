@@ -40,6 +40,8 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("plan_save", "plan", "Plan fetch", "Build a cache and local promotion plan for selected remote files.", true, schemaObject("saveRootTemplate", "paths"), schemaObject("tracks", "cacheState"), schemaObject("items", "summary")),
 
 	nodeType("materialize_cache", "execute", "Materialize cache", "Download or copy media into cache.", true, schemaObject("cacheRoot", "overwrite"), schemaObject("downloadUrl", "cachePath"), schemaObject("cachePath", "bytes")),
+	nodeType("stage_fetch_result", "execute", "Stage fetch result", "Assemble the complete result tree outside scanner-visible library roots.", true, schemaObject("stagingRoot"), schemaObject("plan"), schemaObject("staged")),
+	nodeType("publish_staged_fetch", "commit", "Publish staged fetch", "Atomically publish a verified staging tree and retain a recoverable backup until registration.", true, schemaObject("targetRoot"), schemaObject("stagingRoot"), schemaObject("published")),
 	nodeType("materialize_save", "execute", "Materialize save", "Compatibility node for older save workflows.", false, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
 	nodeType("promote_cache_to_local", "execute", "Promote cache to local", "Move cached media into the local library.", true, schemaObject("mode", "overwrite"), schemaObject("cachePath", "targetPath"), schemaObject("localPath", "moved")),
 	nodeType("cleanup_cache", "execute", "Cleanup cache", "Delete cached files or clear cache-related state.", true, schemaObject("deleteFiles", "clearState"), schemaObject("locationIds", "cachePath"), schemaObject("deleted", "cleared")),

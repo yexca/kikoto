@@ -65,6 +65,26 @@ func TestExtractWorkCodeAllowsSeparatorAndIgnoresShortBuckets(t *testing.T) {
 	}
 }
 
+func TestDiscoverFoldersIgnoresKikotoInternalTrees(t *testing.T) {
+	root := t.TempDir()
+	for _, relative := range []string{
+		filepath.Join(".kikoto-staging", "12", "RJ01234567"),
+		filepath.Join(".kikoto-backup", "12", "RJ07654321"),
+		filepath.Join("Library", "RJ01111111"),
+	} {
+		if err := os.MkdirAll(filepath.Join(root, relative), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	folders, _, err := DiscoverFolders(root, Options{ScanDepth: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 || folders[0].Code != "RJ01111111" {
+		t.Fatalf("folders = %+v", folders)
+	}
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

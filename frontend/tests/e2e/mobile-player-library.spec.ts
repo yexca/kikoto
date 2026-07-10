@@ -25,6 +25,7 @@ const work = {
   listeningStatus: "none",
   favorite: false,
   mediaEditionCode: "",
+  mediaEditionKind: "",
   officialTranslation: false,
 };
 
@@ -181,6 +182,32 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void)
       });
       return;
     }
+    if (url.pathname === "/api/remote-sources/1/works/RJ09999991" && route.request().method() === "GET") {
+      await route.fulfill({ json: {
+        sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "1",
+        primaryCode: "RJ09999991", remoteCode: "RJ09999991", title: "Remote Japanese work", coverUrl: "", sourceUrl: "",
+        circle: "Remote circle", rating: 4.5, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
+        tags: [], voiceActors: [], importStatus: "remote_only", workId: null,
+        tracks: [{ type: "audio", title: "track.mp3", hash: "hash", streamUrl: "/stream", downloadUrl: "/download", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/remote-sources/1/works/RJ09999991/fetch-plan") {
+      await route.fulfill({ json: {
+        sourceId: 1, primaryCode: "RJ09999991", saveRoot: "example_remote/RJ/015/RJ09999991",
+        localFiles: [{ mediaItemId: 2, path: "Existing/RJ09999991/local.txt", sizeBytes: 4, available: true }],
+        items: [{ path: "track.mp3", kind: "audio", sizeBytes: 12, sourceKind: "remote", action: "cache_download", status: "remote_only", sourcePath: "/download", localSourcePath: "", cachePath: "remote/track.mp3", targetPath: "example_remote/RJ/015/RJ09999991/track.mp3", mediaItemId: 1, localPaths: [], targetExists: false, targetConflict: false, targetConflictReason: "", targetSizeBytes: null }],
+        summary: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: 1, promote: 1, conflict: 0 },
+        preparation: {
+          requestedCode: "RJ09999991", canonicalCode: "RJ09999990", metadataStatus: "complete", warnings: [],
+          editions: [
+            { workId: 10, primaryCode: "RJ09999990", title: "Origin", metadataLanguage: "JPN", editionLabel: "日本語", translationKind: "origin", classificationSource: "canonical", makerId: "RG1", originMakerId: "RG1", origin: true, localRoots: [], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "2", primaryCode: "RJ09999990", title: "Origin", coverUrl: "", workId: 10, hasRemote: true, hasCache: false, hasLocal: false, error: "", elapsedMs: 1 }] },
+            { workId: 11, primaryCode: "RJ09999991", title: "Community", metadataLanguage: "CHI_HANS", editionLabel: "簡体中文", translationKind: "community", classificationSource: "translation_umbrella", makerId: "RG60289", originMakerId: "RG1", origin: false, localRoots: [{ id: 1, fileSourceId: 2, rootPath: "Existing/RJ09999991", role: "external", state: "active", primary: false }], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "1", primaryCode: "RJ09999991", title: "Community", coverUrl: "", workId: 11, hasRemote: true, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 }] },
+          ],
+        },
+      } });
+      return;
+    }
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
   });
 }
@@ -208,6 +235,28 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await page.getByTitle("Next page").last().click();
   await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
+});
+
+test("mobile Fetch prepares language editions and switches between local, remote, and result steps", async ({ page }) => {
+  await mockRemoteSource(page, () => undefined);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByTitle("Fetch").click();
+  await expect(page.getByText("Fetch selection", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Prepare comparison" }).click();
+  await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Origin", { exact: true })).toBeVisible();
+  await expect(page.getByText("Community", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "result", exact: true }).click();
+  await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
+  await expect(page.getByText("Add", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "local", exact: true }).click();
+  await expect(page.getByText("Publish target", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByText("Local files", { exact: true })).toBeVisible();
+  await expect(page.getByText("Remote files", { exact: true })).toBeVisible();
+  await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {
