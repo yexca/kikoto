@@ -159,6 +159,57 @@ func TestSyncAllRetriesRateLimitedProduct(t *testing.T) {
 	}
 }
 
+func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
+	db := openTestDB(t)
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ0123455", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
+		{WorkNo: "RJ0123456", DisplayOrder: 2, Label: "簡体中文（公式翻訳）", Lang: "CHI_HANS"},
+	}
+	translatedRaw := json.RawMessage(`{"workno":"RJ0123456","product_name":"Translated title","language_editions":[{"workno":"RJ0123455","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ0123456","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
+	originRaw := json.RawMessage(`{"workno":"RJ0123455","product_name":"Origin title","language_editions":[{"workno":"RJ0123455","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ0123456","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
+	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{products: map[string]dlsite.Product{
+		"RJ0123456": {WorkNo: "RJ0123456", ProductName: "Translated title", LanguageEditions: editions, Raw: translatedRaw},
+		"RJ0123455": {WorkNo: "RJ0123455", ProductName: "Origin title", LanguageEditions: editions, Raw: originRaw},
+	}})
+
+	result, err := syncer.SyncAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.SyncedWorks != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	var title string
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123455'").Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Origin title" {
+		t.Fatalf("origin title = %q", title)
+	}
+	var canonicalCode, translatedBase, translatedLanguage string
+	if err := db.QueryRow(`
+		SELECT logical.canonical_code, edition.base_code, edition.metadata_language
+		FROM work_edition AS edition
+		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		INNER JOIN work ON work.id = edition.work_id
+		WHERE work.primary_code = 'RJ0123456'
+	`).Scan(&canonicalCode, &translatedBase, &translatedLanguage); err != nil {
+		t.Fatal(err)
+	}
+	if canonicalCode != "RJ0123455" || translatedBase != "RJ0123455" || translatedLanguage != "CHI_HANS" {
+		t.Fatalf("edition = canonical %q, base %q, language %q", canonicalCode, translatedBase, translatedLanguage)
+	}
+
+	second, err := syncer.SyncAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TargetWorks != 0 {
+		t.Fatalf("second sync targets = %d, want 0", second.TargetWorks)
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

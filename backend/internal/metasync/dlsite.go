@@ -196,6 +196,22 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	if s.cacheRoot != "" {
 		_, _ = s.downloadCover(ctx, product)
 	}
+	if baseCode := baseProductCode(product); baseCode != "" && !strings.EqualFold(baseCode, product.WorkNo) {
+		baseProduct, err := s.fetchProduct(ctx, baseCode)
+		if err != nil {
+			return 0, fmt.Errorf("fetch origin %s: %w", baseCode, err)
+		}
+		baseWorkID, err := s.ensureWorkForProduct(ctx, baseProduct)
+		if err != nil {
+			return 0, err
+		}
+		if err := s.applyProduct(ctx, baseWorkID, baseProduct); err != nil {
+			return 0, err
+		}
+		if s.cacheRoot != "" {
+			_, _ = s.downloadCover(ctx, baseProduct)
+		}
+	}
 	return workID, nil
 }
 
@@ -274,15 +290,24 @@ func sleepWithContext(ctx context.Context, delay time.Duration) error {
 
 func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT work.id, work.primary_code
+		SELECT
+			work.id,
+			work.primary_code,
+			COALESCE((
+				SELECT snapshot.snapshot_json
+				FROM metadata_snapshot AS snapshot
+				INNER JOIN metadata_provider AS snapshot_provider ON snapshot_provider.id = snapshot.provider_id
+				WHERE snapshot.work_id = work.id AND snapshot_provider.code = 'dlsite'
+				ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
+				LIMIT 1
+			), ''),
+			COALESCE((
+				SELECT logical.canonical_code
+				FROM work_edition AS edition
+				INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+				WHERE edition.work_id = work.id
+			), '')
 		FROM work
-		LEFT JOIN metadata_provider AS provider ON provider.code = 'dlsite'
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM metadata_snapshot AS snapshot
-			WHERE snapshot.work_id = work.id
-				AND snapshot.provider_id = provider.id
-		)
 		ORDER BY work.id ASC
 	`)
 	if err != nil {
@@ -290,21 +315,61 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 	}
 	defer rows.Close()
 
-	targets := []workTarget{}
+	type snapshotTarget struct {
+		target        workTarget
+		snapshot      string
+		canonicalCode string
+	}
+	pending := []snapshotTarget{}
 	for rows.Next() {
-		var target workTarget
-		if err := rows.Scan(&target.ID, &target.PrimaryCode); err != nil {
+		var item snapshotTarget
+		if err := rows.Scan(&item.target.ID, &item.target.PrimaryCode, &item.snapshot, &item.canonicalCode); err != nil {
 			return nil, err
 		}
-		target.PrimaryCode = strings.ToUpper(strings.TrimSpace(target.PrimaryCode))
-		if dlsiteWorkNoPattern.MatchString(target.PrimaryCode) {
-			targets = append(targets, target)
+		item.target.PrimaryCode = strings.ToUpper(strings.TrimSpace(item.target.PrimaryCode))
+		if dlsiteWorkNoPattern.MatchString(item.target.PrimaryCode) {
+			pending = append(pending, item)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	targets := []workTarget{}
+	for _, item := range pending {
+		if strings.TrimSpace(item.snapshot) == "" {
+			targets = append(targets, item.target)
+			continue
+		}
+		originCode := originCodeFromSnapshot(item.snapshot)
+		if originCode == "" || strings.EqualFold(originCode, item.target.PrimaryCode) {
+			continue
+		}
+		originReady, err := s.hasDLsiteSnapshotForCode(ctx, originCode)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.EqualFold(item.canonicalCode, originCode) || !originReady {
+			targets = append(targets, item.target)
+		}
+	}
 	return targets, nil
+}
+
+func (s *DLsiteSyncer) hasDLsiteSnapshotForCode(ctx context.Context, code string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work
+			INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
+			INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
+			WHERE UPPER(work.primary_code) = UPPER(?) AND provider.code = 'dlsite'
+		)
+	`, code).Scan(&exists)
+	return exists, err
 }
 
 func (s *DLsiteSyncer) countSyncableWorks(ctx context.Context) (int, error) {
@@ -353,7 +418,10 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 
 	raw := product.Raw
 	if strings.TrimSpace(product.Language) != "" {
-		raw = snapshotWithKikotoMeta(raw, map[string]any{"language": product.Language})
+		raw = snapshotWithKikotoMeta(raw, map[string]any{
+			"response_language": product.Language,
+			"edition_language":  productEditionLanguage(product),
+		})
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
@@ -646,6 +714,50 @@ func baseProductCode(product dlsite.Product) string {
 			return value
 		}
 	}
+	return originProductCode(product)
+}
+
+func originProductCode(product dlsite.Product) string {
+	bestCode := ""
+	bestOrder := 0
+	for index, edition := range product.LanguageEditions {
+		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+		if !dlsiteWorkNoPattern.MatchString(code) {
+			continue
+		}
+		order := edition.DisplayOrder
+		if order <= 0 {
+			order = index + 1
+		}
+		if bestCode == "" || order < bestOrder {
+			bestCode = code
+			bestOrder = order
+		}
+	}
+	return bestCode
+}
+
+func productEdition(product dlsite.Product) (dlsite.LanguageEdition, bool) {
+	currentCode := strings.ToUpper(strings.TrimSpace(firstNonEmptyText(product.WorkNo, product.ProductID)))
+	for _, edition := range product.LanguageEditions {
+		if strings.EqualFold(strings.TrimSpace(edition.WorkNo), currentCode) {
+			return edition, true
+		}
+	}
+	return dlsite.LanguageEdition{}, false
+}
+
+func productEditionLanguage(product dlsite.Product) string {
+	if edition, ok := productEdition(product); ok {
+		return strings.TrimSpace(firstNonEmptyText(edition.Lang, edition.Label))
+	}
+	return strings.TrimSpace(firstNonEmptyText(product.TranslationInfo.Lang, product.Language))
+}
+
+func productEditionLabel(product dlsite.Product) string {
+	if edition, ok := productEdition(product); ok {
+		return strings.TrimSpace(edition.Label)
+	}
 	return ""
 }
 
@@ -680,26 +792,25 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 	if err != nil {
 		return err
 	}
-	language := strings.TrimSpace(product.Language)
-	if language == "" {
-		language = strings.TrimSpace(product.TranslationInfo.Lang)
-	}
+	language := productEditionLanguage(product)
+	editionLabel := productEditionLabel(product)
 	isCanonical := 0
 	if strings.EqualFold(currentCode, canonicalCode) {
 		isCanonical = 1
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, is_canonical, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(work_id) DO UPDATE SET
 			logical_work_id = excluded.logical_work_id,
 			provider_id = excluded.provider_id,
 			primary_code = excluded.primary_code,
 			base_code = excluded.base_code,
 			metadata_language = excluded.metadata_language,
+			edition_label = excluded.edition_label,
 			is_canonical = excluded.is_canonical,
 			updated_at = CURRENT_TIMESTAMP
-	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, isCanonical); err != nil {
+	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, editionLabel, isCanonical); err != nil {
 		return err
 	}
 	if isCanonical == 1 {
@@ -707,24 +818,11 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 			return err
 		}
 	}
-	return syncKnownProductLanguageEditions(ctx, tx, providerID, logicalWorkID, canonicalCode, product.Raw)
+	return syncKnownProductLanguageEditions(ctx, tx, providerID, logicalWorkID, canonicalCode, product.LanguageEditions)
 }
 
-func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerID int64, logicalWorkID int64, canonicalCode string, raw json.RawMessage) error {
-	var payload struct {
-		LanguageEditions []struct {
-			WorkNo string `json:"workno"`
-			Label  string `json:"label"`
-			Lang   string `json:"lang"`
-		} `json:"language_editions"`
-	}
-	if len(raw) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil
-	}
-	for _, edition := range payload.LanguageEditions {
+func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerID int64, logicalWorkID int64, canonicalCode string, editions []dlsite.LanguageEdition) error {
+	for _, edition := range editions {
 		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
 		if !dlsiteWorkNoPattern.MatchString(code) {
 			continue
@@ -740,7 +838,8 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 		if strings.EqualFold(code, canonicalCode) {
 			isCanonical = 1
 		}
-		language := strings.TrimSpace(firstNonEmptyText(edition.Label, edition.Lang))
+		language := strings.TrimSpace(firstNonEmptyText(edition.Lang, edition.Label))
+		label := strings.TrimSpace(edition.Label)
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -759,11 +858,26 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 				END,
 				is_canonical = excluded.is_canonical,
 				updated_at = CURRENT_TIMESTAMP
-		`, editionWorkID, logicalWorkID, providerID, code, canonicalCode, language, language, isCanonical); err != nil {
+		`, editionWorkID, logicalWorkID, providerID, code, canonicalCode, language, label, isCanonical); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func originCodeFromSnapshot(raw string) string {
+	var combined struct {
+		Product json.RawMessage `json:"product"`
+	}
+	rawBytes := []byte(raw)
+	if err := json.Unmarshal(rawBytes, &combined); err == nil && len(combined.Product) > 0 {
+		rawBytes = combined.Product
+	}
+	var product dlsite.Product
+	if err := json.Unmarshal(rawBytes, &product); err != nil {
+		return ""
+	}
+	return baseProductCode(product)
 }
 
 func firstNonEmptyText(values ...string) string {

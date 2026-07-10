@@ -24,6 +24,8 @@ const work = {
   progress: { mediaItemId: null, title: "", positionSeconds: 0, durationSeconds: null, lastPlayedAt: null, completed: false },
   listeningStatus: "none",
   favorite: false,
+  mediaEditionCode: "",
+  officialTranslation: false,
 };
 
 const persistedTrack = {
@@ -81,6 +83,14 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
       await route.fulfill({ json: [] });
       return;
     }
+    if (url.pathname === "/api/favorite-lists") {
+	  await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0 }] });
+	  return;
+	}
+	if (url.pathname === "/api/works/1/favorite-lists") {
+	  await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0, selected: false }] });
+	  return;
+	}
     if (url.pathname === "/api/runtime-settings") {
       await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
       return;
@@ -147,7 +157,48 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await page.getByRole("button", { name: "Sort: Recently added" }).click();
   const selectedSort = page.getByRole("button", { name: "Recently added", exact: true });
   await expect(selectedSort).toHaveClass(/bg-primary\/10/);
+	await expect(selectedSort.locator("svg")).toHaveCount(0);
   expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
+});
+
+test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {
+	await mockApplication(page);
+	await page.goto("/");
+
+	const trigger = page.getByRole("button", { name: "Add to list" });
+	await trigger.scrollIntoViewIfNeeded();
+	await trigger.click();
+	const popover = page.locator(".fixed.z-50").filter({ hasText: "Favorite lists" });
+	await expect(popover).toBeVisible();
+	const [triggerBox, popoverBox, viewport] = await Promise.all([
+		trigger.boundingBox(),
+		popover.boundingBox(),
+		page.evaluate(() => ({ width: innerWidth, height: innerHeight })),
+	]);
+	expect(triggerBox).not.toBeNull();
+	expect(popoverBox).not.toBeNull();
+	expect(popoverBox!.x).toBeGreaterThanOrEqual(0);
+	expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
+	expect(popoverBox!.y).toBeGreaterThanOrEqual(0);
+	expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height - 150);
+});
+
+test("library URL state and per-scope search state survive navigation", async ({ page }) => {
+	await mockApplication(page);
+	await page.goto("/");
+
+	const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+	await search.fill("local term");
+	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
+	await page.getByRole("button", { name: "Tracked", exact: true }).click();
+	await expect(search).toHaveValue("");
+	await search.fill("tracked term");
+	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
+	await page.getByRole("button", { name: "Local", exact: true }).click();
+	await expect(search).toHaveValue("local term");
+	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
+	await page.reload();
+	await expect(search).toHaveValue("local term");
 });
 
 test("anonymous quick marks show an actionable toast above protected mobile controls", async ({ page }) => {

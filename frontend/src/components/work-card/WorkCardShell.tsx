@@ -2,6 +2,7 @@ import { BookmarkPlus, Check, CheckCircle2, ChevronRight, Circle, ExternalLink, 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -285,28 +286,9 @@ export function WorkCardQuickMarkButton({
   onChange: (status: ListeningStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [openAbove, setOpenAbove] = useState(false);
-  const [mobilePosition, setMobilePosition] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
   const current = quickMarkMeta(value);
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && ref.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+	const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
 
   return (
     <div className="relative" ref={ref}>
@@ -317,36 +299,12 @@ export function WorkCardQuickMarkButton({
         label={`Mark: ${current.label}`}
         onClick={(event) => {
           event.stopPropagation();
-          if (!open) {
-            const rect = ref.current?.getBoundingClientRect();
-            const isMobile = window.matchMedia("(max-width: 639px)").matches;
-            const reservedBottom = isMobile ? 168 : 12;
-            const availableBelow = rect ? window.innerHeight - reservedBottom - rect.bottom : window.innerHeight;
-            const shouldOpenAbove = availableBelow < 280;
-            setOpenAbove(shouldOpenAbove);
-            if (isMobile && rect) {
-              const menuWidth = 176;
-              const menuHeight = 280;
-              const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.right - menuWidth));
-              const desiredTop = shouldOpenAbove ? rect.top - menuHeight - 8 : rect.bottom + 8;
-              const top = Math.max(12, Math.min(window.innerHeight - reservedBottom - menuHeight, desiredTop));
-              setMobilePosition({ left, top });
-            } else {
-              setMobilePosition(null);
-            }
-          }
           setOpen((value) => !value);
         }}
       >
         <current.icon className={`h-4 w-4 ${current.active ? current.className : "text-muted-foreground"}`} />
       </WorkCardActionButton>
-      {open && (
-        <div
-          className={`${mobilePosition ? "fixed z-50" : "absolute right-0 z-30"} max-h-[calc(100dvh-2rem)] w-44 overflow-y-auto rounded-lg border border-border bg-card p-1 text-card-foreground shadow-2xl ${
-            mobilePosition ? "" : openAbove ? "bottom-10" : "top-10"
-          }`}
-          style={mobilePosition ?? undefined}
-        >
+	  <AnchoredPopover open={open} anchorRef={ref} onOpenChange={setOpen} bottomCollisionPadding={bottomCollisionPadding} className="w-40 p-1 text-sm">
           {quickMarkOptions.map((option) => {
             const meta = quickMarkMeta(option.value);
             const selected = option.value === value;
@@ -366,12 +324,10 @@ export function WorkCardQuickMarkButton({
               >
                 <meta.icon className={`h-3.5 w-3.5 ${selected && meta.active ? meta.className : ""}`} />
                 <span className="min-w-0 flex-1">{option.label}</span>
-                {selected && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
               </button>
             );
           })}
-        </div>
-      )}
+	  </AnchoredPopover>
     </div>
   );
 }
@@ -402,24 +358,7 @@ export function WorkCardListButton({
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && ref.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+	const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
 
   useEffect(() => {
     if (!open || !effectiveWorkId) return;
@@ -502,8 +441,7 @@ export function WorkCardListButton({
       >
         <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
       </WorkCardActionButton>
-      {open && (
-        <div className="absolute bottom-10 right-0 z-30 w-56 rounded-md border border-border bg-card p-2 text-left text-card-foreground shadow-2xl" onClick={(event) => event.stopPropagation()}>
+	  <AnchoredPopover open={open} anchorRef={ref} onOpenChange={setOpen} bottomCollisionPadding={bottomCollisionPadding} className="w-56 p-2 text-left">
           <div className="text-sm font-semibold">Favorite lists</div>
           <div className="mt-2 max-h-56 space-y-1.5 overflow-auto">
             {loading ? (
@@ -538,8 +476,7 @@ export function WorkCardListButton({
               <Check className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-      )}
+	  </AnchoredPopover>
     </div>
   );
 }
@@ -617,6 +554,10 @@ export function formatTime(seconds: number) {
 function workProgressPercent(progress: WorkProgressSummary) {
   if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
+}
+
+function isMobileViewport() {
+	return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }
 
 function dateOnly(value?: string | null) {

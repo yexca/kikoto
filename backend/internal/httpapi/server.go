@@ -516,6 +516,8 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows *sq
 			}
 		}
 		if !strings.EqualFold(familyMediaCode, item.PrimaryCode) {
+			item.MediaEditionCode = familyMediaCode
+			item.OfficialTranslation = true
 			if trackCount, availableLocations, availability, ok := s.workAvailabilityForCode(ctx, familyMediaCode); ok {
 				item.TrackCount = trackCount
 				item.AvailableLocations = availableLocations
@@ -1024,29 +1026,31 @@ func (s *Server) seriesTitleIDForWork(ctx context.Context, code string) string {
 }
 
 type libraryWorkSummary struct {
-	ID                 int64                `json:"id"`
-	PrimaryCode        string               `json:"primaryCode"`
-	Title              string               `json:"title"`
-	CreatedAt          string               `json:"createdAt"`
-	UpdatedAt          string               `json:"updatedAt"`
-	ReleaseDate        *string              `json:"releaseDate"`
-	CoverURL           string               `json:"coverUrl"`
-	DLsiteURL          string               `json:"dlsiteUrl"`
-	Circle             string               `json:"circle"`
-	CircleExternalID   string               `json:"circleExternalId"`
-	Rating             *float64             `json:"rating"`
-	Sales              *int64               `json:"sales"`
-	Tags               []string             `json:"tags"`
-	VoiceActors        []string             `json:"voiceActors"`
-	Series             string               `json:"series"`
-	SeriesTitleID      string               `json:"seriesTitleId"`
-	TrackCount         int64                `json:"trackCount"`
-	AvailableLocations int64                `json:"availableLocations"`
-	Availability       []string             `json:"availability"`
-	SourcePresence     []sourcePresenceItem `json:"sourcePresence"`
-	Progress           workProgressSummary  `json:"progress"`
-	ListeningStatus    string               `json:"listeningStatus"`
-	Favorite           bool                 `json:"favorite"`
+	ID                  int64                `json:"id"`
+	PrimaryCode         string               `json:"primaryCode"`
+	Title               string               `json:"title"`
+	CreatedAt           string               `json:"createdAt"`
+	UpdatedAt           string               `json:"updatedAt"`
+	ReleaseDate         *string              `json:"releaseDate"`
+	CoverURL            string               `json:"coverUrl"`
+	DLsiteURL           string               `json:"dlsiteUrl"`
+	Circle              string               `json:"circle"`
+	CircleExternalID    string               `json:"circleExternalId"`
+	Rating              *float64             `json:"rating"`
+	Sales               *int64               `json:"sales"`
+	Tags                []string             `json:"tags"`
+	VoiceActors         []string             `json:"voiceActors"`
+	Series              string               `json:"series"`
+	SeriesTitleID       string               `json:"seriesTitleId"`
+	TrackCount          int64                `json:"trackCount"`
+	AvailableLocations  int64                `json:"availableLocations"`
+	Availability        []string             `json:"availability"`
+	SourcePresence      []sourcePresenceItem `json:"sourcePresence"`
+	Progress            workProgressSummary  `json:"progress"`
+	ListeningStatus     string               `json:"listeningStatus"`
+	Favorite            bool                 `json:"favorite"`
+	MediaEditionCode    string               `json:"mediaEditionCode"`
+	OfficialTranslation bool                 `json:"officialTranslation"`
 }
 
 type sourcePresenceItem struct {
@@ -1101,6 +1105,9 @@ type workTranslation struct {
 	PrimaryCode      string `json:"primaryCode"`
 	Title            string `json:"title"`
 	MetadataLanguage string `json:"metadataLanguage"`
+	EditionLabel     string `json:"editionLabel"`
+	Origin           bool   `json:"origin"`
+	Official         bool   `json:"official"`
 	Current          bool   `json:"current"`
 	HasMedia         bool   `json:"hasMedia"`
 }
@@ -1764,7 +1771,7 @@ func (s *Server) syncKnownLanguageEditions(ctx context.Context, logicalWorkID in
 				END,
 				is_canonical = excluded.is_canonical,
 				updated_at = CURRENT_TIMESTAMP
-		`, editionWorkID, logicalWorkID, provider, code, canonicalCode, edition.MetadataLanguage, edition.MetadataLanguage, isCanonical); err != nil {
+		`, editionWorkID, logicalWorkID, provider, code, canonicalCode, edition.MetadataLanguage, edition.EditionLabel, isCanonical); err != nil {
 			return err
 		}
 	}
@@ -3956,6 +3963,8 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 			edition.primary_code,
 			work.title,
 			edition.metadata_language,
+			edition.edition_label,
+			edition.is_canonical,
 			EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = edition.work_id)
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
@@ -3971,10 +3980,11 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 	for rows.Next() {
 		var item workTranslation
 		var workID int64
-		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.HasMedia); err != nil {
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.EditionLabel, &item.Origin, &item.HasMedia); err != nil {
 			return nil, err
 		}
 		item.WorkID = &workID
+		item.Official = !item.Origin
 		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
 		translations = append(translations, item)
 	}
@@ -5652,7 +5662,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		Product json.RawMessage `json:"product"`
 		Dynamic json.RawMessage `json:"dynamic"`
 		Kikoto  struct {
-			Language string `json:"language"`
+			Language         string `json:"language"`
+			ResponseLanguage string `json:"response_language"`
+			EditionLanguage  string `json:"edition_language"`
 		} `json:"_kikoto"`
 	}
 	if err := json.Unmarshal(rawBytes, &combined); err == nil && len(combined.Product) > 0 {
@@ -5695,7 +5707,9 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		} `json:"series_work"`
 		Creators dlsite.Creators `json:"creaters"`
 		Kikoto   struct {
-			Language string `json:"language"`
+			Language         string `json:"language"`
+			ResponseLanguage string `json:"response_language"`
+			EditionLanguage  string `json:"edition_language"`
 		} `json:"_kikoto"`
 		TranslationInfo struct {
 			OriginalWorkNo string `json:"original_workno"`
@@ -5703,9 +5717,10 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 			Lang           string `json:"lang"`
 		} `json:"translation_info"`
 		LanguageEditions []struct {
-			WorkNo string `json:"workno"`
-			Label  string `json:"label"`
-			Lang   string `json:"lang"`
+			WorkNo       string `json:"workno"`
+			DisplayOrder int    `json:"display_order"`
+			Label        string `json:"label"`
+			Lang         string `json:"lang"`
 		} `json:"language_editions"`
 	}
 	if err := json.Unmarshal(rawBytes, &payload); err != nil {
@@ -5744,11 +5759,27 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
 	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
-	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(combined.Kikoto.Language, payload.Kikoto.Language, payload.Language, payload.Locale, payload.TranslationInfo.Lang))
 	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
 	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
-	if metadata.BaseCode == currentCode {
-		metadata.BaseCode = ""
+	originCode := ""
+	originOrder := 0
+	currentEditionLanguage := ""
+	for index, edition := range payload.LanguageEditions {
+		code := normalizeDLsiteCode(edition.WorkNo)
+		if code == "" {
+			continue
+		}
+		order := edition.DisplayOrder
+		if order <= 0 {
+			order = index + 1
+		}
+		if originCode == "" || order < originOrder {
+			originCode = code
+			originOrder = order
+		}
+		if strings.EqualFold(code, currentCode) {
+			currentEditionLanguage = strings.TrimSpace(firstNonEmpty(edition.Lang, edition.Label))
+		}
 	}
 	for _, edition := range payload.LanguageEditions {
 		code := normalizeDLsiteCode(edition.WorkNo)
@@ -5757,10 +5788,29 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		}
 		metadata.LanguageEditions = append(metadata.LanguageEditions, workTranslation{
 			PrimaryCode:      code,
-			MetadataLanguage: firstNonEmpty(edition.Label, edition.Lang),
+			MetadataLanguage: firstNonEmpty(edition.Lang, edition.Label),
+			EditionLabel:     strings.TrimSpace(edition.Label),
+			Origin:           strings.EqualFold(code, originCode),
+			Official:         !strings.EqualFold(code, originCode),
 			Current:          strings.EqualFold(code, currentCode),
 		})
 	}
+	if metadata.BaseCode == "" && originCode != "" && !strings.EqualFold(originCode, currentCode) {
+		metadata.BaseCode = originCode
+	}
+	if metadata.BaseCode == currentCode {
+		metadata.BaseCode = ""
+	}
+	metadata.MetadataLanguage = strings.TrimSpace(firstNonEmpty(
+		combined.Kikoto.EditionLanguage,
+		payload.Kikoto.EditionLanguage,
+		currentEditionLanguage,
+		combined.Kikoto.Language,
+		payload.Kikoto.Language,
+		payload.Language,
+		payload.Locale,
+		payload.TranslationInfo.Lang,
+	))
 	if release := strings.TrimSpace(payload.ReleaseDate); release != "" {
 		metadata.ReleaseDate = &release
 	}

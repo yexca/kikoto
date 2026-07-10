@@ -22,6 +22,8 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+	mediaEditionCode: string;
+	officialTranslation: boolean;
 };
 
 export type SourcePresenceItem = {
@@ -171,6 +173,9 @@ export type WorkTranslation = {
   primaryCode: string;
   title: string;
   metadataLanguage: string;
+	editionLabel: string;
+	origin: boolean;
+	official: boolean;
   current: boolean;
   hasMedia: boolean;
 };

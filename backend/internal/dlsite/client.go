@@ -68,38 +68,48 @@ type Client struct {
 }
 
 type Product struct {
-	WorkNo            string          `json:"workno"`
-	ProductID         string          `json:"product_id"`
-	SiteID            string          `json:"site_id"`
-	SiteIDTouch       string          `json:"site_id_touch"`
-	MakerID           string          `json:"maker_id"`
-	MakerName         string          `json:"maker_name"`
-	ProductName       string          `json:"product_name"`
-	WorkName          string          `json:"work_name"`
-	WorkNameKana      string          `json:"work_name_kana"`
-	Intro             string          `json:"intro"`
-	IntroShort        string          `json:"intro_s"`
-	RegistDate        string          `json:"regist_date"`
-	AgeCategoryString string          `json:"age_category_string"`
-	WorkType          string          `json:"work_type"`
-	WorkTypeString    string          `json:"work_type_string"`
-	ImageMain         Image           `json:"image_main"`
-	ImageThumb        Image           `json:"image_thum"`
-	ImageThumbMini    Image           `json:"image_thum_mini"`
-	Genres            []Genre         `json:"genres"`
-	Creators          Creators        `json:"creaters"`
-	TranslationInfo   TranslationInfo `json:"translation_info"`
-	Raw               json.RawMessage `json:"-"`
-	ProductRaw        json.RawMessage `json:"-"`
-	DynamicRaw        json.RawMessage `json:"-"`
-	RateAverage2DP    *float64        `json:"-"`
-	Language          string          `json:"-"`
+	WorkNo            string            `json:"workno"`
+	ProductID         string            `json:"product_id"`
+	SiteID            string            `json:"site_id"`
+	SiteIDTouch       string            `json:"site_id_touch"`
+	MakerID           string            `json:"maker_id"`
+	MakerName         string            `json:"maker_name"`
+	ProductName       string            `json:"product_name"`
+	WorkName          string            `json:"work_name"`
+	WorkNameKana      string            `json:"work_name_kana"`
+	Intro             string            `json:"intro"`
+	IntroShort        string            `json:"intro_s"`
+	RegistDate        string            `json:"regist_date"`
+	AgeCategoryString string            `json:"age_category_string"`
+	WorkType          string            `json:"work_type"`
+	WorkTypeString    string            `json:"work_type_string"`
+	ImageMain         Image             `json:"image_main"`
+	ImageThumb        Image             `json:"image_thum"`
+	ImageThumbMini    Image             `json:"image_thum_mini"`
+	Genres            []Genre           `json:"genres"`
+	Creators          Creators          `json:"creaters"`
+	TranslationInfo   TranslationInfo   `json:"translation_info"`
+	LanguageEditions  []LanguageEdition `json:"language_editions"`
+	Raw               json.RawMessage   `json:"-"`
+	ProductRaw        json.RawMessage   `json:"-"`
+	DynamicRaw        json.RawMessage   `json:"-"`
+	RateAverage2DP    *float64          `json:"-"`
+	Language          string            `json:"-"`
 }
 
 type TranslationInfo struct {
 	OriginalWorkNo string `json:"original_workno"`
 	ParentWorkNo   string `json:"parent_workno"`
 	Lang           string `json:"lang"`
+}
+
+type LanguageEdition struct {
+	WorkNo       string `json:"workno"`
+	EditionID    int64  `json:"edition_id"`
+	EditionType  string `json:"edition_type"`
+	DisplayOrder int    `json:"display_order"`
+	Label        string `json:"label"`
+	Lang         string `json:"lang"`
 }
 
 type ProductOptions struct {

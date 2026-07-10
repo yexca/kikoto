@@ -129,6 +129,31 @@ const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
+type LibraryBrowseState = {
+	query: string;
+	page: number;
+	pageSize: number;
+	status: ListeningStatus | "all";
+	sort: LibrarySort;
+	direction: SortDirection;
+	view: LibraryViewMode;
+	mobileColumns: LibraryColumnCount;
+	desktopColumns: LibraryColumnCount;
+	scrollY: number;
+};
+const defaultLibraryBrowseState: LibraryBrowseState = {
+	query: "",
+	page: 1,
+	pageSize: 24,
+	status: "all",
+	sort: "recent",
+	direction: "desc",
+	view: "grid",
+	mobileColumns: 1,
+	desktopColumns: 6,
+	scrollY: 0,
+};
+const libraryBrowseStoragePrefix = "kikoto:library-browse:";
 type SearchClauseKind =
   | "text"
   | "code"
@@ -161,6 +186,7 @@ const editableSearchClauseKinds: { value: SearchClauseKind; label: string }[] = 
 
 export function LibraryPage() {
   const toast = useToast();
+	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
   const [works, setWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
@@ -175,20 +201,21 @@ export function LibraryPage() {
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<Work | null>(null);
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [libraryLoadError, setLibraryLoadError] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState("");
+	const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
+	const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
+	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialBrowseState.query);
+	const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState(initialBrowseState.query);
   const [optimisticLibrarySearchClauses, setOptimisticLibrarySearchClauses] = useState<SearchClause[] | null>(null);
   const [clauseEditor, setClauseEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchClauseDraft } | null>(null);
-  const [mobileColumns, setMobileColumns] = useState<LibraryColumnCount>(1);
-  const [desktopColumns, setDesktopColumns] = useState<LibraryColumnCount>(6);
-  const [viewMode, setViewMode] = useState<LibraryViewMode>("grid");
-  const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [workPage, setWorkPage] = useState(1);
-  const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(24);
+	const [mobileColumns, setMobileColumns] = useState<LibraryColumnCount>(initialBrowseState.mobileColumns);
+	const [desktopColumns, setDesktopColumns] = useState<LibraryColumnCount>(initialBrowseState.desktopColumns);
+	const [viewMode, setViewMode] = useState<LibraryViewMode>(initialBrowseState.view);
+	const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
+	const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
+	const [workPage, setWorkPage] = useState(initialBrowseState.page);
+	const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
   const [workTotal, setWorkTotal] = useState(0);
+	const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
   const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
@@ -198,6 +225,9 @@ export function LibraryPage() {
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
   const databaseMenuRef = useRef<HTMLDivElement | null>(null);
+	const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
+	const pendingResultsScroll = useRef(false);
+	const pendingScrollRestore = useRef<number | null>(null);
   const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
   const debouncedSearchClauses = useMemo(() => parseSearchClauses(debouncedSearchQuery), [debouncedSearchQuery]);
   const debouncedRemoteSearchClauses = useMemo(() => parseSearchClauses(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
@@ -206,16 +236,94 @@ export function LibraryPage() {
   const workScope = localScope;
   const activePrimaryTab: "local" | "tracked" | "database" | null =
     activeTab.kind === "source" ? null : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
+	const activeRemoteBrowseState = activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
+	const activeBrowseState: LibraryBrowseState = {
+		query: searchQuery,
+		page: activeTab.kind === "source" ? activeRemoteBrowseState.page : workPage,
+		pageSize: activeTab.kind === "source" ? activeRemoteBrowseState.pageSize : workPageSize,
+		status: statusFilter,
+		sort: librarySort,
+		direction: sortDirection,
+		view: viewMode,
+		mobileColumns,
+		desktopColumns,
+		scrollY: 0,
+	};
+	const applyBrowseState = (state: LibraryBrowseState, tab: LibraryTab) => {
+		setSearchQuery(state.query);
+		setDebouncedSearchQuery(state.query);
+		setDebouncedRemoteSearchQuery(state.query);
+		setStatusFilter(state.status);
+		setLibrarySort(state.sort);
+		setSortDirection(state.direction);
+		setViewMode(state.view);
+		setMobileColumns(state.mobileColumns);
+		setDesktopColumns(state.desktopColumns);
+		pendingScrollRestore.current = state.scrollY;
+		window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+			if (pendingScrollRestore.current !== null) window.scrollTo({ top: pendingScrollRestore.current, behavior: "auto" });
+		}));
+		if (tab.kind === "source") {
+			setRemoteSourceStates((states) => ({
+				...states,
+				[tab.source.id]: { page: state.page, pageSize: state.pageSize, query: formatRemoteSearchQuery(parseSearchClauses(state.query)) },
+			}));
+		} else {
+			setWorkPage(state.page);
+			setWorkPageSize(localPageSize(state.pageSize));
+		}
+	};
+	const completeResultsUpdate = () => {
+		if (pendingScrollRestore.current !== null) {
+			const scrollY = pendingScrollRestore.current;
+			pendingScrollRestore.current = null;
+			pendingResultsScroll.current = false;
+			window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+			return;
+		}
+		if (!pendingResultsScroll.current) return;
+		pendingResultsScroll.current = false;
+		window.requestAnimationFrame(() => {
+			const anchor = resultsAnchorRef.current;
+			if (!anchor) return;
+			const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+			anchor.scrollIntoView({ behavior, block: "start" });
+		});
+	};
+	const queueResultsScroll = () => {
+		pendingResultsScroll.current = true;
+	};
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), librarySearchDebounceMs);
+	const timer = window.setTimeout(() => {
+		if (searchQuery !== debouncedSearchQuery) {
+			queueResultsScroll();
+			if (activeTab.kind !== "source") setWorkPage(1);
+		}
+		setDebouncedSearchQuery(searchQuery);
+	}, librarySearchDebounceMs);
     return () => window.clearTimeout(timer);
-  }, [searchQuery]);
+	}, [activeTab.kind, searchQuery, debouncedSearchQuery]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedRemoteSearchQuery(searchQuery), remoteSearchDebounceMs);
+	const timer = window.setTimeout(() => {
+		if (searchQuery !== debouncedRemoteSearchQuery) {
+			queueResultsScroll();
+			if (activeTab.kind === "source") {
+				setRemoteSourceStates((states) => ({
+					...states,
+					[activeTab.source.id]: {
+						...(states[activeTab.source.id] ?? defaultRemoteSourceViewState),
+						page: 1,
+						query: formatRemoteSearchQuery(parseSearchClauses(searchQuery)),
+					},
+				}));
+			}
+		}
+		setDebouncedRemoteSearchQuery(searchQuery);
+	}, remoteSearchDebounceMs);
     return () => window.clearTimeout(timer);
-  }, [searchQuery]);
+	}, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
 
   useEffect(() => {
     if (activeTab.kind === "source") return;
@@ -225,6 +333,7 @@ export function LibraryPage() {
     }
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
+	setIsLibraryLoading(true);
     api
       .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection)
       .then((page) => {
@@ -233,18 +342,27 @@ export function LibraryPage() {
         setWorkTotal(page.total);
         setLibraryLoadError("");
         setOptimisticLibrarySearchClauses(null);
+		completeResultsUpdate();
       })
       .catch((error) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
         setOptimisticLibrarySearchClauses(null);
-      });
+		pendingResultsScroll.current = false;
+	  })
+	  .finally(() => {
+		if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
+	  });
   }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
       setSources(items);
-      setActiveTab((tab) => resolveTabFromPath(window.location.pathname, items, tab));
+	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
+	  const scope = localScopeFromPath(window.location.pathname);
+	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope));
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? defaultLibraryBrowseState), resolved);
+	  setActiveTab(resolved);
       const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
       if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
     }).catch(() => setSources([]));
@@ -271,6 +389,7 @@ export function LibraryPage() {
     api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
+	  completeResultsUpdate();
     }).catch(() => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult({
@@ -311,10 +430,14 @@ export function LibraryPage() {
 
   useEffect(() => {
     const syncFromPath = () => {
+	  const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
+	  const nextScope = localScopeFromPath(window.location.pathname);
+	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope));
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? defaultLibraryBrowseState), nextTab);
       setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
-      setActiveTab((tab) => resolveTabFromPath(window.location.pathname, sources, tab));
-      setLocalScope(localScopeFromPath(window.location.pathname));
+	  setActiveTab(nextTab);
+	  setLocalScope(nextScope);
     };
     const handlePopState = () => syncFromPath();
     const handleAppNavigation = () => syncFromPath();
@@ -324,16 +447,23 @@ export function LibraryPage() {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-  }, [sources]);
+	}, [sources, activeTab]);
 
-  useEffect(() => {
-    setWorkPage(1);
-  }, [activeTab.kind, activeTab.kind === "source" ? activeTab.source.id : "", localScope, librarySearchQuery, statusFilter, librarySort, sortDirection, workPageSize]);
+	useEffect(() => {
+		if (selectedCode !== null || selectedRemoteTarget !== null) return;
+		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+		const nextSearch = libraryBrowseSearch(activeBrowseState);
+		if (window.location.search !== nextSearch) {
+			window.history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}${nextSearch}`);
+		}
+	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
 
-  useEffect(() => {
-    if (activeTab.kind !== "source") return;
-    updateRemoteSourceState(activeTab.source.id, { page: 1, query: remoteSearchQuery });
-  }, [activeTab, remoteSearchQuery]);
+	useEffect(() => {
+		if (selectedCode !== null || selectedRemoteTarget !== null) return;
+		const rememberScroll = () => writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+		window.addEventListener("scroll", rememberScroll, { passive: true });
+		return () => window.removeEventListener("scroll", rememberScroll);
+	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
     if (!isDatabaseMenuOpen) return;
@@ -354,8 +484,9 @@ export function LibraryPage() {
   }, [isDatabaseMenuOpen]);
 
   const openWork = (work: Work) => {
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
     const path = `/${work.primaryCode}`;
-    window.history.pushState({ returnTo: pathForLibraryTab(activeTab), returnLabel: "Back to library" }, "", path);
+	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library" }, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
@@ -364,14 +495,15 @@ export function LibraryPage() {
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
     setSelectedRemoteTarget({ source, code });
-    window.history.pushState({ returnTo: pathForLibraryTab(activeTab), returnLabel: "Back to library" }, "", `/${encodeURIComponent(code)}?source=${source.id}`);
+	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library" }, "", `/${encodeURIComponent(code)}?source=${source.id}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
   const backToLibrary = () => {
-    const returnTarget = detailReturnTarget(pathForLibraryTab(activeTab));
+	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
     window.history.pushState({}, "", returnTarget.path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
@@ -379,25 +511,33 @@ export function LibraryPage() {
   };
 
   const changeTab = (tab: LibraryTab) => {
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
+	const nextState = readLibraryBrowseState(libraryBrowseKey(tab, nextScope)) ?? defaultLibraryBrowseState;
     setActiveTab(tab);
-    if (tab.kind === "all") setLocalScope("local");
+	if (tab.kind === "all") setLocalScope(nextScope);
+	applyBrowseState(nextState, tab);
     setIsDatabaseMenuOpen(false);
     setSelectedRemoteTarget(null);
-    const path = pathForLibraryTab(tab);
-    if (window.location.pathname !== path) {
-      window.history.pushState({}, "", path);
+	const path = libraryLocation(pathForLibraryTab(tab), nextState);
+	if (`${window.location.pathname}${window.location.search}` !== path) {
+	  window.history.pushState({}, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
 
   const changeLocalScope = (scope: LocalLibraryScope) => {
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const nextTab: LibraryTab = { kind: "all" };
+	const nextState = readLibraryBrowseState(libraryBrowseKey(nextTab, scope)) ?? defaultLibraryBrowseState;
     setActiveTab({ kind: "all" });
     setLocalScope(scope);
-    setWorkPage(1);
+	applyBrowseState(nextState, nextTab);
     setSelectedRemoteTarget(null);
-    const path = pathForLocalScope(scope);
-    if (path && window.location.pathname !== path) {
-      window.history.pushState({}, "", path);
+	const basePath = pathForLocalScope(scope);
+	const path = basePath ? libraryLocation(basePath, nextState) : null;
+	if (path && `${window.location.pathname}${window.location.search}` !== path) {
+	  window.history.pushState({}, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
@@ -484,17 +624,22 @@ export function LibraryPage() {
   const loadLibraryWorksNow = (query: string, page = 1) => {
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
+	setIsLibraryLoading(true);
     api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection).then((result) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks(result.works);
       setWorkTotal(result.total);
       setLibraryLoadError("");
       setOptimisticLibrarySearchClauses(null);
+	  completeResultsUpdate();
     }).catch((error) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
       setOptimisticLibrarySearchClauses(null);
-    });
+	  pendingResultsScroll.current = false;
+	}).finally(() => {
+	  if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
+	});
   };
 
   const loadRemoteWorksNow = (source: LibrarySource, query: string, page = 1, options: { clearResult?: boolean } = {}) => {
@@ -505,6 +650,7 @@ export function LibraryPage() {
     api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
+	  completeResultsUpdate();
     }).catch(() => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult({
@@ -544,13 +690,14 @@ export function LibraryPage() {
     setSearchQuery(nextQuery);
     setDebouncedSearchQuery(nextQuery);
     setDebouncedRemoteSearchQuery(nextQuery);
-    setWorkPage(1);
+	queueResultsScroll();
     if (activeTab.kind === "source") {
       skipNextRemoteEffect.current = true;
       updateRemoteSourceState(activeTab.source.id, { page: 1, query: nextRemoteQuery });
       loadRemoteWorksNow(activeTab.source, nextRemoteQuery, 1, { clearResult: false });
       return;
     }
+	setWorkPage(1);
     setOptimisticLibrarySearchClauses(nextClauses);
     skipNextLibraryEffect.current = true;
     loadLibraryWorksNow(nextLibraryQuery, 1);
@@ -619,14 +766,38 @@ export function LibraryPage() {
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
   const activeFilterCount = statusFilter === "all" ? 0 : 1;
+	const changeWorkPage = (page: number) => {
+		queueResultsScroll();
+		setWorkPage(page);
+	};
+	const changeWorkPageSize = (pageSize: LocalWorkPageSize) => {
+		queueResultsScroll();
+		setWorkPage(1);
+		setWorkPageSize(pageSize);
+	};
+	const changeLibrarySort = (sort: LibrarySort) => {
+		queueResultsScroll();
+		setWorkPage(1);
+		setLibrarySort(sort);
+	};
+	const changeSortDirection = (direction: SortDirection) => {
+		queueResultsScroll();
+		setWorkPage(1);
+		setSortDirection(direction);
+	};
+	const changeStatusFilter = (status: ListeningStatus | "all") => {
+		queueResultsScroll();
+		setWorkPage(1);
+		setStatusFilter(status);
+	};
   const localPagination = (
     <WorkPagination
       page={currentWorkPage}
       pageSize={workPageSize}
       totalItems={workTotal}
       totalPages={totalWorkPages}
-      onPageChange={setWorkPage}
-      onPageSizeChange={setWorkPageSize}
+	  onPageChange={changeWorkPage}
+	  onPageSizeChange={changeWorkPageSize}
     />
   );
 
@@ -669,8 +840,8 @@ export function LibraryPage() {
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
-          <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={setLibrarySort} onDirectionChange={setSortDirection} />
-          <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={setStatusFilter} />
+		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} />
+		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={changeStatusFilter} />
           <div ref={databaseMenuRef} className="relative">
             <IconButton title="Data" onClick={() => setIsDatabaseMenuOpen((value) => !value)}>
               <Database className="h-4 w-4" />
@@ -695,7 +866,7 @@ export function LibraryPage() {
           <Badge variant="outline" className="gap-1.5">
             <Filter className="h-4 w-4" />
             Mark: {statusFilterLabel(statusFilter)}
-            <button className="rounded-sm text-muted-foreground hover:text-foreground" aria-label="Clear mark filter" onClick={() => setStatusFilter("all")}>
+			<button className="rounded-sm text-muted-foreground hover:text-foreground" aria-label="Clear mark filter" onClick={() => changeStatusFilter("all")}>
               <X className="h-3 w-3" />
             </button>
           </Badge>
@@ -744,6 +915,7 @@ export function LibraryPage() {
           </Badge>
         </div>
       )}
+	  <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
         <div className="space-y-3">
@@ -753,8 +925,13 @@ export function LibraryPage() {
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
             searchClauses={searchClauses}
-            onPageChange={(page) => updateRemoteSourceState(activeTab.source.id, { page })}
+			onClearSearch={() => setSearchQuery("")}
+			onPageChange={(page) => {
+			  queueResultsScroll();
+			  updateRemoteSourceState(activeTab.source.id, { page });
+			}}
             onPageSizeChange={(value) => {
+			  queueResultsScroll();
               updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
             }}
             onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
@@ -777,14 +954,27 @@ export function LibraryPage() {
         </div>
       ) : (
         <div className="space-y-3">
+		  {!libraryLoadError && (
+			<div className="flex min-h-9 flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+			  <span>{workTotal > 0 ? `Showing ${(currentWorkPage - 1) * workPageSize + 1}–${Math.min(currentWorkPage * workPageSize, workTotal)} of ${workTotal} works` : "0 works"}</span>
+			  {isLibraryLoading && works.length > 0 && <span>Refreshing results…</span>}
+			</div>
+		  )}
           {!libraryLoadError && localPagination}
           {libraryLoadError ? (
             <LibraryLoadErrorCard
               message={libraryLoadError}
               onRetry={() => loadLibraryWorksNow(librarySearchQuery, currentWorkPage)}
             />
-          ) : visibleWorks.length === 0 ? (
-            <EmptyLibraryWorksCard scope={localScope} />
+		  ) : visibleWorks.length === 0 ? (
+			<EmptyLibraryWorksCard
+			  scope={localScope}
+			  filtered={searchQuery.trim() !== "" || statusFilter !== "all"}
+			  onClear={() => {
+				setSearchQuery("");
+				changeStatusFilter("all");
+			  }}
+			/>
           ) : viewMode === "masonry" ? (
             <section className={workMasonryClassName()} style={workMasonryStyle(mobileColumns, desktopColumns)}>
               {pagedWorks.map((work) => (
@@ -826,7 +1016,7 @@ export function LibraryPage() {
             </section>
           )}
           {!libraryLoadError && (viewMode === "masonry" ? (
-            <CompactWorkPagination page={currentWorkPage} totalPages={totalWorkPages} onPageChange={setWorkPage} />
+			<CompactWorkPagination page={currentWorkPage} totalPages={totalWorkPages} onPageChange={changeWorkPage} />
           ) : (
             localPagination
           ))}
@@ -967,6 +1157,7 @@ function RemoteSourcePanel({
   loading,
   viewState,
   searchClauses,
+	onClearSearch,
   onPageChange,
   onPageSizeChange,
   onOpenPreview,
@@ -979,6 +1170,7 @@ function RemoteSourcePanel({
   loading: boolean;
   viewState: RemoteSourceViewState;
   searchClauses: SearchClause[];
+	onClearSearch: () => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
@@ -1232,7 +1424,10 @@ function RemoteSourcePanel({
         <RemoteWorkGridSkeleton />
       ) : visibleWorks.length === 0 ? (
         <Card>
-          <CardContent className="p-5 text-sm text-muted-foreground">No remote works on this page.</CardContent>
+		  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
+			<span>{searchClauses.length > 0 ? "No remote works match the current search on this page." : "No remote works on this page."}</span>
+			{searchClauses.length > 0 && <Button variant="outline" size="sm" onClick={onClearSearch}>Clear search</Button>}
+		  </CardContent>
         </Card>
       ) : (
         <div className="space-y-2">
@@ -1506,6 +1701,14 @@ function UntrackConfirmModal({
 }
 
 function libraryWorkCardView(work: Work): WorkCardViewModel {
+	const sourceBadges = sourcePresenceBadges(work.sourcePresence, work.availability);
+	if (work.officialTranslation) {
+		sourceBadges.unshift({
+			key: `official-translation:${work.mediaEditionCode}`,
+			label: work.mediaEditionCode ? `Official translation · ${work.mediaEditionCode}` : "Official translation",
+			variant: "secondary",
+		});
+	}
   return {
     code: work.primaryCode,
     title: work.title,
@@ -1518,7 +1721,7 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
     progress: work.progress,
     userTags: [],
-    sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+		sourceBadges,
   };
 }
 
@@ -1709,19 +1912,18 @@ function SortPicker({
           {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
         </button>
       </div>
-      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="w-[min(12rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-1 text-sm shadow-lg">
+	  <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} onOpenChange={setOpen} className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm">
           {librarySortOptions.map((option) => (
             <button
               key={option.value}
-              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+			  className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
               aria-pressed={value === option.value}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
               }}
             >
-              {option.label}
-              {value === option.value && <Check className="h-4 w-4" />}
+			  {option.label}
             </button>
           ))}
       </AnchoredPopover>
@@ -1864,11 +2066,11 @@ function workMasonryStyle(mobileColumns: LibraryColumnCount, desktopColumns: Lib
   } as CSSProperties;
 }
 
-function EmptyLibraryWorksCard({ scope }: { scope: LocalLibraryScope }) {
+function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibraryScope; filtered: boolean; onClear: () => void }) {
   return (
     <Card>
-      <CardContent className="p-5 text-sm text-muted-foreground">
-        {scope === "tracked"
+	  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
+		<span>{scope === "tracked"
           ? "No tracked works match this view."
           : scope === "remote"
           ? "No untracked remote-available works match this view."
@@ -1876,7 +2078,8 @@ function EmptyLibraryWorksCard({ scope }: { scope: LocalLibraryScope }) {
           ? "No works without sources match this view."
           : scope === "local"
           ? "No local works match this view."
-          : "No works match this view."}
+		  : "No works match this view."}</span>
+		{filtered && <Button variant="outline" size="sm" onClick={onClear}>Clear search and filters</Button>}
       </CardContent>
     </Card>
   );
@@ -3720,26 +3923,6 @@ function DetailActionBar({
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
   const forkMenuRef = useRef<HTMLDivElement | null>(null);
   const manageMenuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!forkMenuOpen) return;
-    const close = (event: globalThis.MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && forkMenuRef.current?.contains(target)) return;
-      setForkMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [forkMenuOpen]);
-  useEffect(() => {
-    if (!manageMenuOpen) return;
-    const close = (event: globalThis.MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && manageMenuRef.current?.contains(target)) return;
-      setManageMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [manageMenuOpen]);
 
   return (
     <>
@@ -3799,8 +3982,7 @@ function DetailActionBar({
             {mode === "tracked_forked" ? "Switch fork" : "Fork"}
             {forkSources.length > 0 && <ChevronDown className="absolute right-2 h-3 w-3" />}
           </Button>
-          {forkMenuOpen && (
-            <div className="absolute right-0 z-30 mt-2 w-60 rounded-md border bg-popover p-1 text-sm shadow-lg">
+		  <AnchoredPopover open={forkMenuOpen} anchorRef={forkMenuRef} onOpenChange={setForkMenuOpen} className="w-60 p-1 text-sm">
               {forkSources.map((remote) => {
                 const active = currentForkSource?.source.id === remote.source.id;
                 return (
@@ -3817,8 +3999,7 @@ function DetailActionBar({
                   </button>
                 );
               })}
-            </div>
-          )}
+		  </AnchoredPopover>
         </div>
       )}
       {showFetch && onFetch && (
@@ -3834,8 +4015,7 @@ function DetailActionBar({
             Manage
             <ChevronDown className="absolute right-2 h-3 w-3" />
           </Button>
-          {manageMenuOpen && (
-            <div className="absolute right-0 z-30 mt-2 w-48 rounded-md border bg-popover p-1 text-sm shadow-lg">
+		  <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-48 p-1 text-sm">
               {onEditMetadata && (
                 <button
                   className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
@@ -3860,8 +4040,7 @@ function DetailActionBar({
                   <span>Manage files</span>
                 </button>
               )}
-            </div>
-          )}
+		  </AnchoredPopover>
         </div>
       )}
       {dlsiteUrl && (
@@ -4275,7 +4454,7 @@ function WorkVersionSelector({
       <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
         <Languages className="h-3.5 w-3.5" />
         <span className="font-medium text-foreground">Versions</span>
-        {metadataLanguage && <span>Metadata <span className="font-semibold text-foreground">{languageLabel(metadataLanguage)}</span></span>}
+		<span>Metadata <span className="font-semibold text-foreground">Origin</span></span>
         {baseCode && (
           baseAvailable ? (
             <button className="font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
@@ -4291,7 +4470,8 @@ function WorkVersionSelector({
           {translations.map((translation) => {
             const available = Boolean(translation.workId && translation.hasMedia);
             const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
-            const label = translation.metadataLanguage ? languageLabel(translation.metadataLanguage) : "Unknown";
+			const language = translation.metadataLanguage ? languageLabel(translation.metadataLanguage) : "Unknown";
+			const label = translation.origin ? "Origin" : language;
             return (
               <button
                 key={translation.primaryCode}
@@ -4314,6 +4494,7 @@ function WorkVersionSelector({
               >
                 <span className="font-semibold">{translation.primaryCode}</span>
                 <span>{label}</span>
+				{translation.official && <span>Official</span>}
                 {!available && <span>not local</span>}
               </button>
             );
@@ -6379,17 +6560,22 @@ function languageLabel(value: string) {
   switch (value.trim().toLowerCase()) {
   case "ja":
   case "ja-jp":
+	case "jpn":
     return "Japanese";
   case "en":
   case "en-us":
+	case "eng":
     return "English";
   case "zh":
   case "zh-cn":
+	case "chi_hans":
     return "Simplified Chinese";
   case "zh-tw":
+	case "chi_hant":
     return "Traditional Chinese";
   case "ko":
   case "ko-kr":
+	case "ko_kr":
     return "Korean";
   default:
     return value || "Unknown";
@@ -6808,6 +6994,9 @@ function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTa
   if (path === "/" || path === "/library") {
     return { kind: "all" };
   }
+	if (path === "/library/all" || path === "/library/remote") {
+		return { kind: "all" };
+	}
   const encodedKey = path.startsWith("/library/source/")
     ? path.slice("/library/source/".length).replace(/\/$/, "")
     : path.replace(/^\//, "").replace(/\/$/, "");
@@ -6843,14 +7032,107 @@ function pathForLocalScope(scope: LocalLibraryScope) {
       return "/no-source";
     case "local":
       return "/";
+	case "remote":
+	  return "/library/remote";
+	case "all":
+	  return "/library/all";
     default:
       return null;
   }
 }
 
+function pathForActiveLibrary(tab: LibraryTab, scope: LocalLibraryScope) {
+	return tab.kind === "source" ? pathForLibraryTab(tab) : pathForLocalScope(scope) ?? "/";
+}
+
+function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope) {
+	return tab.kind === "source" ? `source:${tab.source.id}` : `scope:${scope}`;
+}
+
+function readLibraryBrowseState(key: string): LibraryBrowseState | null {
+	try {
+		const raw = window.sessionStorage.getItem(`${libraryBrowseStoragePrefix}${key}`);
+		return raw ? libraryBrowseStateFromValue(JSON.parse(raw), defaultLibraryBrowseState) : null;
+	} catch {
+		return null;
+	}
+}
+
+function writeLibraryBrowseState(key: string, state: LibraryBrowseState) {
+	try {
+		window.sessionStorage.setItem(`${libraryBrowseStoragePrefix}${key}`, JSON.stringify(state));
+	} catch {
+		// Browsing still works when session storage is unavailable.
+	}
+}
+
+function libraryBrowseStateFromSearch(search: string, fallback: LibraryBrowseState): LibraryBrowseState {
+	const params = new URLSearchParams(search);
+	return libraryBrowseStateFromValue({
+		query: params.has("q") ? params.get("q") : fallback.query,
+		page: params.has("page") ? Number(params.get("page")) : fallback.page,
+		pageSize: params.has("pageSize") ? Number(params.get("pageSize")) : fallback.pageSize,
+		status: params.has("status") ? params.get("status") : fallback.status,
+		sort: params.has("sort") ? params.get("sort") : fallback.sort,
+		direction: params.has("direction") ? params.get("direction") : fallback.direction,
+		view: params.has("view") ? params.get("view") : fallback.view,
+		mobileColumns: params.has("mobileColumns") ? Number(params.get("mobileColumns")) : fallback.mobileColumns,
+		desktopColumns: params.has("desktopColumns") ? Number(params.get("desktopColumns")) : fallback.desktopColumns,
+		scrollY: fallback.scrollY,
+	}, fallback);
+}
+
+function libraryBrowseStateFromValue(value: Partial<Record<keyof LibraryBrowseState, unknown>>, fallback: LibraryBrowseState): LibraryBrowseState {
+	const page = Number(value.page);
+	const pageSize = Number(value.pageSize);
+	const mobileColumns = Number(value.mobileColumns);
+	const desktopColumns = Number(value.desktopColumns);
+	const scrollY = Number(value.scrollY);
+	const status = typeof value.status === "string" && (value.status === "all" || listeningStatusOptions.some((option) => option.value === value.status))
+		? value.status as ListeningStatus | "all"
+		: fallback.status;
+	const sort = typeof value.sort === "string" && librarySortOptions.some((option) => option.value === value.sort) ? value.sort as LibrarySort : fallback.sort;
+	return {
+		query: typeof value.query === "string" ? value.query : fallback.query,
+		page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : fallback.page,
+		pageSize: Number.isFinite(pageSize) && pageSize >= 1 && pageSize <= 100 ? Math.floor(pageSize) : fallback.pageSize,
+		status,
+		sort,
+		direction: value.direction === "asc" || value.direction === "desc" ? value.direction : fallback.direction,
+		view: value.view === "grid" || value.view === "masonry" ? value.view : fallback.view,
+		mobileColumns: columnOptions.includes(mobileColumns as LibraryColumnCount) ? mobileColumns as LibraryColumnCount : fallback.mobileColumns,
+		desktopColumns: columnOptions.includes(desktopColumns as LibraryColumnCount) ? desktopColumns as LibraryColumnCount : fallback.desktopColumns,
+		scrollY: Number.isFinite(scrollY) && scrollY >= 0 ? scrollY : fallback.scrollY,
+	};
+}
+
+function libraryBrowseSearch(state: LibraryBrowseState) {
+	const params = new URLSearchParams();
+	if (state.query.trim()) params.set("q", state.query);
+	params.set("page", String(state.page));
+	params.set("pageSize", String(state.pageSize));
+	params.set("sort", state.sort);
+	params.set("direction", state.direction);
+	params.set("status", state.status);
+	params.set("view", state.view);
+	params.set("mobileColumns", String(state.mobileColumns));
+	params.set("desktopColumns", String(state.desktopColumns));
+	return `?${params.toString()}`;
+}
+
+function libraryLocation(path: string, state: LibraryBrowseState) {
+	return `${path}${libraryBrowseSearch(state)}`;
+}
+
+function localPageSize(value: number): LocalWorkPageSize {
+	return value === 48 ? 48 : 24;
+}
+
 function localScopeFromPath(path: string): LocalLibraryScope {
   if (path === "/tracked" || path === "/library/tracked") return "tracked";
   if (path === "/no-source" || path === "/library/no-source") return "no_source";
+	if (path === "/library/remote") return "remote";
+	if (path === "/library/all") return "all";
   return "local";
 }
 
