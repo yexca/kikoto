@@ -361,6 +361,9 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	`, workID, providerID, product.WorkNo, string(raw)); err != nil {
 		return err
 	}
+	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, product.Language); err != nil {
+		return err
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE work
@@ -379,6 +382,48 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	}
 
 	return tx.Commit()
+}
+
+func replaceDLsiteWorkTags(ctx context.Context, tx *sql.Tx, workID int64, genres []dlsite.Genre, language string) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM work_tag WHERE work_id = ? AND source = 'dlsite'", workID); err != nil {
+		return err
+	}
+	language = strings.TrimSpace(language)
+	seen := map[string]bool{}
+	for _, genre := range genres {
+		displayName := strings.TrimSpace(firstNonEmptyText(genre.Name, genre.NameBase))
+		normalizedName := strings.ToLower(displayName)
+		key := normalizedName + "\x00" + language
+		if displayName == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO tag (namespace, normalized_name, display_name, language)
+			VALUES ('dlsite', ?, ?, ?)
+			ON CONFLICT(namespace, normalized_name, language) DO UPDATE SET
+				display_name = excluded.display_name,
+				updated_at = CURRENT_TIMESTAMP
+		`, normalizedName, displayName, language); err != nil {
+			return err
+		}
+		var tagID int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM tag
+			WHERE namespace = 'dlsite' AND normalized_name = ? AND language = ?
+		`, normalizedName, language).Scan(&tagID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO work_tag (work_id, tag_id, source)
+			VALUES (?, ?, 'dlsite')
+			ON CONFLICT(work_id, tag_id, source) DO NOTHING
+		`, workID, tagID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.Product) (int64, error) {

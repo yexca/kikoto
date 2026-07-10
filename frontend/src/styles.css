@@ -90,19 +90,37 @@
     padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
 
-  html[data-player-active="true"] .app-shell {
+  html[data-player-mode="compact"] .app-shell {
     padding-bottom: calc(10.5rem + env(safe-area-inset-bottom));
   }
 
   @media (min-width: 1024px) {
     .app-shell,
-    html[data-player-active="true"] .app-shell {
+    html[data-player-mode="compact"] .app-shell {
       padding-bottom: 0;
     }
   }
 }
 
 @layer utilities {
+  .mini-action {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mini-player.actions-open .mini-action {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .mini-player:hover .mini-action,
+    .mini-player:focus-within .mini-action {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+
   .player-range {
     appearance: none;
     background: transparent;

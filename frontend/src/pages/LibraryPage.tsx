@@ -50,6 +50,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -97,7 +98,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import { type PlayerTrack, usePlayer } from "@/player/PlayerProvider";
+import { type PlayerTrack, type PlayerTrackLocation, usePlayer } from "@/player/PlayerProvider";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
 const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
@@ -672,13 +673,15 @@ export function LibraryPage() {
               {activePrimaryTab === "database" && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
             </IconButton>
             {isDatabaseMenuOpen && (
-              <DatabaseViewMenu
-                value={localScope}
-                onChange={(scope) => {
-                  changeLocalScope(scope);
-                  setIsDatabaseMenuOpen(false);
-                }}
-              />
+              <AnchoredPopover open anchorRef={databaseMenuRef} className="w-[min(16rem,calc(100vw-1.5rem))]">
+                <DatabaseViewMenu
+                  value={localScope}
+                  onChange={(scope) => {
+                    changeLocalScope(scope);
+                    setIsDatabaseMenuOpen(false);
+                  }}
+                />
+              </AnchoredPopover>
             )}
           </div>
         </div>
@@ -894,7 +897,7 @@ function LibraryPrimaryTabs({
 
 function DatabaseViewMenu({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
   return (
-    <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-2 text-card-foreground shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-64">
+    <div className="rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
       <div className="px-2 py-1.5">
         <div className="text-sm font-medium">Database view</div>
       </div>
@@ -1152,7 +1155,7 @@ function RemoteSourcePanel({
   };
 
   return (
-    <section className="space-y-3 pb-28 lg:pb-8">
+    <section className="space-y-3 pb-4 lg:pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
@@ -1618,8 +1621,7 @@ function LayoutPicker({
           <Columns3 className="h-4 w-4" />
         </button>
       </div>
-      {viewOpen && (
-        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-36">
+      <AnchoredPopover open={viewOpen} anchorRef={popoverRef} className="w-36 rounded-lg border bg-card p-1 text-sm shadow-lg">
           {viewOptions.map((option) => {
             const OptionIcon = option.icon;
             return (
@@ -1636,10 +1638,8 @@ function LayoutPicker({
               </button>
             );
           })}
-        </div>
-      )}
-      {columnsOpen && (
-        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-10">
+      </AnchoredPopover>
+      <AnchoredPopover open={columnsOpen} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
           {options.map((option) => (
             <button
               key={option}
@@ -1651,8 +1651,7 @@ function LayoutPicker({
               {option}
             </button>
           ))}
-        </div>
-      )}
+      </AnchoredPopover>
     </div>
   );
 }
@@ -1698,8 +1697,7 @@ function SortPicker({
           {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
         </button>
       </div>
-      {open && !disabled && (
-        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-56">
+      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-1 text-sm shadow-lg">
           {librarySortOptions.map((option) => (
             <button
               key={option.value}
@@ -1713,8 +1711,7 @@ function SortPicker({
               {value === option.value && <Check className="h-4 w-4" />}
             </button>
           ))}
-        </div>
-      )}
+      </AnchoredPopover>
     </div>
   );
 }
@@ -1737,8 +1734,7 @@ function FilterPicker({
         <Filter className="h-4 w-4" />
         {activeCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
       </IconButton>
-      {open && (
-        <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:w-10">
+      <AnchoredPopover open={open} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
           <button
             className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
             title="All marks"
@@ -1767,8 +1763,7 @@ function FilterPicker({
               </button>
             );
           })}
-        </div>
-      )}
+      </AnchoredPopover>
     </div>
   );
 }
@@ -2265,6 +2260,14 @@ function RemoteWorkDetailView({
     );
   };
 
+  const queueRemoteTrack = (track: TreeTrack, next: boolean) => {
+    if (!detail) return;
+    const queuedTrack = toRemotePreviewPlayerTrack(track, detail);
+    if (next) player.playNext(queuedTrack);
+    else player.appendQueue([queuedTrack]);
+    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
+  };
+
   if (!detail) {
     return (
       <div className="space-y-4">
@@ -2364,6 +2367,8 @@ function RemoteWorkDetailView({
           />
         ) : null}
         onPlayFolder={playRemoteTracks}
+        onPlayNext={(track) => queueRemoteTrack(track, true)}
+        onAppendQueue={(track) => queueRemoteTrack(track, false)}
       />
       {isManageOpen && (
         <DirectoryManagerModal
@@ -2606,6 +2611,18 @@ function WorkDetailView({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
       locationId,
     );
+  };
+
+  const queueTrack = (track: TreeTrack, next: boolean) => {
+    const queuedTrack = selectedRemoteDetail
+      ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail)
+      : work
+        ? toPlayerTrack(track, work)
+        : null;
+    if (!queuedTrack) return;
+    if (next) player.playNext(queuedTrack);
+    else player.appendQueue([queuedTrack]);
+    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
   };
 
   const deleteMediaTargets = async (targets: MediaDeleteTarget[]) => {
@@ -2973,6 +2990,8 @@ function WorkDetailView({
         ) : undefined}
         loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
         onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
+        onPlayNext={(track) => queueTrack(track, true)}
+        onAppendQueue={(track) => queueTrack(track, false)}
         onPreview={setPreview}
       />
       {preview && <FilePreviewModal
@@ -3438,6 +3457,8 @@ function SourceDirectoryPanel({
   loadingMessage,
   emptyState,
   onPlayFolder,
+  onPlayNext,
+  onAppendQueue,
   onPreview,
 }: {
   title: string;
@@ -3460,6 +3481,8 @@ function SourceDirectoryPanel({
   loadingMessage?: string;
   emptyState?: ReactNode;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayNext?: (track: TreeTrack) => void;
+  onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
 }) {
   const content = emptyState ? emptyState : directoryMode === "browse" ? (
@@ -3469,6 +3492,8 @@ function SourceDirectoryPanel({
       currentLocationId={currentLocationId}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
+      onPlayNext={onPlayNext}
+      onAppendQueue={onAppendQueue}
       onPreview={onPreview}
     />
   ) : (
@@ -3478,12 +3503,14 @@ function SourceDirectoryPanel({
       currentLocationId={currentLocationId}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
+      onPlayNext={onPlayNext}
+      onAppendQueue={onAppendQueue}
       onPreview={onPreview}
     />
   );
   const routeSummary = useMemo(() => directoryRouteSummary(root, directoryRoutingRules), [root, directoryRoutingRules]);
   return (
-    <section className="space-y-3 pb-28 lg:pb-8">
+    <section className="space-y-3 pb-4 lg:pb-8">
       <div className="space-y-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] lg:items-end">
           <div>
@@ -4405,6 +4432,7 @@ type TreeTrack = {
   localPath: string;
   localAvailable: boolean;
   progress: MediaItem["progress"];
+  locations: PlayerTrackLocation[];
 };
 
 type FilePreviewState =
@@ -4574,6 +4602,16 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       localPath: location.locationType === "local" ? location.path : "",
       localAvailable: location.locationType === "local" && location.availability === "available",
       progress: item.progress,
+      locations: item.locations
+        .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
+        .map((candidate) => ({
+          locationId: candidate.id,
+          locationType: candidate.locationType,
+          streamUrl: candidate.streamUrl,
+          sourceId: candidate.fileSourceId,
+          sourceName: candidate.fileSourceName,
+          availability: candidate.availability,
+        })),
     });
   }
   return normalizeDisplayTree(root);
@@ -4629,6 +4667,32 @@ function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         localPath: node.localPath,
         localAvailable: node.localAvailable,
         progress: null,
+        locations: [
+          ...(node.localAvailable && node.localLocationId ? [{
+            locationId: node.localLocationId,
+            locationType: "local",
+            streamUrl: `/api/media/${node.localLocationId}/stream`,
+            sourceId: 0,
+            sourceName: "Local",
+            availability: "available",
+          }] : []),
+          ...(node.cacheAvailable && node.cacheLocationId ? [{
+            locationId: node.cacheLocationId,
+            locationType: "cache",
+            streamUrl: `/api/media/${node.cacheLocationId}/stream`,
+            sourceId: 0,
+            sourceName: "Cache",
+            availability: "available",
+          }] : []),
+          ...(node.streamUrl ? [{
+            locationId: nextID,
+            locationType: "remote_stream",
+            streamUrl: node.streamUrl,
+            sourceId: 0,
+            sourceName: "Remote",
+            availability: "remote",
+          }] : []),
+        ],
       });
       nextID -= 1;
     });
@@ -4678,6 +4742,8 @@ function DirectoryTree({
   directoryRoutingRules,
   currentLocationId,
   onPlayFolder,
+  onPlayNext,
+  onAppendQueue,
   onPreview,
   emptyLabel = "No local files detected.",
 }: {
@@ -4685,6 +4751,8 @@ function DirectoryTree({
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayNext?: (track: TreeTrack) => void;
+  onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
@@ -4726,6 +4794,8 @@ function DirectoryTree({
             depth={row.depth}
             isActive={row.file.locationId === currentLocationId}
             onPlayFolder={onPlayFolder}
+            onPlayNext={onPlayNext}
+            onAppendQueue={onAppendQueue}
             onPreview={onPreview}
           />
         ))}
@@ -5124,6 +5194,8 @@ function DirectoryBrowser({
   directoryRoutingRules,
   currentLocationId,
   onPlayFolder,
+  onPlayNext,
+  onAppendQueue,
   onPreview,
   emptyLabel = "No local files detected.",
 }: {
@@ -5131,6 +5203,8 @@ function DirectoryBrowser({
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayNext?: (track: TreeTrack) => void;
+  onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
@@ -5196,6 +5270,8 @@ function DirectoryBrowser({
             depth={0}
             isActive={file.locationId === currentLocationId}
             onPlayFolder={onPlayFolder}
+            onPlayNext={onPlayNext}
+            onAppendQueue={onAppendQueue}
             onPreview={onPreview}
           />
         ))}
@@ -5242,6 +5318,8 @@ function TreeFile({
   depth,
   isActive,
   onPlayFolder,
+  onPlayNext,
+  onAppendQueue,
   onPreview,
 }: {
   file: TreeTrack;
@@ -5249,8 +5327,13 @@ function TreeFile({
   depth: number;
   isActive: boolean;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
+  onPlayNext?: (track: TreeTrack) => void;
+  onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
 }) {
+  const [queueMenuOpen, setQueueMenuOpen] = useState(false);
+  const queueMenuRef = useRef<HTMLDivElement | null>(null);
+  useDismissiblePopover(queueMenuOpen, queueMenuRef, () => setQueueMenuOpen(false));
   const canPlay = Boolean(file.kind === "audio" && onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
@@ -5294,6 +5377,36 @@ function TreeFile({
       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" onClick={(event) => event.stopPropagation()}>
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
         <span>{fileMeta}</span>
+        {canPlay && (onPlayNext || onAppendQueue) && (
+          <div ref={queueMenuRef}>
+            <button
+              className="grid h-8 w-8 place-items-center rounded-md hover:bg-secondary hover:text-foreground"
+              onClick={() => setQueueMenuOpen((value) => !value)}
+              aria-label={`Queue actions for ${file.title}`}
+              aria-expanded={queueMenuOpen}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            <AnchoredPopover open={queueMenuOpen} anchorRef={queueMenuRef} className="w-44 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl">
+              {onPlayNext && (
+                <button className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted" onClick={() => {
+                  onPlayNext(file);
+                  setQueueMenuOpen(false);
+                }}>
+                  Play next
+                </button>
+              )}
+              {onAppendQueue && (
+                <button className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted" onClick={() => {
+                  onAppendQueue(file);
+                  setQueueMenuOpen(false);
+                }}>
+                  Add to queue
+                </button>
+              )}
+            </AnchoredPopover>
+          </div>
+        )}
       </span>
     </div>
   );

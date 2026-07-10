@@ -50,7 +50,10 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 				IntroShort:        "Short intro",
 				RegistDate:        "2024-01-02",
 				AgeCategoryString: "adult",
-				Raw:               raw,
+				Genres: []dlsite.Genre{
+					{Name: "耳かき", NameBase: "Ear cleaning"},
+				},
+				Raw: raw,
 			},
 		},
 	})
@@ -76,6 +79,19 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	}
 	if snapshotCount != 1 {
 		t.Fatalf("snapshotCount = %d", snapshotCount)
+	}
+	var tagName string
+	if err := db.QueryRow(`
+		SELECT tag.display_name
+		FROM work_tag
+		INNER JOIN tag ON tag.id = work_tag.tag_id
+		INNER JOIN work ON work.id = work_tag.work_id
+		WHERE work.primary_code = 'RJ0123456' AND work_tag.source = 'dlsite'
+	`).Scan(&tagName); err != nil {
+		t.Fatal(err)
+	}
+	if tagName != "耳かき" {
+		t.Fatalf("tagName = %q", tagName)
 	}
 }
 
@@ -162,6 +178,8 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE INDEX idx_work_edition_logical_work ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
 		`CREATE TABLE work_external_id (id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), id_type TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, UNIQUE(provider_id, id_type, external_id))`,
 		`CREATE TABLE metadata_snapshot (id INTEGER PRIMARY KEY, work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), external_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE tag (id INTEGER PRIMARY KEY, namespace TEXT NOT NULL, normalized_name TEXT NOT NULL, display_name TEXT NOT NULL, language TEXT NOT NULL DEFAULT '', is_user_defined INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(namespace, normalized_name, language))`,
+		`CREATE TABLE work_tag (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE, source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(work_id, tag_id, source))`,
 		`CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', definition_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_trigger (id INTEGER PRIMARY KEY, workflow_definition_id INTEGER NOT NULL REFERENCES workflow_definition(id) ON DELETE CASCADE, trigger_type TEXT NOT NULL, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, schedule_json TEXT NOT NULL DEFAULT '{}', config_json TEXT NOT NULL DEFAULT '{}', next_run_at TEXT, last_run_at TEXT, last_success_at TEXT, last_error_message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_run (id INTEGER PRIMARY KEY, workflow_definition_id INTEGER REFERENCES workflow_definition(id) ON DELETE SET NULL, trigger_id INTEGER REFERENCES workflow_trigger(id) ON DELETE SET NULL, workflow_code TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, trigger_type TEXT NOT NULL, trigger_reason TEXT NOT NULL DEFAULT '', input_json TEXT NOT NULL DEFAULT '{}', summary_json TEXT NOT NULL DEFAULT '{}', started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,

@@ -758,18 +758,18 @@ func librarySearchWhere(queryText string) (string, []any) {
 			) OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
 			args = append(args, like, like)
 		case "tag":
-			clauses = append(clauses, latestSnapshotLikeClause(false))
+			clauses = append(clauses, normalizedTagLikeClause(false))
 			args = append(args, like)
 		case "exclude_tag":
-			clauses = append(clauses, latestSnapshotLikeClause(true))
+			clauses = append(clauses, normalizedTagLikeClause(true))
 			args = append(args, like)
 		case "rating_min":
 			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", numericListClauseValue(needle)))
 		case "sales_min":
 			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", numericListClauseValue(needle)))
 		default:
-			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+latestSnapshotLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
-			args = append(args, like, like, like, like)
+			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+normalizedTagLikeClause(false)+` OR `+latestSnapshotLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
+			args = append(args, like, like, like, like, like)
 		}
 	}
 	if len(clauses) == 0 {
@@ -785,6 +785,21 @@ func manualOverrideFieldLikeClause(field string) string {
 		WHERE search_override.work_id = work.id
 			AND search_override.field_name = '` + field + `'
 			AND LOWER(search_override.value_json) LIKE ?
+	)`
+}
+
+func normalizedTagLikeClause(negated bool) string {
+	prefix := "EXISTS"
+	if negated {
+		prefix = "NOT EXISTS"
+	}
+	return prefix + ` (
+		SELECT 1
+		FROM work_tag AS search_work_tag
+		INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id
+		WHERE search_work_tag.work_id = work.id
+			AND search_tag.namespace = 'dlsite'
+			AND LOWER(search_tag.display_name) LIKE ?
 	)`
 }
 

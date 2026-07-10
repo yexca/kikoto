@@ -1,7 +1,10 @@
 import {
+  ArrowDown,
+  ArrowUp,
   Captions,
   CircleDot,
   Gauge,
+  HardDrive,
   ListMusic,
   ListOrdered,
   Maximize2,
@@ -14,11 +17,15 @@ import {
   RotateCw,
   SkipBack,
   SkipForward,
+  Timer,
+  Trash2,
   Volume2,
+  X,
 } from "lucide-react";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 
@@ -26,6 +33,7 @@ export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
 
 export type PlayerTrack = {
+  queueItemId?: string;
   mediaItemId: number;
   locationId: number;
   title: string;
@@ -46,7 +54,19 @@ export type PlayerTrack = {
   remoteSourceId?: number;
   remoteWorkCode?: string;
   remotePath?: string;
+  locations?: PlayerTrackLocation[];
 };
+
+export type PlayerTrackLocation = {
+  locationId: number;
+  locationType: string;
+  streamUrl: string;
+  sourceId: number;
+  sourceName: string;
+  availability: string;
+};
+
+type SleepTimerState = { mode: "deadline"; deadline: number } | { mode: "track_end" } | null;
 
 type PlayerContextValue = {
   queue: PlayerTrack[];
@@ -57,6 +77,8 @@ type PlayerContextValue = {
   duration: number;
   volume: number;
   playbackRate: number;
+  sleepTimer: SleepTimerState;
+  sleepRemainingSeconds: number;
   mode: PlayMode;
   playQueue: (tracks: PlayerTrack[], locationId: number) => void;
   selectTrack: (index: number) => void;
@@ -67,39 +89,154 @@ type PlayerContextValue = {
   seekTo: (seconds: number) => void;
   setVolume: (volume: number) => void;
   cyclePlaybackRate: () => void;
+  playNext: (track: PlayerTrack) => void;
+  appendQueue: (tracks: PlayerTrack[]) => void;
+  moveQueueItem: (queueItemId: string, direction: -1 | 1) => void;
+  removeQueueItem: (queueItemId: string) => void;
+  clearQueue: () => void;
+  selectLocation: (locationId: number) => void;
+  setSleepTimerMinutes: (minutes: number) => void;
+  setSleepAfterTrack: () => void;
+  clearSleepTimer: () => void;
   cycleMode: () => void;
   setMode: (mode: PlayMode) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
+const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
+const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
+
+function loadPersistedQueue(): { queue: PlayerTrack[]; currentIndex: number; mode: PlayMode; playbackRate: number; sleepTimer: SleepTimerState } {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLAYER_QUEUE_STORAGE_KEY) ?? "null") as {
+      version?: number;
+      queue?: PlayerTrack[];
+      currentIndex?: number;
+      mode?: PlayMode;
+      playbackRate?: number;
+      sleepTimer?: SleepTimerState;
+    } | null;
+    const queue = Array.isArray(parsed?.queue)
+      ? parsed.queue.filter((track) => track && track.mediaItemId > 0 && track.streamUrl).map(withQueueIdentity)
+      : [];
+    const currentIndex = Math.max(0, Math.min(queue.length - 1, Number(parsed?.currentIndex) || 0));
+    const mode = parsed?.mode === "loop" || parsed?.mode === "single" ? parsed.mode : "order";
+    const playbackRate = [0.75, 1, 1.25, 1.5, 2].includes(Number(parsed?.playbackRate)) ? Number(parsed?.playbackRate) : 1;
+    const sleepTimer = parsed?.sleepTimer?.mode === "track_end"
+      ? parsed.sleepTimer
+      : parsed?.sleepTimer?.mode === "deadline" && parsed.sleepTimer.deadline > Date.now()
+        ? parsed.sleepTimer
+        : null;
+    return { queue, currentIndex, mode, playbackRate, sleepTimer };
+  } catch {
+    return { queue: [], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null };
+  }
+}
+
+function withQueueIdentity(track: PlayerTrack): PlayerTrack {
+  if (track.queueItemId) return track;
+  const randomID = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { ...track, queueItemId: randomID };
+}
+
+function locationPriority(locationType: string) {
+  switch (locationType) {
+    case "local":
+      return 0;
+    case "cache":
+      return 1;
+    case "remote_stream":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function orderedTrackLocations(track: PlayerTrack | null) {
+  if (!track) return [];
+  const locations = track.locations?.length
+    ? track.locations
+    : [{
+        locationId: track.locationId,
+        locationType: track.locationType,
+        streamUrl: track.streamUrl,
+        sourceId: track.remoteSourceId ?? 0,
+        sourceName: track.locationType,
+        availability: track.availability,
+      }];
+  return [...locations].sort((left, right) => locationPriority(left.locationType) - locationPriority(right.locationType));
+}
+
+function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLocation): PlayerTrack {
+  return {
+    ...track,
+    locationId: location.locationId,
+    locationType: location.locationType,
+    streamUrl: location.streamUrl,
+    availability: location.availability,
+  };
+}
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
+  const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [queue, setQueue] = useState<PlayerTrack[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const restoredQueueRef = useRef(loadPersistedQueue());
+  const [queue, setQueue] = useState<PlayerTrack[]>(restoredQueueRef.current.queue);
+  const [currentIndex, setCurrentIndex] = useState(restoredQueueRef.current.currentIndex);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volumeValue, setVolumeValue] = useState(1);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [mode, setMode] = useState<PlayMode>("order");
+  const [playbackRate, setPlaybackRate] = useState(restoredQueueRef.current.playbackRate);
+  const [mode, setMode] = useState<PlayMode>(restoredQueueRef.current.mode);
+  const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueueRef.current.sleepTimer);
+  const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const cacheRequestedRef = useRef<Set<string>>(new Set());
+  const failedLocationIDsRef = useRef<Set<number>>(new Set());
   const currentTrack = queue[currentIndex] ?? null;
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = volumeValue;
-  }, [volumeValue]);
+    const deadlineFade = sleepTimer?.mode === "deadline" && sleepRemainingSeconds > 0 && sleepRemainingSeconds <= 10
+      ? Math.max(0, sleepRemainingSeconds / 10)
+      : 1;
+    const trackRemaining = Math.max(0, duration - currentTime);
+    const trackEndFade = sleepTimer?.mode === "track_end" && duration > 0 && trackRemaining <= 10
+      ? trackRemaining / 10
+      : 1;
+    audio.volume = Math.max(0, Math.min(1, volumeValue * Math.min(deadlineFade, trackEndFade)));
+  }, [volumeValue, sleepTimer, sleepRemainingSeconds, currentTime, duration]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.playbackRate = playbackRate;
   }, [playbackRate]);
+
+  useEffect(() => {
+    const persistentQueue = queue.filter((track) => track.mediaItemId > 0 && track.progressRecordable);
+    const currentQueueItemId = queue[currentIndex]?.queueItemId ?? "";
+    const persistedCurrentIndex = Math.max(0, persistentQueue.findIndex((track) => track.queueItemId === currentQueueItemId));
+    localStorage.setItem(PLAYER_QUEUE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      queue: persistentQueue,
+      currentIndex: persistedCurrentIndex,
+      mode,
+      playbackRate,
+      sleepTimer,
+      sleepRemainingSeconds,
+    }));
+  }, [queue, currentIndex, mode, playbackRate, sleepTimer]);
+
+  useEffect(() => {
+    failedLocationIDsRef.current.clear();
+  }, [currentTrack?.queueItemId, currentTrack?.mediaItemId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -164,11 +301,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playQueue = (tracks: PlayerTrack[], locationId: number) => {
     if (tracks.length === 0) return;
+    const normalizedTracks = tracks.map(withQueueIdentity);
     const nextIndex = Math.max(
       0,
-      tracks.findIndex((track) => track.locationId === locationId),
+      normalizedTracks.findIndex((track) => track.locationId === locationId),
     );
-    setQueue(tracks);
+    setQueue(normalizedTracks);
     setCurrentIndex(nextIndex);
     setIsPlaying(true);
   };
@@ -236,9 +374,36 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  useEffect(() => {
+    if (sleepTimer?.mode !== "deadline") {
+      setSleepRemainingSeconds(0);
+      return;
+    }
+    const checkDeadline = () => {
+      const remaining = Math.max(0, Math.ceil((sleepTimer.deadline - Date.now()) / 1000));
+      setSleepRemainingSeconds(remaining);
+      if (remaining > 0) return;
+      saveProgress(false, true);
+      setIsPlaying(false);
+      setSleepTimer(null);
+    };
+    checkDeadline();
+    const interval = window.setInterval(checkDeadline, 1000);
+    document.addEventListener("visibilitychange", checkDeadline);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", checkDeadline);
+    };
+  }, [sleepTimer]);
+
   const handleEnded = () => {
     const audio = audioRef.current;
     saveProgress(true, true);
+    if (sleepTimer?.mode === "track_end") {
+      setSleepTimer(null);
+      setIsPlaying(false);
+      return;
+    }
     if (mode === "single" && audio) {
       audio.currentTime = 0;
       void audio.play();
@@ -255,6 +420,86 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setIsPlaying(false);
+  };
+
+  const playNext = (track: PlayerTrack) => {
+    const nextTrack = withQueueIdentity(track);
+    setQueue((items) => {
+      const next = [...items];
+      next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
+      return next;
+    });
+  };
+
+  const appendQueue = (tracks: PlayerTrack[]) => {
+    if (tracks.length === 0) return;
+    setQueue((items) => [...items, ...tracks.map(withQueueIdentity)]);
+  };
+
+  const moveQueueItem = (queueItemId: string, direction: -1 | 1) => {
+    setQueue((items) => {
+      const from = items.findIndex((item) => item.queueItemId === queueItemId);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= items.length) return items;
+      const currentQueueItemId = items[currentIndex]?.queueItemId;
+      const next = [...items];
+      [next[from], next[to]] = [next[to], next[from]];
+      if (currentQueueItemId) setCurrentIndex(next.findIndex((item) => item.queueItemId === currentQueueItemId));
+      return next;
+    });
+  };
+
+  const removeQueueItem = (queueItemId: string) => {
+    setQueue((items) => {
+      const removedIndex = items.findIndex((item) => item.queueItemId === queueItemId);
+      if (removedIndex < 0) return items;
+      const removingCurrent = removedIndex === currentIndex;
+      const next = items.filter((item) => item.queueItemId !== queueItemId);
+      if (next.length === 0) {
+        setCurrentIndex(0);
+        setIsPlaying(false);
+      } else if (removedIndex < currentIndex) {
+        setCurrentIndex((index) => Math.max(0, index - 1));
+      } else if (removingCurrent) {
+        setCurrentIndex(Math.min(removedIndex, next.length - 1));
+      }
+      return next;
+    });
+  };
+
+  const clearQueue = () => {
+    setQueue([]);
+    setCurrentIndex(0);
+    setIsPlaying(false);
+    setSleepTimer(null);
+  };
+
+  const selectLocation = (locationId: number) => {
+    failedLocationIDsRef.current.clear();
+    setQueue((items) => items.map((item, index) => {
+      if (index !== currentIndex) return item;
+      const location = item.locations?.find((candidate) => candidate.locationId === locationId);
+      return location ? applyTrackLocation(item, location) : item;
+    }));
+  };
+
+  const tryNextLocation = () => {
+    if (!currentTrack) return;
+    failedLocationIDsRef.current.add(currentTrack.locationId);
+    const locations = orderedTrackLocations(currentTrack);
+    const nextLocation = locations.find((location) =>
+      location.locationId !== currentTrack.locationId
+      && !failedLocationIDsRef.current.has(location.locationId)
+      && (location.availability === "available" || location.availability === "remote"),
+    );
+    if (!nextLocation) {
+      setIsPlaying(false);
+      toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
+      return;
+    }
+    setQueue((items) => items.map((item, index) => index === currentIndex ? applyTrackLocation(item, nextLocation) : item));
+    setIsPlaying(true);
+    toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
   };
 
   useEffect(() => {
@@ -325,6 +570,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       volume: volumeValue,
       playbackRate,
+      sleepTimer,
+      sleepRemainingSeconds,
       mode,
       playQueue,
       selectTrack,
@@ -339,10 +586,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const index = rates.indexOf(value);
         return rates[(index + 1) % rates.length];
       }),
+      playNext,
+      appendQueue,
+      moveQueueItem,
+      removeQueueItem,
+      clearQueue,
+      selectLocation,
+      setSleepTimerMinutes: (minutes) => setSleepTimer({ mode: "deadline", deadline: Date.now() + Math.max(1, minutes) * 60_000 }),
+      setSleepAfterTrack: () => setSleepTimer({ mode: "track_end" }),
+      clearSleepTimer: () => setSleepTimer(null),
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
       setMode,
     }),
-    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, playbackRate, mode],
+    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, volumeValue, playbackRate, sleepTimer, sleepRemainingSeconds, mode],
   );
 
   return (
@@ -362,6 +618,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           setIsPlaying(false);
         }}
         onEnded={handleEnded}
+        onError={tryNextLocation}
       />
     </PlayerContext.Provider>
   );
@@ -392,8 +649,13 @@ export function PlayerDock() {
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
-  const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(null);
+  const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(() => restoreMiniPosition());
+  const [miniActionsOpen, setMiniActionsOpen] = useState(false);
+  const [isSleepOpen, setIsSleepOpen] = useState(false);
+  const [isSourceOpen, setIsSourceOpen] = useState(false);
   const miniDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const miniActionsTimerRef = useRef<number | null>(null);
+  const coverTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [fullDragOffset, setFullDragOffset] = useState(0);
   const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
   const suppressCollapseClickRef = useRef(false);
@@ -426,6 +688,25 @@ export function PlayerDock() {
   }, [isVolumeOpen]);
 
   useEffect(() => {
+    if (!miniActionsOpen) return;
+    if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+    miniActionsTimerRef.current = window.setTimeout(() => setMiniActionsOpen(false), 3000);
+    return () => {
+      if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+    };
+  }, [miniActionsOpen]);
+
+  useEffect(() => {
+    const handleResize = () => setMiniPosition((current) => current ? clampMiniPosition(current) : restoreMiniPosition());
+    window.addEventListener("resize", handleResize);
+    window.visualViewport?.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
     document.documentElement.dataset.playerActive = track ? "true" : "false";
     document.documentElement.dataset.playerMode = track ? dockMode : "none";
     return () => {
@@ -447,6 +728,8 @@ export function PlayerDock() {
 
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
+  const availableLocations = orderedTrackLocations(track);
+  const currentLocation = availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
   const hasPanel = panel !== null;
   const openWorkDetail = () => {
     if (!track.workCode) return;
@@ -458,12 +741,30 @@ export function PlayerDock() {
     );
     window.dispatchEvent(new Event("kikoto:navigation"));
   };
+  const handleCoverClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isMobile) return;
+    const now = performance.now();
+    if (event.detail >= 2) {
+      coverTapRef.current = null;
+      openWorkDetail();
+      return;
+    }
+    const previous = coverTapRef.current;
+    coverTapRef.current = { at: now, x: event.clientX, y: event.clientY };
+    if (!previous) return;
+    const closeInTime = now - previous.at <= 360;
+    const closeInSpace = Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= 28;
+    if (closeInTime && closeInSpace) {
+      coverTapRef.current = null;
+      openWorkDetail();
+    }
+  };
   const miniActions = miniActionLayout(miniPosition);
 
   if (dockMode === "mini") {
     return (
       <div
-        className="group fixed z-40 touch-none"
+        className={`mini-player group fixed z-40 touch-none ${miniActionsOpen ? "actions-open" : ""}`}
         style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement | null)?.closest("[data-mini-action]")) return;
@@ -479,6 +780,7 @@ export function PlayerDock() {
         onPointerMove={(event) => {
           const drag = miniDragRef.current;
           if (!drag || drag.pointerId !== event.pointerId) return;
+          if (drag.moved) setMiniActionsOpen(false);
           const nextX = Math.max(8, Math.min(window.innerWidth - 100, event.clientX - drag.offsetX));
           const bottomLimit = isMobile ? 84 + safeAreaBottom() : 8;
           const nextY = Math.max(8, Math.min(window.innerHeight - 92 - bottomLimit, event.clientY - drag.offsetY));
@@ -496,12 +798,14 @@ export function PlayerDock() {
           event.currentTarget.releasePointerCapture(event.pointerId);
           if (!drag) return;
           if (!drag.moved) {
-            player.togglePlay();
+            setMiniActionsOpen((value) => !value);
             return;
           }
           const rect = event.currentTarget.getBoundingClientRect();
           const snappedX = rect.left + 46 < window.innerWidth / 2 ? 8 : window.innerWidth - 100;
-          setMiniPosition({ x: snappedX, y: rect.top });
+          const snapped = clampMiniPosition({ x: snappedX, y: rect.top });
+          setMiniPosition(snapped);
+          persistMiniPosition(snapped);
         }}
         onPointerCancel={() => {
           miniDragRef.current = null;
@@ -519,7 +823,7 @@ export function PlayerDock() {
           </div>
           <button
             data-mini-action
-            className="absolute left-1/2 top-1/2 z-20 hidden h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:opacity-100 active:scale-95 dark:border-white/10 dark:bg-background/62 sm:grid"
+            className="mini-action absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground shadow-lg backdrop-blur transition-all duration-200 active:scale-95 dark:border-white/10 dark:bg-background/62"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -533,12 +837,15 @@ export function PlayerDock() {
           </button>
           <Button
             data-mini-action
-            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-100 shadow-lg transition-all duration-200 sm:opacity-0 sm:group-hover:opacity-100 ${miniActions.compactClass}`}
+            className={`mini-action absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 shadow-lg transition-all duration-200 ${miniActions.compactClass}`}
             size="icon"
             variant="secondary"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
-            onClick={() => setDockMode("compact")}
+            onClick={() => {
+              setMiniActionsOpen(false);
+              setDockMode("compact");
+            }}
             aria-label="Open compact player"
             title="Compact"
           >
@@ -546,12 +853,15 @@ export function PlayerDock() {
           </Button>
           <Button
             data-mini-action
-            className={`absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 opacity-100 shadow-lg transition-all duration-200 sm:opacity-0 sm:group-hover:opacity-100 ${miniActions.fullClass}`}
+            className={`mini-action absolute z-20 h-9 w-9 rounded-full border-primary/20 bg-secondary/95 shadow-lg transition-all duration-200 ${miniActions.fullClass}`}
             size="icon"
             variant="secondary"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
-            onClick={() => setDockMode("full")}
+            onClick={() => {
+              setMiniActionsOpen(false);
+              setDockMode("full");
+            }}
             aria-label="Open full player"
             title="Full"
           >
@@ -601,8 +911,47 @@ export function PlayerDock() {
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
-      <div className="relative z-10 flex h-full flex-col pt-[env(safe-area-inset-top)]">
+      <div
+        className="relative z-10 flex h-full flex-col pt-[env(safe-area-inset-top)]"
+        style={{ touchAction: panel ? undefined : "pan-x" }}
+        onPointerDown={(event) => {
+          if (!isMobile) return;
+          const target = event.target as HTMLElement;
+          const isHandle = Boolean(target.closest("[data-player-handle]"));
+          const isPanelDragZone = Boolean(target.closest("[data-player-drag-zone]"));
+          if (panel && !isHandle && !isPanelDragZone) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (!isHandle && event.clientY > rect.top + rect.height * 0.6) return;
+          if (target.closest("input, [data-player-no-drag]")) return;
+          fullDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startedAt: performance.now(), moved: false };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = fullDragRef.current;
+          if (!isMobile || !drag || drag.pointerId !== event.pointerId) return;
+          const offset = Math.max(0, event.clientY - drag.startY);
+          if (offset > 6) drag.moved = true;
+          setFullDragOffset(offset);
+        }}
+        onPointerUp={(event) => {
+          const drag = fullDragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          fullDragRef.current = null;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+          const offset = Math.max(0, event.clientY - drag.startY);
+          const elapsed = Math.max(1, performance.now() - drag.startedAt);
+          const velocity = offset / elapsed;
+          suppressCollapseClickRef.current = drag.moved;
+          if (offset >= 96 || velocity >= 0.55) setDockMode("compact");
+          setFullDragOffset(0);
+        }}
+        onPointerCancel={() => {
+          fullDragRef.current = null;
+          setFullDragOffset(0);
+        }}
+      >
         <button
+          data-player-handle
           className="flex h-10 shrink-0 touch-none items-center justify-center hover:bg-white/20 lg:h-8"
           onClick={() => {
             if (suppressCollapseClickRef.current) {
@@ -610,34 +959,6 @@ export function PlayerDock() {
               return;
             }
             setDockMode("compact");
-          }}
-          onPointerDown={(event) => {
-            if (!isMobile) return;
-            fullDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startedAt: performance.now(), moved: false };
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerMove={(event) => {
-            const drag = fullDragRef.current;
-            if (!isMobile || !drag || drag.pointerId !== event.pointerId) return;
-            const offset = Math.max(0, event.clientY - drag.startY);
-            if (offset > 6) drag.moved = true;
-            setFullDragOffset(offset);
-          }}
-          onPointerUp={(event) => {
-            const drag = fullDragRef.current;
-            if (!drag || drag.pointerId !== event.pointerId) return;
-            fullDragRef.current = null;
-            event.currentTarget.releasePointerCapture(event.pointerId);
-            const offset = Math.max(0, event.clientY - drag.startY);
-            const elapsed = Math.max(1, performance.now() - drag.startedAt);
-            const velocity = offset / elapsed;
-            suppressCollapseClickRef.current = drag.moved;
-            if (offset >= 96 || velocity >= 0.55) setDockMode("compact");
-            setFullDragOffset(0);
-          }}
-          onPointerCancel={() => {
-            fullDragRef.current = null;
-            setFullDragOffset(0);
           }}
           aria-label="Collapse player"
         >
@@ -647,7 +968,7 @@ export function PlayerDock() {
         <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
-              <div className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5">
+              <div data-player-drag-zone className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5">
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
@@ -675,47 +996,99 @@ export function PlayerDock() {
                   )
                 ) : (
                   <div className="space-y-1">
+                    <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
+                      <span>{player.queue.length} queued</span>
+                      <button className="rounded px-2 py-1 hover:bg-muted hover:text-foreground" onClick={player.clearQueue}>Clear</button>
+                    </div>
                     {player.queue.map((item, index) => (
-                      <button
-                        key={item.locationId}
-                        className={`flex min-h-10 w-full items-center gap-2 rounded-md border-l-2 px-2 text-left text-xs transition-colors ${
+                      <div
+                        key={item.queueItemId ?? `${item.locationId}:${index}`}
+                        className={`flex min-h-11 w-full items-center gap-1 rounded-md border-l-2 px-1.5 text-xs transition-colors ${
                           index === player.currentIndex ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground" : "border-transparent hover:bg-muted"
                         }`}
-                        onClick={() => player.selectTrack(index)}
                       >
-                        {index === player.currentIndex ? <Pause className="h-3.5 w-3.5 text-primary" /> : <Play className="h-3.5 w-3.5 text-muted-foreground" />}
-                        <span className="truncate">{item.title}</span>
-                      </button>
+                        <button className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left" onClick={() => player.selectTrack(index)}>
+                          {index === player.currentIndex ? <Pause className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Play className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                          <span className="truncate">{item.title}</span>
+                        </button>
+                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30" disabled={index === 0} onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, -1)} aria-label={`Move ${item.title} up`}>
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30" disabled={index === player.queue.length - 1} onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, 1)} aria-label={`Move ${item.title} down`}>
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70" onClick={() => item.queueItemId && player.removeQueueItem(item.queueItemId)} aria-label={`Remove ${item.title}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col justify-center gap-4">
+            <div className="flex h-full flex-col justify-center gap-3 py-2">
               <button
-                className="mx-auto w-full max-w-[282px] rounded-[24px] bg-white/25 p-2 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5"
-                onDoubleClick={openWorkDetail}
+                className="mx-auto w-full max-w-[min(86vw,340px)] touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 lg:max-w-[282px]"
+                onClick={handleCoverClick}
+                onDoubleClick={isMobile ? undefined : openWorkDetail}
                 title="Double-click to open work detail"
                 aria-label="Open work detail"
               >
                 <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15" />
               </button>
-              <button
-                className="space-y-1 text-center lg:cursor-default"
-                onClick={isMobile ? openWorkDetail : undefined}
-                aria-label={isMobile ? "Open work detail" : undefined}
-              >
+              <div className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
                 <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
-                {isMobile && <div className="pt-1 text-[11px] font-medium text-primary">Open work details</div>}
-              </button>
+              </div>
+              {parsedLyrics.timed && activeLyricIndex >= 0 && (
+                <button
+                  className="mx-auto w-full max-w-[min(86vw,340px)] rounded-xl bg-background/45 px-4 py-2 text-center shadow-inner lg:max-w-[282px]"
+                  onClick={() => setPanel("lyrics")}
+                  data-player-no-drag
+                >
+                  <div className="line-clamp-1 text-sm font-semibold text-primary">{parsedLyrics.lines[activeLyricIndex]?.text || " "}</div>
+                  <div className="mt-1 line-clamp-1 text-xs text-muted-foreground">{parsedLyrics.lines[activeLyricIndex + 1]?.text || " "}</div>
+                </button>
+              )}
             </div>
           )}
         </div>
 
         <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
+          <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="truncate">{player.currentIndex + 1} / {player.queue.length}</span>
+            <button
+              className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/15 bg-card/55 px-2.5 py-1 hover:bg-muted"
+              onClick={() => setIsSourceOpen((value) => !value)}
+              data-player-no-drag
+              aria-label="Choose playback source"
+            >
+              <HardDrive className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-36 truncate">{currentLocation?.sourceName || currentLocation?.locationType || "Playback source"}</span>
+            </button>
+            {isSourceOpen && (
+              <div className="absolute bottom-8 right-0 z-20 w-60 rounded-lg border bg-card p-1.5 text-card-foreground shadow-xl">
+                {availableLocations.map((location) => (
+                  <button
+                    key={`${location.locationId}:${location.locationType}`}
+                    className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-sm hover:bg-muted ${location.locationId === track.locationId ? "bg-secondary" : ""}`}
+                    onClick={() => {
+                      player.selectLocation(location.locationId);
+                      setIsSourceOpen(false);
+                    }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{location.sourceName || location.locationType}</span>
+                      <span className="block text-xs text-muted-foreground">{location.locationType}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">{location.availability}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="space-y-1">
           <SeekBar
             currentTime={player.currentTime}
@@ -747,7 +1120,7 @@ export function PlayerDock() {
           </Button>
           </div>
 
-          <div className="relative grid grid-cols-4 gap-2">
+          <div className="relative grid grid-cols-5 gap-2">
           <Button
             className="rounded-full border-primary/15"
             variant={player.mode === "order" ? "outline" : "secondary"}
@@ -758,11 +1131,14 @@ export function PlayerDock() {
           >
             {player.mode === "order" ? <ListOrdered className="h-4 w-4" /> : player.mode === "loop" ? <Repeat className="h-4 w-4" /> : <Repeat1 className="h-4 w-4" />}
           </Button>
+
           <Button
             className="rounded-full border-primary/15"
             variant={panel === "queue" ? "secondary" : "outline"}
             size="sm"
             onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
+            aria-label="Playback queue"
+            title="Playback queue"
           >
             <ListMusic className="h-4 w-4" />
           </Button>
@@ -772,6 +1148,7 @@ export function PlayerDock() {
             size="sm"
             onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
             disabled={!track.lyricsLocationId}
+            aria-label="Lyrics"
             title={track.lyricsLocationId ? "Lyrics" : "No matched lyrics"}
           >
             <Captions className="h-4 w-4" />
@@ -782,6 +1159,8 @@ export function PlayerDock() {
             variant={isVolumeOpen ? "secondary" : "outline"}
             size="sm"
             onClick={() => setIsVolumeOpen((value) => !value)}
+            aria-label="Volume"
+            title="Volume"
           >
             <Volume2 className="h-4 w-4" />
           </Button>
@@ -796,6 +1175,18 @@ export function PlayerDock() {
           >
             <Gauge className="h-4 w-4" />
             <span className="text-[10px]">{player.playbackRate}×</span>
+          </Button>
+
+          <Button
+            className="rounded-full border-primary/15"
+            variant={player.sleepTimer ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setIsSleepOpen((value) => !value)}
+            aria-label="Sleep timer"
+            title="Sleep timer"
+          >
+            <Timer className="h-4 w-4" />
+            {player.sleepTimer?.mode === "deadline" && <span className="text-[10px]">{formatSleepRemaining(player.sleepRemainingSeconds)}</span>}
           </Button>
 
           {isVolumeOpen && (
@@ -815,6 +1206,33 @@ export function PlayerDock() {
                 aria-label="Volume"
               />
               <Volume2 className="h-4 w-4 text-muted-foreground" />
+            </div>
+          )}
+          {isSleepOpen && (
+            <div className="absolute bottom-11 right-0 z-20 w-52 rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
+              <div className="px-2 pb-1 text-xs font-semibold text-muted-foreground">Sleep timer</div>
+              {[15, 30, 45, 60, 90].map((minutes) => (
+                <button key={minutes} className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted" onClick={() => {
+                  player.setSleepTimerMinutes(minutes);
+                  setIsSleepOpen(false);
+                }}>
+                  {minutes} minutes
+                </button>
+              ))}
+              <button className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted" onClick={() => {
+                player.setSleepAfterTrack();
+                setIsSleepOpen(false);
+              }}>
+                End of current track
+              </button>
+              {player.sleepTimer && (
+                <button className="mt-1 flex h-9 w-full items-center rounded-md px-2 text-sm text-destructive hover:bg-muted" onClick={() => {
+                  player.clearSleepTimer();
+                  setIsSleepOpen(false);
+                }}>
+                  <X className="mr-2 h-4 w-4" /> Cancel timer
+                </button>
+              )}
             </div>
           )}
           </div>
@@ -850,6 +1268,45 @@ function useIsMobilePlayer() {
 function safeAreaBottom() {
   const footer = document.querySelector("footer");
   return footer ? Number.parseFloat(window.getComputedStyle(footer).paddingBottom) || 0 : 0;
+}
+
+function miniVerticalBounds() {
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const bottomLimit = 84 + safeAreaBottom();
+  return { min: 8, max: Math.max(8, viewportHeight - 92 - bottomLimit) };
+}
+
+function clampMiniPosition(position: { x: number; y: number }) {
+  const bounds = miniVerticalBounds();
+  return {
+    x: Math.max(8, Math.min(window.innerWidth - 100, position.x)),
+    y: Math.max(bounds.min, Math.min(bounds.max, position.y)),
+  };
+}
+
+function restoreMiniPosition() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(MINI_POSITION_STORAGE_KEY) ?? "null") as { side?: "left" | "right"; verticalRatio?: number } | null;
+    if (!stored || (stored.side !== "left" && stored.side !== "right") || !Number.isFinite(stored.verticalRatio)) return null;
+    const bounds = miniVerticalBounds();
+    const ratio = Math.max(0, Math.min(1, Number(stored.verticalRatio)));
+    return {
+      x: stored.side === "left" ? 8 : window.innerWidth - 100,
+      y: bounds.min + (bounds.max - bounds.min) * ratio,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistMiniPosition(position: { x: number; y: number }) {
+  const bounds = miniVerticalBounds();
+  const verticalRatio = bounds.max > bounds.min ? (position.y - bounds.min) / (bounds.max - bounds.min) : 0;
+  localStorage.setItem(MINI_POSITION_STORAGE_KEY, JSON.stringify({
+    version: 1,
+    side: position.x + 46 < window.innerWidth / 2 ? "left" : "right",
+    verticalRatio: Math.max(0, Math.min(1, verticalRatio)),
+  }));
 }
 
 function miniActionLayout(position: { x: number; y: number } | null) {
@@ -1023,6 +1480,13 @@ function formatTime(value: number) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatSleepRemaining(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0m";
+  if (seconds < 60) return "<1m";
+  const minutes = Math.ceil(seconds / 60);
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ""}` : `${minutes}m`;
 }
 
 function parseTimedLyrics(text: string): ParsedLyrics {

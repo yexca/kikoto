@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -64,5 +65,56 @@ func TestOpenMemoryDatabase(t *testing.T) {
 	}
 	if enabled != 1 {
 		t.Fatalf("PRAGMA foreign_keys = %d, want 1", enabled)
+	}
+}
+
+func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	migrationDir := filepath.Join("..", "..", "migrations")
+	initialSQL, err := os.ReadFile(filepath.Join(migrationDir, "001_initial.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(initialSQL)); err != nil {
+		t.Fatal(err)
+	}
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999998', 'Migration test')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	snapshot := `{"product":{"genres":[{"name":"\u30ed\u30ea"},{"name":"\u8033\u304b\u304d"}]},"_kikoto":{"language":"ja_JP"}}`
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09999998', ?)", workID, providerID, snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	tagSQL, err := os.ReadFile(filepath.Join(migrationDir, "002_normalized_work_tags.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(tagSQL)); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM work_tag
+		INNER JOIN tag ON tag.id = work_tag.tag_id
+		WHERE work_tag.work_id = ? AND tag.display_name IN ('ロリ', '耳かき')
+	`, workID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("normalized Unicode tags = %d, want 2", count)
 	}
 }

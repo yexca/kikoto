@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#b32d57" />
+    <title>Kikoto is offline</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #f7f4ee; color: #211b20; }
+      main { max-width: 28rem; padding: 2rem; text-align: center; }
+      img { width: 5rem; height: 5rem; }
+      button { border: 0; border-radius: 999px; padding: .75rem 1.25rem; background: #b32d57; color: white; font: inherit; }
+      @media (prefers-color-scheme: dark) { body { background: #111218; color: #eee9e5; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/kikoto-icon.svg" alt="" />
+      <h1>Kikoto is offline</h1>
+      <p>The app shell is available, but library data and audio still require a connection to your Kikoto server.</p>
+      <button onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>
