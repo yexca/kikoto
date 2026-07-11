@@ -177,6 +177,7 @@ function useToastTopOffset(active: boolean) {
 
 function toastDuration(kind: ToastKind) {
   if (kind === "success") return 5000;
+  if (kind === "info") return 3000;
   if (kind === "error") return 20000;
   return 10000;
 }

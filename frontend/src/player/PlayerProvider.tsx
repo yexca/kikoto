@@ -42,6 +42,7 @@ import {
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
+const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
 export type PlayerTrack = {
   queueItemId?: string;
@@ -897,6 +898,7 @@ export function PlayerDock() {
   const isMobile = useIsMobilePlayer();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
+  const fullMainRef = useRef<HTMLDivElement | null>(null);
   const [dockMode, setDockMode] = useState<DockMode>(() =>
     window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact",
   );
@@ -917,8 +919,10 @@ export function PlayerDock() {
   const miniActionsTimerRef = useRef<number | null>(null);
   const coverTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [fullDragOffset, setFullDragOffset] = useState(0);
+  const [lyricsPreviewRows, setLyricsPreviewRows] = useState(3);
   const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
   const suppressCollapseClickRef = useRef(false);
+  const desktopFullHeight = useDesktopFullPlayerHeight(isMobile);
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(
@@ -1110,6 +1114,45 @@ export function PlayerDock() {
     window.addEventListener(ANDROID_BACK_EVENT, handleBack);
     return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
   }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, miniActionsOpen, panel]);
+
+  useEffect(() => {
+    if (dockMode !== "full" || panel) return;
+    setLyricsPreviewRows((rows) => Math.max(rows, 3));
+    const container = fullMainRef.current;
+    if (!container) return;
+    let frame = 0;
+    let settleFrame = 0;
+    const measure = () => {
+      const cover = container.querySelector<HTMLElement>("[data-player-cover-shell]");
+      const title = container.querySelector<HTMLElement>("[data-player-title-block]");
+      const containerHeight = container.getBoundingClientRect().height;
+      const coverHeight = cover?.getBoundingClientRect().height ?? 0;
+      const titleHeight = title?.getBoundingClientRect().height ?? 0;
+      if (containerHeight < 320 || coverHeight < 120 || titleHeight < 24) return;
+      const reservedGap = 36;
+      const available = containerHeight - coverHeight - titleHeight - reservedGap;
+      const nextRows = Math.max(1, Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT)));
+      setLyricsPreviewRows((rows) => (rows === nextRows ? rows : nextRows));
+    };
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(settleFrame);
+      frame = requestAnimationFrame(() => {
+        settleFrame = requestAnimationFrame(measure);
+      });
+    };
+    scheduleMeasure();
+    const observer = new ResizeObserver(scheduleMeasure);
+    observer.observe(container);
+    container.querySelectorAll<HTMLElement>("[data-player-measure]").forEach((element) => observer.observe(element));
+    window.addEventListener("resize", scheduleMeasure);
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(settleFrame);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [desktopFullHeight, dockMode, panel, track?.locationId, track?.title, track?.workTitle]);
 
   if (!track) return null;
 
@@ -1308,21 +1351,16 @@ export function PlayerDock() {
 
   return (
     <section
-      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78"
+      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78"
       style={
-        isMobile && fullDragOffset > 0
-          ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
-          : undefined
+        {
+          ...(!isMobile ? { height: desktopFullHeight } : {}),
+          ...(isMobile && fullDragOffset > 0
+            ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
+            : {}),
+        }
       }
     >
-      {track.coverUrl && (
-        <img
-          src={assetURL(track.coverUrl)}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute -inset-8 h-[calc(100%+4rem)] w-[calc(100%+4rem)] scale-110 object-cover opacity-20 blur-3xl dark:opacity-15"
-        />
-      )}
       <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
       <div
         className="relative z-10 flex h-full flex-col pt-[env(safe-area-inset-top)]"
@@ -1383,7 +1421,7 @@ export function PlayerDock() {
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
+        <div ref={fullMainRef} className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
               <div
@@ -1397,7 +1435,7 @@ export function PlayerDock() {
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
+              <div className="player-panel-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
                 {panel === "lyrics" ? (
                   activeLyricsLocationId ? (
                     lyricsError ? (
@@ -1482,6 +1520,8 @@ export function PlayerDock() {
           ) : (
             <div className="flex h-full flex-col justify-center gap-3 py-2">
               <button
+                data-player-cover-shell
+                data-player-measure
                 className="mx-auto w-full max-w-[min(86vw,340px)] touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 lg:max-w-[282px]"
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
@@ -1490,17 +1530,25 @@ export function PlayerDock() {
               >
                 <CoverImage
                   track={track}
-                  className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15"
+                  className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-lg"
                 />
               </button>
-              <div className="space-y-1 text-center">
+              <div data-player-title-block data-player-measure className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
               </div>
-              {parsedLyrics.timed && activeLyricIndex >= 0 && (
+              {parsedLyrics.timed && activeLyricIndex >= 0 ? (
                 <InlineLyricsPreview
                   parsed={parsedLyrics}
                   activeIndex={activeLyricIndex}
+                  rows={lyricsPreviewRows}
+                  onOpen={() => setPanel("lyrics")}
+                />
+              ) : (
+                <LyricsPreviewState
+                  hasLyrics={Boolean(activeLyricsLocationId)}
+                  loading={Boolean(activeLyricsLocationId && lyricsText === null && !lyricsError)}
+                  error={lyricsError}
                   onOpen={() => setPanel("lyrics")}
                 />
               )}
@@ -1508,7 +1556,7 @@ export function PlayerDock() {
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
+        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
           <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">
               {player.currentIndex + 1} / {player.queue.length}
@@ -1794,6 +1842,25 @@ function useIsMobilePlayer() {
   return isMobile;
 }
 
+function useDesktopFullPlayerHeight(isMobile: boolean) {
+  const [height, setHeight] = useState(() => desktopFullPlayerHeight());
+
+  useEffect(() => {
+    if (isMobile) return;
+    const update = () => setHeight(desktopFullPlayerHeight());
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [isMobile]);
+
+  return height;
+}
+
+function desktopFullPlayerHeight() {
+  const viewportHeight = window.innerHeight;
+  return Math.round(Math.min(720, Math.max(560, viewportHeight * 0.62)));
+}
+
 function safeAreaBottom() {
   const footer = document.querySelector("footer");
   return footer ? Number.parseFloat(window.getComputedStyle(footer).paddingBottom) || 0 : 0;
@@ -1950,27 +2017,31 @@ type ParsedLyrics = {
 function InlineLyricsPreview({
   parsed,
   activeIndex,
+  rows,
   onOpen,
 }: {
   parsed: ParsedLyrics;
   activeIndex: number;
+  rows: number;
   onOpen: () => void;
 }) {
-  const rowHeight = 28;
-  const firstVisibleIndex = Math.max(0, Math.min(activeIndex - 1, Math.max(0, parsed.lines.length - 3)));
+  const visibleRows = Math.max(1, rows);
+  const activeOffset = Math.floor(visibleRows / 2);
+  const firstVisibleIndex = Math.max(0, Math.min(activeIndex - activeOffset, Math.max(0, parsed.lines.length - visibleRows)));
   return (
     <button
-      className="mx-auto h-[84px] w-full max-w-[min(86vw,340px)] overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
+      className="mx-auto w-full max-w-[min(86vw,340px)] overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
+      style={{ height: visibleRows * LYRIC_PREVIEW_ROW_HEIGHT }}
       onClick={onOpen}
       data-player-no-drag
       aria-label="Open lyrics"
     >
       <div
         className="will-change-transform transition-transform duration-500 ease-out"
-        style={{ transform: `translateY(${-firstVisibleIndex * rowHeight}px)` }}
+        style={{ transform: `translateY(${-firstVisibleIndex * LYRIC_PREVIEW_ROW_HEIGHT}px)` }}
       >
         {parsed.lines.map((line, index) => {
-          const visible = index >= firstVisibleIndex && index < firstVisibleIndex + 3;
+          const visible = index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows;
           return (
             <div
               key={`${line.time}:${index}`}
@@ -1988,6 +2059,43 @@ function InlineLyricsPreview({
           );
         })}
       </div>
+    </button>
+  );
+}
+
+function LyricsPreviewState({
+  hasLyrics,
+  loading,
+  error,
+  onOpen,
+}: {
+  hasLyrics: boolean;
+  loading: boolean;
+  error: string;
+  onOpen: () => void;
+}) {
+  const label = loading
+    ? "Loading lyrics"
+    : error
+      ? "Lyrics unavailable"
+      : hasLyrics
+        ? "Lyrics available"
+        : "No synced lyrics";
+  const detail = hasLyrics ? "Open lyrics" : "No match for this track";
+
+  return (
+    <button
+      className="mx-auto flex h-14 w-full max-w-[min(86vw,340px)] items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/20 bg-background/30 px-4 text-center text-muted-foreground transition-colors hover:border-muted-foreground/35 hover:bg-muted/40 disabled:hover:border-muted-foreground/20 disabled:hover:bg-background/30 lg:max-w-[282px]"
+      onClick={onOpen}
+      disabled={!hasLyrics}
+      data-player-no-drag
+      aria-label={label}
+    >
+      <Captions className="h-4 w-4 shrink-0 opacity-70" />
+      <span className="min-w-0 text-left">
+        <span className="block truncate text-xs font-medium text-foreground/70">{label}</span>
+        <span className="block truncate text-[11px]">{detail}</span>
+      </span>
     </button>
   );
 }

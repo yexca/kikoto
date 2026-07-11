@@ -193,6 +193,43 @@
     background: transparent;
   }
 
+  .player-panel-scroll {
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
+  }
+
+  .player-panel-scroll:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.42) transparent;
+  }
+
+  .player-panel-scroll::-webkit-scrollbar {
+    width: 0.625rem;
+  }
+
+  .player-panel-scroll::-webkit-scrollbar-track {
+    margin-block: 0.75rem;
+    background: transparent;
+  }
+
+  .player-panel-scroll::-webkit-scrollbar-thumb {
+    min-height: 2.5rem;
+    border: 0.1875rem solid transparent;
+    border-radius: 9999px;
+    background: hsl(var(--muted-foreground) / 0.24);
+    background-clip: content-box;
+  }
+
+  .player-panel-scroll:hover::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.4);
+    background-clip: content-box;
+  }
+
+  .player-panel-scroll::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--primary) / 0.58);
+    background-clip: content-box;
+  }
+
   .animate-toast-progress {
     animation-name: toast-progress;
     animation-timing-function: linear;
