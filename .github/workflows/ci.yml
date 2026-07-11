@@ -51,6 +51,52 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    needs:
+      - frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Sync Android web assets
+        working-directory: frontend
+        run: npm run cap:sync
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
   docker:
     name: Docker
     runs-on: ubuntu-latest
