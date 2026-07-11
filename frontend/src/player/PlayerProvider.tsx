@@ -1105,11 +1105,6 @@ export function PlayerDock() {
       if (dockMode === "full") {
         setDockMode("compact");
         event.preventDefault();
-        return;
-      }
-      if (dockMode === "compact") {
-        setDockMode("mini");
-        event.preventDefault();
       }
     };
     window.addEventListener(ANDROID_BACK_EVENT, handleBack);

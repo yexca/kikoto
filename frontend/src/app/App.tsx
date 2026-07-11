@@ -1,11 +1,11 @@
 import { App as CapacitorApp } from "@capacitor/app";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Lock, PanelLeftClose, PanelLeftOpen, WifiOff } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
-import { LOGIN_REQUEST_EVENT } from "@/components/ui/toast";
+import { LOGIN_REQUEST_EVENT, useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
@@ -47,6 +47,8 @@ function AuthenticatedApp() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const mobileRuntime = useMobileRuntime();
+  const toast = useToast();
+  const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
   const visibleNavItems = useMemo(
     () => visibleNavigationItems({ state: authState, hasPermission: auth.hasPermission }),
@@ -133,16 +135,27 @@ function AuthenticatedApp() {
       window.dispatchEvent(playerEvent);
       if (playerEvent.defaultPrevented) return;
       if (window.history.length > 1 && window.location.pathname !== "/") {
+        exitBackDeadlineRef.current = 0;
         window.history.back();
         return;
       }
-      await CapacitorApp.exitApp();
+      const now = Date.now();
+      if (now < exitBackDeadlineRef.current) {
+        await CapacitorApp.exitApp();
+        return;
+      }
+      exitBackDeadlineRef.current = now + 2000;
+      toast.info("Press back again to exit Kikoto.");
+      window.setTimeout(() => {
+        if (Date.now() >= exitBackDeadlineRef.current) exitBackDeadlineRef.current = 0;
+      }, 2100);
+      return;
     }).catch(() => {});
     return () => {
       disposed = true;
       void CapacitorApp.removeAllListeners();
     };
-  }, [commandPaletteOpen, loginOpen]);
+  }, [commandPaletteOpen, loginOpen, toast]);
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;

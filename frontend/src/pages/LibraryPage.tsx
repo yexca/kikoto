@@ -2779,6 +2779,8 @@ function WorkDetailView({
   const [activeEditionCode, setActiveEditionCode] = useState("");
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
+  const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
+  const isCompactDetailLayout = useCompactDetailLayout();
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
   const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
   const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
@@ -3272,6 +3274,117 @@ function WorkDetailView({
 
   const hero = detailHeroModel(code, work, workPreview);
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
+  const detailActions = work ? <DetailActionBar
+    canPlay={allTracks.length > 0}
+    busy={isSyncingDetail || isSaving}
+    mode={actionMode}
+    listeningStatus={work.listeningStatus}
+    favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
+    listWorkId={selectedRemoteSource && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote ? null : work.id}
+    onEnsureListWork={ensureDetailListWork}
+    onListSaved={favoriteSaved}
+    onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
+    onResume={resumeTrack ? resumePlayback : undefined}
+    onMark={(status) => void markDetailWork(status)}
+    onSync={() => void syncDetailMetadata()}
+    onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
+    trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
+    forkSources={forkSources}
+    currentForkSource={currentForkSource}
+    onFork={(remote) => requestForkSource(remote)}
+    onFetch={selectedRemoteDetail ? () => void openWorkSaveWorkspace() : undefined}
+    onEditMetadata={() => setIsMetadataEditorOpen(true)}
+    onManage={() => setIsManageOpen(true)}
+    dlsiteUrl={work.dlsiteUrl}
+    syncLabel="Sync"
+    showSync
+    showFetch={Boolean(selectedRemoteDetail)}
+  /> : <DetailSkeletonActions />;
+  const directoryPanel = (
+    <SourceDirectoryPanel
+      title={directoryTitle}
+      description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
+      statsLabel={sourceStatsLabel}
+      tabs={sourceTabs}
+      activeKey={activeSourceKey}
+      onActiveKeyChange={changeSourceKey}
+      checkingLabel={isCheckingSources ? "Checking sources..." : ""}
+      sourceSummary={work ? (
+        <SourceAvailabilitySummary
+          tabs={sourceTabs}
+          remoteSources={remoteSources}
+          sourcePresence={work.sourcePresence ?? []}
+          checking={isCheckingSources}
+          checkedAt={sourceCheckedAt}
+          onRefresh={() => void refreshSourceAvailability()}
+        />
+      ) : <DirectorySkeletonSummary />}
+      directoryMode={directoryMode}
+      onDirectoryModeChange={setDirectoryMode}
+      root={tree}
+      directoryRoutingRules={directoryRoutingRules}
+      currentLocationId={player.currentLocationId}
+      emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+      toolbar={message ? <DirectoryMessage message={message} /> : undefined}
+      selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
+        <RemoteSaveSelectionPanel
+          root={tree}
+          selectedPaths={selectedSavePaths}
+          selectedLocalPaths={selectedLocalSavePaths}
+          plan={savePlan}
+          decisions={saveDecisions}
+          planDirty={savePlanDirty}
+          message={savePlanMessage}
+          sourceId={selectedRemoteSource?.source.id}
+          activeEditionCode={remoteDetailActionCode(selectedRemoteDetail)}
+          onEditionChange={(editionCode) => void selectPreparedWorkEdition(editionCode)}
+          targetRoot={selectedTargetRoot}
+          onTargetRootChange={(targetRoot) => {
+            setSelectedTargetRoot(targetRoot);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onChange={(paths) => {
+            setSelectedSavePaths(paths);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onLocalChange={(paths) => {
+            setSelectedLocalSavePaths(paths);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onDecisionChange={(decision) => {
+            setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
+            setSavePlanDirty(true);
+          }}
+          disabled={isSaving}
+          onClose={() => setIsSaveSelectionOpen(false)}
+          onSave={() => void planRemoteSave()}
+        />
+      ) : null}
+      emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence && !selectedTrackedForked ? (
+        <TrackedUnforkedPanel
+          presence={selectedTrackedPresence}
+          remoteSources={remoteSources}
+          busy={isSyncingDetail}
+          onFork={(remote) => requestForkSource(remote)}
+        />
+      ) : showNoSourceDirectory ? (
+        <NoSourceDirectoryPanel
+          checking={isCheckingSources}
+          checkedAt={sourceCheckedAt}
+          remoteSources={remoteSources}
+          onRefresh={() => void refreshSourceAvailability()}
+        />
+      ) : undefined}
+      loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
+      onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
+      onPlayNext={(track) => queueTrack(track, true)}
+      onAppendQueue={(track) => queueTrack(track, false)}
+      onPreview={setPreview}
+    />
+  );
 
   return (
     <div className="space-y-5">
@@ -3280,146 +3393,73 @@ function WorkDetailView({
         {detailReturnTarget("library").label}
       </Button>
 
-      <DetailHero
-        coverUrl={hero.coverUrl}
-        fallbackCode={hero.primaryCode}
-        code={hero.primaryCode}
-        title={hero.title}
-        circle={hero.circle}
-        circleExternalId={hero.circleExternalId}
-        ratingLabel="DL rating"
-        rating={hero.rating}
-        ratingCount={hero.ratingCount}
-        sales={hero.sales}
-        series={hero.series}
-        seriesTitleId={work?.seriesTitleId ?? ""}
-        seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
-        baseCode={work?.baseCode}
-        metadataLanguage={work?.metadataLanguage}
-        translations={work?.translations ?? []}
-        activeVersionCode={activeEditionCode || hero.primaryCode}
-        onVersionSelect={(translation) => void selectEdition(translation)}
-        dlsiteFetchedAt={hero.dlsiteFetchedAt}
-        releaseDate={hero.releaseDate ?? "Unknown"}
-        ageRating={hero.ageRating}
-        durationSeconds={displayDurationSeconds}
-        voiceActors={hero.voiceActors}
-        voiceCredits={work?.voiceCredits ?? []}
-        tags={hero.tags}
-        loading={isDetailLoading}
-        actions={
-          work ? <DetailActionBar
-            canPlay={allTracks.length > 0}
-            busy={isSyncingDetail || isSaving}
-            mode={actionMode}
-            listeningStatus={work.listeningStatus}
-            favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
-            listWorkId={selectedRemoteSource && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote ? null : work.id}
-            onEnsureListWork={ensureDetailListWork}
-            onListSaved={favoriteSaved}
-            onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
-            onResume={resumeTrack ? resumePlayback : undefined}
-            onMark={(status) => void markDetailWork(status)}
-            onSync={() => void syncDetailMetadata()}
-            onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
-            trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
-            forkSources={forkSources}
-            currentForkSource={currentForkSource}
-            onFork={(remote) => requestForkSource(remote)}
-            onFetch={selectedRemoteDetail ? () => void openWorkSaveWorkspace() : undefined}
-            onEditMetadata={() => setIsMetadataEditorOpen(true)}
-            onManage={() => setIsManageOpen(true)}
-            dlsiteUrl={work.dlsiteUrl}
-            syncLabel="Sync"
-            showSync
-            showFetch={Boolean(selectedRemoteDetail)}
-          /> : <DetailSkeletonActions />
-        }
-      />
-
-      <SourceDirectoryPanel
-        title={directoryTitle}
-        description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
-        statsLabel={sourceStatsLabel}
-        tabs={sourceTabs}
-        activeKey={activeSourceKey}
-        onActiveKeyChange={changeSourceKey}
-        checkingLabel={isCheckingSources ? "Checking sources..." : ""}
-        sourceSummary={work ? (
-          <SourceAvailabilitySummary
-            tabs={sourceTabs}
-            remoteSources={remoteSources}
-            sourcePresence={work.sourcePresence ?? []}
-            checking={isCheckingSources}
-            checkedAt={sourceCheckedAt}
-            onRefresh={() => void refreshSourceAvailability()}
+      {isCompactDetailLayout ? (
+        <MobileWorkDetailLayout
+          coverUrl={hero.coverUrl}
+          fallbackCode={hero.primaryCode}
+          code={hero.primaryCode}
+          title={hero.title}
+          circle={hero.circle}
+          circleExternalId={hero.circleExternalId}
+          series={hero.series}
+          seriesTitleId={work?.seriesTitleId ?? ""}
+          seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
+          ratingLabel="DL rating"
+          rating={hero.rating}
+          ratingCount={hero.ratingCount}
+          sales={hero.sales}
+          baseCode={work?.baseCode}
+          metadataLanguage={work?.metadataLanguage}
+          translations={work?.translations ?? []}
+          activeVersionCode={activeEditionCode || hero.primaryCode}
+          onVersionSelect={(translation) => void selectEdition(translation)}
+          dlsiteFetchedAt={hero.dlsiteFetchedAt}
+          releaseDate={hero.releaseDate ?? "Unknown"}
+          ageRating={hero.ageRating}
+          durationSeconds={displayDurationSeconds}
+          voiceActors={hero.voiceActors}
+          voiceCredits={work?.voiceCredits ?? []}
+          tags={hero.tags}
+          loading={isDetailLoading}
+          activeTab={mobileDetailTab}
+          onActiveTabChange={setMobileDetailTab}
+          actions={detailActions}
+          directory={directoryPanel}
+        />
+      ) : (
+        <>
+          <DetailHero
+            coverUrl={hero.coverUrl}
+            fallbackCode={hero.primaryCode}
+            code={hero.primaryCode}
+            title={hero.title}
+            circle={hero.circle}
+            circleExternalId={hero.circleExternalId}
+            ratingLabel="DL rating"
+            rating={hero.rating}
+            ratingCount={hero.ratingCount}
+            sales={hero.sales}
+            series={hero.series}
+            seriesTitleId={work?.seriesTitleId ?? ""}
+            seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
+            baseCode={work?.baseCode}
+            metadataLanguage={work?.metadataLanguage}
+            translations={work?.translations ?? []}
+            activeVersionCode={activeEditionCode || hero.primaryCode}
+            onVersionSelect={(translation) => void selectEdition(translation)}
+            dlsiteFetchedAt={hero.dlsiteFetchedAt}
+            releaseDate={hero.releaseDate ?? "Unknown"}
+            ageRating={hero.ageRating}
+            durationSeconds={displayDurationSeconds}
+            voiceActors={hero.voiceActors}
+            voiceCredits={work?.voiceCredits ?? []}
+            tags={hero.tags}
+            loading={isDetailLoading}
+            actions={detailActions}
           />
-        ) : <DirectorySkeletonSummary />}
-        directoryMode={directoryMode}
-        onDirectoryModeChange={setDirectoryMode}
-        root={tree}
-        directoryRoutingRules={directoryRoutingRules}
-        currentLocationId={player.currentLocationId}
-        emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
-        toolbar={message ? <DirectoryMessage message={message} /> : undefined}
-        selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
-          <RemoteSaveSelectionPanel
-            root={tree}
-            selectedPaths={selectedSavePaths}
-            selectedLocalPaths={selectedLocalSavePaths}
-            plan={savePlan}
-            decisions={saveDecisions}
-            planDirty={savePlanDirty}
-            message={savePlanMessage}
-            sourceId={selectedRemoteSource?.source.id}
-            activeEditionCode={remoteDetailActionCode(selectedRemoteDetail)}
-            onEditionChange={(editionCode) => void selectPreparedWorkEdition(editionCode)}
-            targetRoot={selectedTargetRoot}
-            onTargetRootChange={(targetRoot) => {
-              setSelectedTargetRoot(targetRoot);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onChange={(paths) => {
-              setSelectedSavePaths(paths);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onLocalChange={(paths) => {
-              setSelectedLocalSavePaths(paths);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onDecisionChange={(decision) => {
-              setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
-              setSavePlanDirty(true);
-            }}
-            disabled={isSaving}
-            onClose={() => setIsSaveSelectionOpen(false)}
-            onSave={() => void planRemoteSave()}
-          />
-        ) : null}
-        emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence && !selectedTrackedForked ? (
-          <TrackedUnforkedPanel
-            presence={selectedTrackedPresence}
-            remoteSources={remoteSources}
-            busy={isSyncingDetail}
-            onFork={(remote) => requestForkSource(remote)}
-          />
-        ) : showNoSourceDirectory ? (
-          <NoSourceDirectoryPanel
-            checking={isCheckingSources}
-            checkedAt={sourceCheckedAt}
-            remoteSources={remoteSources}
-            onRefresh={() => void refreshSourceAvailability()}
-          />
-        ) : undefined}
-        loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
-        onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
-        onPlayNext={(track) => queueTrack(track, true)}
-        onAppendQueue={(track) => queueTrack(track, false)}
-        onPreview={setPreview}
-      />
+          {directoryPanel}
+        </>
+      )}
       {preview && <FilePreviewModal
         preview={preview}
         onClose={() => setPreview(null)}
@@ -3526,26 +3566,7 @@ function DetailHero({
   loading?: boolean;
   actions?: ReactNode;
 }) {
-  const toast = useToast();
-  const [resolvingEntity, setResolvingEntity] = useState<"circle" | "series" | "voice" | null>(null);
-  const codeLabel = code || fallbackCode || "Remote";
-  const displayVoiceCredits = voiceCredits.length > 0
-    ? voiceCredits
-    : voiceActors.map((name) => ({ personId: 0, displayName: name }));
-  const baseTranslation = translations?.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
-  const resolveEntity = async (kind: "circle" | "series" | "voice", name: string) => {
-    if (resolvingEntity || !code) return;
-    setResolvingEntity(kind);
-    toast.info(kind === "series" ? "Loading series information…" : `Loading ${kind} information…`);
-    try {
-      const result = await api.resolveWorkEntityLink(code, kind, name);
-      if (result.route) openResolvedEntityRoute(result.route);
-    } catch (error) {
-      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
-    } finally {
-      setResolvingEntity(null);
-    }
-  };
+  const entityResolver = useDetailEntityResolver(code);
 
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(420px,560px)_minmax(0,1fr)]">
@@ -3560,34 +3581,19 @@ function DetailHero({
       </div>
 
       <div className="min-w-0 space-y-4">
-        <div className="space-y-2">
-          <div className="space-y-1.5">
-            <Badge variant="secondary" className="w-fit">{codeLabel}</Badge>
-            <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
-            {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {circle ? (
-              <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => circleExternalId ? openCircleRoute(circleExternalId) : void resolveEntity("circle", circle)}>
-                <CircleUserRound className="h-4 w-4 shrink-0" />
-                <span className="truncate">{circle || "Unknown circle"}</span>
-              </button>
-            ) : (
-              <span className="inline-flex max-w-full items-center gap-1 truncate">
-                <CircleUserRound className="h-4 w-4 shrink-0" />
-                <span className="truncate">{circle || "Unknown circle"}</span>
-              </span>
-            )}
-            {series && (
-              <span className="inline-flex max-w-full items-center gap-1 truncate">
-                <span className="text-border">/</span>
-                <button className="truncate hover:text-primary" onClick={() => seriesTitleId && seriesCircleExternalId ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId) : void resolveEntity("series", series)}>{series}</button>
-              </span>
-            )}
-          </div>
-        </div>
-
-        <DlsiteMetrics
+        <DetailTitleBlock
+          fallbackCode={fallbackCode}
+          code={code}
+          title={title}
+          circle={circle}
+          circleExternalId={circleExternalId}
+          series={series}
+          seriesTitleId={seriesTitleId}
+          seriesCircleExternalId={seriesCircleExternalId}
+          loading={loading}
+          entityResolver={entityResolver}
+        />
+        <DetailMetadataContent
           ratingLabel={ratingLabel}
           rating={rating}
           ratingCount={ratingCount}
@@ -3595,42 +3601,327 @@ function DetailHero({
           releaseDate={releaseDate}
           dlsiteFetchedAt={dlsiteFetchedAt}
           ageRating={ageRating}
+          metadataLanguage={metadataLanguage}
+          baseCode={baseCode}
+          translations={translations}
+          activeVersionCode={activeVersionCode}
+          onVersionSelect={onVersionSelect}
+          durationSeconds={durationSeconds}
+          voiceActors={voiceActors}
+          voiceCredits={voiceCredits}
+          tags={tags}
+          code={code}
+          entityResolver={entityResolver}
         />
-
-        {(metadataLanguage || baseCode || (translations && translations.length > 0)) && (
-          <WorkVersionSelector
-            metadataLanguage={metadataLanguage ?? ""}
-            baseCode={baseCode ?? ""}
-            baseAvailable={Boolean(baseTranslation?.workId)}
-            translations={translations ?? []}
-            activeVersionCode={activeVersionCode ?? code}
-            onVersionSelect={onVersionSelect}
-          />
-        )}
-
-        <div className="space-y-3 rounded-lg border bg-card p-3">
-          <DetailChipRow
-            icon={<UserRound className="h-4 w-4" />}
-            label="Voice"
-            emptyLabel="No voice actor metadata"
-            items={displayVoiceCredits.map((credit) => ({
-              key: `${credit.personId}:${credit.displayName}`,
-              label: credit.displayName,
-              onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : () => void resolveEntity("voice", credit.displayName),
-            }))}
-          />
-          <DetailChipRow
-            icon={<Tags className="h-4 w-4" />}
-            label="Tags"
-            emptyLabel="No tag metadata"
-            items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
-          />
-          <InfoRow icon={<Clock3 className="h-4 w-4" />} label="Duration" value={formatDuration(durationSeconds)} />
-        </div>
 
         {actions && <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
       </div>
     </section>
+  );
+}
+
+function MobileWorkDetailLayout({
+  coverUrl,
+  fallbackCode,
+  code,
+  title,
+  circle,
+  circleExternalId,
+  series,
+  seriesTitleId,
+  seriesCircleExternalId,
+  ratingLabel,
+  rating,
+  ratingCount,
+  sales,
+  baseCode,
+  metadataLanguage,
+  translations,
+  activeVersionCode,
+  onVersionSelect,
+  dlsiteFetchedAt,
+  releaseDate,
+  ageRating,
+  durationSeconds,
+  voiceActors,
+  voiceCredits,
+  tags,
+  loading,
+  activeTab,
+  onActiveTabChange,
+  actions,
+  directory,
+}: {
+  coverUrl: string;
+  fallbackCode: string;
+  code: string;
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
+  ratingLabel: string;
+  rating: number | null;
+  ratingCount: number | null;
+  sales: number | null;
+  baseCode?: string;
+  metadataLanguage?: string;
+  translations?: WorkDetail["translations"];
+  activeVersionCode?: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  dlsiteFetchedAt: string;
+  releaseDate: string;
+  ageRating: string;
+  durationSeconds: number | null;
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  tags: string[];
+  loading?: boolean;
+  activeTab: "info" | "directory";
+  onActiveTabChange: (tab: "info" | "directory") => void;
+  actions: ReactNode;
+  directory: ReactNode;
+}) {
+  const entityResolver = useDetailEntityResolver(code);
+  return (
+    <section className="space-y-4">
+      <div className="overflow-hidden rounded-lg border bg-muted">
+        <div className="aspect-[4/3] max-h-[58vh]">
+          {coverUrl ? (
+            <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
+          ) : (
+            <div className="grid h-full place-items-center text-4xl font-bold">{fallbackCode.slice(0, 2)}</div>
+          )}
+        </div>
+      </div>
+
+      <DetailTitleBlock
+        fallbackCode={fallbackCode}
+        code={code}
+        title={title}
+        circle={circle}
+        circleExternalId={circleExternalId}
+        series={series}
+        seriesTitleId={seriesTitleId}
+        seriesCircleExternalId={seriesCircleExternalId}
+        loading={loading}
+        entityResolver={entityResolver}
+      />
+
+      <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>
+
+      <div className="grid grid-cols-2 rounded-lg border bg-card p-1 text-sm">
+        <button
+          className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "info" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+          onClick={() => onActiveTabChange("info")}
+        >
+          Info
+        </button>
+        <button
+          className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "directory" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+          onClick={() => onActiveTabChange("directory")}
+        >
+          Directory
+        </button>
+      </div>
+
+      {activeTab === "info" ? (
+        <div className="space-y-4">
+          <DetailMetadataContent
+            ratingLabel={ratingLabel}
+            rating={rating}
+            ratingCount={ratingCount}
+            sales={sales}
+            releaseDate={releaseDate}
+            dlsiteFetchedAt={dlsiteFetchedAt}
+            ageRating={ageRating}
+            metadataLanguage={metadataLanguage}
+            baseCode={baseCode}
+            translations={translations}
+            activeVersionCode={activeVersionCode}
+            onVersionSelect={onVersionSelect}
+            durationSeconds={durationSeconds}
+            voiceActors={voiceActors}
+            voiceCredits={voiceCredits}
+            tags={tags}
+            code={code}
+            entityResolver={entityResolver}
+          />
+        </div>
+      ) : (
+        directory
+      )}
+    </section>
+  );
+}
+
+type DetailEntityKind = "circle" | "series" | "voice";
+
+type DetailEntityResolver = {
+  resolvingEntity: DetailEntityKind | null;
+  resolveEntity: (kind: DetailEntityKind, name: string) => void;
+};
+
+function useDetailEntityResolver(code: string): DetailEntityResolver {
+  const toast = useToast();
+  const [resolvingEntity, setResolvingEntity] = useState<DetailEntityKind | null>(null);
+  const resolveEntity = async (kind: DetailEntityKind, name: string) => {
+    if (resolvingEntity || !code) return;
+    setResolvingEntity(kind);
+    toast.info(kind === "series" ? "Loading series information..." : `Loading ${kind} information...`);
+    try {
+      const result = await api.resolveWorkEntityLink(code, kind, name);
+      if (result.route) openResolvedEntityRoute(result.route);
+    } catch (error) {
+      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
+    } finally {
+      setResolvingEntity(null);
+    }
+  };
+  return { resolvingEntity, resolveEntity };
+}
+
+function DetailTitleBlock({
+  fallbackCode,
+  code,
+  title,
+  circle,
+  circleExternalId,
+  series,
+  seriesTitleId,
+  seriesCircleExternalId,
+  loading,
+  entityResolver,
+}: {
+  fallbackCode: string;
+  code: string;
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
+  loading?: boolean;
+  entityResolver: DetailEntityResolver;
+}) {
+  const codeLabel = code || fallbackCode || "Remote";
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1.5">
+        <Badge variant="secondary" className="w-fit">{codeLabel}</Badge>
+        <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
+        {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        {circle ? (
+          <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => circleExternalId ? openCircleRoute(circleExternalId) : entityResolver.resolveEntity("circle", circle)}>
+            <CircleUserRound className="h-4 w-4 shrink-0" />
+            <span className="truncate">{circle || "Unknown circle"}</span>
+          </button>
+        ) : (
+          <span className="inline-flex max-w-full items-center gap-1 truncate">
+            <CircleUserRound className="h-4 w-4 shrink-0" />
+            <span className="truncate">{circle || "Unknown circle"}</span>
+          </span>
+        )}
+        {series && (
+          <span className="inline-flex max-w-full items-center gap-1 truncate">
+            <span className="text-border">/</span>
+            <button className="truncate hover:text-primary" onClick={() => seriesTitleId && seriesCircleExternalId ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId) : entityResolver.resolveEntity("series", series)}>{series}</button>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailMetadataContent({
+  ratingLabel,
+  rating,
+  ratingCount,
+  sales,
+  releaseDate,
+  dlsiteFetchedAt,
+  ageRating,
+  metadataLanguage,
+  baseCode,
+  translations = [],
+  activeVersionCode,
+  onVersionSelect,
+  durationSeconds,
+  voiceActors,
+  voiceCredits,
+  tags,
+  code,
+  entityResolver,
+}: {
+  ratingLabel: string;
+  rating: number | null;
+  ratingCount: number | null;
+  sales: number | null;
+  releaseDate: string;
+  dlsiteFetchedAt: string;
+  ageRating: string;
+  metadataLanguage?: string;
+  baseCode?: string;
+  translations?: WorkDetail["translations"];
+  activeVersionCode?: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  durationSeconds: number | null;
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  tags: string[];
+  code: string;
+  entityResolver: DetailEntityResolver;
+}) {
+  const displayVoiceCredits = voiceCredits.length > 0
+    ? voiceCredits
+    : voiceActors.map((name) => ({ personId: 0, displayName: name }));
+  const baseTranslation = translations.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
+  return (
+    <>
+      <DlsiteMetrics
+        ratingLabel={ratingLabel}
+        rating={rating}
+        ratingCount={ratingCount}
+        sales={sales}
+        releaseDate={releaseDate}
+        dlsiteFetchedAt={dlsiteFetchedAt}
+        ageRating={ageRating}
+      />
+
+      {(metadataLanguage || baseCode || translations.length > 0) && (
+        <WorkVersionSelector
+          metadataLanguage={metadataLanguage ?? ""}
+          baseCode={baseCode ?? ""}
+          baseAvailable={Boolean(baseTranslation?.workId)}
+          translations={translations}
+          activeVersionCode={activeVersionCode ?? code}
+          onVersionSelect={onVersionSelect}
+        />
+      )}
+
+      <div className="space-y-3 rounded-lg border bg-card p-3">
+        <DetailChipRow
+          icon={<UserRound className="h-4 w-4" />}
+          label="Voice"
+          emptyLabel="No voice actor metadata"
+          items={displayVoiceCredits.map((credit) => ({
+            key: `${credit.personId}:${credit.displayName}`,
+            label: credit.displayName,
+            onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : () => entityResolver.resolveEntity("voice", credit.displayName),
+          }))}
+        />
+        <DetailChipRow
+          icon={<Tags className="h-4 w-4" />}
+          label="Tags"
+          emptyLabel="No tag metadata"
+          items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
+        />
+        <InfoRow icon={<Clock3 className="h-4 w-4" />} label="Duration" value={formatDuration(durationSeconds)} />
+      </div>
+    </>
   );
 }
 
@@ -3683,6 +3974,18 @@ function detailHeroModel(code: string, work: WorkDetail | null, preview: WorkPre
     voiceActors: work?.voiceActors ?? preview?.voiceActors ?? [],
     tags: work?.tags ?? preview?.tags ?? [],
   };
+}
+
+function useCompactDetailLayout() {
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return compact;
 }
 
 function SourceAvailabilitySummary({
