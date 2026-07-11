@@ -32,7 +32,6 @@ import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import {
   addNativeMediaListeners,
-  requestNativeNotificationPermission,
   stopNativeMedia,
   supportsNativeMedia,
   updateNativeMedia,
@@ -242,7 +241,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const cacheRequestedRef = useRef<Set<string>>(new Set());
   const failedLocationIDsRef = useRef<Set<number>>(new Set());
-  const notificationPermissionPromiseRef = useRef<Promise<boolean> | null>(null);
   const nativeControlRef = useRef({
     play: () => {},
     pause: () => {},
@@ -664,10 +662,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     let cancelled = false;
     async function syncNativeMedia() {
-      if (isPlaying) {
-        notificationPermissionPromiseRef.current ??= requestNativeNotificationPermission();
-        await notificationPermissionPromiseRef.current;
-      }
       if (cancelled) return;
       await updateNativeMedia({
         title: currentTrack.title || currentTrack.workTitle || "Kikoto",

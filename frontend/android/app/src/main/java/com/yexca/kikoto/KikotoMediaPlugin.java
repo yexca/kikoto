@@ -1,6 +1,5 @@
 package com.yexca.kikoto;
 
-import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -15,15 +14,8 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.Permission;
-import com.getcapacitor.annotation.PermissionCallback;
 
-@CapacitorPlugin(
-    name = "KikotoMedia",
-    permissions = {
-        @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications")
-    }
-)
+@CapacitorPlugin(name = "KikotoMedia")
 public class KikotoMediaPlugin extends Plugin {
     private BroadcastReceiver controlReceiver;
     private AudioManager audioManager;
@@ -104,33 +96,9 @@ public class KikotoMediaPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void requestNotificationPermission(PluginCall call) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            resolveNotificationPermission(call, true);
-            return;
-        }
-        if (getPermissionState("notifications") == com.getcapacitor.PermissionState.GRANTED) {
-            resolveNotificationPermission(call, true);
-            return;
-        }
-        requestPermissionForAlias("notifications", call, "notificationPermissionCallback");
-    }
-
-    @PermissionCallback
-    private void notificationPermissionCallback(PluginCall call) {
-        resolveNotificationPermission(call, getPermissionState("notifications") == com.getcapacitor.PermissionState.GRANTED);
-    }
-
-    @PluginMethod
     public void abandonAudioFocus(PluginCall call) {
         abandonAudioFocusInternal();
         call.resolve();
-    }
-
-    private void resolveNotificationPermission(PluginCall call, boolean granted) {
-        JSObject result = new JSObject();
-        result.put("granted", granted);
-        call.resolve(result);
     }
 
     private boolean requestAudioFocusInternal() {
