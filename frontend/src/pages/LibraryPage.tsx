@@ -5855,7 +5855,7 @@ function DirectoryBrowser({
       <div className="space-y-1">
         {path.length > 0 && (
           <button
-            className="flex min-h-9 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
             onClick={() => setPath(path.slice(0, -1))}
           >
             <ChevronLeft className="h-4 w-4 text-muted-foreground" />
@@ -5865,7 +5865,7 @@ function DirectoryBrowser({
         {folders.map((folder) => (
           <button
             key={folder.path || folder.name}
-            className="flex min-h-9 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
             onClick={() => setPath([...path, folder.name])}
           >
             <Folder className="h-4 w-4 shrink-0 text-primary" />
@@ -5907,7 +5907,7 @@ function TreeFolderRow({
   const filesLabel = formatFolderStats(stats, playable.length);
   return (
     <button
-      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
+      className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
       style={{ paddingLeft: depth * 14 + 8 }}
       onClick={onToggle}
     >
@@ -5951,6 +5951,7 @@ function TreeFile({
   const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
   const canOpen = canPlay || canPreview || canDownload;
   const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes)].filter(Boolean).join(" · ");
+  const mobileAudioMeta = fileMeta || "Audio";
   const openFile = () => {
     if (canPlay) {
       onPlayFolder?.(files, file.locationId);
@@ -5968,7 +5969,7 @@ function TreeFile({
     <div
       role={canOpen ? "button" : undefined}
       tabIndex={canOpen ? 0 : undefined}
-      className={`flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
+      className={`flex ${file.kind === "audio" ? "min-h-14 sm:min-h-11" : "min-h-11"} items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
         isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
       } ${canOpen ? "cursor-pointer" : "cursor-default"}`}
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
@@ -5981,17 +5982,24 @@ function TreeFile({
         openFile();
       }}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
-        <span className="truncate">{file.title}</span>
+      <span className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
+        <span className="mt-0.5 shrink-0 sm:mt-0">
+          {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{file.title}</span>
+          {file.kind === "audio" && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground sm:hidden">{mobileAudioMeta}</span>
+          )}
+        </span>
       </span>
-      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" onClick={(event) => event.stopPropagation()}>
+      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
-        <span>{fileMeta}</span>
+        <span className={file.kind === "audio" ? "hidden sm:inline" : ""}>{fileMeta}</span>
         {canPlay && (onPlayNext || onAppendQueue) && (
-          <div ref={queueMenuRef}>
+          <div ref={queueMenuRef} onClick={(event) => event.stopPropagation()}>
             <button
-              className="grid h-8 w-8 place-items-center rounded-md hover:bg-secondary hover:text-foreground"
+              className="grid h-11 w-11 place-items-center rounded-md hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
               onClick={() => setQueueMenuOpen((value) => !value)}
               aria-label={`Queue actions for ${file.title}`}
               aria-expanded={queueMenuOpen}
