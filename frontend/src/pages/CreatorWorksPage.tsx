@@ -1053,7 +1053,7 @@ function AliasReviewPanel({
             <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
           </div>
           {shouldShowSuggestions && (
-            <div className="absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
+            <div className="app-scroll absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
               {candidates.slice(0, aliasSuggestMaxResults).map((candidate) => (
                 <button
                   key={candidate.personId}

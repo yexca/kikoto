@@ -178,7 +178,7 @@ function AuthenticatedApp() {
               {!sidebarCollapsed && <div className="truncate text-xl font-bold">Kikoto</div>}
             </div>
           </div>
-          <nav className={cn("min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
+          <nav className={cn("app-scroll min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "p-2" : "p-3")}>
             {visibleNavItems.map((item) => (
               <Button
                 key={item.id}

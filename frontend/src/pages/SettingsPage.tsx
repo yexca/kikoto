@@ -1205,7 +1205,7 @@ function SourceModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onMouseDown={onClose}>
-      <Card className="max-h-[90vh] w-full max-w-2xl overflow-auto" onMouseDown={(event) => event.stopPropagation()}>
+      <Card className="app-scroll max-h-[90vh] w-full max-w-2xl overflow-auto" onMouseDown={(event) => event.stopPropagation()}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
             <span>{editing ? "Edit remote source" : "Add remote source"}</span>

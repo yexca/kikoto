@@ -509,7 +509,7 @@ export function WorkCardListButton({
       </WorkCardActionButton>
 	  <AnchoredPopover open={open} anchorRef={ref} onOpenChange={setOpen} bottomCollisionPadding={bottomCollisionPadding} className="w-56 p-2 text-left">
           <div className="text-sm font-semibold">Favorite lists</div>
-          <div className="mt-2 max-h-56 space-y-1.5 overflow-auto">
+          <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
             {loading ? (
               <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">Loading lists...</div>
             ) : lists.length > 0 ? lists.map((list) => (

@@ -102,7 +102,7 @@ export function CommandPalette({ open, onOpenChange, hasPermission, visibleNavIt
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-2">
+        <div className="app-scroll min-h-0 flex-1 overflow-auto p-2">
           {actions.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No commands match.</div>
           ) : (

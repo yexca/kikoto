@@ -265,7 +265,7 @@ export function HeaderActions({
               title="Review runs"
               subtitle={reviewCount > 0 ? `${reviewCount} runs need attention` : "No runs need review"}
             />
-            <div className="max-h-80 overflow-auto p-2">
+            <div className="app-scroll max-h-80 overflow-auto p-2">
               {reviewRuns.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                   No review items right now.

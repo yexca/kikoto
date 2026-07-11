@@ -1982,7 +1982,7 @@ function WorkflowHints({ nodes, nodeTypes, compact = false }: { nodes: WorkflowN
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
-      <div className="max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl">
+      <div className="app-scroll max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3">
           <div className="font-semibold">{title}</div>
           <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
@@ -2109,7 +2109,7 @@ function JsonPreview({ value, empty, compact = false }: { value: string; empty: 
     return <div className="mt-2 text-sm text-muted-foreground">{empty}</div>;
   }
   return (
-    <pre className={`mt-2 overflow-auto rounded-md border bg-background p-3 text-xs text-muted-foreground ${compact ? "max-h-32" : "max-h-56"}`}>
+    <pre className={`app-scroll mt-2 overflow-auto rounded-md border bg-background p-3 text-xs text-muted-foreground ${compact ? "max-h-32" : "max-h-56"}`}>
       {summary}
     </pre>
   );

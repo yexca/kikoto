@@ -68,7 +68,7 @@ export function RemoteFetchDialog({
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange(new Set())}>None</Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-card p-2">
+        <div className="app-scroll min-h-0 flex-1 overflow-auto bg-card p-2">
           {nodes.length > 0 ? nodes.map((node) => (
             <RemoteFetchTreeNode key={node.path} node={node} selectedPaths={selectedPaths} planByPath={planByPath} decisions={decisions} disabled={disabled} onChange={onChange} onDecisionChange={onDecisionChange} />
           )) : <div className="p-3 text-sm text-muted-foreground">No remote files detected.</div>}

@@ -86,7 +86,7 @@ export function AnchoredPopover({
   return createPortal(
     <div
       ref={contentRef}
-		className={cn("fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl", className)}
+		className={cn("app-scroll fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl", className)}
       style={{ left: position.left, top: position.top, visibility: position.visible ? "visible" : "hidden" }}
       onPointerDown={(event) => event.stopPropagation()}
     >

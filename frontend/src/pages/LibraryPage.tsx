@@ -4733,7 +4733,7 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        <div className="app-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
           <EditorSection title="Work">
             <LabeledInput label="Title" value={title} onChange={setTitle} />
             <div className="flex justify-end">
@@ -5630,7 +5630,7 @@ function RemoteSaveSelectionPanel({
         </div>
         <div className={hasLocalFiles ? "grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-3" : "grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-2"}>
           {hasLocalFiles && (
-            <div className={`${activePane === "local" ? "block" : "hidden"} min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
+            <div className={`${activePane === "local" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
               <div className="mb-2 flex items-center justify-between gap-2 px-1">
                 <div className="text-sm font-medium">Local files</div>
                 <Badge variant="secondary">{selectedLocalPaths.size} selected</Badge>
@@ -5654,7 +5654,7 @@ function RemoteSaveSelectionPanel({
               />
             </div>
           )}
-          <div className={`${activePane === "remote" ? "block" : "hidden"} min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
+          <div className={`${activePane === "remote" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
             {hasLocalFiles && (
               <div className="mb-2 flex items-center justify-between gap-2 px-1">
                 <div className="text-sm font-medium">Remote files</div>
@@ -5671,7 +5671,7 @@ function RemoteSaveSelectionPanel({
               isRoot
             />
           </div>
-          <div className={`${activePane === "result" ? "block" : "hidden"} min-h-0 overflow-auto p-2 md:block`}>
+          <div className={`${activePane === "result" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto p-2 md:block`}>
             <div className="mb-2 flex items-center justify-between gap-2 px-1">
               <div className="text-sm font-medium">After Fetch</div>
               <Badge variant="secondary">{plan?.items.length ?? 0} files</Badge>
@@ -6383,7 +6383,7 @@ function DirectoryManagerModal({
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-card p-3">
+        <div className="app-scroll min-h-0 flex-1 overflow-auto bg-card p-3">
           <DirectoryManager
             root={root}
             emptyLabel={emptyLabel}
@@ -6601,7 +6601,7 @@ function ConfirmMediaBatchDeleteModal({
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
             Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}{localCount > 0 ? `, including ${localCount} local` : ""}{cacheCount > 0 ? ` and ${cacheCount} cache` : ""}.
           </div>
-          <div className="max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
+          <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {targets.slice(0, 10).map((target) => (
               <div key={mediaDeleteTargetKey(target)} className="flex gap-2 py-0.5">
                 <span className="w-12 shrink-0 font-medium">{target.kind}</span>
@@ -7091,7 +7091,7 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
             </IconButton>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-background p-4">
+        <div className="app-scroll min-h-0 flex-1 overflow-auto bg-background p-4">
           {preview.kind === "image" ? (
             <img src={assetURL(preview.url)} alt="" className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain" />
           ) : error ? (

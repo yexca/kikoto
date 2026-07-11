@@ -1126,7 +1126,7 @@ function ListMembershipPopover({
       onClick={(event) => event.stopPropagation()}
     >
       <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="mt-3 max-h-64 space-y-2 overflow-auto">
+      <div className="app-scroll mt-3 max-h-64 space-y-2 overflow-auto">
         {isLoading ? (
           <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading lists...</div>
         ) : favoriteLists.length > 0 ? favoriteLists.map((list) => (

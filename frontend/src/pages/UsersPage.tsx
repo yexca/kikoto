@@ -560,7 +560,7 @@ function UserCreateModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <Card className="max-h-[90vh] w-full max-w-xl overflow-auto">
+      <Card className="app-scroll max-h-[90vh] w-full max-w-xl overflow-auto">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-3">

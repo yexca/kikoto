@@ -1435,7 +1435,7 @@ export function PlayerDock() {
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
-              <div className="player-panel-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
+              <div className="app-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
                 {panel === "lyrics" ? (
                   activeLyricsLocationId ? (
                     lyricsError ? (
