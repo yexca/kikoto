@@ -1,4 +1,4 @@
-export const APP_CLIENT_VERSION = "v0.1.1";
+export const APP_CLIENT_VERSION = "v0.1.2";
 export const APP_CLIENT_KIND = "android";
 
 export function versionLabel() {

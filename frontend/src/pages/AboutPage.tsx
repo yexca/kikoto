@@ -2,6 +2,7 @@ import { BookOpen, Boxes, ExternalLink, FolderCode, Sparkles } from "lucide-reac
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { APP_CLIENT_VERSION } from "@/lib/appInfo";
 
 const dependencyGroups = [
   {
@@ -13,8 +14,12 @@ const dependencyGroups = [
     items: ["Go", "SQLite", "modernc.org/sqlite", "golang.org/x/crypto"],
   },
   {
-    title: "Runtime",
-    items: ["Docker", "Docker Compose"],
+    title: "Mobile",
+    items: ["Capacitor", "Android WebView", "AndroidX", "Gradle"],
+  },
+  {
+    title: "Runtime & Release",
+    items: ["Docker", "Docker Compose", "GitHub Actions"],
   },
 ] as const;
 
@@ -22,7 +27,7 @@ export function AboutPage() {
   return (
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-5">
-        <p className="text-xs font-medium text-muted-foreground">About Kikoto · v0.1.1</p>
+        <p className="text-xs font-medium text-muted-foreground">About Kikoto · {APP_CLIENT_VERSION}</p>
         <h2 className="mt-1 text-2xl font-semibold">Project background and credits</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible
@@ -39,10 +44,10 @@ export function AboutPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>This software is developed by yexca with assistance from Codex (GPT-5.5).</p>
+            <p>This software is developed by yexca with assistance from Codex.</p>
             <p>
-              Codex was used to help with design iteration, implementation support, refactoring, and documentation
-              work during development.
+              v0.1.0 was developed with GPT-5.5 assistance. From v0.1.1 onward, development assistance uses
+              GPT-5.6-sol.
             </p>
           </CardContent>
         </Card>
