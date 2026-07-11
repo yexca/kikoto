@@ -31,9 +31,7 @@ import { ANDROID_BACK_EVENT } from "@/app/events";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import {
-  abandonNativeAudioFocus,
   addNativeMediaListeners,
-  requestNativeAudioFocus,
   requestNativeNotificationPermission,
   stopNativeMedia,
   supportsNativeMedia,
@@ -645,9 +643,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             break;
         }
       },
-      onAudioFocus: (event) => {
-        if (event.kind === "loss") nativeControlRef.current.pause();
-      },
     }).then((remove) => {
       if (disposed) {
         remove();
@@ -692,15 +687,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, playbackRate, mode]);
-
-  useEffect(() => {
-    if (!supportsNativeMedia()) return;
-    if (isPlaying && currentTrack) {
-      void requestNativeAudioFocus();
-    } else {
-      void abandonNativeAudioFocus();
-    }
-  }, [isPlaying, currentTrack]);
 
   useEffect(
     () => () => {

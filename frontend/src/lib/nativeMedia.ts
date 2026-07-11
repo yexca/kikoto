@@ -20,10 +20,6 @@ type NativeMediaControl = {
   positionMs?: number;
 };
 
-type NativeAudioFocus = {
-  kind: "gain" | "loss" | "duck" | "unknown";
-};
-
 type KikotoMediaPlugin = {
   update(state: NativeMediaState): Promise<void>;
   stop(): Promise<void>;
@@ -34,7 +30,6 @@ type KikotoMediaPlugin = {
     eventName: "mediaControl",
     listenerFunc: (event: NativeMediaControl) => void,
   ): Promise<PluginListenerHandle>;
-  addListener(eventName: "audioFocus", listenerFunc: (event: NativeAudioFocus) => void): Promise<PluginListenerHandle>;
 };
 
 const KikotoMedia = registerPlugin<KikotoMediaPlugin>("KikotoMedia");
@@ -72,18 +67,12 @@ export async function abandonNativeAudioFocus() {
 
 export async function addNativeMediaListeners({
   onControl,
-  onAudioFocus,
 }: {
   onControl: (event: NativeMediaControl) => void;
-  onAudioFocus: (event: NativeAudioFocus) => void;
 }) {
   if (!supportsNativeMedia()) return () => {};
-  const [control, focus] = await Promise.all([
-    KikotoMedia.addListener("mediaControl", onControl),
-    KikotoMedia.addListener("audioFocus", onAudioFocus),
-  ]);
+  const control = await KikotoMedia.addListener("mediaControl", onControl);
   return () => {
     void control.remove();
-    void focus.remove();
   };
 }
