@@ -805,13 +805,33 @@ export function PlayerDock() {
   }, [isSleepOpen]);
 
   useEffect(() => {
-    if (!miniActionsOpen) return;
+    if (!miniActionsOpen || !isMobile) return;
     if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
     miniActionsTimerRef.current = window.setTimeout(() => setMiniActionsOpen(false), 3000);
     return () => {
       if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
     };
-  }, [miniActionsOpen]);
+  }, [isMobile, miniActionsOpen]);
+
+  useEffect(() => () => {
+    if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+  }, []);
+
+  const showDesktopMiniActions = () => {
+    if (isMobile) return;
+    if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+    miniActionsTimerRef.current = null;
+    setMiniActionsOpen(true);
+  };
+
+  const hideDesktopMiniActionsLater = () => {
+    if (isMobile) return;
+    if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+    miniActionsTimerRef.current = window.setTimeout(() => {
+      miniActionsTimerRef.current = null;
+      setMiniActionsOpen(false);
+    }, 900);
+  };
 
   useEffect(() => {
     const handleResize = () => setMiniPosition((current) => current ? clampMiniPosition(current) : restoreMiniPosition());
@@ -883,6 +903,10 @@ export function PlayerDock() {
       <div
         className={`mini-player group fixed z-40 touch-none ${miniActionsOpen ? "actions-open" : ""}`}
         style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }}
+        onPointerEnter={showDesktopMiniActions}
+        onPointerLeave={hideDesktopMiniActionsLater}
+        onFocusCapture={showDesktopMiniActions}
+        onBlurCapture={hideDesktopMiniActionsLater}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement | null)?.closest("[data-mini-action]")) return;
           const rect = event.currentTarget.getBoundingClientRect();
@@ -915,7 +939,8 @@ export function PlayerDock() {
           event.currentTarget.releasePointerCapture(event.pointerId);
           if (!drag) return;
           if (!drag.moved) {
-            setMiniActionsOpen((value) => !value);
+            if (isMobile) setMiniActionsOpen((value) => !value);
+            else showDesktopMiniActions();
             return;
           }
           const rect = event.currentTarget.getBoundingClientRect();
@@ -1161,7 +1186,6 @@ export function PlayerDock() {
               <div className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
-                <div className="truncate text-xs text-muted-foreground">{track.circle || track.folderPath || "Local audio"}</div>
               </div>
               {parsedLyrics.timed && activeLyricIndex >= 0 && (
                 <InlineLyricsPreview parsed={parsedLyrics} activeIndex={activeLyricIndex} onOpen={() => setPanel("lyrics")} />

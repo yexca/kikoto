@@ -437,6 +437,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await page.getByText("Test track", { exact: true }).click();
   let fullPlayer = page.locator("section.fixed.inset-0");
   await expect(fullPlayer).toBeVisible();
+  await expect(fullPlayer.getByText("Test circle", { exact: true })).toHaveCount(0);
   const fullBox = await fullPlayer.boundingBox();
   expect(fullBox).not.toBeNull();
   await page.mouse.move(fullBox!.x + 18, fullBox!.y + fullBox!.height * 0.42);
@@ -487,6 +488,26 @@ test("desktop player uses playback speed without volume or colored play glow", a
   await expect(page.getByRole("button", { name: "Playback speed 1 times" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Volume" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
+});
+
+test("desktop mini player delays hiding hover actions", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayer(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await page.getByRole("button", { name: "Mini player" }).click();
+  const mini = page.locator(".mini-player");
+  const compactAction = page.getByRole("button", { name: "Open compact player" });
+  await mini.hover();
+  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(350);
+  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+  await page.waitForTimeout(700);
+  await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
 });
 
 test("mini player reveals actions on tap, persists its snapped edge, and compact mode reserves page space", async ({ page }) => {

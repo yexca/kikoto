@@ -110,19 +110,13 @@
   .mini-action {
     opacity: 0;
     pointer-events: none;
+    scale: 0.72;
   }
 
   .mini-player.actions-open .mini-action {
     opacity: 1;
     pointer-events: auto;
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .mini-player:hover .mini-action,
-    .mini-player:focus-within .mini-action {
-      opacity: 1;
-      pointer-events: auto;
-    }
+    scale: 1;
   }
 
   .player-range {
