@@ -27,6 +27,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
+import { ANDROID_BACK_EVENT } from "@/app/events";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import {
@@ -1072,6 +1073,48 @@ export function PlayerDock() {
       document.body.style.overflow = previousOverflow;
     };
   }, [isMobile, dockMode]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const handleBack = (event: Event) => {
+      if (isSleepOpen) {
+        setIsSleepOpen(false);
+        event.preventDefault();
+        return;
+      }
+      if (isCustomSleepOpen) {
+        setIsCustomSleepOpen(false);
+        event.preventDefault();
+        return;
+      }
+      if (isSourceOpen) {
+        setIsSourceOpen(false);
+        event.preventDefault();
+        return;
+      }
+      if (panel) {
+        setPanel(null);
+        event.preventDefault();
+        return;
+      }
+      if (miniActionsOpen) {
+        setMiniActionsOpen(false);
+        event.preventDefault();
+        return;
+      }
+      if (dockMode === "full") {
+        setDockMode("compact");
+        event.preventDefault();
+        return;
+      }
+      if (dockMode === "compact") {
+        setDockMode("mini");
+        event.preventDefault();
+      }
+    };
+    window.addEventListener(ANDROID_BACK_EVENT, handleBack);
+    return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
+  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, miniActionsOpen, panel]);
 
   if (!track) return null;
 

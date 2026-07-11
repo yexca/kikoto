@@ -1,5 +1,6 @@
+import { App as CapacitorApp } from "@capacitor/app";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { AlertTriangle, Lock, PanelLeftClose, PanelLeftOpen, WifiOff } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
@@ -11,6 +12,9 @@ import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { CommandPalette } from "@/app/CommandPalette";
 import { useScrollRestoration } from "@/app/scrollRestoration";
+import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
+import { ANDROID_BACK_EVENT } from "@/app/events";
+import { isNativeApp } from "@/lib/serverConfig";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -27,9 +31,11 @@ const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 
 export function App() {
   return (
-    <AuthProvider>
-      <AuthenticatedApp />
-    </AuthProvider>
+    <MobileRuntimeProvider>
+      <AuthProvider>
+        <AuthenticatedApp />
+      </AuthProvider>
+    </MobileRuntimeProvider>
   );
 }
 
@@ -40,6 +46,7 @@ function AuthenticatedApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const mobileRuntime = useMobileRuntime();
   const authState = auth.user ? "authenticated" : "anonymous";
   const visibleNavItems = useMemo(
     () => visibleNavigationItems({ state: authState, hasPermission: auth.hasPermission }),
@@ -103,6 +110,39 @@ function AuthenticatedApp() {
     window.addEventListener(LOGIN_REQUEST_EVENT, openLogin);
     return () => window.removeEventListener(LOGIN_REQUEST_EVENT, openLogin);
   }, []);
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    let disposed = false;
+    CapacitorApp.addListener("backButton", async () => {
+      if (disposed) return;
+      if (commandPaletteOpen) {
+        setCommandPaletteOpen(false);
+        return;
+      }
+      if (loginOpen) {
+        setLoginOpen(false);
+        return;
+      }
+      const closeable = document.querySelector("[data-android-back-close], [role='dialog']");
+      if (closeable) {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        return;
+      }
+      const playerEvent = new CustomEvent(ANDROID_BACK_EVENT, { cancelable: true });
+      window.dispatchEvent(playerEvent);
+      if (playerEvent.defaultPrevented) return;
+      if (window.history.length > 1 && window.location.pathname !== "/") {
+        window.history.back();
+        return;
+      }
+      await CapacitorApp.exitApp();
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      void CapacitorApp.removeAllListeners();
+    };
+  }, [commandPaletteOpen, loginOpen]);
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
@@ -174,6 +214,11 @@ function AuthenticatedApp() {
               />
             </div>
           </header>
+          <MobileConnectionBanner
+            kind={mobileRuntime.connection.kind}
+            message={mobileRuntime.connection.message}
+            onReconnect={() => void mobileRuntime.reconnect()}
+          />
 
           <Suspense fallback={<PageLoading />}>
             <div className="px-4 py-5 lg:px-6">
@@ -225,6 +270,30 @@ function AuthenticatedApp() {
         {loginOpen && <LoginOverlay onClose={() => setLoginOpen(false)} />}
       </div>
     </PlayerProvider>
+  );
+}
+
+function MobileConnectionBanner({
+  kind,
+  message,
+  onReconnect,
+}: {
+  kind: string;
+  message: string;
+  onReconnect: () => void;
+}) {
+  if (!isNativeApp() || !message || kind === "online" || kind === "idle") return null;
+  const Icon = kind === "version-warning" ? AlertTriangle : WifiOff;
+  return (
+    <div className="border-b bg-muted/70 px-4 py-2 text-sm lg:px-6" data-toast-avoid>
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">{message}</span>
+        <Button variant="outline" size="sm" onClick={onReconnect}>
+          Reconnect
+        </Button>
+      </div>
+    </div>
   );
 }
 

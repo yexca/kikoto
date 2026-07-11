@@ -730,6 +730,8 @@ export type AuthState = { authenticated: false } | { authenticated: true; user: 
 export type HealthStatus = {
   status: string;
   version: string;
+  minClientVersion?: string;
+  minAndroidClientVersion?: string;
 };
 
 export type LocalScanResult = {
@@ -1053,7 +1055,14 @@ export class ApiError extends Error {
 
 async function responseError(response: Response, fallback: string) {
   const payload = await response.json().catch(() => ({ error: fallback }));
-  return new ApiError(payload.error ?? fallback, response.status);
+  const message = payload.error ?? fallback;
+  recordApiError({
+    method: "HTTP",
+    path: response.url || fallback,
+    status: response.status,
+    message,
+  });
+  return new ApiError(message, response.status);
 }
 
 export function mediaDownloadURL(locationId: number) {
@@ -1061,7 +1070,7 @@ export function mediaDownloadURL(locationId: number) {
 }
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(apiURL(path), requestInit({ signal }));
+  const response = await fetchAPI(path, { signal });
   if (!response.ok) {
     throw await responseError(response, `GET ${path} failed with ${response.status}`);
   }
@@ -1069,7 +1078,7 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 async function postJSON<T>(path: string): Promise<T> {
-  const response = await fetch(apiURL(path), requestInit({ method: "POST" }));
+  const response = await fetchAPI(path, { method: "POST" });
   if (!response.ok) {
     throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
@@ -1077,13 +1086,13 @@ async function postJSON<T>(path: string): Promise<T> {
 }
 
 async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(
-    apiURL(path),
-    requestInit({
+  const response = await fetchAPI(
+    path,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }),
+    },
   );
   if (!response.ok) {
     throw await responseError(response, `POST ${path} failed with ${response.status}`);
@@ -1092,13 +1101,13 @@ async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(
-    apiURL(path),
-    requestInit({
+  const response = await fetchAPI(
+    path,
+    {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }),
+    },
   );
   if (!response.ok) {
     throw await responseError(response, `PATCH ${path} failed with ${response.status}`);
@@ -1107,13 +1116,13 @@ async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(
-    apiURL(path),
-    requestInit({
+  const response = await fetchAPI(
+    path,
+    {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }),
+    },
   );
   if (!response.ok) {
     throw await responseError(response, `PUT ${path} failed with ${response.status}`);
@@ -1122,7 +1131,7 @@ async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function deleteJSON<T>(path: string): Promise<T> {
-  const response = await fetch(apiURL(path), requestInit({ method: "DELETE" }));
+  const response = await fetchAPI(path, { method: "DELETE" });
   if (!response.ok) {
     throw await responseError(response, `DELETE ${path} failed with ${response.status}`);
   }
@@ -1143,6 +1152,20 @@ function requestInit(init: RequestInit = {}): RequestInit {
   };
 }
 
+async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string) {
+  const url = apiURL(path, baseURL);
+  try {
+    return await fetch(url, requestInit(init));
+  } catch (error) {
+    recordApiError({
+      method: init.method ?? "GET",
+      path: url,
+      message: error instanceof Error ? error.message : "Network request failed.",
+    });
+    throw error;
+  }
+}
+
 async function login(username: string, password: string) {
   const state = await postJSONBody<AuthState>("/api/auth/login", { username, password });
   if (state.authenticated && state.sessionToken) setStoredSessionToken(state.sessionToken);
@@ -1159,7 +1182,7 @@ async function logout() {
 
 export const api = {
   health: async (baseURL?: string) => {
-    const response = await fetch(apiURL("/health", baseURL), requestInit());
+    const response = await fetchAPI("/health", {}, baseURL);
     if (!response.ok) {
       throw await responseError(response, `GET /health failed with ${response.status}`);
     }
@@ -1534,3 +1557,4 @@ import {
   isNativeApp,
   setStoredSessionToken,
 } from "@/lib/serverConfig";
+import { recordApiError } from "@/lib/mobileDiagnostics";

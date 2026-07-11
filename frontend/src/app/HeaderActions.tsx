@@ -5,6 +5,7 @@ import {
   Bell,
   CheckCircle2,
   ChevronDown,
+  Clipboard,
   Clock3,
   Command,
   Database,
@@ -39,6 +40,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type CurrentUser, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
+import { versionLabel } from "@/lib/appInfo";
+import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
+import { useMobileRuntime } from "@/app/MobileRuntime";
 import { cn } from "@/lib/utils";
 
 type HeaderActionsProps = {
@@ -70,11 +74,13 @@ export function HeaderActions({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("");
+  const [diagnosticsText, setDiagnosticsText] = useState("");
   const [themeOpen, setThemeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [reviewRuns, setReviewRuns] = useState<WorkflowRun[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [runningAction, setRunningAction] = useState<SystemAction | null>(null);
+  const mobileRuntime = useMobileRuntime();
 
   useEffect(() => {
     applyThemeMode(themeMode);
@@ -121,12 +127,18 @@ export function HeaderActions({
 
   const checkConnection = async () => {
     setConnectionStatus("Checking...");
-    try {
-      const health = await api.health();
-      setConnectionStatus(`Connected · ${health.version}`);
-    } catch (error) {
-      setConnectionStatus(error instanceof Error ? error.message : "Connection check failed.");
-    }
+    const health = await mobileRuntime.reconnect();
+    setConnectionStatus(health ? `Connected · ${health.version}` : mobileRuntime.connection.message || "Connection check failed.");
+  };
+
+  const showDiagnostics = async () => {
+    const text = buildMobileDiagnosticsText({
+      serverVersion: mobileRuntime.connection.serverVersion,
+      connection: mobileRuntime.connection.message || mobileRuntime.connection.kind,
+      user: user ? user.username : undefined,
+    });
+    setDiagnosticsText(text);
+    await navigator.clipboard?.writeText(text).catch(() => {});
   };
 
   return (
@@ -146,7 +158,10 @@ export function HeaderActions({
           open={connectionOpen}
           onOpenChange={(open) => {
             setConnectionOpen(open);
-            if (open) setConnectionStatus("");
+            if (open) {
+              setConnectionStatus("");
+              setDiagnosticsText("");
+            }
           }}
           trigger={
             <Button variant="outline" size="icon" aria-label="Server connection" title="Server connection">
@@ -162,6 +177,21 @@ export function HeaderActions({
                 <div className="text-xs font-medium text-muted-foreground">Server</div>
                 <div className="mt-1 break-all font-medium">{getStoredServerURL() || "Not configured"}</div>
               </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md border bg-muted px-2 py-1.5">
+                  <div className="text-muted-foreground">Client</div>
+                  <div className="truncate font-medium">{versionLabel()}</div>
+                </div>
+                <div className="rounded-md border bg-muted px-2 py-1.5">
+                  <div className="text-muted-foreground">Server</div>
+                  <div className="truncate font-medium">{mobileRuntime.connection.serverVersion || "unknown"}</div>
+                </div>
+              </div>
+              {mobileRuntime.connection.message && (
+                <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                  {mobileRuntime.connection.message}
+                </div>
+              )}
               {connectionStatus && (
                 <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
                   {connectionStatus}
@@ -171,18 +201,42 @@ export function HeaderActions({
             <MenuList>
               <ActionItem
                 icon={<Server className="h-4 w-4" />}
-                label="Test connection"
+                label="Reconnect"
                 onClick={() => void checkConnection()}
               />
+              {user && (
+                <ActionItem
+                  icon={<LogOut className="h-4 w-4" />}
+                  label="Sign out"
+                  onClick={() => {
+                    setConnectionOpen(false);
+                    onLogout();
+                  }}
+                />
+              )}
               <ActionItem
                 icon={<RotateCcw className="h-4 w-4" />}
-                label="Change server"
+                label="Clear server"
                 onClick={() => {
                   clearStoredServerURL();
                   window.location.reload();
                 }}
               />
+              <ActionItem
+                icon={<Clipboard className="h-4 w-4" />}
+                label="Copy diagnostics"
+                onClick={() => void showDiagnostics()}
+              />
             </MenuList>
+            {diagnosticsText && (
+              <div className="border-t p-2">
+                <textarea
+                  className="h-32 w-full resize-none rounded-md border bg-background p-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  readOnly
+                  value={diagnosticsText}
+                />
+              </div>
+            )}
           </div>
         </HeaderPopover>
       )}
@@ -464,6 +518,7 @@ function HeaderPopover({
       {cloneElement(trigger, { onClick: () => onOpenChange(!open) })}
       {open && (
         <div
+          data-android-back-close
           className={cn(
             "absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
             align === "right" ? "right-0" : "left-0",
