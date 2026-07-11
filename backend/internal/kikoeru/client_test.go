@@ -105,6 +105,22 @@ func TestListWorksSortedForwardsOrderAndDirection(t *testing.T) {
 	}
 }
 
+func TestListWorksSortedForwardsCompoundSearch(t *testing.T) {
+	const query = `$tag:耳かき$ $-tag:男性向け$ $va:Example Voice$`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/api/search/"+query {
+			t.Fatalf("path = %q, want %q", got, "/api/search/"+query)
+		}
+		writeTestJSON(t, w, WorksPage{})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+	if _, err := client.ListWorksSorted(context.Background(), 1, 12, query, "create_date", "desc"); err != nil {
+		t.Fatalf("ListWorksSorted() error = %v", err)
+	}
+}
+
 func TestListWorksSortedSeededForwardsGenericRandomParameters(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("order"); got != "random" {

@@ -829,7 +829,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 24
 	}
-	plan := planRemoteSourceQuery(r.URL.Query().Get("q"))
+	plan := planRemoteSourceQuery(r.URL.Query().Get("q"), source.SourceType)
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
@@ -1829,10 +1829,28 @@ type remoteSourceQueryPlan struct {
 	PostFilterClauses []listSearchClause
 }
 
-func planRemoteSourceQuery(query string) remoteSourceQueryPlan {
+func planRemoteSourceQuery(query string, sourceType string) remoteSourceQueryPlan {
 	clauses := parseListSearchClauses(query)
 	if len(clauses) == 0 {
 		return remoteSourceQueryPlan{}
+	}
+	if sourceType == sourceTypeKikoeruCompatible {
+		plan := remoteSourceQueryPlan{}
+		pushdown := make([]string, 0, len(clauses))
+		for _, clause := range clauses {
+			value := remoteSourcePushdownQuery(clause)
+			if value == "" {
+				plan.PostFilterClauses = append(plan.PostFilterClauses, clause)
+				continue
+			}
+			if plan.PushdownClause == nil {
+				copyClause := clause
+				plan.PushdownClause = &copyClause
+			}
+			pushdown = append(pushdown, value)
+		}
+		plan.PushdownQuery = strings.Join(pushdown, " ")
+		return plan
 	}
 	pushdownIndex := -1
 	bestRank := 999
@@ -1882,6 +1900,8 @@ func remoteSourcePushdownQuery(clause listSearchClause) string {
 		return "$va:" + clause.Value + "$"
 	case "tag":
 		return "$tag:" + clause.Value + "$"
+	case "exclude_tag":
+		return "$-tag:" + clause.Value + "$"
 	case "rating_min":
 		return "$rate:" + clause.Value + "$"
 	case "sales_min":

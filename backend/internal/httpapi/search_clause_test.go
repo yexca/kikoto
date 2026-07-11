@@ -19,7 +19,7 @@ func TestParseListSearchClauses(t *testing.T) {
 }
 
 func TestPlanRemoteSourceQueryKeepsStructuredClauses(t *testing.T) {
-	plan := planRemoteSourceQuery(`ambient $tag:耳かき$`)
+	plan := planRemoteSourceQuery(`ambient $tag:耳かき$`, sourceTypeKikoeruCompilable178)
 	if plan.PushdownQuery != "$tag:耳かき$" {
 		t.Fatalf("PushdownQuery = %q, want %q", plan.PushdownQuery, "$tag:耳かき$")
 	}
@@ -28,6 +28,17 @@ func TestPlanRemoteSourceQueryKeepsStructuredClauses(t *testing.T) {
 	}
 	if len(plan.PostFilterClauses) != 1 || plan.PostFilterClauses[0].Kind != "text" {
 		t.Fatalf("PostFilterClauses = %#v, want one text clause", plan.PostFilterClauses)
+	}
+}
+
+func TestPlanRemoteSourceQueryPushesCompoundQueryToCompatibleSource(t *testing.T) {
+	plan := planRemoteSourceQuery(`ambient $tag:耳かき$ $-tag:男性向け$ $va:Example Voice$`, sourceTypeKikoeruCompatible)
+	want := `$tag:耳かき$ $-tag:男性向け$ $va:Example Voice$ ambient`
+	if plan.PushdownQuery != want {
+		t.Fatalf("PushdownQuery = %q, want %q", plan.PushdownQuery, want)
+	}
+	if len(plan.PostFilterClauses) != 0 {
+		t.Fatalf("PostFilterClauses = %#v, want none", plan.PostFilterClauses)
 	}
 }
 
