@@ -52,6 +52,7 @@ export type PlayerTrack = {
   progressRecordable: boolean;
   lyricsLocationId: number | null;
   lyricsTitle: string;
+  lyricsChoices?: { locationId: number; title: string; path: string; reason: string }[];
   remoteSourceId?: number;
   remoteWorkCode?: string;
   remotePath?: string;
@@ -704,6 +705,7 @@ export function PlayerDock() {
   const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
+  const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
   const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(() => restoreMiniPosition());
   const [miniActionsOpen, setMiniActionsOpen] = useState(false);
   const [isSleepOpen, setIsSleepOpen] = useState(false);
@@ -720,15 +722,20 @@ export function PlayerDock() {
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
+  const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
+
+  useEffect(() => {
+    setActiveLyricsLocationId(track?.lyricsLocationId ?? null);
+  }, [track?.mediaItemId, track?.lyricsLocationId]);
 
   useEffect(() => {
     setLyricsText(null);
     setLyricsError("");
-    if (!track?.lyricsLocationId) return;
-    api.getMediaText(track.lyricsLocationId)
+    if (!activeLyricsLocationId) return;
+    api.getMediaText(activeLyricsLocationId)
       .then((result) => setLyricsText(result.content))
       .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
-  }, [track?.lyricsLocationId]);
+  }, [activeLyricsLocationId]);
 
   useEffect(() => {
     if (!isSleepOpen) return;
@@ -1049,17 +1056,20 @@ export function PlayerDock() {
               </div>
               <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
                 {panel === "lyrics" ? (
-                  track.lyricsLocationId ? (
+                  activeLyricsLocationId ? (
                     lyricsError ? (
                       <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
                     ) : lyricsText === null ? (
                       <LyricsLoadingSkeleton />
                     ) : (
                       <LyricsPanel
-                        title={track.lyricsTitle}
+                        title={activeLyricsChoice?.title ?? track.lyricsTitle}
                         text={lyricsText}
                         parsed={parsedLyrics}
                         activeIndex={activeLyricIndex}
+                        choices={track.lyricsChoices ?? []}
+                        activeLocationId={activeLyricsLocationId}
+                        onChoiceChange={setActiveLyricsLocationId}
                       />
                     )
                   ) : (
@@ -1525,11 +1535,17 @@ function LyricsPanel({
   text,
   parsed,
   activeIndex,
+  choices,
+  activeLocationId,
+  onChoiceChange,
 }: {
   title: string;
   text: string;
   parsed: ParsedLyrics;
   activeIndex: number;
+  choices: { locationId: number; title: string; path: string; reason: string }[];
+  activeLocationId: number;
+  onChoiceChange: (locationId: number) => void;
 }) {
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -1540,7 +1556,7 @@ function LyricsPanel({
   if (!parsed.timed) {
     return (
       <div className="space-y-3 p-3">
-        <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>
+        <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} onChoiceChange={onChoiceChange} />
         <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
       </div>
     );
@@ -1548,7 +1564,7 @@ function LyricsPanel({
 
   return (
     <div className="space-y-3 p-3">
-      <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>
+      <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} onChoiceChange={onChoiceChange} />
       <div className="space-y-1 py-12 text-center">
         {parsed.lines.map((line, index) => {
           const active = index === activeIndex;
@@ -1589,6 +1605,18 @@ function formatTime(value: number) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function LyricsSourceSelector({ title, choices, activeLocationId, onChoiceChange }: { title: string; choices: { locationId: number; title: string; path: string; reason: string }[]; activeLocationId: number; onChoiceChange: (locationId: number) => void }) {
+  if (choices.length <= 1) return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span className="shrink-0 font-semibold">Lyrics</span>
+      <select className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1" value={activeLocationId} onChange={(event) => onChoiceChange(Number(event.target.value))}>
+        {choices.map((choice) => <option key={choice.locationId} value={choice.locationId}>{choice.title}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function formatSleepRemaining(seconds: number) {

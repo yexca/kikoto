@@ -43,6 +43,14 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
+import {
+  WorkCollectionLayoutPicker,
+  workCollectionClassName,
+  workCollectionItemClassName,
+  workCollectionStyle,
+  type WorkCollectionColumnCount,
+  type WorkCollectionViewMode,
+} from "@/components/work-collection/WorkCollectionLayout";
 import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
@@ -322,8 +330,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [filter, setFilter] = useState<WorkFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
-  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
-  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
+  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
+  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
   const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
@@ -712,7 +721,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voice works" />
           </div>
           <div className="flex flex-wrap gap-2">
-            <ColumnPicker mobileColumns={mobileColumns} desktopColumns={desktopColumns} onMobileChange={setMobileColumns} onDesktopChange={setDesktopColumns} />
+            <WorkCollectionLayoutPicker
+              viewMode={viewMode}
+              mobileColumns={mobileColumns}
+              desktopColumns={desktopColumns}
+              onViewModeChange={setViewMode}
+              onMobileColumnsChange={setMobileColumns}
+              onDesktopColumnsChange={setDesktopColumns}
+            />
             <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={filter} onChange={(event) => setFilter(event.target.value as WorkFilter)} aria-label="Work filter">
               <option value="all">All works</option>
               <option value="available">Available</option>
@@ -759,28 +775,29 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             </Button>
           </div>
         </div>}
-        <div className={voiceWorkGridClassName(mobileColumns, desktopColumns)}>
+        <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
           {pageWorks.map((work) => (
-            <VoiceWorkCard
-              key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}
-              work={work}
-              selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
-              selectable={isVoiceBulkSelectable(work)}
-              selectionActive={selectionMode}
-              onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-              onSync={() => void syncSingleWork(work)}
-              onSave={() => void saveSingleWork(work)}
-              onStatusChange={(status) => void updateWorkMark(work, status)}
-              onFavoriteSaved={(favorite) => {
-                setDetail((current) => current ? {
-                  ...current,
-                  works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
-                } : current);
-              }}
-              onEnsureWork={() => ensureVoiceWorkForList(work)}
-            />
+            <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`} className={workCollectionItemClassName(viewMode)}>
+              <VoiceWorkCard
+                work={work}
+                selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
+                selectable={isVoiceBulkSelectable(work)}
+                selectionActive={selectionMode}
+                onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                onSync={() => void syncSingleWork(work)}
+                onSave={() => void saveSingleWork(work)}
+                onStatusChange={(status) => void updateWorkMark(work, status)}
+                onFavoriteSaved={(favorite) => {
+                  setDetail((current) => current ? {
+                    ...current,
+                    works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
+                  } : current);
+                }}
+                onEnsureWork={() => ensureVoiceWorkForList(work)}
+              />
+            </div>
           ))}
-          {isRemoteLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} />}
+          {isRemoteLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} viewMode={viewMode} />}
           {pageWorks.length === 0 && !isRemoteLoading && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
         </div>
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
@@ -1160,6 +1177,7 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
     title: work.title,
     circle: work.circle || sourceName || "Unknown circle",
     circleExternalId: "circleExternalId" in work ? work.circleExternalId : undefined,
+    voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: "series" in work ? work.series || null : null,
@@ -1243,11 +1261,11 @@ function remoteSourceFailed(source: VoiceRemoteSourceSet) {
   return !["ok", "disabled", "unsupported"].includes(source.status);
 }
 
-function VoiceRemoteWorkSkeletonCards({ count }: { count: number }) {
+function VoiceRemoteWorkSkeletonCards({ count, viewMode }: { count: number; viewMode: WorkCollectionViewMode }) {
   return (
     <>
       {Array.from({ length: count }, (_, index) => (
-        <Card key={`remote-loading-${index}`}>
+        <Card key={`remote-loading-${index}`} className={workCollectionItemClassName(viewMode)}>
           <CardContent className="space-y-3 p-3">
             <EntitySkeletonLine className="aspect-[3/4] w-full" />
             <EntitySkeletonLine className="h-4 w-3/4" />
@@ -1280,7 +1298,7 @@ function VoiceDetailSkeleton() {
         </div>
       </section>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-        <VoiceRemoteWorkSkeletonCards count={6} />
+        <VoiceRemoteWorkSkeletonCards count={6} viewMode="grid" />
       </div>
     </div>
   );
@@ -1364,28 +1382,6 @@ function listeningStatusLabel(status: string) {
   return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
 }
 
-function ColumnPicker({ mobileColumns, desktopColumns, onMobileChange, onDesktopChange }: { mobileColumns: 1 | 2; desktopColumns: 4 | 6 | 8; onMobileChange: (value: 1 | 2) => void; onDesktopChange: (value: 4 | 6 | 8) => void }) {
-  return (
-    <div className="flex items-center gap-2">
-      <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={mobileColumns} onChange={(event) => onMobileChange(Number(event.target.value) as 1 | 2)} aria-label="Mobile columns">
-        <option value={1}>1 mobile</option>
-        <option value={2}>2 mobile</option>
-      </select>
-      <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={desktopColumns} onChange={(event) => onDesktopChange(Number(event.target.value) as 4 | 6 | 8)} aria-label="Desktop columns">
-        <option value={4}>4 desktop</option>
-        <option value={6}>6 desktop</option>
-        <option value={8}>8 desktop</option>
-      </select>
-    </div>
-  );
-}
-
-function voiceWorkGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
-  const mobile = mobileColumns === 2 ? "grid-cols-2" : "grid-cols-1";
-  const desktop = desktopColumns === 8 ? "xl:grid-cols-8" : desktopColumns === 6 ? "xl:grid-cols-6" : "xl:grid-cols-4";
-  return `grid gap-3 ${mobile} md:grid-cols-3 ${desktop}`;
-}
-
 function MiniStat({ label, value }: { label: string; value: number }) {
   return <div className="rounded-md border bg-background p-2"><div className="font-semibold">{value}</div><div className="text-muted-foreground">{label}</div></div>;
 }
@@ -1441,11 +1437,16 @@ function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) 
 }
 
 export function openVoiceRoute(personId: number) {
-  window.history.pushState({}, "", `/voices/${personId}`);
+  window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back" }, "", `/voices/${personId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function navigateToVoicesList() {
+  const state = window.history.state as { returnTo?: unknown } | null;
+  if (typeof state?.returnTo === "string" && state.returnTo.startsWith("/")) {
+    window.history.back();
+    return;
+  }
   window.history.pushState({}, "", "/voices");
   window.dispatchEvent(new Event("kikoto:navigation"));
 }

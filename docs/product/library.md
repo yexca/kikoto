@@ -9,8 +9,18 @@ The Library is the main browsing surface for works.
 - Shows cover, title, code, circle, rating, tags, voice metadata, local
   availability, source tags, and quick listening marks when available.
 - Keeps source availability visually separate from metadata tags.
+- Offers the same grid or masonry presentation for work collections across the
+  Library, Favorites, circle detail, and voice detail surfaces. Responsive
+  column choices are shared instead of being reimplemented per page.
+- Supports stable seeded random ordering. A seed keeps pagination consistent;
+  reshuffling creates a new seed rather than reversing an order.
 - Provides database-oriented diagnostic scopes for works that do not currently
   appear in everyday source tabs.
+
+Work cards use the same summary model on every collection surface, including
+voice credits when they are known. Compact cards show at most two voice names
+and summarize additional credits without allowing metadata to grow the card
+unboundedly.
 
 ## Identity
 

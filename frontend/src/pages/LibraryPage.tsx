@@ -29,11 +29,8 @@ import {
   ExternalLink,
   Cloud,
   Languages,
-  Columns3,
-  LayoutGrid,
   ListChecks,
   MoreHorizontal,
-  PanelsTopLeft,
   Pause,
   PauseCircle,
   Play,
@@ -47,7 +44,7 @@ import {
   X,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -91,7 +88,6 @@ import {
 } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import {
-  columnOptions,
   defaultLibraryBrowseState,
   libraryBrowseSearch,
   libraryBrowseStateFromSearch,
@@ -118,7 +114,13 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import {
+  WorkCollectionLayoutPicker as LayoutPicker,
+  workCollectionClassName,
+  workCollectionStyle,
+} from "@/components/work-collection/WorkCollectionLayout";
 import { type PlayerTrack, type PlayerTrackLocation, useLibraryPlayer } from "@/player/PlayerProvider";
+import { findLyricsMatches } from "@/player/lyricsMatching";
 
 const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
 const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
@@ -137,10 +139,15 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "title", label: "Title" },
   { value: "rating", label: "Rating" },
   { value: "sales", label: "Sales" },
+  { value: "random", label: "Random" },
 ];
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
-  return value === "release" || value === "rating" || value === "sales" ? value : "recent";
+  return value === "release" || value === "rating" || value === "sales" || value === "random" ? value : "recent";
+}
+
+function createRandomSortSeed() {
+  return window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
 }
 
 function createFetchRequestID() {
@@ -243,6 +250,7 @@ export function LibraryPage() {
 	const [viewMode, setViewMode] = useState<LibraryViewMode>(initialBrowseState.view);
 	const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
 	const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
+	const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
 	const [workPage, setWorkPage] = useState(initialBrowseState.page);
 	const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
   const [workTotal, setWorkTotal] = useState(0);
@@ -259,6 +267,8 @@ export function LibraryPage() {
 	const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
 	const pendingResultsScroll = useRef(false);
 	const pendingScrollRestore = useRef<number | null>(null);
+	const browseSurfaceActive = useRef(true);
+	browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
   const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
   const debouncedSearchClauses = useMemo(() => parseSearchClauses(debouncedSearchQuery), [debouncedSearchQuery]);
   const debouncedRemoteSearchClauses = useMemo(() => parseSearchClauses(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
@@ -275,6 +285,7 @@ export function LibraryPage() {
 		status: statusFilter,
 		sort: librarySort,
 		direction: sortDirection,
+		randomSeed,
 		view: viewMode,
 		mobileColumns,
 		desktopColumns,
@@ -287,6 +298,7 @@ export function LibraryPage() {
 		setStatusFilter(tab.kind === "source" ? "all" : state.status);
 		setLibrarySort(tab.kind === "source" ? remoteLibrarySort(state.sort) : state.sort);
 		setSortDirection(state.direction);
+		setRandomSeed(state.randomSeed);
 		setViewMode(state.view);
 		setMobileColumns(state.mobileColumns);
 		setDesktopColumns(state.desktopColumns);
@@ -367,7 +379,7 @@ export function LibraryPage() {
     setLibraryLoadError("");
 	setIsLibraryLoading(true);
     api
-      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, controller.signal)
+      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, controller.signal)
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
@@ -387,7 +399,7 @@ export function LibraryPage() {
 		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
 	  });
     return () => controller.abort();
-  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, sortDirection, workPage, workPageSize, workScope]);
+  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
@@ -421,7 +433,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, controller.signal).then((result) => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, randomSeed, controller.signal).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -443,7 +455,7 @@ export function LibraryPage() {
       if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
     return () => controller.abort();
-  }, [activeTab, librarySort, remoteSearchQuery, remoteSourceStates, sortDirection]);
+  }, [activeTab, librarySort, randomSeed, remoteSearchQuery, remoteSourceStates, sortDirection]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -500,7 +512,7 @@ export function LibraryPage() {
 		if (window.location.search !== nextSearch) {
 			window.history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}${nextSearch}`);
 		}
-	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
+	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
 
 	useEffect(() => {
 		if (selectedCode !== null || selectedRemoteTarget !== null) return;
@@ -522,9 +534,9 @@ export function LibraryPage() {
 		return () => {
 			window.removeEventListener("scroll", rememberScroll);
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
-			flushScroll();
+			if (browseSurfaceActive.current) flushScroll();
 		};
-	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
+	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, randomSeed, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
     if (!isDatabaseMenuOpen) return;
@@ -564,6 +576,11 @@ export function LibraryPage() {
   };
 
   const backToLibrary = () => {
+	const historyState = window.history.state as { returnTo?: unknown } | null;
+	if (typeof historyState?.returnTo === "string" && isInternalReturnPath(historyState.returnTo)) {
+	  window.history.back();
+	  return;
+	}
 	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
     window.history.pushState({}, "", returnTarget.path);
     window.dispatchEvent(new Event("kikoto:navigation"));
@@ -706,7 +723,7 @@ export function LibraryPage() {
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
 	setIsLibraryLoading(true);
-    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection).then((result) => {
+    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection, randomSeed).then((result) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks(result.works);
       setWorkTotal(result.total);
@@ -728,7 +745,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setIsRemoteLoading(true);
     if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
-    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection).then((result) => {
+    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection, randomSeed).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -752,7 +769,7 @@ export function LibraryPage() {
 
   const refreshCurrentWorksPage = async () => {
     if (activeTab.kind === "source") return;
-    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection);
+    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed);
     setWorks(page.works);
     setWorkTotal(page.total);
     setLibraryLoadError("");
@@ -876,7 +893,14 @@ export function LibraryPage() {
 		queueResultsScroll();
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
 		else setWorkPage(1);
+		if (sort === "random") setRandomSeed(createRandomSortSeed());
 		setLibrarySort(sort);
+	};
+	const reshuffle = () => {
+		queueResultsScroll();
+		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+		else setWorkPage(1);
+		setRandomSeed(createRandomSortSeed());
 	};
 	const changeSortDirection = (direction: SortDirection) => {
 		queueResultsScroll();
@@ -940,7 +964,7 @@ export function LibraryPage() {
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
-		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} />
+		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} onReshuffle={reshuffle} />
 		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
           <div ref={databaseMenuRef} className="relative">
             <IconButton title="Data" onClick={() => setIsDatabaseMenuOpen((value) => !value)}>
@@ -1079,7 +1103,7 @@ export function LibraryPage() {
 			  }}
 			/>
           ) : viewMode === "masonry" ? (
-            <section className={workMasonryClassName()} style={workMasonryStyle(mobileColumns, desktopColumns)}>
+            <section className={workCollectionClassName("masonry")} style={workCollectionStyle(mobileColumns, desktopColumns)}>
               {pagedWorks.map((work) => (
                 <div key={work.id} className="mb-4 [break-inside:avoid]">
                   <WorkCard
@@ -1099,7 +1123,7 @@ export function LibraryPage() {
               ))}
             </section>
           ) : (
-            <section className={workGridClassName()} style={workGridStyle(mobileColumns, desktopColumns)}>
+            <section className={workCollectionClassName("grid")} style={workCollectionStyle(mobileColumns, desktopColumns)}>
               {pagedWorks.map((work) => (
                 <WorkCard
                   key={work.id}
@@ -1570,8 +1594,8 @@ function RemoteSourcePanel({
         <div className="space-y-2">
           {isRefreshing && <div className="rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">Refreshing remote results...</div>}
           <section
-            className={viewMode === "masonry" ? workMasonryClassName() : workGridClassName()}
-            style={viewMode === "masonry" ? workMasonryStyle(mobileColumns, desktopColumns) : workGridStyle(mobileColumns, desktopColumns)}
+            className={workCollectionClassName(viewMode)}
+            style={workCollectionStyle(mobileColumns, desktopColumns)}
           >
             {visibleWorks.map((work) => (
               <div key={work.remoteId} className={viewMode === "masonry" ? "mb-4 [break-inside:avoid]" : "h-full"}>
@@ -1794,8 +1818,8 @@ function RemoteWorkGridSkeleton({
 }) {
   return (
     <section
-      className={viewMode === "masonry" ? workMasonryClassName() : workGridClassName()}
-      style={viewMode === "masonry" ? workMasonryStyle(mobileColumns, desktopColumns) : workGridStyle(mobileColumns, desktopColumns)}
+      className={workCollectionClassName(viewMode)}
+      style={workCollectionStyle(mobileColumns, desktopColumns)}
     >
       {Array.from({ length: 12 }, (_, index) => (
         <div key={index} className={viewMode === "masonry" ? "mb-4 overflow-hidden rounded-lg border bg-card [break-inside:avoid]" : "overflow-hidden rounded-lg border bg-card"}>
@@ -1883,6 +1907,7 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
+    voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,
@@ -1904,6 +1929,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     code: work.primaryCode || work.remoteId,
     title: work.title,
     circle: work.circle || sourceLabel || "Unknown circle",
+    voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: null,
@@ -1942,121 +1968,25 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
   );
 }
 
-function LayoutPicker({
-  viewMode,
-  mobileColumns,
-  desktopColumns,
-  onViewModeChange,
-  onMobileColumnsChange,
-  onDesktopColumnsChange,
-}: {
-  viewMode: LibraryViewMode;
-  mobileColumns: LibraryColumnCount;
-  desktopColumns: LibraryColumnCount;
-  onViewModeChange: (value: LibraryViewMode) => void;
-  onMobileColumnsChange: (value: LibraryColumnCount) => void;
-  onDesktopColumnsChange: (value: LibraryColumnCount) => void;
-}) {
-  const [viewOpen, setViewOpen] = useState(false);
-  const [columnsOpen, setColumnsOpen] = useState(false);
-  const isWide = useIsWideLibraryLayout();
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  useDismissiblePopover(viewOpen || columnsOpen, popoverRef, () => {
-    setViewOpen(false);
-    setColumnsOpen(false);
-  });
-  const currentValue = isWide ? desktopColumns : mobileColumns;
-  const options = isWide ? columnOptions : ([1, 2] as const);
-  const viewOptions: { value: LibraryViewMode; label: string; icon: typeof LayoutGrid }[] = [
-    { value: "grid", label: "Grid", icon: LayoutGrid },
-    { value: "masonry", label: "Masonry", icon: PanelsTopLeft },
-  ];
-  const ActiveViewIcon = viewMode === "masonry" ? PanelsTopLeft : LayoutGrid;
-  const setColumns = (value: LibraryColumnCount) => {
-    if (isWide) onDesktopColumnsChange(value);
-    else onMobileColumnsChange(value);
-    setColumnsOpen(false);
-  };
-  return (
-    <div className="relative" ref={popoverRef}>
-      <div className="inline-flex rounded-md border bg-background">
-        <button
-          className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          title={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
-          aria-label={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
-          onClick={() => {
-            setViewOpen((current) => !current);
-            setColumnsOpen(false);
-          }}
-        >
-          <ActiveViewIcon className="h-4 w-4" />
-        </button>
-        <button
-          className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground"
-          title={`Columns: ${currentValue}`}
-          aria-label={`Columns: ${currentValue}`}
-          onClick={() => {
-            setColumnsOpen((current) => !current);
-            setViewOpen(false);
-          }}
-        >
-          <Columns3 className="h-4 w-4" />
-        </button>
-      </div>
-      <AnchoredPopover open={viewOpen} anchorRef={popoverRef} className="w-36 rounded-lg border bg-card p-1 text-sm shadow-lg">
-          {viewOptions.map((option) => {
-            const OptionIcon = option.icon;
-            return (
-              <button
-                key={option.value}
-                className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted ${viewMode === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-                aria-pressed={viewMode === option.value}
-                onClick={() => {
-                  onViewModeChange(option.value);
-                  setViewOpen(false);
-                }}
-              >
-                <OptionIcon className="h-4 w-4" />
-                <span>{option.label}</span>
-              </button>
-            );
-          })}
-      </AnchoredPopover>
-      <AnchoredPopover open={columnsOpen} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
-          {options.map((option) => (
-            <button
-              key={option}
-              className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-              aria-pressed={currentValue === option}
-              title={`${option} ${option === 1 ? "column" : "columns"}`}
-              aria-label={`${option} ${option === 1 ? "column" : "columns"}`}
-              onClick={() => setColumns(option)}
-            >
-              {option}
-            </button>
-          ))}
-      </AnchoredPopover>
-    </div>
-  );
-}
-
 function SortPicker({
   activeTab,
   value,
   direction,
   onChange,
   onDirectionChange,
+  onReshuffle,
 }: {
   activeTab: LibraryTab;
   value: LibrarySort;
   direction: SortDirection;
   onChange: (value: LibrarySort) => void;
   onDirectionChange: (value: SortDirection) => void;
+  onReshuffle: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const options = activeTab.kind === "source"
-	? librarySortOptions.filter((option) => ["recent", "release", "rating", "sales"].includes(option.value))
+	? librarySortOptions.filter((option) => ["recent", "release", "rating", "sales", "random"].includes(option.value))
 	: librarySortOptions;
   const label = options.find((option) => option.value === value)?.label ?? "Sort";
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
@@ -2074,11 +2004,11 @@ function SortPicker({
         </button>
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          title={direction === "asc" ? "Ascending" : "Descending"}
-          aria-label={direction === "asc" ? "Ascending" : "Descending"}
-          onClick={() => onDirectionChange(nextDirection)}
+          title={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
+          aria-label={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
+          onClick={() => value === "random" ? onReshuffle() : onDirectionChange(nextDirection)}
         >
-          {direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
+          {value === "random" ? <RefreshCw className="h-4 w-4" /> : direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
         </button>
       </div>
 	  <AnchoredPopover open={open} anchorRef={popoverRef} onOpenChange={setOpen} className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm">
@@ -2193,48 +2123,9 @@ function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>
   }, [open, ref, onClose]);
 }
 
-function useIsWideLibraryLayout() {
-  const [isWide, setIsWide] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 640px)").matches;
-  });
-
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 640px)");
-    const update = () => setIsWide(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  return isWide;
-}
-
 function statusFilterLabel(value: ListeningStatus | "all") {
   if (value === "all") return "All marks";
   return listeningStatusOptions.find((option) => option.value === value)?.label ?? value;
-}
-
-function workGridClassName() {
-  return "grid gap-4 [grid-template-columns:repeat(var(--mobile-columns),minmax(0,1fr))] sm:[grid-template-columns:repeat(var(--desktop-columns),minmax(0,1fr))]";
-}
-
-function workGridStyle(mobileColumns: LibraryColumnCount, desktopColumns: LibraryColumnCount) {
-  return {
-    "--mobile-columns": mobileColumns,
-    "--desktop-columns": desktopColumns,
-  } as CSSProperties;
-}
-
-function workMasonryClassName() {
-  return "[column-count:var(--mobile-columns)] [column-gap:1rem] sm:[column-count:var(--desktop-columns)]";
-}
-
-function workMasonryStyle(mobileColumns: LibraryColumnCount, desktopColumns: LibraryColumnCount) {
-  return {
-    "--mobile-columns": mobileColumns,
-    "--desktop-columns": desktopColumns,
-  } as CSSProperties;
 }
 
 function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibraryScope; filtered: boolean; onClear: () => void }) {
@@ -6915,7 +6806,8 @@ function countTreeFiles(root: TreeNode) {
 }
 
 function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
-  const lyrics = findLyricsForTrack(track, work.mediaItems);
+  const lyricsChoices = findLyricsForTrack(track, work.mediaItems);
+  const lyrics = lyricsChoices[0] ?? null;
   return {
     ...track,
     workId: work.id,
@@ -6927,6 +6819,7 @@ function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     progressRecordable: true,
     lyricsLocationId: lyrics?.locationId ?? null,
     lyricsTitle: lyrics?.title ?? "",
+    lyricsChoices,
   };
 }
 
@@ -6942,6 +6835,7 @@ function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail):
     progressRecordable: false,
     lyricsLocationId: null,
     lyricsTitle: "",
+    lyricsChoices: [],
     remoteSourceId: detail.sourceId,
     remoteWorkCode: detail.primaryCode || detail.remoteId,
     remotePath: track.sourcePath,
@@ -6949,43 +6843,7 @@ function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail):
 }
 
 function findLyricsForTrack(track: TreeTrack, items: MediaItem[]) {
-  const candidates = items.flatMap((item) =>
-    item.kind === "text"
-      ? item.locations
-          .filter((location) => location.locationType === "local" && location.availability === "available" && isLyricsPath(location.path))
-          .map((location) => {
-            const name = fileNameFromPath(location.path);
-            return {
-              locationId: location.id,
-              title: name,
-              keys: lyricMatchKeys(baseNameWithoutExtension(name)),
-            };
-          })
-      : [],
-  );
-  if (candidates.length === 0) return null;
-  const trackKeys = lyricMatchKeys(track.baseName || track.title);
-  return candidates.find((candidate) => candidate.keys.some((key) => trackKeys.includes(key))) ?? null;
-}
-
-function isLyricsPath(path: string) {
-  const lower = path.toLowerCase();
-  return [".lrc", ".srt", ".vtt", ".txt", ".cue"].some((extension) => lower.endsWith(extension));
-}
-
-function lyricMatchKeys(value: string) {
-  const normalized = normalizeLyricName(value);
-  const withoutLeadingNumber = normalized.replace(/^\d+/, "");
-  const withoutTrackPrefix = normalized.replace(/^track\d+/, "");
-  return Array.from(new Set([normalized, withoutLeadingNumber, withoutTrackPrefix].filter((item) => item.length >= 2)));
-}
-
-function normalizeLyricName(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
-    .replace(/^(track|tr|disc|cd)[\s_.-]*/i, "")
-    .replace(/[\s_.\-()[\]【】「」『』]+/g, "");
+  return findLyricsMatches(track.sourcePath || track.title, items);
 }
 
 function fileNameFromPath(path: string) {

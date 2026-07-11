@@ -105,6 +105,24 @@ func TestListWorksSortedForwardsOrderAndDirection(t *testing.T) {
 	}
 }
 
+func TestListWorksSortedSeededForwardsGenericRandomParameters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("order"); got != "random" {
+			t.Fatalf("order = %q, want random", got)
+		}
+		if got := r.URL.Query().Get("seed"); got != "2468" {
+			t.Fatalf("seed = %q, want 2468", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"works":[],"pagination":{"totalCount":0}}`))
+	}))
+	defer server.Close()
+	client := NewClient(server.URL, server.Client())
+	if _, err := client.ListWorksSortedSeeded(context.Background(), 1, 12, "", "random", "desc", "2468"); err != nil {
+		t.Fatalf("ListWorksSortedSeeded() error = %v", err)
+	}
+}
+
 func TestTagNamePrefersRequestedLocalization(t *testing.T) {
 	tag := Tag{
 		Name: "中文",

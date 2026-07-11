@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -45,6 +46,51 @@ func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 	}
 	if page.Works[0].SourcePresence == "" {
 		t.Fatal("ListPage() omitted source presence")
+	}
+}
+
+func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "random.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 12; index++ {
+		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", fmt.Sprintf("RJ0999%04d", index), fmt.Sprintf("Work %d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	load := func(seed int64) []string {
+		codes := []string{}
+		for pageNumber := 1; pageNumber <= 3; pageNumber++ {
+			page, err := NewStore(db).ListPage(context.Background(), ListOptions{Page: pageNumber, PageSize: 4, Sort: "random", RandomSeed: seed})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, work := range page.Works {
+				codes = append(codes, work.PrimaryCode)
+			}
+		}
+		return codes
+	}
+	first := load(11)
+	second := load(11)
+	different := load(29)
+	if fmt.Sprint(first) != fmt.Sprint(second) {
+		t.Fatalf("same seed changed order: %v != %v", first, second)
+	}
+	if fmt.Sprint(first) == fmt.Sprint(different) {
+		t.Fatalf("different seeds produced the same order: %v", first)
+	}
+	seen := map[string]bool{}
+	for _, code := range first {
+		seen[code] = true
+	}
+	if len(seen) != 12 {
+		t.Fatalf("random pagination returned %d unique works, want 12: %v", len(seen), first)
 	}
 }
 

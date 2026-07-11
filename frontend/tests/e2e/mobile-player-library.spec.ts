@@ -69,7 +69,7 @@ function silentWav() {
   return body;
 }
 
-async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, failLocalAudio = false) {
+async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, failLocalAudio = false, workCount = 1) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -98,7 +98,24 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
     }
     if (url.pathname === "/api/works") {
       onWorksRequest?.(url);
-      await route.fulfill({ json: { works: [work], page: 1, pageSize: 24, total: 1 } });
+      const works = Array.from({ length: workCount }, (_, index) => index === 0 ? work : {
+        ...work,
+        id: index + 1,
+        primaryCode: `RJ${String(9999999 + index).padStart(8, "0")}`,
+        title: `Mobile work ${index + 1}`,
+      });
+      await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
+      return;
+    }
+    const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
+    if (detailMatch) {
+      const id = Number(detailMatch[1]);
+      const detailWork = id === 1 ? work : { ...work, id, primaryCode: `RJ${String(9999998 + id).padStart(8, "0")}`, title: `Mobile work ${id}` };
+      await route.fulfill({ json: {
+        ...detailWork,
+        baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
+        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {}, mediaItems: [],
+      } });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -240,6 +257,21 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await page.getByTitle("Next page").last().click();
   await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
+});
+
+test("new detail navigation starts at the top and returning restores the library position", async ({ page }) => {
+  await mockApplication(page, undefined, false, 24);
+  await page.goto("/");
+  const target = page.getByText("Mobile work 18", { exact: true });
+  await target.scrollIntoViewIfNeeded();
+  const savedScroll = await page.evaluate(() => window.scrollY);
+  expect(savedScroll).toBeGreaterThan(500);
+  await target.click();
+  await expect(page).toHaveURL(/\/RJ10000016/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);
 });
 
 test("mobile Fetch prepares language editions and switches between local, remote, and result steps", async ({ page }) => {

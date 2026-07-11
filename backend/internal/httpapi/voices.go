@@ -141,6 +141,7 @@ type voiceKnownWork struct {
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
+	VoiceActors      []string            `json:"voiceActors"`
 	Series           string              `json:"series"`
 	SeriesTitleID    string              `json:"seriesTitleId"`
 	ListeningMark    string              `json:"listeningMark"`
@@ -179,6 +180,7 @@ type voiceRemoteWork struct {
 	Rating         *float64 `json:"rating"`
 	Sales          *int64   `json:"sales"`
 	Tags           []string `json:"tags"`
+	VoiceActors    []string `json:"voiceActors"`
 	ImportStatus   string   `json:"importStatus"`
 	RemotePlayable bool     `json:"remotePlayable"`
 	WorkID         *int64   `json:"workId"`
@@ -799,6 +801,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			Rating:           metadata.Rating,
 			Sales:            metadata.Sales,
 			Tags:             metadata.Tags,
+			VoiceActors:      metadata.VoiceActors,
 			Series:           metadata.Series,
 			SeriesTitleID:    row.SeriesTitleID,
 			ListeningMark:    row.ListeningStatus,
@@ -944,6 +947,12 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 			if err != nil {
 				return nil, err
 			}
+			voiceActors := make([]string, 0, len(remoteWork.VAs))
+			for _, voiceActor := range remoteWork.VAs {
+				if name := strings.TrimSpace(voiceActor.Name); name != "" {
+					voiceActors = append(voiceActors, name)
+				}
+			}
 			result.Works = append(result.Works, voiceRemoteWork{
 				SourceID:       source.ID,
 				SourceCode:     source.Code,
@@ -959,6 +968,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				Rating:         remoteWork.RateAverage2DP,
 				Sales:          remoteWork.DLCount,
 				Tags:           remoteTagNames(remoteWork.Tags),
+				VoiceActors:    voiceActors,
 				ImportStatus:   remoteImportStatus(flags.WorkID),
 				RemotePlayable: true,
 				WorkID:         flags.WorkID,

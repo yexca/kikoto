@@ -34,6 +34,14 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
+import {
+  WorkCollectionLayoutPicker,
+  workCollectionClassName,
+  workCollectionItemClassName,
+  workCollectionStyle,
+  type WorkCollectionColumnCount,
+  type WorkCollectionViewMode,
+} from "@/components/work-collection/WorkCollectionLayout";
 import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 
@@ -74,13 +82,13 @@ export function CirclesPage() {
 }
 
 export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
-  window.history.pushState({}, "", `/circles/${encodeURIComponent(externalId)}`);
+  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back" }, "", `/circles/${encodeURIComponent(externalId)}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 export function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
   const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
-  window.history.pushState({}, "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
+  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back" }, "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
@@ -186,7 +194,7 @@ function CircleListPage() {
                 <option key={value} value={value}>{value} / page</option>
               ))}
             </select>
-            <ColumnPicker
+            <EntityColumnPicker
               mobileColumns={mobileColumns}
               desktopColumns={desktopColumns}
               mobileOptions={[1, 2, 3]}
@@ -354,8 +362,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
-  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
-  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
+  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
+  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -822,13 +831,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               />
             </div>
             <div className="flex gap-2">
-              <ColumnPicker
+              <WorkCollectionLayoutPicker
+                viewMode={viewMode}
                 mobileColumns={mobileColumns}
                 desktopColumns={desktopColumns}
-                mobileOptions={[1, 2]}
-                desktopOptions={[4, 6, 8]}
-                onMobileChange={setMobileColumns}
-                onDesktopChange={setDesktopColumns}
+                onViewModeChange={setViewMode}
+                onMobileColumnsChange={setMobileColumns}
+                onDesktopColumnsChange={setDesktopColumns}
               />
               <select
                 className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -885,28 +894,29 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   )}
                 </div>
                 {selectedSeries ? (
-                  <div className={circleWorkGridClassName(mobileColumns, desktopColumns)}>
+                  <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
                     {seriesWorks.length > 0 ? seriesWorks.map((work) => (
-                      <CatalogWorkCard
-                        key={work.primaryCode}
-                        work={work}
-                        selected={selectedWorkCodes.has(work.primaryCode)}
-                        selectable={isCircleBulkSaveSelectable(work)}
-                        selectionActive={false}
-                        onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                        onSync={() => void syncSingleWork(work)}
-                        onSave={() => void saveSingleWork(work)}
-                        onDeleteMissing={() => setDeleteTarget(work)}
-                        onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
-                        onFavoriteSaved={(favorite) => {
-                          setDetail((current) => current ? {
-                            ...current,
-                            works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
-                          } : current);
-                        }}
-                        onEnsureWork={() => ensureCatalogWorkForList(work)}
-                        onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
-                      />
+                      <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
+                        <CatalogWorkCard
+                          work={work}
+                          selected={selectedWorkCodes.has(work.primaryCode)}
+                          selectable={isCircleBulkSaveSelectable(work)}
+                          selectionActive={false}
+                          onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                          onSync={() => void syncSingleWork(work)}
+                          onSave={() => void saveSingleWork(work)}
+                          onDeleteMissing={() => setDeleteTarget(work)}
+                          onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                          onFavoriteSaved={(favorite) => {
+                            setDetail((current) => current ? {
+                              ...current,
+                              works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
+                            } : current);
+                          }}
+                          onEnsureWork={() => ensureCatalogWorkForList(work)}
+                          onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
+                        />
+                      </div>
                     )) : (
                       <Card>
                         <CardContent className="p-5 text-sm text-muted-foreground">No works match this series view.</CardContent>
@@ -954,10 +964,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             </div>
           </div>}
 
-          <div className={circleWorkGridClassName(mobileColumns, desktopColumns)}>
+          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
             {filteredWorks.length > 0 ? pagedWorks.map((work) => (
+              <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
               <CatalogWorkCard
-                key={work.primaryCode}
                 work={work}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
@@ -976,6 +986,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 onEnsureWork={() => ensureCatalogWorkForList(work)}
                 onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
               />
+              </div>
             )) : (
               <Card>
                 <CardContent className="p-5 text-sm text-muted-foreground">No catalog works match this view.</CardContent>
@@ -1157,6 +1168,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
+    voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,
@@ -1469,6 +1481,11 @@ function circleRouteFromPath(path: string) {
 }
 
 function navigateToCirclesList() {
+  const state = window.history.state as { returnTo?: unknown } | null;
+  if (typeof state?.returnTo === "string" && state.returnTo.startsWith("/")) {
+    window.history.back();
+    return;
+  }
   window.history.pushState({}, "", "/circles");
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
@@ -1481,7 +1498,7 @@ function safeDecodePathSegment(value: string) {
   }
 }
 
-function ColumnPicker({
+function EntityColumnPicker({
   mobileColumns,
   desktopColumns,
   mobileOptions,
@@ -1609,10 +1626,4 @@ function circleListGridClassName(mobileColumns: 1 | 2 | 3, desktopColumns: 1 | 2
   const mobileClass = mobileColumns === 1 ? "grid-cols-1" : mobileColumns === 2 ? "grid-cols-2" : "grid-cols-3";
   const desktopClass = desktopColumns === 1 ? "sm:grid-cols-1" : desktopColumns === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3";
   return `grid gap-2 ${mobileClass} ${desktopClass}`;
-}
-
-function circleWorkGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
-  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
-  const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
-  return `grid gap-4 ${mobileClass} ${desktopClass}`;
 }

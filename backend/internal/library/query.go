@@ -16,14 +16,15 @@ func NewStore(db *sql.DB) *Store {
 }
 
 type ListOptions struct {
-	UserID    int64
-	Page      int
-	PageSize  int
-	Scope     string
-	Status    string
-	Query     string
-	Sort      string
-	Direction string
+	UserID     int64
+	Page       int
+	PageSize   int
+	Scope      string
+	Status     string
+	Query      string
+	Sort       string
+	Direction  string
+	RandomSeed int64
 }
 
 type RawPage struct {
@@ -71,7 +72,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	}
 	queryArgs := append([]any{options.UserID}, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction)+" LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed)+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		return RawPage{}, err
 	}
@@ -87,7 +88,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 func (s *Store) ListMatching(ctx context.Context, userID int64, where string, args []any, page int, pageSize int) ([]RawWork, error) {
 	queryArgs := append([]any{userID}, args...)
 	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, "recent", "desc")+" LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, "recent", "desc", 0)+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +137,20 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	return works, nil
 }
 
-func listOrderBy(sortKey string, direction string) (string, bool) {
+func listOrderBy(sortKey string, direction string, randomSeed int64) (string, bool) {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
+	case "random":
+		seed := randomSeed % 2147483647
+		if seed < 0 {
+			seed = -seed
+		}
+		multiplier := (seed*1103515245 + 12345) % 2147483647
+		if multiplier == 0 {
+			multiplier = 1
+		}
+		offset := (seed * 12345) % 2147483647
+		return fmt.Sprintf("((work.id * %d + %d) %% 2147483647) ASC, work.id ASC", multiplier, offset), false
 	case "release":
 		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction, false
 	case "code":
@@ -172,7 +184,7 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 		sortKey, direction = "sales", "DESC"
 	}
 	switch sortKey {
-	case "recent", "release", "code", "title", "rating", "sales":
+	case "recent", "release", "code", "title", "rating", "sales", "random":
 	default:
 		sortKey = "recent"
 	}
@@ -341,8 +353,8 @@ func latestSnapshotNumericClause(kind string, operator string, value float64) st
 	return fmt.Sprintf(`COALESCE((SELECT CAST(COALESCE(json_extract(search_snapshot.snapshot_json, '%s'), json_extract(search_snapshot.snapshot_json, '%s')) AS REAL) FROM metadata_snapshot AS search_snapshot INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id WHERE search_snapshot.work_id = work.id AND search_provider.code = 'dlsite' ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC LIMIT 1), 0) %s %g`, path, fallback, operator, value)
 }
 
-func listSelectSQL(where string, sortKey string, direction string) string {
-	orderBy, needsMetadataSort := listOrderBy(sortKey, direction)
+func listSelectSQL(where string, sortKey string, direction string, randomSeed int64) string {
+	orderBy, needsMetadataSort := listOrderBy(sortKey, direction, randomSeed)
 	if needsMetadataSort {
 		return `SELECT id, primary_code, title, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true) + `) AS library_rows ORDER BY ` + orderBy
 	}

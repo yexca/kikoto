@@ -118,6 +118,10 @@ func (c *Client) ListWorks(ctx context.Context, page int, pageSize int, keyword 
 }
 
 func (c *Client) ListWorksSorted(ctx context.Context, page int, pageSize int, keyword string, order string, direction string) (WorksPage, error) {
+	return c.ListWorksSortedSeeded(ctx, page, pageSize, keyword, order, direction, "")
+}
+
+func (c *Client) ListWorksSortedSeeded(ctx context.Context, page int, pageSize int, keyword string, order string, direction string, seed string) (WorksPage, error) {
 	params := url.Values{}
 	params.Set("page", strconv.Itoa(page))
 	params.Set("pageSize", strconv.Itoa(pageSize))
@@ -131,9 +135,13 @@ func (c *Client) ListWorksSorted(ctx context.Context, page int, pageSize int, ke
 	}
 	params.Set("order", order)
 	params.Set("sort", direction)
+	if seed = strings.TrimSpace(seed); seed != "" {
+		params.Set("seed", seed)
+	}
 	plainParams := cloneValues(params)
 	plainParams.Del("order")
 	plainParams.Del("sort")
+	plainParams.Del("seed")
 	var result WorksPage
 	keyword = strings.TrimSpace(keyword)
 	path := "/api/works"

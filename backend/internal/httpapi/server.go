@@ -359,6 +359,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		Scope:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))),
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
+		RandomSeed: int64(queryInt(r, "seed", 1)),
 	})
 	if err != nil {
 		writeError(w, err)
@@ -2684,9 +2685,6 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.CircleExternalID = metadata.CircleExternalID
 	work.BaseCode = metadata.BaseCode
 	work.MetadataLanguage = metadata.MetadataLanguage
-	if err := s.syncWorkEditionForWorkFromSnapshot(ctx, id, work.PrimaryCode, metadata); err != nil {
-		return workDetail{}, err
-	}
 	if canonicalCode, metadataLanguage, err := s.loadWorkEditionMetadata(ctx, id); err != nil {
 		return workDetail{}, err
 	} else {
@@ -2724,9 +2722,6 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	work.Tags = metadata.Tags
 	work.VoiceActors = metadata.VoiceActors
 	work.VoiceCredits = []voiceCredit{}
-	if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, id); err != nil {
-		return workDetail{}, err
-	}
 	translations, err := s.loadWorkTranslations(ctx, work.PrimaryCode, work.BaseCode, metadata.LanguageEditions)
 	if err != nil {
 		return workDetail{}, err
@@ -4685,7 +4680,7 @@ func localFileKind(path string) string {
 		return "audio"
 	case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif":
 		return "image"
-	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml":
+	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml":
 		return "text"
 	default:
 		return "file"

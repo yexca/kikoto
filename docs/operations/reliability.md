@@ -6,6 +6,8 @@
 - Source outages are scoped to the affected source.
 - Batch source availability checks probe source health before per-work checks.
 - Remote downloads use configurable delay and backoff.
+- Remote media is downloaded before opening the database transaction that
+  records it, keeping SQLite write-lock time bounded.
 - DLsite metadata sync uses configured request delay and backoff for provider
   requests.
 - Workflow runs preserve structured status and error context.

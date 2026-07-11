@@ -39,6 +39,14 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import {
+  WorkCollectionLayoutPicker,
+  workCollectionClassName,
+  workCollectionItemClassName,
+  workCollectionStyle,
+  type WorkCollectionColumnCount,
+  type WorkCollectionViewMode,
+} from "@/components/work-collection/WorkCollectionLayout";
 import { api, assetURL, type CircleSummary, type FavoriteList, type ListeningStatus, type VoiceSummary, type Work } from "@/lib/api";
 import { openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openCircleRoute } from "@/pages/CirclesPage";
@@ -94,8 +102,9 @@ export function FavoritesPage() {
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const [mobileColumns, setMobileColumns] = useState<1 | 2>(2);
-  const [desktopColumns, setDesktopColumns] = useState<4 | 6 | 8>(6);
+  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
+  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
+  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(new Set());
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
@@ -375,7 +384,7 @@ export function FavoritesPage() {
 
       {favoriteEntity === "works" && (
       <>
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 xl:grid-cols-6">
         {isLoading ? <FavoriteMetricSkeletons /> : (
           <>
             <MetricCard label="Shelf Works" value={shelfTotal} icon={Heart} />
@@ -465,11 +474,13 @@ export function FavoritesPage() {
           }}>
             Select
           </Button>
-          <ColumnPicker
+          <WorkCollectionLayoutPicker
+            viewMode={viewMode}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
-            onMobileChange={setMobileColumns}
-            onDesktopChange={setDesktopColumns}
+            onViewModeChange={setViewMode}
+            onMobileColumnsChange={setMobileColumns}
+            onDesktopColumnsChange={setDesktopColumns}
           />
           <span className="text-xs text-muted-foreground">Page size</span>
           <select
@@ -525,26 +536,27 @@ export function FavoritesPage() {
       )}
 
       {isLoading ? (
-        <FavoriteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+        <FavoriteWorkGridSkeleton viewMode={viewMode} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
       ) : works.length > 0 ? (
         <>
-          <div className={workGridClassName(mobileColumns, desktopColumns)}>
+          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
             {works.map((work) => (
-              <FavoriteWorkCard
-                key={work.id}
-                work={work}
-                selected={selectedWorkIDs.has(work.id)}
-                selectionActive={selectionMode}
-                onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
-                favoriteLists={favoriteLists}
-                isListSaving={isBulkUpdating}
-                onListsChanged={async () => {
-                  await reloadFavoriteLists();
-                  toast.success(`Updated list membership for ${work.primaryCode}.`);
-                }}
-                onOpen={() => openWork(work)}
-                onStatusChange={updateWorkStatus}
-              />
+              <div key={work.id} className={workCollectionItemClassName(viewMode)}>
+                <FavoriteWorkCard
+                  work={work}
+                  selected={selectedWorkIDs.has(work.id)}
+                  selectionActive={selectionMode}
+                  onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
+                  favoriteLists={favoriteLists}
+                  isListSaving={isBulkUpdating}
+                  onListsChanged={async () => {
+                    await reloadFavoriteLists();
+                    toast.success(`Updated list membership for ${work.primaryCode}.`);
+                  }}
+                  onOpen={() => openWork(work)}
+                  onStatusChange={updateWorkStatus}
+                />
+              </div>
             ))}
           </div>
           {totalPages > 1 && (
@@ -742,61 +754,16 @@ function FavoriteEntitySkeletonGrid() {
 
 function MetricCard({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Heart }) {
   return (
-    <Card>
-      <CardContent className="flex items-center justify-between p-4">
+    <Card className="min-w-32 md:min-w-0">
+      <CardContent className="flex items-center justify-between gap-3 p-3 md:p-4">
         <div>
-          <div className="text-2xl font-semibold">{value}</div>
-          <div className="text-sm text-muted-foreground">{label}</div>
+          <div className="text-xl font-semibold md:text-2xl">{value}</div>
+          <div className="whitespace-nowrap text-xs text-muted-foreground md:text-sm">{label}</div>
         </div>
         <Icon className="h-5 w-5 text-primary" />
       </CardContent>
     </Card>
   );
-}
-
-function ColumnPicker({
-  mobileColumns,
-  desktopColumns,
-  onMobileChange,
-  onDesktopChange,
-}: {
-  mobileColumns: 1 | 2;
-  desktopColumns: 4 | 6 | 8;
-  onMobileChange: (value: 1 | 2) => void;
-  onDesktopChange: (value: 4 | 6 | 8) => void;
-}) {
-  return (
-    <>
-      <div className="flex rounded-md border bg-background p-1 sm:hidden" aria-label="Mobile card columns">
-        {[1, 2].map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${mobileColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onMobileChange(value as 1 | 2)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-      <div className="hidden rounded-md border bg-background p-1 sm:flex" aria-label="Desktop card columns">
-        {[4, 6, 8].map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${desktopColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onDesktopChange(value as 4 | 6 | 8)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function workGridClassName(mobileColumns: 1 | 2, desktopColumns: 4 | 6 | 8) {
-  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : "grid-cols-2";
-  const desktopClass = desktopColumns === 4 ? "sm:grid-cols-4" : desktopColumns === 6 ? "sm:grid-cols-6" : "sm:grid-cols-8";
-  return `grid gap-4 ${mobileClass} ${desktopClass}`;
 }
 
 function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
@@ -826,11 +793,11 @@ function FavoriteListTabSkeletons() {
   );
 }
 
-function FavoriteWorkGridSkeleton({ mobileColumns, desktopColumns }: { mobileColumns: 1 | 2; desktopColumns: 4 | 6 | 8 }) {
+function FavoriteWorkGridSkeleton({ viewMode, mobileColumns, desktopColumns }: { viewMode: WorkCollectionViewMode; mobileColumns: WorkCollectionColumnCount; desktopColumns: WorkCollectionColumnCount }) {
   return (
-    <div className={workGridClassName(mobileColumns, desktopColumns)}>
+    <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
       {Array.from({ length: 12 }, (_, index) => (
-        <div key={index} className="overflow-hidden rounded-lg border bg-card">
+        <div key={index} className={`${workCollectionItemClassName(viewMode)} overflow-hidden rounded-lg border bg-card`}>
           <FavoriteSkeletonLine className="aspect-[4/5] rounded-none" />
           <div className="space-y-2 p-3">
             <FavoriteSkeletonLine className="h-4 w-3/4" />
@@ -917,6 +884,7 @@ function favoriteWorkCardView(work: Work): WorkCardViewModel {
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
+    voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,

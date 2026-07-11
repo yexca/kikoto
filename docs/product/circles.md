@@ -11,6 +11,9 @@ Circles represent makers, circles, and related party catalog state.
 - Supports catalog refresh in incremental or full mode.
 - Stores catalog rows separately from imported works.
 - Shows local/cache/remote source availability tags for catalog works.
+- Presents work results with the same responsive grid/masonry layout and work
+  cards as the Library. This applies to both circle detail and circle series;
+  the separate circle-entity list keeps its own controls.
 - Allows stale catalog rows to be removed after confirmation.
 
 ## Boundary

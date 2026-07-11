@@ -1,4 +1,4 @@
-import { BookmarkPlus, Check, CheckCircle2, ChevronRight, Circle, ExternalLink, Headphones, ListMusic, PauseCircle, Repeat2, Star, X } from "lucide-react";
+import { BookmarkPlus, Check, CheckCircle2, ChevronRight, Circle, ExternalLink, Headphones, ListMusic, MicVocal, PauseCircle, Repeat2, Star, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ export type WorkCardViewModel = {
   title: string;
   circle: string;
   circleExternalId?: string;
+  voiceActors?: string[];
   coverUrl?: string;
   rating?: number | null;
   series?: string | null;
@@ -45,6 +46,7 @@ export function WorkCardShell({
   canOpen = true,
   onOpen,
   onCircleOpen,
+  onVoiceOpen,
   onSeriesOpen,
   onTagOpen,
 }: {
@@ -54,13 +56,14 @@ export function WorkCardShell({
   canOpen?: boolean;
   onOpen?: () => void;
   onCircleOpen?: (externalId: string) => void;
+  onVoiceOpen?: (name: string) => void;
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
 }) {
   const content = (
     <>
       <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} />
-      <WorkCardBody work={work} onCircleOpen={onCircleOpen} onSeriesOpen={onSeriesOpen} onTagOpen={onTagOpen} />
+      <WorkCardBody work={work} onCircleOpen={onCircleOpen} onVoiceOpen={onVoiceOpen} onSeriesOpen={onSeriesOpen} onTagOpen={onTagOpen} />
     </>
   );
 
@@ -124,11 +127,13 @@ export function WorkCardMedia({
 function WorkCardBody({
   work,
   onCircleOpen,
+  onVoiceOpen,
   onSeriesOpen,
   onTagOpen,
 }: {
   work: WorkCardViewModel;
   onCircleOpen?: (externalId: string) => void;
+  onVoiceOpen?: (name: string) => void;
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
 }) {
@@ -164,6 +169,30 @@ function WorkCardBody({
             Series <span className="font-medium text-foreground">{work.series}</span>
           </div>
         )
+      )}
+      {work.voiceActors && work.voiceActors.length > 0 && (
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={work.voiceActors.join(", ")}>
+          <MicVocal className="h-3.5 w-3.5 shrink-0" />
+          <div className="min-w-0 truncate">
+            {work.voiceActors.slice(0, 2).map((name, index) => (
+              <span key={name}>
+                {index > 0 && <span>, </span>}
+                {onVoiceOpen ? (
+                  <button
+                    className="hover:text-primary"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onVoiceOpen(name);
+                    }}
+                  >
+                    {name}
+                  </button>
+                ) : name}
+              </span>
+            ))}
+            {work.voiceActors.length > 2 && <span> +{work.voiceActors.length - 2}</span>}
+          </div>
+        </div>
       )}
       <BadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
       {work.date && <div className="truncate text-xs text-muted-foreground">{work.date.label} {work.date.value}</div>}

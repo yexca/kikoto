@@ -60,7 +60,7 @@ export type FavoriteWorksPage = WorksPage & {
   statusCounts: Record<string, number>;
 };
 
-export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales";
+export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random";
 export type SortDirection = "asc" | "desc";
 
 export type WorkDetail = {
@@ -333,6 +333,7 @@ export type RemoteWork = {
   rating: number | null;
   sales: number | null;
   tags: string[];
+  voiceActors: string[];
   importStatus: string;
   remotePlayable: boolean;
   workId: number | null;
@@ -791,6 +792,7 @@ export type CircleCatalogWork = {
   circle: string;
   circleExternalId: string;
   tags: string[];
+  voiceActors: string[];
   rating: number | null;
   sales: number | null;
   series: string;
@@ -886,6 +888,7 @@ export type VoiceKnownWork = {
   rating: number | null;
   sales: number | null;
   tags: string[];
+  voiceActors: string[];
   series: string;
   seriesTitleId: string;
   listeningMark: ListeningStatus;
@@ -912,6 +915,7 @@ export type VoiceRemoteWork = {
   rating: number | null;
   sales: number | null;
   tags: string[];
+  voiceActors: string[];
   importStatus: string;
   remotePlayable: boolean;
   workId: number | null;
@@ -1090,9 +1094,9 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc", signal?: AbortSignal) =>
+  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc", seed = 1, signal?: AbortSignal) =>
     getJSON<WorksPage>(
-      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   listFavoriteWorksPage: (page = 1, pageSize = 24, query = "", listId: number | "all" = "all", status = "all", availability = "all") =>
@@ -1101,9 +1105,9 @@ export const api = {
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
-  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", sort: LibrarySort = "recent", direction: SortDirection = "desc", signal?: AbortSignal) =>
+  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", sort: LibrarySort = "recent", direction: SortDirection = "desc", seed = 1, signal?: AbortSignal) =>
     getJSON<RemoteWorksResponse>(
-      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   getRemoteSourceWork: (id: number, code: string, signal?: AbortSignal) =>

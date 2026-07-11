@@ -84,6 +84,7 @@ type circleCatalogWork struct {
 	Circle           string              `json:"circle"`
 	CircleExternalID string              `json:"circleExternalId"`
 	Tags             []string            `json:"tags"`
+	VoiceActors      []string            `json:"voiceActors"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Series           string              `json:"series"`
@@ -1162,6 +1163,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		item.Series, item.SeriesTitleID = parseSeriesLink(seriesLink)
 		metadata := parseDLsiteSnapshot(snapshot)
 		item.Tags = metadata.Tags
+		item.VoiceActors = metadata.VoiceActors
 		item.Rating = metadata.Rating
 		item.Sales = metadata.Sales
 		if item.Series == "" {

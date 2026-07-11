@@ -10,6 +10,8 @@ Voice pages present persisted person and credit data.
 - Supports alias review, duplicate merge, and merge undo.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows local, cache, remote, playable, and known work counts.
+- Presents known and remote works with the same responsive grid/masonry layout
+  and shared work cards as the Library.
 
 ## Boundary
 

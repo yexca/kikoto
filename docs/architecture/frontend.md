@@ -32,3 +32,10 @@ remote source management, and playback.
 - Keep source failures local to the affected source.
 - Prefer icons for compact controls and reserve text buttons for clear commands.
 - Keep playback global so navigation does not interrupt the current queue.
+- Use the shared work-collection layout and work-card view model whenever a
+  surface presents works. Page-specific filters and statistics may differ, but
+  grid/masonry behavior and responsive column choices should remain aligned.
+- Keep scroll state per browser history entry. A push navigation starts at the
+  top, while browser back/forward restores the originating entry after its
+  content has rendered. Page-level cleanup must not overwrite another entry's
+  saved position.

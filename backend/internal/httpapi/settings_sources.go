@@ -181,6 +181,7 @@ type remoteWorkSummary struct {
 	Rating          *float64 `json:"rating"`
 	Sales           *int64   `json:"sales"`
 	Tags            []string `json:"tags"`
+	VoiceActors     []string `json:"voiceActors"`
 	ImportStatus    string   `json:"importStatus"`
 	RemotePlayable  bool     `json:"remotePlayable"`
 	WorkID          *int64   `json:"workId"`
@@ -822,7 +823,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
-	remotePage, err := client.ListWorksSorted(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction)
+	remotePage, err := client.ListWorksSortedSeeded(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction, r.URL.Query().Get("seed"))
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
@@ -860,6 +861,8 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 
 func remoteSourceSort(value string) (string, string) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "random":
+		return "random", "random"
 	case "release":
 		return "release", "release"
 	case "rating":
@@ -1898,6 +1901,12 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 		if work.Circle != nil {
 			circle = work.Circle.Name
 		}
+		voiceActors := make([]string, 0, len(work.VAs))
+		for _, voiceActor := range work.VAs {
+			if name := strings.TrimSpace(voiceActor.Name); name != "" {
+				voiceActors = append(voiceActors, name)
+			}
+		}
 		status := "remote_only"
 		if workID != nil {
 			status = "synced"
@@ -1914,6 +1923,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			Rating:          work.RateAverage2DP,
 			Sales:           work.DLCount,
 			Tags:            tags,
+			VoiceActors:     voiceActors,
 			ImportStatus:    status,
 			RemotePlayable:  true,
 			WorkID:          workID,
@@ -1962,6 +1972,13 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		return remoteWorkSyncResult{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	workCode := normalizedRemoteWorkCode(remoteWork)
+	if workCode == "" {
+		workCode = code
+	}
+	if err := s.downloadRemoteCover(ctx, workCode, firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)); err != nil {
+		return remoteWorkSyncResult{}, err
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1980,10 +1997,6 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	})
 	if err != nil {
 		return remoteWorkSyncResult{}, err
-	}
-	workCode := normalizedRemoteWorkCode(remoteWork)
-	if workCode == "" {
-		workCode = code
 	}
 	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "trigger_reason": triggerReason}
 	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": true}
@@ -2018,9 +2031,6 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		Availability: "available",
 		RawJSON:      string(rawWork),
 	}); err != nil {
-		return remoteWorkSyncResult{}, err
-	}
-	if err := s.downloadRemoteCover(ctx, workCode, firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{

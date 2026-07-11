@@ -13,6 +13,7 @@ export type LibraryBrowseState = {
   status: ListeningStatus | "all";
   sort: LibrarySort;
   direction: SortDirection;
+  randomSeed: number;
   view: LibraryViewMode;
   mobileColumns: LibraryColumnCount;
   desktopColumns: LibraryColumnCount;
@@ -26,6 +27,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   status: "all",
   sort: "recent",
   direction: "desc",
+  randomSeed: 1,
   view: "grid",
   mobileColumns: 1,
   desktopColumns: 6,
@@ -34,7 +36,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
 
 const storagePrefix = "kikoto:library-browse:";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
-const sorts = ["recent", "release", "code", "title", "rating", "sales"] satisfies LibrarySort[];
+const sorts = ["recent", "release", "code", "title", "rating", "sales", "random"] satisfies LibrarySort[];
 
 export function readLibraryBrowseState(key: string): LibraryBrowseState | null {
   try {
@@ -63,6 +65,7 @@ export function libraryBrowseStateFromSearch(search: string, fallback: LibraryBr
       status: params.has("status") ? params.get("status") : fallback.status,
       sort: params.has("sort") ? params.get("sort") : fallback.sort,
       direction: params.has("direction") ? params.get("direction") : fallback.direction,
+      randomSeed: params.has("seed") ? Number(params.get("seed")) : fallback.randomSeed,
       view: params.has("view") ? params.get("view") : fallback.view,
       mobileColumns: params.has("mobileColumns") ? Number(params.get("mobileColumns")) : fallback.mobileColumns,
       desktopColumns: params.has("desktopColumns") ? Number(params.get("desktopColumns")) : fallback.desktopColumns,
@@ -81,6 +84,7 @@ export function libraryBrowseStateFromValue(
   const mobileColumns = Number(value.mobileColumns);
   const desktopColumns = Number(value.desktopColumns);
   const scrollY = Number(value.scrollY);
+  const randomSeed = Number(value.randomSeed);
   const status =
     typeof value.status === "string" && (value.status === "all" || statuses.includes(value.status as ListeningStatus))
       ? (value.status as ListeningStatus | "all")
@@ -96,6 +100,10 @@ export function libraryBrowseStateFromValue(
     status,
     sort,
     direction: value.direction === "asc" || value.direction === "desc" ? value.direction : fallback.direction,
+    randomSeed:
+      Number.isFinite(randomSeed) && randomSeed >= 1 && randomSeed <= 2147483646
+        ? Math.floor(randomSeed)
+        : fallback.randomSeed,
     view: value.view === "grid" || value.view === "masonry" ? value.view : fallback.view,
     mobileColumns: columnOptions.includes(mobileColumns as LibraryColumnCount)
       ? (mobileColumns as LibraryColumnCount)
@@ -114,6 +122,7 @@ export function libraryBrowseSearch(state: LibraryBrowseState) {
   params.set("pageSize", String(state.pageSize));
   params.set("sort", state.sort);
   params.set("direction", state.direction);
+  params.set("seed", String(state.randomSeed));
   params.set("status", state.status);
   params.set("view", state.view);
   params.set("mobileColumns", String(state.mobileColumns));

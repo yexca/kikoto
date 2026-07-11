@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
@@ -49,6 +50,53 @@ func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
 		if _, err := conn.ExecContext(ctx, "INSERT INTO child (parent_id) VALUES (?)", 404); err == nil {
 			t.Fatalf("connection %d allowed invalid foreign key insert", i)
 		}
+	}
+}
+
+func TestOpenSerializesImmediateWriteTransactions(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "transactions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Exec("INSERT INTO values_for_test (value) VALUES ('first')"); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		second, err := db.BeginTx(context.Background(), nil)
+		if err == nil {
+			_, err = second.Exec("INSERT INTO values_for_test (value) VALUES ('second')")
+			if err == nil {
+				err = second.Commit()
+			} else {
+				_ = second.Rollback()
+			}
+		}
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		t.Fatalf("second transaction finished before the first committed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := first.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("second transaction did not resume after commit: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second transaction remained blocked")
 	}
 }
 

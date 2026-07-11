@@ -393,6 +393,9 @@ func (s *Server) applyManualOverridesToCircleWork(ctx context.Context, work *cir
 			work.CircleExternalID = overrides.Series.CircleExternalID
 		}
 	}
+	if len(overrides.VoiceActors) > 0 {
+		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
+	}
 	return nil
 }
 
@@ -417,6 +420,9 @@ func (s *Server) applyManualOverridesToVoiceWork(ctx context.Context, work *voic
 		if overrides.Series.CircleExternalID != "" {
 			work.CircleExternalID = overrides.Series.CircleExternalID
 		}
+	}
+	if len(overrides.VoiceActors) > 0 {
+		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
 	}
 	return nil
 }

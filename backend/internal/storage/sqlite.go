@@ -47,6 +47,7 @@ func sqliteDSN(path string) string {
 	values.Add("_pragma", "foreign_keys(1)")
 	values.Add("_pragma", "journal_mode(WAL)")
 	values.Add("_pragma", "busy_timeout(5000)")
+	values.Set("_txlock", "immediate")
 	separator := "?"
 	if strings.Contains(path, "?") {
 		separator = "&"

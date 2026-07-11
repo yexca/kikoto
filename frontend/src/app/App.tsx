@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { CommandPalette } from "@/app/CommandPalette";
+import { useScrollRestoration } from "@/app/scrollRestoration";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -33,6 +34,7 @@ export function App() {
 }
 
 function AuthenticatedApp() {
+  useScrollRestoration();
   const auth = useAuth();
   const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
