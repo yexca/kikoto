@@ -5,6 +5,7 @@ const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac
 const sharedLyricNames = new Set(["lyrics", "lyric", "subtitle", "subtitles", "字幕", "翻译", "翻譯"]);
 
 export type LyricsMatch = {
+  mediaItemId: number;
   locationId: number;
   title: string;
   path: string;
@@ -22,10 +23,10 @@ export function findLyricsMatches(audioPath: string, items: MediaItem[]): Lyrics
   const normalizedAudioStem = normalizeMediaName(audioStem);
   const candidates = items.flatMap((item) => item.locations
     .filter((location) => location.locationType === "local" && location.availability === "available" && isLyricsPath(location.path))
-    .map((location) => scoreCandidate(location.id, location.path, audioName, audioStem, normalizedAudioStem, audioDirectory)))
+    .map((location) => scoreCandidate(item.id, location.id, location.path, audioName, audioStem, normalizedAudioStem, audioDirectory)))
     .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
     .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }));
-  return candidates.map((candidate) => ({ locationId: candidate.locationId, title: fileName(candidate.path), path: candidate.path, reason: candidate.reason }));
+  return candidates.map((candidate) => ({ mediaItemId: candidate.mediaItemId, locationId: candidate.locationId, title: fileName(candidate.path), path: candidate.path, reason: candidate.reason }));
 }
 
 export function isLyricsPath(path: string) {
@@ -33,7 +34,7 @@ export function isLyricsPath(path: string) {
   return lyricExtensions.some((extension) => lower.endsWith(extension));
 }
 
-function scoreCandidate(locationId: number, path: string, audioName: string, audioStem: string, normalizedAudioStem: string, audioDirectory: string) {
+function scoreCandidate(mediaItemId: number, locationId: number, path: string, audioName: string, audioStem: string, normalizedAudioStem: string, audioDirectory: string) {
   const lyricName = fileName(path);
   const lyricDirectory = directoryName(path);
   const lyricBase = stripKnownExtension(lyricName, lyricExtensions);
@@ -57,7 +58,7 @@ function scoreCandidate(locationId: number, path: string, audioName: string, aud
   }
   if (!reason) return null;
   score += lyricFormatPreference(lyricName);
-  return { locationId, path, reason, score };
+  return { mediaItemId, locationId, path, reason, score };
 }
 
 function lyricFormatPreference(name: string) {

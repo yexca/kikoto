@@ -204,8 +204,15 @@ func TestMigrateUpgradesV010DatabaseWithSingleV011Migration(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 2 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" {
+	if len(migrations) != 3 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" {
 		t.Fatalf("migrations = %v", migrations)
+	}
+	var lyricsPreferenceTable int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'user_media_lyrics_preference'").Scan(&lyricsPreferenceTable); err != nil {
+		t.Fatal(err)
+	}
+	if lyricsPreferenceTable != 1 {
+		t.Fatalf("user_media_lyrics_preference table count = %d", lyricsPreferenceTable)
 	}
 	for table, column := range map[string]string{
 		"work_edition":               "translation_kind",

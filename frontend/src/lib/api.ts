@@ -201,6 +201,15 @@ export type WorkResolveResponse = {
   workId: number;
   baseCode: string;
   isTranslation: boolean;
+  title: string;
+  coverUrl: string;
+  circle: string;
+  circleExternalId: string;
+  releaseDate: string | null;
+  rating: number | null;
+  sales: number | null;
+  tags: string[];
+  voiceActors: string[];
 };
 
 export type VoiceCredit = {
@@ -221,6 +230,7 @@ export type MediaItem = {
   sizeBytes: number | null;
   fingerprint: string;
   progress: MediaProgress | null;
+  preferredLyricsMediaItemId?: number | null;
   locations: MediaFileLocation[];
 };
 
@@ -1131,6 +1141,8 @@ export const api = {
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
   getWork: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}`, signal),
+  getWorkSummary: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
+  getWorkMedia: (id: number, signal?: AbortSignal) => getJSON<{ workId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
   updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
@@ -1159,6 +1171,10 @@ export const api = {
   setWorkFavoriteLists: (id: number, listIds: number[]) =>
     putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, { listIds }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  setMediaLyricsPreference: (audioMediaItemId: number, lyricsMediaItemId: number) =>
+    putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(`/api/media/${audioMediaItemId}/lyrics-preference`, { lyricsMediaItemId }),
+  clearMediaLyricsPreference: (audioMediaItemId: number) =>
+    deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(`/api/media/${audioMediaItemId}/lyrics-preference`),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
@@ -1170,6 +1186,8 @@ export const api = {
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
   getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
+  getVoiceSummary: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
+  getVoiceWorks: (personId: number | string) => getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
   getVoiceRemoteMatches: (personId: number | string) =>
     getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[] }>(`/api/voices/${encodeURIComponent(String(personId))}/remote-matches`),
   listVoiceAliasCandidates: (personId: number, query = "") =>

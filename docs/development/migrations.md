@@ -6,7 +6,11 @@ Database migrations live in `backend/migrations/`.
 
 `001_initial.sql` is the immutable v0.1.0 schema. Changes released in v0.1.1
 are consolidated in `002_v0_1_1.sql`; a v0.1.0 database must upgrade by running
-that single migration without rebuilding or replacing user data.
+that migration without rebuilding or replacing user data.
+
+`003_user_media_lyrics_preference.sql` is the next additive migration and
+stores per-user audio-to-lyrics media preferences. Released migrations remain
+immutable; subsequent schema changes must use the next numbered file.
 
 ## Guidelines
 

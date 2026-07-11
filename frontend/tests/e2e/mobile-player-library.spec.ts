@@ -69,7 +69,7 @@ function silentWav() {
   return body;
 }
 
-async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, failLocalAudio = false, workCount = 1) {
+async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, failLocalAudio = false, workCount = 1, mediaDelayMs = 0) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -116,6 +116,12 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
         dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {}, mediaItems: [],
       } });
+      return;
+    }
+    const mediaMatch = url.pathname.match(/^\/api\/works\/(\d+)\/media$/);
+    if (mediaMatch) {
+      if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
+      await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems: [] } });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -259,8 +265,8 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
 });
 
-test("new detail navigation starts at the top and returning restores the library position", async ({ page }) => {
-  await mockApplication(page, undefined, false, 24);
+test("new detail navigation starts at the top, preserves user scroll while media loads, and returning restores the library position", async ({ page }) => {
+  await mockApplication(page, undefined, false, 24, 350);
   await page.goto("/");
   const target = page.getByText("Mobile work 18", { exact: true });
   await target.scrollIntoViewIfNeeded();
@@ -269,6 +275,9 @@ test("new detail navigation starts at the top and returning restores the library
   await target.click();
   await expect(page).toHaveURL(/\/RJ10000016/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await page.waitForTimeout(650);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(50);
   await page.getByRole("button", { name: "Back to library" }).click();
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);

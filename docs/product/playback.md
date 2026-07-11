@@ -18,8 +18,11 @@ Playback is handled by a global browser audio player.
   instead of depending on database row order. Clearly generic same-directory
   names such as `lyrics` or `subtitle` may be shared by tracks in that folder.
 
-Lyrics selection is scoped to the currently queued track. It is not currently
-stored as a persistent user preference.
+An authenticated user's explicit lyrics selection is stored per audio media
+item. The preference targets the lyrics media item rather than a concrete file
+location, so source replacement can choose another available location. `Auto`
+clears the override and restores deterministic matching; an unavailable saved
+choice falls back without deleting the preference.
 
 ## Progress Boundary
 

@@ -21,7 +21,9 @@ function lyric(path: string, id: number): MediaItem {
 
 describe("findLyricsMatch", () => {
   it("matches an audio filename preserved inside a VTT sidecar name", () => {
-    expect(findLyricsMatch("work/MP3/01_abc.mp3", [lyric("work/MP3/01_abc.mp3.vtt", 9)])?.locationId).toBe(9);
+    const match = findLyricsMatch("work/MP3/01_abc.mp3", [lyric("work/MP3/01_abc.mp3.vtt", 9)]);
+    expect(match?.locationId).toBe(9);
+    expect(match?.mediaItemId).toBe(9);
   });
 
   it("prefers the same directory when duplicate stems exist", () => {

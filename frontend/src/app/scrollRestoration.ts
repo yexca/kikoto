@@ -31,14 +31,17 @@ export function useScrollRestoration() {
       restoreTimers.forEach((timer) => window.clearTimeout(timer));
       restoreTimers = [];
     };
-    const restore = (scrollY: number) => {
+    const restore = (scrollY: number, retry: boolean) => {
       cancelRestore();
       const apply = () => window.scrollTo({ top: scrollY, behavior: "auto" });
       window.requestAnimationFrame(() => window.requestAnimationFrame(apply));
-      restoreTimers = [50, 200, 500].map((delay) => window.setTimeout(apply, delay));
+      if (retry && scrollY > 0) {
+        restoreTimers = [50, 200, 500].map((delay) => window.setTimeout(apply, delay));
+      }
     };
-    const handleNavigation = () => restore(Number((history.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0);
-    const handlePopState = (event: PopStateEvent) => restore(Number((event.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0);
+    const handleNavigation = () => restore(Number((history.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0, false);
+    const handlePopState = (event: PopStateEvent) => restore(Number((event.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0, true);
+    const handleUserScrollIntent = () => cancelRestore();
 
     let pendingWrite: number | null = null;
     const handleScroll = () => {
@@ -51,6 +54,10 @@ export function useScrollRestoration() {
     window.addEventListener("kikoto:navigation", handleNavigation);
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("wheel", handleUserScrollIntent, { passive: true });
+    window.addEventListener("touchstart", handleUserScrollIntent, { passive: true });
+    window.addEventListener("pointerdown", handleUserScrollIntent, { passive: true });
+    window.addEventListener("keydown", handleUserScrollIntent);
     return () => {
       if (pendingWrite !== null) window.clearTimeout(pendingWrite);
       cancelRestore();
@@ -60,6 +67,10 @@ export function useScrollRestoration() {
       window.removeEventListener("kikoto:navigation", handleNavigation);
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("wheel", handleUserScrollIntent);
+      window.removeEventListener("touchstart", handleUserScrollIntent);
+      window.removeEventListener("pointerdown", handleUserScrollIntent);
+      window.removeEventListener("keydown", handleUserScrollIntent);
     };
   }, []);
 }

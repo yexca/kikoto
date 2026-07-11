@@ -44,6 +44,7 @@ import {
   workCollectionClassName,
   workCollectionItemClassName,
   workCollectionStyle,
+  useWorkCollectionLayout,
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
@@ -102,9 +103,7 @@ export function FavoritesPage() {
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
-  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
-  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(new Set());
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
@@ -219,7 +218,7 @@ export function FavoritesPage() {
   }
 
   const openWork = (work: Work) => {
-    window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites" }, "", `/${work.primaryCode}`);
+    window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites", workPreview: work }, "", `/${work.primaryCode}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   };
 

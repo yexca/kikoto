@@ -48,6 +48,7 @@ import {
   workCollectionClassName,
   workCollectionItemClassName,
   workCollectionStyle,
+  useWorkCollectionLayout,
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
@@ -322,6 +323,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const toast = useToast();
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isWorksLoading, setIsWorksLoading] = useState(false);
   const [remoteMatches, setRemoteMatches] = useState<VoiceRemoteSourceSet[]>([]);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteError, setRemoteError] = useState("");
@@ -330,9 +332,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [filter, setFilter] = useState<WorkFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
-  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
-  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
-  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
   const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
@@ -343,9 +343,15 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsLoading(true);
     setRemoteMatches([]);
     setRemoteError("");
-    api.getVoice(personId).then((item) => {
+    api.getVoiceSummary(personId).then((item) => {
       setDetail(item);
       setMessage("");
+      setIsWorksLoading(true);
+      api.getVoiceWorks(personId).then((result) => {
+        setDetail((current) => current?.personId === personId ? { ...current, works: result.works } : current);
+      }).catch((error) => {
+        toast.notify(toastFromError(error, "Voice works are unavailable."));
+      }).finally(() => setIsWorksLoading(false));
     }).catch((error) => {
       setDetail(null);
       toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
@@ -797,6 +803,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               />
             </div>
           ))}
+          {isWorksLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} viewMode={viewMode} />}
           {isRemoteLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} viewMode={viewMode} />}
           {pageWorks.length === 0 && !isRemoteLoading && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
         </div>
@@ -1453,12 +1460,12 @@ function navigateToVoicesList() {
 
 function openWorkRoute(work: VoiceKnownWork | VoiceRemoteWork) {
   if ("workId" in work && work.workId) {
-    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices" }, "", `/${encodeURIComponent(work.primaryCode)}`);
+    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work }, "", `/${encodeURIComponent(work.primaryCode)}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
     return;
   }
   if ("sourceId" in work && work.primaryCode) {
-    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices" }, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
+    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work }, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   }
 }

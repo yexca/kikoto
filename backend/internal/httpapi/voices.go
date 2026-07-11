@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
@@ -215,10 +216,13 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	works, err := s.loadVoiceKnownWorks(r.Context(), userID, personID)
-	if err != nil {
-		writeError(w, err)
-		return
+	works := []voiceKnownWork{}
+	if r.URL.Query().Get("includeWorks") != "false" {
+		works, err = s.loadVoiceKnownWorks(r.Context(), userID, personID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	aliases, err := s.loadVoiceAliases(r.Context(), personID)
 	if err != nil {
@@ -230,6 +234,21 @@ func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
 		voiceDetail
 		AliasRecords []voiceAlias `json:"aliasRecords"`
 	}{voiceDetail: voiceDetail{voiceSummary: summary, Works: works, RemoteMatches: []voiceRemoteSourceSet{}}, AliasRecords: aliases})
+}
+
+func (s *Server) getVoiceWorks(w http.ResponseWriter, r *http.Request) {
+	userID := optionalUserID(r.Context())
+	personID, err := parseInt64PathValue(r, "personId")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid voice person id"})
+		return
+	}
+	works, err := s.loadVoiceKnownWorks(r.Context(), userID, personID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"personId": personID, "works": works})
 }
 
 func (s *Server) getVoiceRemoteMatches(w http.ResponseWriter, r *http.Request) {
@@ -555,16 +574,30 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	summaries := []voiceSummary{}
 	for rows.Next() {
-		item, err := s.scanVoiceSummary(ctx, rows, userID)
+		item, err := scanVoiceSummaryRow(rows)
 		if err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
 		summaries = append(summaries, item)
 	}
-	return summaries, rows.Err()
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	tagsByPerson, err := s.loadVoiceUserTagsBatch(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for index := range summaries {
+		summaries[index].UserTags = tagsByPerson[summaries[index].PersonID]
+	}
+	return summaries, nil
 }
 
 func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID int64) (voiceSummary, error) {
@@ -574,6 +607,19 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 
 func voiceSummaryQuery(where string) string {
 	return `
+		WITH work_location_flags AS (
+			SELECT
+				COALESCE(logical.canonical_code, work.primary_code) AS logical_code,
+				MAX(CASE WHEN location.location_type = 'local' AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_local,
+				MAX(CASE WHEN location.location_type IN ('remote_stream', 'remote_download') AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_remote,
+				MAX(CASE WHEN location.location_type = 'cache' AND location.availability = 'available' THEN 1 ELSE 0 END) AS has_cache
+			FROM work
+			LEFT JOIN work_edition AS availability_edition ON availability_edition.work_id = work.id
+			LEFT JOIN logical_work AS logical ON logical.id = availability_edition.logical_work_id
+			LEFT JOIN media_item AS item ON item.work_id = work.id
+			LEFT JOIN media_file_location AS location ON location.media_item_id = item.id
+			GROUP BY COALESCE(logical.canonical_code, work.primary_code)
+		)
 		SELECT
 			person.id,
 			person.display_name,
@@ -583,48 +629,9 @@ func voiceSummaryQuery(where string) string {
 				WHERE alias.person_id = person.id
 			), '') AS aliases,
 			COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code)) AS known_works,
-			COUNT(DISTINCT CASE WHEN EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id IN (
-						SELECT work.id
-						UNION
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-					AND location.location_type = 'local'
-					AND location.availability = 'available'
-			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS local_works,
-			COUNT(DISTINCT CASE WHEN EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id IN (
-						SELECT work.id
-						UNION
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-					AND location.location_type IN ('remote_stream', 'remote_download')
-					AND location.availability = 'available'
-			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS remote_works,
-			COUNT(DISTINCT CASE WHEN EXISTS (
-				SELECT 1 FROM media_file_location AS location
-				INNER JOIN media_item AS item ON item.id = location.media_item_id
-				WHERE item.work_id IN (
-						SELECT work.id
-						UNION
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = work.id
-					)
-					AND location.location_type = 'cache'
-					AND location.availability = 'available'
-			) THEN COALESCE(logical.canonical_code, work.primary_code) END) AS cached_works,
+			COUNT(DISTINCT CASE WHEN flags.has_local = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS local_works,
+			COUNT(DISTINCT CASE WHEN flags.has_remote = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS remote_works,
+			COUNT(DISTINCT CASE WHEN flags.has_cache = 1 THEN COALESCE(logical.canonical_code, work.primary_code) END) AS cached_works,
 			MAX(work.updated_at) AS last_seen_at,
 			state.rating,
 			COALESCE(state.note, '') AS note,
@@ -634,6 +641,7 @@ func voiceSummaryQuery(where string) string {
 		INNER JOIN work ON work.id = credit.work_id
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		LEFT JOIN work_location_flags AS flags ON flags.logical_code = COALESCE(logical.canonical_code, work.primary_code)
 		LEFT JOIN user_person_state AS state ON state.person_id = person.id AND state.user_id = ?
 		` + where + `
 		GROUP BY person.id, person.display_name, state.rating, state.note, state.favorite
@@ -645,6 +653,19 @@ type voiceSummaryScanner interface {
 }
 
 func (s *Server) scanVoiceSummary(ctx context.Context, scanner voiceSummaryScanner, userID int64) (voiceSummary, error) {
+	item, err := scanVoiceSummaryRow(scanner)
+	if err != nil {
+		return voiceSummary{}, err
+	}
+	tags, err := s.loadVoiceUserTags(ctx, userID, item.PersonID)
+	if err != nil {
+		return voiceSummary{}, err
+	}
+	item.UserTags = tags
+	return item, nil
+}
+
+func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 	var item voiceSummary
 	var aliasesRaw string
 	var lastSeen sql.NullString
@@ -673,13 +694,32 @@ func (s *Server) scanVoiceSummary(ctx context.Context, scanner voiceSummaryScann
 		item.Rating = &value
 	}
 	item.Favorite = favorite != 0
-	tags, err := s.loadVoiceUserTags(ctx, userID, item.PersonID)
-	if err != nil {
-		return voiceSummary{}, err
-	}
-	item.UserTags = tags
 	item.SourceSummaries = voiceSourceSummaries(item.LocalWorks, item.RemoteWorks, item.CachedWorks)
 	return item, nil
+}
+
+func (s *Server) loadVoiceUserTagsBatch(ctx context.Context, userID int64) (map[int64][]voiceUserTag, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT assignment.person_id, tag.id, tag.name, tag.color
+		FROM user_person_tag_assignment AS assignment
+		INNER JOIN user_person_tag AS tag ON tag.id = assignment.user_person_tag_id
+		WHERE assignment.user_id = ?
+		ORDER BY assignment.person_id, tag.name, tag.id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[int64][]voiceUserTag{}
+	for rows.Next() {
+		var personID int64
+		var tag voiceUserTag
+		if err := rows.Scan(&personID, &tag.ID, &tag.Name, &tag.Color); err != nil {
+			return nil, err
+		}
+		result[personID] = append(result[personID], tag)
+	}
+	return result, rows.Err()
 }
 
 func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID int64) ([]voiceKnownWork, error) {
@@ -886,98 +926,117 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 	if err != nil {
 		return nil, err
 	}
-	results := []voiceRemoteSourceSet{}
+	results := make([]voiceRemoteSourceSet, len(sources))
+	resultErrors := make([]error, len(sources))
+	semaphore := make(chan struct{}, 3)
+	var wait sync.WaitGroup
 	keyword := "$va:" + strings.TrimSpace(voiceName) + "$"
-	for _, source := range sources {
-		result := voiceRemoteSourceSet{
-			SourceID:    source.ID,
-			SourceCode:  source.Code,
-			DisplayName: source.DisplayName,
-			Status:      "ok",
-			Works:       []voiceRemoteWork{},
-		}
-		if !isKikoeruSourceType(source.SourceType) {
-			result.Status = "unsupported"
-			results = append(results, result)
-			continue
-		}
-		if !source.Enabled {
-			result.Status = "disabled"
-			results = append(results, result)
-			continue
-		}
-		if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-			result.Status = "misconfigured"
-			result.Error = "Remote source API endpoint is not configured."
-			results = append(results, result)
-			continue
-		}
-		started := time.Now()
-		sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
-		client := kikoeruClientForSource(source)
-		page, err := client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
-		cancel()
-		result.ElapsedMS = time.Since(started).Milliseconds()
-		if err != nil {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-			result.Status, result.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
-			result.DebugError = err.Error()
-			results = append(results, result)
-			continue
-		}
-		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-		result.Total = page.Pagination.TotalCount
-		if result.Total == 0 {
-			result.Total = page.Pagination.Total
-		}
-		if result.Total == 0 {
-			result.Total = page.Pagination.Count
-		}
-		for _, remoteWork := range page.Works {
-			code := normalizedRemoteWorkCode(remoteWork)
-			displayCode := code
-			ref, err := s.canonicalWorkForCode(ctx, code)
-			if err != nil {
-				return nil, err
-			}
-			if ref.Code != "" {
-				displayCode = ref.Code
-			}
-			flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
-			if err != nil {
-				return nil, err
-			}
-			voiceActors := make([]string, 0, len(remoteWork.VAs))
-			for _, voiceActor := range remoteWork.VAs {
-				if name := strings.TrimSpace(voiceActor.Name); name != "" {
-					voiceActors = append(voiceActors, name)
+	for index, source := range sources {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			for once := true; once; once = false {
+				result := voiceRemoteSourceSet{
+					SourceID:    source.ID,
+					SourceCode:  source.Code,
+					DisplayName: source.DisplayName,
+					Status:      "ok",
+					Works:       []voiceRemoteWork{},
 				}
+				if !isKikoeruSourceType(source.SourceType) {
+					result.Status = "unsupported"
+					results[index] = result
+					continue
+				}
+				if !source.Enabled {
+					result.Status = "disabled"
+					results[index] = result
+					continue
+				}
+				if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+					result.Status = "misconfigured"
+					result.Error = "Remote source API endpoint is not configured."
+					results[index] = result
+					continue
+				}
+				started := time.Now()
+				sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
+				client := kikoeruClientForSource(source)
+				page, err := client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
+				cancel()
+				result.ElapsedMS = time.Since(started).Milliseconds()
+				if err != nil {
+					_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+					result.Status, result.Error = voiceRemoteSourceErrorStatus(err, sourceCtx.Err())
+					result.DebugError = err.Error()
+					results[index] = result
+					continue
+				}
+				_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+				result.Total = page.Pagination.TotalCount
+				if result.Total == 0 {
+					result.Total = page.Pagination.Total
+				}
+				if result.Total == 0 {
+					result.Total = page.Pagination.Count
+				}
+				for _, remoteWork := range page.Works {
+					code := normalizedRemoteWorkCode(remoteWork)
+					displayCode := code
+					ref, err := s.canonicalWorkForCode(ctx, code)
+					if err != nil {
+						resultErrors[index] = err
+						continue
+					}
+					if ref.Code != "" {
+						displayCode = ref.Code
+					}
+					flags, err := s.sourceAvailabilityFlags(ctx, source.ID, code)
+					if err != nil {
+						resultErrors[index] = err
+						continue
+					}
+					voiceActors := make([]string, 0, len(remoteWork.VAs))
+					for _, voiceActor := range remoteWork.VAs {
+						if name := strings.TrimSpace(voiceActor.Name); name != "" {
+							voiceActors = append(voiceActors, name)
+						}
+					}
+					result.Works = append(result.Works, voiceRemoteWork{
+						SourceID:       source.ID,
+						SourceCode:     source.Code,
+						SourceName:     source.DisplayName,
+						RemoteID:       fmt.Sprintf("%d", remoteWork.ID),
+						PrimaryCode:    displayCode,
+						RemoteCode:     code,
+						Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, displayCode),
+						ReleaseDate:    remoteWork.Release,
+						UpdatedAt:      remoteWork.Release,
+						CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
+						Circle:         remoteCircleName(remoteWork),
+						Rating:         remoteWork.RateAverage2DP,
+						Sales:          remoteWork.DLCount,
+						Tags:           remoteTagNames(remoteWork.Tags),
+						VoiceActors:    voiceActors,
+						ImportStatus:   remoteImportStatus(flags.WorkID),
+						RemotePlayable: true,
+						WorkID:         flags.WorkID,
+						HasLocal:       flags.HasLocal,
+						HasCache:       flags.HasCache,
+						HasRemote:      flags.HasRemote,
+					})
+				}
+				results[index] = result
 			}
-			result.Works = append(result.Works, voiceRemoteWork{
-				SourceID:       source.ID,
-				SourceCode:     source.Code,
-				SourceName:     source.DisplayName,
-				RemoteID:       fmt.Sprintf("%d", remoteWork.ID),
-				PrimaryCode:    displayCode,
-				RemoteCode:     code,
-				Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, displayCode),
-				ReleaseDate:    remoteWork.Release,
-				UpdatedAt:      remoteWork.Release,
-				CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
-				Circle:         remoteCircleName(remoteWork),
-				Rating:         remoteWork.RateAverage2DP,
-				Sales:          remoteWork.DLCount,
-				Tags:           remoteTagNames(remoteWork.Tags),
-				VoiceActors:    voiceActors,
-				ImportStatus:   remoteImportStatus(flags.WorkID),
-				RemotePlayable: true,
-				WorkID:         flags.WorkID,
-				HasLocal:       flags.HasLocal,
-				HasCache:       flags.HasCache,
-				HasRemote:      flags.HasRemote,
-			})
+		}()
+	}
+	wait.Wait()
+	for _, resultErr := range resultErrors {
+		if resultErr != nil {
+			return nil, resultErr
 		}
-		results = append(results, result)
 	}
 	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)
 	return results, err

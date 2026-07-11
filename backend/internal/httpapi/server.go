@@ -59,6 +59,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
+	mux.HandleFunc("PUT /api/media/{id}/lyrics-preference", s.setMediaLyricsPreference)
+	mux.HandleFunc("DELETE /api/media/{id}/lyrics-preference", s.clearMediaLyricsPreference)
 	mux.HandleFunc("GET /api/works/{id}/manual-overrides", s.getWorkManualOverrides)
 	mux.HandleFunc("PATCH /api/works/{id}/manual-overrides", s.updateWorkManualOverrides)
 	mux.HandleFunc("DELETE /api/works/{id}/manual-overrides/{field}", s.deleteWorkManualOverride)
@@ -88,6 +91,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/voices", s.listVoices)
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
+	mux.HandleFunc("GET /api/voices/{personId}/works", s.getVoiceWorks)
 	mux.HandleFunc("GET /api/voices/{personId}/remote-matches", s.getVoiceRemoteMatches)
 	mux.HandleFunc("GET /api/voices/{personId}/alias-candidates", s.listVoiceAliasCandidates)
 	mux.HandleFunc("POST /api/voices/{personId}/aliases", s.createVoiceAlias)
@@ -494,11 +498,20 @@ type workTranslation struct {
 }
 
 type workResolveResponse struct {
-	RequestedCode string `json:"requestedCode"`
-	ResolvedCode  string `json:"resolvedCode"`
-	WorkID        int64  `json:"workId"`
-	BaseCode      string `json:"baseCode"`
-	IsTranslation bool   `json:"isTranslation"`
+	RequestedCode    string   `json:"requestedCode"`
+	ResolvedCode     string   `json:"resolvedCode"`
+	WorkID           int64    `json:"workId"`
+	BaseCode         string   `json:"baseCode"`
+	IsTranslation    bool     `json:"isTranslation"`
+	Title            string   `json:"title"`
+	CoverURL         string   `json:"coverUrl"`
+	Circle           string   `json:"circle"`
+	CircleExternalID string   `json:"circleExternalId"`
+	ReleaseDate      *string  `json:"releaseDate"`
+	Rating           *float64 `json:"rating"`
+	Sales            *int64   `json:"sales"`
+	Tags             []string `json:"tags"`
+	VoiceActors      []string `json:"voiceActors"`
 }
 
 type voiceCredit struct {
@@ -507,17 +520,18 @@ type voiceCredit struct {
 }
 
 type mediaItemDetail struct {
-	ID              int64                `json:"id"`
-	ParentID        *int64               `json:"parentId"`
-	Kind            string               `json:"kind"`
-	Title           string               `json:"title"`
-	DiscNo          *int64               `json:"discNo"`
-	TrackNo         *int64               `json:"trackNo"`
-	DurationSeconds *int64               `json:"durationSeconds"`
-	SizeBytes       *int64               `json:"sizeBytes"`
-	Fingerprint     string               `json:"fingerprint"`
-	Progress        *mediaProgressDetail `json:"progress"`
-	Locations       []fileLocationDetail `json:"locations"`
+	ID                         int64                `json:"id"`
+	ParentID                   *int64               `json:"parentId"`
+	Kind                       string               `json:"kind"`
+	Title                      string               `json:"title"`
+	DiscNo                     *int64               `json:"discNo"`
+	TrackNo                    *int64               `json:"trackNo"`
+	DurationSeconds            *int64               `json:"durationSeconds"`
+	SizeBytes                  *int64               `json:"sizeBytes"`
+	Fingerprint                string               `json:"fingerprint"`
+	Progress                   *mediaProgressDetail `json:"progress"`
+	PreferredLyricsMediaItemID *int64               `json:"preferredLyricsMediaItemId"`
+	Locations                  []fileLocationDetail `json:"locations"`
 }
 
 type fileLocationDetail struct {
@@ -544,12 +558,15 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
-		writeError(w, err)
-		return
+	includeMedia := r.URL.Query().Get("includeMedia") != "false"
+	if includeMedia {
+		if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 
-	work, err := s.loadWorkDetail(r.Context(), userID, id)
+	work, err := s.loadWorkDetail(r.Context(), userID, id, includeMedia)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
@@ -560,6 +577,25 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, work)
+}
+
+func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
+	userID := optionalUserID(r.Context())
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+	if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
+		writeError(w, err)
+		return
+	}
+	work, err := s.loadWorkDetail(r.Context(), userID, id, true)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workId": work.ID, "mediaItems": work.MediaItems})
 }
 
 func (s *Server) workCodeExists(ctx context.Context, code string) bool {
@@ -2612,7 +2648,7 @@ func workCodeShard(workCode string) (string, string) {
 	return prefix, group
 }
 
-func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (workDetail, error) {
+func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, includeMedia bool) (workDetail, error) {
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
@@ -2756,6 +2792,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
 		return workDetail{}, err
 	}
+	if !includeMedia {
+		return work, nil
+	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
@@ -2771,7 +2810,13 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			user_media_progress.position_seconds,
 			user_media_progress.duration_seconds,
 			user_media_progress.completed,
-			user_media_progress.last_played_at
+			user_media_progress.last_played_at,
+			(
+				SELECT preference.lyrics_media_item_id
+				FROM user_media_lyrics_preference AS preference
+				WHERE preference.user_id = ?
+					AND preference.audio_media_item_id = media_item.id
+			) AS preferred_lyrics_media_item_id
 		FROM media_item
 		LEFT JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
 			AND user_media_progress.user_id = ?
@@ -2781,7 +2826,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			COALESCE(media_item.track_no, 0) ASC,
 			media_item.title ASC,
 			media_item.id ASC
-	`, userID, mediaWorkID)
+	`, userID, userID, mediaWorkID)
 	if err != nil {
 		return workDetail{}, err
 	}
@@ -2799,6 +2844,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		var progressDurationSeconds sql.NullFloat64
 		var progressCompleted sql.NullBool
 		var progressLastPlayedAt sql.NullString
+		var preferredLyricsMediaItemID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&parentID,
@@ -2813,6 +2859,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 			&progressDurationSeconds,
 			&progressCompleted,
 			&progressLastPlayedAt,
+			&preferredLyricsMediaItemID,
 		); err != nil {
 			return workDetail{}, err
 		}
@@ -2822,6 +2869,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64) (wo
 		item.DurationSeconds = nullableInt64(itemDurationSeconds)
 		item.SizeBytes = nullableInt64(sizeBytes)
 		item.Progress = nullableMediaProgress(progressPositionSeconds, progressDurationSeconds, progressCompleted, progressLastPlayedAt)
+		item.PreferredLyricsMediaItemID = nullableInt64(preferredLyricsMediaItemID)
 		item.Locations = []fileLocationDetail{}
 		itemIndexes[item.ID] = len(work.MediaItems)
 		work.MediaItems = append(work.MediaItems, item)
@@ -2923,6 +2971,32 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 		return err
 	}
 	if existing > 0 {
+		return nil
+	}
+	var alreadyScanned int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work_source_presence AS presence
+			INNER JOIN file_source AS source ON source.id = presence.file_source_id
+			WHERE (
+					presence.work_id = ?
+					OR presence.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current_edition
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+						WHERE current_edition.work_id = ?
+					)
+				)
+				AND presence.presence_type = 'local'
+				AND presence.availability = 'available'
+				AND source.source_type = 'local_folder'
+				AND COALESCE(json_extract(presence.raw_json, '$.file_tree_scanned'), 0) = 1
+		)
+	`, workID, workID).Scan(&alreadyScanned); err != nil {
+		return err
+	}
+	if alreadyScanned != 0 {
 		return nil
 	}
 
@@ -3075,12 +3149,26 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		resolvedCode = canonicalCode
 		baseCode = canonicalCode
 	}
+	var title string
+	var releaseDate sql.NullString
+	if err := s.db.QueryRowContext(ctx, "SELECT title, release_date FROM work WHERE id = ?", resolvedID).Scan(&title, &releaseDate); err != nil {
+		return workResolveResponse{}, err
+	}
 	return workResolveResponse{
-		RequestedCode: code,
-		ResolvedCode:  resolvedCode,
-		WorkID:        resolvedID,
-		BaseCode:      baseCode,
-		IsTranslation: !strings.EqualFold(code, resolvedCode),
+		RequestedCode:    code,
+		ResolvedCode:     resolvedCode,
+		WorkID:           resolvedID,
+		BaseCode:         baseCode,
+		IsTranslation:    !strings.EqualFold(code, resolvedCode),
+		Title:            title,
+		CoverURL:         s.coverURL(resolvedCode),
+		Circle:           metadata.Circle,
+		CircleExternalID: metadata.CircleExternalID,
+		ReleaseDate:      nullableString(releaseDate),
+		Rating:           metadata.Rating,
+		Sales:            metadata.Sales,
+		Tags:             metadata.Tags,
+		VoiceActors:      metadata.VoiceActors,
 	}, nil
 }
 

@@ -10,8 +10,11 @@ playback actions for one work.
   link.
 - Shows known language editions for a logical work family.
 - Shows unavailable metadata-only editions without implying local playback.
-- Lazily indexes local media files when a local folder presence exists but no
-  concrete tree has been materialized yet.
+- Renders a card-provided or code-resolved preview first, then loads base detail
+  and the media tree as separate stages.
+- Lazily indexes local media files only when the media stage needs a concrete
+  tree. A completed empty scan is remembered until a library scan invalidates
+  that state.
 - Loads source availability through a backend aggregate check.
 - Opens remote source trees lazily after availability is known.
 
@@ -29,10 +32,12 @@ playback actions for one work.
 Work detail should prefer known local database state first, then load slower
 remote-derived state separately:
 
-1. Basic work metadata and user state.
-2. Known editions and local availability.
-3. Source availability summary.
-4. Selected remote source tree, if the user opens one.
+1. Route preview from any work-card surface, or a lightweight code resolve for
+   direct URLs.
+2. Basic work metadata, user state, editions, and credits.
+3. Local media and directory tree.
+4. Source availability summary.
+5. Selected remote source tree, if the user opens one.
 
 This keeps remote source failures from blocking the local detail shell.
 

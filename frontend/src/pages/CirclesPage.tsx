@@ -39,6 +39,7 @@ import {
   workCollectionClassName,
   workCollectionItemClassName,
   workCollectionStyle,
+  useWorkCollectionLayout,
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
@@ -362,9 +363,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
-  const [mobileColumns, setMobileColumns] = useState<WorkCollectionColumnCount>(2);
-  const [desktopColumns, setDesktopColumns] = useState<WorkCollectionColumnCount>(6);
-  const [viewMode, setViewMode] = useState<WorkCollectionViewMode>("grid");
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1068,7 +1067,7 @@ function CatalogWorkCard({
   const view = catalogWorkCardView(work);
 
   const openTarget = () => {
-    if (directoryTarget) openWorkDirectoryRoute(directoryTarget);
+    if (directoryTarget) openWorkDirectoryRoute(directoryTarget, work);
   };
 
   return (
@@ -1439,9 +1438,9 @@ function isTranslationCircle(externalId: string) {
   return externalId.toUpperCase() === TRANSLATION_CIRCLE_ID;
 }
 
-function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }) {
+function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }, work: CircleCatalogWork) {
   const path = target.sourceId ? `/${encodeURIComponent(target.code)}?source=${target.sourceId}` : `/${encodeURIComponent(target.code)}`;
-  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back to circle" }, "", path);
+  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back to circle", workPreview: work }, "", path);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

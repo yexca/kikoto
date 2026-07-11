@@ -12,6 +12,8 @@ The Library is the main browsing surface for works.
 - Offers the same grid or masonry presentation for work collections across the
   Library, Favorites, circle detail, and voice detail surfaces. Responsive
   column choices are shared instead of being reimplemented per page.
+- Persists the selected work-collection layout locally and applies it across
+  Library, Favorites, circle work collections, and voice work collections.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
 - Provides database-oriented diagnostic scopes for works that do not currently

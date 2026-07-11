@@ -7,6 +7,42 @@ export const workCollectionColumnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export type WorkCollectionColumnCount = (typeof workCollectionColumnOptions)[number];
 export type WorkCollectionViewMode = "grid" | "masonry";
 
+const layoutStorageKey = "kikoto:work-collection-layout";
+const layoutChangeEvent = "kikoto:work-collection-layout-change";
+
+type StoredWorkCollectionLayout = {
+  viewMode: WorkCollectionViewMode;
+  mobileColumns: WorkCollectionColumnCount;
+  desktopColumns: WorkCollectionColumnCount;
+};
+
+export function useWorkCollectionLayout(initial: StoredWorkCollectionLayout = { viewMode: "grid", mobileColumns: 2, desktopColumns: 6 }) {
+  const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
+  useEffect(() => {
+    const sync = () => setLayout(readStoredLayout(initial));
+    window.addEventListener("storage", sync);
+    window.addEventListener(layoutChangeEvent, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(layoutChangeEvent, sync);
+    };
+  }, [initial.desktopColumns, initial.mobileColumns, initial.viewMode]);
+  const update = (patch: Partial<StoredWorkCollectionLayout>) => {
+    setLayout((current) => {
+      const next = { ...current, ...patch };
+      localStorage.setItem(layoutStorageKey, JSON.stringify(next));
+      window.dispatchEvent(new Event(layoutChangeEvent));
+      return next;
+    });
+  };
+  return {
+    ...layout,
+    setViewMode: (viewMode: WorkCollectionViewMode) => update({ viewMode }),
+    setMobileColumns: (mobileColumns: WorkCollectionColumnCount) => update({ mobileColumns }),
+    setDesktopColumns: (desktopColumns: WorkCollectionColumnCount) => update({ desktopColumns }),
+  };
+}
+
 export function WorkCollectionLayoutPicker({
   viewMode,
   mobileColumns,
@@ -146,4 +182,19 @@ function useIsWideLayout() {
     return () => media.removeEventListener("change", update);
   }, []);
   return wide;
+}
+
+function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkCollectionLayout {
+  try {
+    const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? "{}") as Partial<StoredWorkCollectionLayout>;
+    return {
+      viewMode: value.viewMode === "masonry" ? "masonry" : value.viewMode === "grid" ? "grid" : fallback.viewMode,
+      mobileColumns: value.mobileColumns === 1 || value.mobileColumns === 2 ? value.mobileColumns : fallback.mobileColumns,
+      desktopColumns: workCollectionColumnOptions.includes(value.desktopColumns as WorkCollectionColumnCount)
+        ? value.desktopColumns as WorkCollectionColumnCount
+        : fallback.desktopColumns,
+    };
+  } catch {
+    return fallback;
+  }
 }

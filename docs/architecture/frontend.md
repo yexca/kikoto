@@ -35,7 +35,10 @@ remote source management, and playback.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid/masonry behavior and responsive column choices should remain aligned.
+- Persist work-collection layout as one shared browser preference, rather than
+  separate page-local selections.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
-  content has rendered. Page-level cleanup must not overwrite another entry's
-  saved position.
+  content has rendered. Retry only deep history restoration, and cancel pending
+  retries as soon as the user expresses scroll intent. Page-level cleanup must
+  not overwrite another entry's saved position.

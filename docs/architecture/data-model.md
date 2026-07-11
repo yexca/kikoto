@@ -57,12 +57,15 @@ Important tables:
 - `user_session`
 - `user_work_state`
 - `user_media_progress`
+- `user_media_lyrics_preference`
 - `favorite_list`
 - `favorite_list_item`
 - `user_tag`
 - `user_work_tag`
 
-Playback progress is attached to logical media items, not raw file paths.
+Playback progress and lyrics choices are attached to logical media items, not
+raw file paths. Lyrics preferences relate an audio media item to a lyrics media
+item; runtime location selection remains a file-source concern.
 
 ## Modeling Rules
 

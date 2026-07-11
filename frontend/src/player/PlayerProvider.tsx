@@ -52,7 +52,9 @@ export type PlayerTrack = {
   progressRecordable: boolean;
   lyricsLocationId: number | null;
   lyricsTitle: string;
-  lyricsChoices?: { locationId: number; title: string; path: string; reason: string }[];
+  lyricsChoices?: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
+  autoLyricsLocationId?: number | null;
+  preferredLyricsMediaItemId?: number | null;
   remoteSourceId?: number;
   remoteWorkCode?: string;
   remotePath?: string;
@@ -698,6 +700,7 @@ function remoteCacheKey(track: PlayerTrack) {
 
 export function PlayerDock() {
   const player = usePlayer();
+  const toast = useToast();
   const isMobile = useIsMobilePlayer();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -706,6 +709,8 @@ export function PlayerDock() {
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
+  const [usingAutomaticLyrics, setUsingAutomaticLyrics] = useState(true);
+  const [lyricsPreferenceOverrides, setLyricsPreferenceOverrides] = useState<Record<number, number | null>>({});
   const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(() => restoreMiniPosition());
   const [miniActionsOpen, setMiniActionsOpen] = useState(false);
   const [isSleepOpen, setIsSleepOpen] = useState(false);
@@ -725,8 +730,42 @@ export function PlayerDock() {
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
 
   useEffect(() => {
-    setActiveLyricsLocationId(track?.lyricsLocationId ?? null);
-  }, [track?.mediaItemId, track?.lyricsLocationId]);
+    if (!track) {
+      setActiveLyricsLocationId(null);
+      setUsingAutomaticLyrics(true);
+      return;
+    }
+    const hasOverride = Object.prototype.hasOwnProperty.call(lyricsPreferenceOverrides, track.mediaItemId);
+    const preferredMediaItemId = hasOverride ? lyricsPreferenceOverrides[track.mediaItemId] : track.preferredLyricsMediaItemId;
+    const preferredChoice = track.lyricsChoices?.find((choice) => choice.mediaItemId === preferredMediaItemId);
+    setActiveLyricsLocationId(preferredChoice?.locationId ?? track.autoLyricsLocationId ?? track.lyricsLocationId ?? null);
+    setUsingAutomaticLyrics(!preferredMediaItemId);
+  }, [lyricsPreferenceOverrides, track]);
+
+  const changeLyricsChoice = async (locationId: number | null) => {
+    if (!track) return;
+    if (locationId === null) {
+      setLyricsPreferenceOverrides((current) => ({ ...current, [track.mediaItemId]: null }));
+      setUsingAutomaticLyrics(true);
+      setActiveLyricsLocationId(track.autoLyricsLocationId ?? null);
+      try {
+        await api.clearMediaLyricsPreference(track.mediaItemId);
+      } catch (error) {
+        toast.notify({ kind: "warning", message: error instanceof Error ? error.message : "Lyrics preference could not be cleared." });
+      }
+      return;
+    }
+    const choice = track.lyricsChoices?.find((item) => item.locationId === locationId);
+    if (!choice) return;
+    setLyricsPreferenceOverrides((current) => ({ ...current, [track.mediaItemId]: choice.mediaItemId }));
+    setUsingAutomaticLyrics(false);
+    setActiveLyricsLocationId(locationId);
+    try {
+      await api.setMediaLyricsPreference(track.mediaItemId, choice.mediaItemId);
+    } catch (error) {
+      toast.notify({ kind: "warning", message: error instanceof Error ? error.message : "Lyrics preference could not be saved." });
+    }
+  };
 
   useEffect(() => {
     setLyricsText(null);
@@ -1069,7 +1108,8 @@ export function PlayerDock() {
                         activeIndex={activeLyricIndex}
                         choices={track.lyricsChoices ?? []}
                         activeLocationId={activeLyricsLocationId}
-                        onChoiceChange={setActiveLyricsLocationId}
+                        automatic={usingAutomaticLyrics}
+                        onChoiceChange={(locationId) => void changeLyricsChoice(locationId)}
                       />
                     )
                   ) : (
@@ -1537,15 +1577,17 @@ function LyricsPanel({
   activeIndex,
   choices,
   activeLocationId,
+  automatic,
   onChoiceChange,
 }: {
   title: string;
   text: string;
   parsed: ParsedLyrics;
   activeIndex: number;
-  choices: { locationId: number; title: string; path: string; reason: string }[];
+  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
   activeLocationId: number;
-  onChoiceChange: (locationId: number) => void;
+  automatic: boolean;
+  onChoiceChange: (locationId: number | null) => void;
 }) {
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -1556,7 +1598,7 @@ function LyricsPanel({
   if (!parsed.timed) {
     return (
       <div className="space-y-3 p-3">
-        <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} onChoiceChange={onChoiceChange} />
+        <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} automatic={automatic} onChoiceChange={onChoiceChange} />
         <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
       </div>
     );
@@ -1564,7 +1606,7 @@ function LyricsPanel({
 
   return (
     <div className="space-y-3 p-3">
-      <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} onChoiceChange={onChoiceChange} />
+      <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} automatic={automatic} onChoiceChange={onChoiceChange} />
       <div className="space-y-1 py-12 text-center">
         {parsed.lines.map((line, index) => {
           const active = index === activeIndex;
@@ -1607,12 +1649,13 @@ function formatTime(value: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function LyricsSourceSelector({ title, choices, activeLocationId, onChoiceChange }: { title: string; choices: { locationId: number; title: string; path: string; reason: string }[]; activeLocationId: number; onChoiceChange: (locationId: number) => void }) {
-  if (choices.length <= 1) return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
+function LyricsSourceSelector({ title, choices, activeLocationId, automatic, onChoiceChange }: { title: string; choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[]; activeLocationId: number; automatic: boolean; onChoiceChange: (locationId: number | null) => void }) {
+  if (choices.length <= 1 && automatic) return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
   return (
     <label className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0 font-semibold">Lyrics</span>
-      <select className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1" value={activeLocationId} onChange={(event) => onChoiceChange(Number(event.target.value))}>
+      <select className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1" value={automatic ? "auto" : String(activeLocationId)} onChange={(event) => onChoiceChange(event.target.value === "auto" ? null : Number(event.target.value))}>
+        <option value="auto">Auto</option>
         {choices.map((choice) => <option key={choice.locationId} value={choice.locationId}>{choice.title}</option>)}
       </select>
     </label>

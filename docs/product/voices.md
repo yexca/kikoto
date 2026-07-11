@@ -12,6 +12,9 @@ Voice pages present persisted person and credit data.
 - Shows local, cache, remote, playable, and known work counts.
 - Presents known and remote works with the same responsive grid/masonry layout
   and shared work cards as the Library.
+- Loads person detail, known works, and remote matches independently. Remote
+  source searches use bounded concurrency, while voice counts and user tags are
+  aggregated in batches.
 
 ## Boundary
 
