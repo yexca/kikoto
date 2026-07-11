@@ -596,7 +596,11 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 		return nil, err
 	}
 	for index := range summaries {
-		summaries[index].UserTags = tagsByPerson[summaries[index].PersonID]
+		tags := tagsByPerson[summaries[index].PersonID]
+		if tags == nil {
+			tags = []voiceUserTag{}
+		}
+		summaries[index].UserTags = tags
 	}
 	return summaries, nil
 }

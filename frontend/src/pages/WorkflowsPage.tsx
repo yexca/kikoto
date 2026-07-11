@@ -41,6 +41,7 @@ import {
 
 type Surface = "workflows" | "activity";
 type WorkflowView = "definitions" | "scheduled" | "system";
+type DefinitionView = Exclude<WorkflowView, "scheduled">;
 type ActivityView = "running" | "review" | "failed" | "completed" | "logs";
 type RunDetailView = "overview" | "steps" | "items" | "logs";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
@@ -68,6 +69,9 @@ const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", 
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed", "logs"];
+const workflowViewStorageKey = "kikoto.workflows.view";
+const workflowDefinitionStoragePrefix = "kikoto.workflows.definition.";
+const workflowTriggerStorageKey = "kikoto.workflows.trigger";
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -133,7 +137,7 @@ export function WorkflowsPage({
   canSyncMetadata: boolean;
 }) {
   const toast = useToast();
-  const [workflowView, setWorkflowView] = useState<WorkflowView>("definitions");
+  const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [runDetailView, setRunDetailView] = useState<RunDetailView>("overview");
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -143,8 +147,11 @@ export function WorkflowsPage({
   const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0 });
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
-  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(null);
-  const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(null);
+  const [selectedDefinitionIds, setSelectedDefinitionIDs] = useState<Record<DefinitionView, number | null>>(() => ({
+    definitions: storedPositiveInt(workflowDefinitionStoragePrefix + "definitions"),
+    system: storedPositiveInt(workflowDefinitionStoragePrefix + "system"),
+  }));
+  const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(() => storedPositiveInt(workflowTriggerStorageKey));
   const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
   const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
   const [selectedRunEvents, setSelectedRunEvents] = useState<WorkflowEvent[]>([]);
@@ -207,34 +214,64 @@ export function WorkflowsPage({
     };
   }, [surface]);
 
-  const userDefinitions = definitions.filter((definition) => definition.scope === "user");
-  const systemDefinitions = definitions.filter((definition) => definition.scope === "system");
+  const definitionView: DefinitionView = workflowView === "system" ? "system" : "definitions";
+  const visibleDefinitions = useMemo(() => {
+    const scope = definitionView === "system" ? "system" : "user";
+    return sortDefinitionsForSidebar(
+      definitions.filter((definition) => definition.scope === scope),
+      definitionView === "system",
+    );
+  }, [definitionView, definitions]);
   const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
-  const visibleDefinitions = workflowView === "system" ? systemDefinitions : userDefinitions;
   const visibleRuns = runs;
+  const selectedDefinitionId = selectedDefinitionIds[definitionView];
 
   const selectedDefinition = useMemo(() => {
-    const pool = workflowView === "system" ? systemDefinitions : definitions;
-    return pool.find((definition) => definition.id === selectedDefinitionId) ?? pool[0] ?? null;
-  }, [definitions, selectedDefinitionId, systemDefinitions, workflowView]);
+    return visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? visibleDefinitions[0] ?? null;
+  }, [selectedDefinitionId, visibleDefinitions]);
 
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
   const selectedSystemRunKinds =
     workflowView === "system" && selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
+  const definitionEmptyText = workflowView === "system"
+    ? "No system workflows are registered."
+    : "No user workflows exist yet. Create one to define a reusable pipeline.";
 
   useEffect(() => {
-    if (!selectedDefinitionId && visibleDefinitions[0]) {
-      setSelectedDefinitionID(visibleDefinitions[0].id);
+    if (isWorkflowMetaLoading || workflowView === "scheduled") return;
+    const nextID = selectedDefinition?.id ?? null;
+    if (selectedDefinitionId !== nextID) {
+      setSelectedDefinitionIDs((current) => ({ ...current, [definitionView]: nextID }));
     }
-  }, [selectedDefinitionId, visibleDefinitions]);
+    storePositiveInt(workflowDefinitionStoragePrefix + definitionView, nextID);
+  }, [definitionView, isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId, workflowView]);
 
   useEffect(() => {
-    if (!selectedTriggerId && scheduledTriggers[0]) {
-      setSelectedTriggerID(scheduledTriggers[0].id);
+    if (isWorkflowMetaLoading) return;
+    const nextID = selectedTrigger?.id ?? null;
+    if (selectedTriggerId !== nextID) {
+      setSelectedTriggerID(nextID);
     }
-  }, [scheduledTriggers, selectedTriggerId]);
+    storePositiveInt(workflowTriggerStorageKey, nextID);
+  }, [isWorkflowMetaLoading, selectedTrigger?.id, selectedTriggerId]);
+
+  const selectWorkflowView = (view: WorkflowView) => {
+    setWorkflowView(view);
+    storeSessionValue(workflowViewStorageKey, view);
+  };
+
+  const selectDefinition = (definition: WorkflowDefinition) => {
+    const view: DefinitionView = workflowView === "system" ? "system" : "definitions";
+    setSelectedDefinitionIDs((current) => ({ ...current, [view]: definition.id }));
+    storePositiveInt(workflowDefinitionStoragePrefix + view, definition.id);
+  };
+
+  const selectTrigger = (trigger: WorkflowTrigger) => {
+    setSelectedTriggerID(trigger.id);
+    storePositiveInt(workflowTriggerStorageKey, trigger.id);
+  };
 
   useEffect(() => {
     if (!selectedRunSummary) {
@@ -369,13 +406,13 @@ export function WorkflowsPage({
       {surface === "workflows" ? (
         <>
           <SegmentedNav>
-            <ViewButton active={workflowView === "definitions"} onClick={() => setWorkflowView("definitions")} icon={<Workflow className="h-4 w-4" />}>
+            <ViewButton active={workflowView === "definitions"} onClick={() => selectWorkflowView("definitions")} icon={<Workflow className="h-4 w-4" />}>
               Definitions
             </ViewButton>
-            <ViewButton active={workflowView === "scheduled"} onClick={() => setWorkflowView("scheduled")} icon={<CalendarClock className="h-4 w-4" />}>
+            <ViewButton active={workflowView === "scheduled"} onClick={() => selectWorkflowView("scheduled")} icon={<CalendarClock className="h-4 w-4" />}>
               Scheduled
             </ViewButton>
-            <ViewButton active={workflowView === "system"} onClick={() => setWorkflowView("system")} icon={<Database className="h-4 w-4" />}>
+            <ViewButton active={workflowView === "system"} onClick={() => selectWorkflowView("system")} icon={<Database className="h-4 w-4" />}>
               System
             </ViewButton>
           </SegmentedNav>
@@ -387,7 +424,7 @@ export function WorkflowsPage({
                   triggers={scheduledTriggers}
                   selectedId={selectedTrigger?.id ?? null}
                   loading={isWorkflowMetaLoading}
-                  onSelect={(trigger) => setSelectedTriggerID(trigger.id)}
+                  onSelect={selectTrigger}
                   onCreate={() => setModalMode("create-trigger")}
                 />
               }
@@ -400,6 +437,7 @@ export function WorkflowsPage({
                   onEditTrigger={() => setModalMode("edit-trigger")}
                   onEditDefinition={() => undefined}
                   onEditNode={() => undefined}
+                  emptyText="No scheduled workflow triggers exist yet."
                 />
               }
             />
@@ -412,7 +450,8 @@ export function WorkflowsPage({
                   canCreate={workflowView === "definitions"}
                   systemMode={workflowView === "system"}
                   loading={isWorkflowMetaLoading}
-                  onSelect={(definition) => setSelectedDefinitionID(definition.id)}
+                  emptyText={definitionEmptyText}
+                  onSelect={selectDefinition}
                   onCreate={() => setModalMode("create-workflow")}
                 />
               }
@@ -425,6 +464,7 @@ export function WorkflowsPage({
                   isSystemActionRunning={systemActionBusy}
                   canRunSystemAction={systemActionAllowed}
                   onRunSystemAction={runSystemAction}
+                  emptyText={definitionEmptyText}
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
                     setEditingNodeIndex(index);
@@ -496,7 +536,7 @@ export function WorkflowsPage({
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
-            setSelectedDefinitionID(definition.id);
+            selectDefinition(definition);
             setModalMode(null);
             refresh();
           }}
@@ -509,7 +549,7 @@ export function WorkflowsPage({
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
-            setSelectedDefinitionID(definition.id);
+            selectDefinition(definition);
             setModalMode(null);
             refresh();
           }}
@@ -533,7 +573,7 @@ export function WorkflowsPage({
           trigger={null}
           onClose={() => setModalMode(null)}
           onSaved={(trigger) => {
-            setSelectedTriggerID(trigger.id);
+            selectTrigger(trigger);
             setModalMode(null);
             refresh();
           }}
@@ -545,7 +585,7 @@ export function WorkflowsPage({
           trigger={selectedTrigger}
           onClose={() => setModalMode(null)}
           onSaved={(trigger) => {
-            setSelectedTriggerID(trigger.id);
+            selectTrigger(trigger);
             setModalMode(null);
             refresh();
           }}
@@ -569,6 +609,7 @@ function DefinitionSidebar({
   canCreate,
   systemMode = false,
   loading,
+  emptyText,
   onSelect,
   onCreate,
 }: {
@@ -577,6 +618,7 @@ function DefinitionSidebar({
   canCreate: boolean;
   systemMode?: boolean;
   loading?: boolean;
+  emptyText: string;
   onSelect: (definition: WorkflowDefinition) => void;
   onCreate: () => void;
 }) {
@@ -633,7 +675,7 @@ function DefinitionSidebar({
               </button>
             );
           })}
-          {!loading && definitions.length === 0 && <EmptyPanel text="No workflows here yet." />}
+          {!loading && definitions.length === 0 && <EmptyPanel text={emptyText} />}
         </div>
       </CardContent>
     </Card>
@@ -860,6 +902,7 @@ function WorkflowDetail({
   isSystemActionRunning,
   canRunSystemAction,
   onRunSystemAction,
+  emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
   onEditTrigger,
   onEditNode,
@@ -872,12 +915,13 @@ function WorkflowDetail({
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind) => Promise<void>;
+  emptyText?: string;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
   onEditNode: (index: number) => void;
 }) {
   if (!definition) {
-    return <EmptyPanel text="Select a workflow to inspect its node pipeline." />;
+    return <EmptyPanel text={emptyText} />;
   }
   const nodes = parseNodes(definition.definitionJson);
   return (
@@ -2170,6 +2214,40 @@ function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
     hints.push("This workflow has no commit node; it may inspect or materialize data without persisting library state.");
   }
   return hints.slice(0, 5);
+}
+
+function storedWorkflowView(): WorkflowView {
+  const value = readSessionValue(workflowViewStorageKey);
+  return value === "definitions" || value === "scheduled" || value === "system" ? value : "definitions";
+}
+
+function storedPositiveInt(key: string) {
+  const value = Number(readSessionValue(key));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function readSessionValue(key: string) {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storeSessionValue(key: string, value: string | null) {
+  try {
+    if (value === null) {
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, value);
+    }
+  } catch {
+    // Storage can be unavailable in restricted browsing contexts.
+  }
+}
+
+function storePositiveInt(key: string, value: number | null) {
+  storeSessionValue(key, value && value > 0 ? String(value) : null);
 }
 
 function switchActivityView(
