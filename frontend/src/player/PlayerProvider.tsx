@@ -33,6 +33,7 @@ import {
   abandonNativeAudioFocus,
   addNativeMediaListeners,
   requestNativeAudioFocus,
+  requestNativeNotificationPermission,
   stopNativeMedia,
   supportsNativeMedia,
   updateNativeMedia,
@@ -241,6 +242,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const cacheRequestedRef = useRef<Set<string>>(new Set());
   const failedLocationIDsRef = useRef<Set<number>>(new Set());
+  const notificationPermissionPromiseRef = useRef<Promise<boolean> | null>(null);
   const nativeControlRef = useRef({
     play: () => {},
     pause: () => {},
@@ -663,17 +665,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       void stopNativeMedia();
       return;
     }
-    void updateNativeMedia({
-      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
-      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
-      album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
-      playing: isPlaying,
-      positionMs: Math.max(0, Math.floor(currentTime * 1000)),
-      durationMs: duration > 0 && Number.isFinite(duration) ? Math.floor(duration * 1000) : 0,
-      playbackRate,
-      canPrevious: currentIndex > 0 || mode === "loop",
-      canNext: currentIndex < queue.length - 1 || mode === "loop",
-    });
+    let cancelled = false;
+    async function syncNativeMedia() {
+      if (isPlaying) {
+        notificationPermissionPromiseRef.current ??= requestNativeNotificationPermission();
+        await notificationPermissionPromiseRef.current;
+      }
+      if (cancelled) return;
+      await updateNativeMedia({
+        title: currentTrack.title || currentTrack.workTitle || "Kikoto",
+        artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
+        album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
+        coverUrl: currentTrack.coverUrl ? new URL(assetURL(currentTrack.coverUrl), window.location.href).href : "",
+        playing: isPlaying,
+        positionMs: Math.max(0, Math.floor(currentTime * 1000)),
+        durationMs: duration > 0 && Number.isFinite(duration) ? Math.floor(duration * 1000) : 0,
+        playbackRate,
+        canPrevious: currentIndex > 0 || mode === "loop",
+        canNext: currentIndex < queue.length - 1 || mode === "loop",
+      });
+    }
+    void syncNativeMedia();
+    return () => {
+      cancelled = true;
+    };
   }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, playbackRate, mode]);
 
   useEffect(() => {

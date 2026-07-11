@@ -1,5 +1,6 @@
 package com.yexca.kikoto;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -14,8 +15,15 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
-@CapacitorPlugin(name = "KikotoMedia")
+@CapacitorPlugin(
+    name = "KikotoMedia",
+    permissions = {
+        @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications")
+    }
+)
 public class KikotoMediaPlugin extends Plugin {
     private BroadcastReceiver controlReceiver;
     private AudioManager audioManager;
@@ -63,6 +71,7 @@ public class KikotoMediaPlugin extends Plugin {
         intent.putExtra(KikotoMediaService.EXTRA_TITLE, call.getString("title", ""));
         intent.putExtra(KikotoMediaService.EXTRA_ARTIST, call.getString("artist", ""));
         intent.putExtra(KikotoMediaService.EXTRA_ALBUM, call.getString("album", ""));
+        intent.putExtra(KikotoMediaService.EXTRA_COVER_URL, call.getString("coverUrl", ""));
         intent.putExtra(KikotoMediaService.EXTRA_PLAYING, call.getBoolean("playing", false));
         intent.putExtra(KikotoMediaService.EXTRA_POSITION_MS, call.getLong("positionMs", 0L));
         intent.putExtra(KikotoMediaService.EXTRA_DURATION_MS, call.getLong("durationMs", 0L));
@@ -95,9 +104,33 @@ public class KikotoMediaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void requestNotificationPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            resolveNotificationPermission(call, true);
+            return;
+        }
+        if (getPermissionState("notifications") == com.getcapacitor.PermissionState.GRANTED) {
+            resolveNotificationPermission(call, true);
+            return;
+        }
+        requestPermissionForAlias("notifications", call, "notificationPermissionCallback");
+    }
+
+    @PermissionCallback
+    private void notificationPermissionCallback(PluginCall call) {
+        resolveNotificationPermission(call, getPermissionState("notifications") == com.getcapacitor.PermissionState.GRANTED);
+    }
+
+    @PluginMethod
     public void abandonAudioFocus(PluginCall call) {
         abandonAudioFocusInternal();
         call.resolve();
+    }
+
+    private void resolveNotificationPermission(PluginCall call, boolean granted) {
+        JSObject result = new JSObject();
+        result.put("granted", granted);
+        call.resolve(result);
     }
 
     private boolean requestAudioFocusInternal() {

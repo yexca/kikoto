@@ -6,6 +6,7 @@ type NativeMediaState = {
   title: string;
   artist: string;
   album: string;
+  coverUrl: string;
   playing: boolean;
   positionMs: number;
   durationMs: number;
@@ -27,6 +28,7 @@ type KikotoMediaPlugin = {
   update(state: NativeMediaState): Promise<void>;
   stop(): Promise<void>;
   requestAudioFocus(): Promise<{ granted: boolean }>;
+  requestNotificationPermission(): Promise<{ granted: boolean }>;
   abandonAudioFocus(): Promise<void>;
   addListener(
     eventName: "mediaControl",
@@ -54,6 +56,12 @@ export async function stopNativeMedia() {
 export async function requestNativeAudioFocus() {
   if (!supportsNativeMedia()) return false;
   const result = await KikotoMedia.requestAudioFocus().catch(() => ({ granted: false }));
+  return result.granted;
+}
+
+export async function requestNativeNotificationPermission() {
+  if (!supportsNativeMedia()) return true;
+  const result = await KikotoMedia.requestNotificationPermission().catch(() => ({ granted: false }));
   return result.granted;
 }
 
