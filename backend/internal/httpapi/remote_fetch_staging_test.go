@@ -82,3 +82,43 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 		t.Fatalf("manifest = %+v err=%v", manifest, err)
 	}
 }
+
+func TestReconcileRemoteFetchDoesNotRequeueFailedRun(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir()})
+	ctx := context.Background()
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'failed', 'manual', CURRENT_TIMESTAMP)`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries, retry_count) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5, 2)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ01234567", SaveRoot: "remote/RJ01234567", Items: []remoteWorkSavePlanItem{}}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createRemoteFetchManifest(ctx, tx, 1, 1, "", 1, 1, 2, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileRemoteFetchManifests(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var runStatus, jobStatus string
+	var retryCount int
+	if err := db.QueryRow(`SELECT run.status, job.status, job.retry_count FROM workflow_run AS run INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id WHERE run.id = 1`).Scan(&runStatus, &jobStatus, &retryCount); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || jobStatus != "failed" || retryCount != 2 {
+		t.Fatalf("run=%s job=%s retries=%d", runStatus, jobStatus, retryCount)
+	}
+}

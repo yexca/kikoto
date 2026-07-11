@@ -28,6 +28,7 @@ type remoteFetchManifestRecord struct {
 	BackupRoot     string
 	State          string
 	PlanJSON       string
+	ErrorMessage   string
 }
 
 func createRemoteFetchManifest(ctx context.Context, tx *sql.Tx, runID int64, jobID int64, requestID string, workID int64, remoteSourceID int64, localSourceID int64, plan remoteWorkSavePlan) (int64, error) {
@@ -91,11 +92,53 @@ func (s *Server) loadRemoteFetchManifest(ctx context.Context, runID int64) (remo
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workflow_run_id, COALESCE(workflow_job_id, 0), work_id,
 			remote_source_id, local_source_id, edition_code, target_root,
-			staging_root, backup_root, state, plan_json
+			staging_root, backup_root, state, plan_json, error_message
 		FROM remote_fetch_manifest
 		WHERE workflow_run_id = ?
-	`, runID).Scan(&item.ID, &item.WorkflowRunID, &item.WorkflowJobID, &item.WorkID, &item.RemoteSourceID, &item.LocalSourceID, &item.EditionCode, &item.TargetRoot, &item.StagingRoot, &item.BackupRoot, &item.State, &item.PlanJSON)
+	`, runID).Scan(&item.ID, &item.WorkflowRunID, &item.WorkflowJobID, &item.WorkID, &item.RemoteSourceID, &item.LocalSourceID, &item.EditionCode, &item.TargetRoot, &item.StagingRoot, &item.BackupRoot, &item.State, &item.PlanJSON, &item.ErrorMessage)
 	return item, err
+}
+
+func (s *Server) refreshRemoteFetchManifestPlan(ctx context.Context, manifestID int64, plan remoteWorkSavePlan) error {
+	planJSON, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE remote_fetch_manifest
+		SET edition_code = ?, target_root = ?, state = 'planned', plan_json = ?, error_message = '', updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, plan.PrimaryCode, plan.SaveRoot, string(planJSON), manifestID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM remote_fetch_manifest_item WHERE manifest_id = ?", manifestID); err != nil {
+		return err
+	}
+	for _, item := range plan.Items {
+		if item.Action == "exclude" {
+			continue
+		}
+		relativePath, err := fetchPathRelativeToRoot(plan.SaveRoot, item.TargetPath)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO remote_fetch_manifest_item (
+				manifest_id, relative_path, target_path, source_kind, action,
+				expected_size_bytes, remote_source_id, source_path,
+				original_target_path, resolution, state
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned')
+		`, manifestID, relativePath, item.TargetPath, item.SourceKind, item.Action, item.SizeBytes,
+			nullablePositiveInt64(item.RemoteSourceID), item.SourcePath, item.OriginalTargetPath, item.Resolution); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan) (int, error) {
@@ -390,28 +433,33 @@ func copyDirectoryTree(sourceRoot string, targetRoot string) error {
 
 func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT workflow_run_id
-		FROM remote_fetch_manifest
-		WHERE state <> 'completed'
-		ORDER BY id ASC
+		SELECT manifest.workflow_run_id, run.status
+		FROM remote_fetch_manifest AS manifest
+		INNER JOIN workflow_run AS run ON run.id = manifest.workflow_run_id
+		WHERE manifest.state <> 'completed'
+		ORDER BY manifest.id ASC
 	`)
 	if err != nil {
 		return err
 	}
-	runIDs := []int64{}
+	type pendingManifest struct {
+		runID     int64
+		runStatus string
+	}
+	pending := []pendingManifest{}
 	for rows.Next() {
-		var runID int64
-		if err := rows.Scan(&runID); err != nil {
+		var item pendingManifest
+		if err := rows.Scan(&item.runID, &item.runStatus); err != nil {
 			_ = rows.Close()
 			return err
 		}
-		runIDs = append(runIDs, runID)
+		pending = append(pending, item)
 	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	for _, runID := range runIDs {
-		manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	for _, item := range pending {
+		manifest, err := s.loadRemoteFetchManifest(ctx, item.runID)
 		if err != nil {
 			return err
 		}
@@ -424,7 +472,7 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 			if err := s.reconcilePublishingRemoteFetch(ctx, manifest); err != nil {
 				return err
 			}
-			refreshed, err := s.loadRemoteFetchManifest(ctx, runID)
+			refreshed, err := s.loadRemoteFetchManifest(ctx, item.runID)
 			if err != nil {
 				return err
 			}
@@ -432,16 +480,25 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 				if err := s.registerPublishedRemoteFetch(ctx, refreshed); err != nil {
 					return err
 				}
-			} else if err := s.requeueRemoteFetchManifest(ctx, refreshed); err != nil {
-				return err
+			} else if workflowRunCanResume(item.runStatus) {
+				if err := s.requeueRemoteFetchManifest(ctx, refreshed); err != nil {
+					return err
+				}
 			}
 		default:
+			if !workflowRunCanResume(item.runStatus) {
+				continue
+			}
 			if err := s.requeueRemoteFetchManifest(ctx, manifest); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func workflowRunCanResume(status string) bool {
+	return status == "queued" || status == "running"
 }
 
 func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord) error {

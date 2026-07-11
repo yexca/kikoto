@@ -1402,7 +1402,9 @@ function RemoteSourcePanel({
     setIsBulkBusy(true);
     try {
       const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map(remoteWorkActionCode) });
-      toast.success(`Bulk workflow #${parent.runId}: tracked ${parent.synced} remote-only works.`);
+      const message = `Bulk workflow #${parent.runId}: tracked ${parent.synced}, failed ${parent.failed}.`;
+      if (parent.failed > 0) toast.warning(message);
+      else toast.success(message);
       await onSynced(0);
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk track failed."));
@@ -1420,7 +1422,9 @@ function RemoteSourcePanel({
     setIsBulkBusy(true);
     try {
       const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map(remoteWorkActionCode) });
-      toast.success(`Bulk workflow #${parent.runId}: fetched ${parent.fetched} selected works.`);
+      const message = `Bulk workflow #${parent.runId}: queued ${parent.fetched} Fetch jobs, failed ${parent.failed}.`;
+      if (parent.failed > 0) toast.warning(message);
+      else toast.success(message);
       await onSynced(0);
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk fetch failed."));
@@ -3619,7 +3623,7 @@ function DetailHero({
             icon={<Tags className="h-4 w-4" />}
             label="Tags"
             emptyLabel="No tag metadata"
-            items={tags.map((tag) => ({ key: tag, label: tag }))}
+            items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
           />
           <InfoRow icon={<Clock3 className="h-4 w-4" />} label="Duration" value={formatDuration(durationSeconds)} />
         </div>
@@ -5389,6 +5393,20 @@ function RemoteSaveSelectionPanel({
       </div>
     </div>
   );
+}
+
+function openDetailTagSearch(tag: string) {
+  const value = tag.trim();
+  if (!value) return;
+  const state = window.history.state as { returnTo?: unknown } | null;
+  const returnTo = typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : "/";
+  const target = new URL(returnTo, window.location.origin);
+  const browseState = libraryBrowseStateFromSearch(target.search, defaultLibraryBrowseState);
+  const clauses = parseSearchClauses(browseState.query).filter((clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()));
+  const query = [...clauses, { kind: "tag" as const, value }].map(formatSearchClause).join(" ");
+  target.search = libraryBrowseSearch({ ...browseState, query, page: 1, scrollY: 0 });
+  window.history.pushState({}, "", `${target.pathname}${target.search}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function openResolvedEntityRoute(route: string) {

@@ -628,8 +628,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     try {
       const results = await runCircleBulkBySource(selectedWorks, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      toast.success(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
+      const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
+      if (failed > 0) toast.warning(message); else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
@@ -647,8 +649,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       const results = await runCircleBulkBySource(selectedSyncableWorks, "track_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      toast.success(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
+      const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
+      if (failed > 0) toast.warning(message); else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {

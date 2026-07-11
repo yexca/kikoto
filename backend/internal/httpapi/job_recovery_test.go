@@ -63,6 +63,51 @@ func TestDecodeWorkflowJobCheckpointDetailSupportsRawAndEnvelope(t *testing.T) {
 	}
 }
 
+func TestRetryFailedWorkflowJobRequeuesSameCheckpoint(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	statements := []string{
+		`INSERT OR IGNORE INTO workflow_definition (id, code, display_name) VALUES (1, 'media_cache', 'Cache')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, 1, 'media_cache', 'Cache', 'failed', 'manual', CURRENT_TIMESTAMP)`,
+		`INSERT INTO workflow_node_run (id, workflow_run_id, node_id, node_type, display_name, position, status, error_message, finished_at) VALUES (1, 1, 'cache', 'materialize_cache', 'Cache', 1, 'failed', 'temporary source failure', CURRENT_TIMESTAMP)`,
+		`INSERT INTO workflow_job (id, workflow_run_id, workflow_node_run_id, worker_type, status, payload_json, checkpoint_json, recoverable, max_retries, retry_count, error_message) VALUES (1, 1, 1, 'remote_media_cache', 'failed', '{"media_location_id":7}', '{"phase":"download","index":1}', 1, 3, 1, 'temporary source failure')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.retryFailedWorkflowJob(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	var runStatus, nodeStatus, jobStatus, checkpoint string
+	var retryCount int
+	if err := db.QueryRow(`
+		SELECT run.status, node.status, job.status, job.checkpoint_json, job.retry_count
+		FROM workflow_run AS run
+		INNER JOIN workflow_node_run AS node ON node.workflow_run_id = run.id
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+		WHERE run.id = 1
+	`).Scan(&runStatus, &nodeStatus, &jobStatus, &checkpoint, &retryCount); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "queued" || nodeStatus != "queued" || jobStatus != "queued" || retryCount != 2 || checkpoint != `{"phase":"download","index":1}` {
+		t.Fatalf("run=%s node=%s job=%s retries=%d checkpoint=%s", runStatus, nodeStatus, jobStatus, retryCount, checkpoint)
+	}
+}
+
+func TestRetryableWorkflowErrorOnlyAcceptsTransientDownloads(t *testing.T) {
+	if !isRetryableWorkflowError(remoteDownloadError{StatusCode: 503, Retryable: true}) {
+		t.Fatal("503 download should be retryable")
+	}
+	if isRetryableWorkflowError(remoteDownloadError{StatusCode: 403, Retryable: false}) {
+		t.Fatal("403 download should require user or source intervention")
+	}
+	if isRetryableWorkflowError(context.Canceled) {
+		t.Fatal("cancellation should not be retried")
+	}
+}
+
 func TestLocalLocationCleanupResumeSkipsCompletedLocations(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: t.TempDir()})

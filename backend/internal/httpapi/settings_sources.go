@@ -833,6 +833,24 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
+	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	if len(plan.PostFilterClauses) > 0 {
+		works, total, sortApplied, err := s.remotePostFilteredPage(
+			r.Context(), userID, source.ID, client, plan, upstreamOrder, direction,
+			r.URL.Query().Get("seed"), page, pageSize, language,
+		)
+		if err != nil {
+			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		_ = s.updateSourceHealth(r.Context(), id, "healthy")
+		writeJSON(w, http.StatusOK, remoteWorksResponse{
+			SourceID: source.ID, Works: works, Page: page, PageSize: pageSize, Total: total,
+			Status: "ok", Sort: sortName, Direction: direction, SortApplied: sortApplied,
+		})
+		return
+	}
 	remotePage, err := client.ListWorksSortedSeeded(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction, r.URL.Query().Get("seed"))
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
@@ -840,7 +858,6 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
 	works, err := s.remoteWorkSummaries(r.Context(), userID, source.ID, remotePage.Works, language)
 	if err != nil {
 		writeError(w, err)
@@ -867,6 +884,68 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		Direction:   direction,
 		SortApplied: remotePage.SortApplied,
 	})
+}
+
+func (s *Server) remotePostFilteredPage(
+	ctx context.Context,
+	userID int64,
+	sourceID int64,
+	client *kikoeru.Client,
+	plan remoteSourceQueryPlan,
+	order string,
+	direction string,
+	seed string,
+	page int,
+	pageSize int,
+	language string,
+) ([]remoteWorkSummary, int, bool, error) {
+	const upstreamPageSize = 100
+	const maxUpstreamPages = 100
+	filtered := []remoteWorkSummary{}
+	seen := map[string]bool{}
+	sortApplied := true
+	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
+		result, err := client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		sortApplied = sortApplied && result.SortApplied
+		summaries, err := s.remoteWorkSummaries(ctx, userID, sourceID, result.Works, language)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		for _, work := range filterRemoteWorkSummaries(summaries, plan.PostFilterClauses) {
+			key := strings.ToUpper(strings.TrimSpace(work.PrimaryCode)) + ":" + work.RemoteID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			filtered = append(filtered, work)
+		}
+		upstreamTotal := firstPositiveInt(result.Pagination.TotalCount, result.Pagination.Total, result.Pagination.Count)
+		if len(result.Works) == 0 || len(result.Works) < upstreamPageSize || (upstreamTotal > 0 && upstreamPage*upstreamPageSize >= upstreamTotal) {
+			break
+		}
+		if upstreamPage == maxUpstreamPages {
+			return nil, 0, false, fmt.Errorf("remote filtered query exceeded %d upstream works", maxUpstreamPages*upstreamPageSize)
+		}
+	}
+	total := len(filtered)
+	start := (page - 1) * pageSize
+	if start >= total {
+		return []remoteWorkSummary{}, total, sortApplied, nil
+	}
+	end := min(start+pageSize, total)
+	return filtered[start:end], total, sortApplied, nil
+}
+
+func firstPositiveInt(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func remoteSourceSort(value string) (string, string) {
@@ -1903,9 +1982,6 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			if name := kikoeru.TagName(tag, language); name != "" {
 				tags = append(tags, name)
 			}
-			if len(tags) >= 4 {
-				break
-			}
 		}
 		circle := ""
 		if work.Circle != nil {
@@ -2323,7 +2399,7 @@ func (s *Server) runRemotePopularWorkflow(ctx context.Context, payload remoteCol
 				result.Tracked++
 			}
 		} else {
-			fetchResult, err := s.runRemoteWorkSave(jobCtx, source.ID, code, []string{})
+			fetchResult, err := s.enqueueRemoteWorkSave(jobCtx, source.ID, code, []string{}, nil, "", "", nil)
 			if err != nil {
 				result.Failed++
 				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
@@ -2404,7 +2480,7 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 				result.Tracked++
 			}
 		} else {
-			fetchResult, runErr := s.runRemoteWorkSave(ctx, source.ID, code, []string{})
+			fetchResult, runErr := s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil)
 			if runErr != nil {
 				result.Failed++
 				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, runErr.Error()))
@@ -2944,7 +3020,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	}
 	manifest, manifestErr := s.loadRemoteFetchManifest(ctx, runID)
 	var plan remoteWorkSavePlan
-	if manifestErr == nil {
+	if manifestErr == nil && strings.TrimSpace(manifest.ErrorMessage) == "" {
 		manifestErr = json.Unmarshal([]byte(manifest.PlanJSON), &plan)
 	}
 	if manifestErr != nil || plan.PrimaryCode == "" {
@@ -2952,6 +3028,16 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		if err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 			return remoteWorkSaveResult{}, err
+		}
+		if manifest.ID > 0 {
+			if err := s.refreshRemoteFetchManifestPlan(ctx, manifest.ID, plan); err != nil {
+				_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+				return remoteWorkSaveResult{}, err
+			}
+			manifest, err = s.loadRemoteFetchManifest(ctx, runID)
+			if err != nil {
+				return remoteWorkSaveResult{}, err
+			}
 		}
 	}
 	if plan.Summary.Conflict > 0 {
@@ -3000,6 +3086,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		}
 		written, err := s.downloadToFile(ctx, item.SourcePath, cacheAbsPath)
 		if err != nil {
+			_ = s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
 		}
@@ -3184,254 +3271,6 @@ func (s *Server) ensureWorkflowRunActive(ctx context.Context, runID int64) error
 		return nil
 	}
 	return fmt.Errorf("workflow run is %s", status)
-}
-
-func (s *Server) runRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string) (remoteWorkSaveResult, error) {
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	workCode := normalizedRemoteWorkCode(remoteWork)
-	if workCode == "" {
-		workCode = strings.ToUpper(strings.TrimSpace(code))
-	}
-	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, nil, "", nil)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if plan.Summary.Conflict > 0 {
-		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
-	}
-	rawWork, _ := json.Marshal(remoteWork)
-	rawTracks, _ := json.Marshal(tracks)
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_work_fetch", "Fetch remote work", "Select remote files, cache them, promote cache files to the local library, and sync local locations.", remoteWorkFetchDefinition())
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	runInput := map[string]any{"source_id": sourceID, "work_code": workCode, "paths": selectedPaths}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "running", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	selectNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
-		Input: runInput, Output: map[string]any{"source_id": sourceID, "work_code": workCode},
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Fetch remote tree", Position: 2, Status: "succeeded",
-		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"tracks": len(tracks), "snapshot_bytes": len(rawWork) + len(rawTracks)},
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: selectNodeID, WorkerType: "remote_work_fetch", Status: "running", Payload: runInput,
-		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "plan", NodeType: "plan_save", DisplayName: "Plan save", Position: 3, Status: "succeeded",
-		Input: map[string]any{"paths": selectedPaths}, Output: plan,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	cacheNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cache", NodeType: "materialize_cache", DisplayName: "Cache selected files", Position: 4, Status: "running",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	promoteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "stage", NodeType: "stage_fetch_result", DisplayName: "Assemble staging directory", Position: 5, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "verify", NodeType: "verify_files", DisplayName: "Verify staged files", Position: 6, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	}); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	promoteNodeID, err = workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "promote", NodeType: "publish_staged_fetch", DisplayName: "Publish staged result", Position: 7, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	syncNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync fetched locations", Position: 8, Status: "queued",
-		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
-	})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := createRemoteFetchManifest(ctx, tx, runID, jobID, "", workID, sourceID, localSourceID, plan); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: selectNodeID})
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	defer stopHeartbeat()
-	ctx = jobCtx
-
-	skipped, cacheHits, cacheDownloads := 0, 0, 0
-	for index, item := range plan.Items {
-		if item.Action == "exclude" {
-			continue
-		}
-		if item.Action == "skip" {
-			skipped++
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-			continue
-		}
-		cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if item.Action == "cache_hit" {
-			cacheHits++
-			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(cacheAbsPath), 0o755); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		written, err := s.downloadToFile(ctx, item.SourcePath, cacheAbsPath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		cacheLocationID, err := s.upsertCacheLocation(ctx, mediaItemID, source.ID, item.CachePath, "", item.SizeBytes, nil, written)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		_, _ = s.runCacheLimitCleanup(ctx, source.ID, cacheLocationID)
-		cacheDownloads++
-		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads}), cacheNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
-	if err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	promoted, err := s.stageAndPublishRemoteFetch(ctx, manifest, plan)
-	if err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, promoteNodeID, jobID, "failed", err.Error(), len(plan.Items), len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	_ = updateWorkflowJobProgress(ctx, s.db, jobID, len(plan.Items)*2, len(plan.Items)*2)
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"staged": promoted, "verified": promoted, "published": promoted, "target_root": plan.SaveRoot}), promoteNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = 'succeeded',
-			progress_current = ?,
-			progress_total = ?,
-			locked_by = '',
-			locked_at = NULL,
-			heartbeat_at = NULL,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", syncNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	syncedLocations := 0
-	for index, item := range plan.Items {
-		if item.Action == "exclude" {
-			continue
-		}
-		targetAbsPath, err := safeDataPath(s.cfg.DataRoot, item.TargetPath)
-		if err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		if _, err := os.Stat(targetAbsPath); err != nil {
-			if item.Action == "skip" && errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-				return remoteWorkSaveResult{}, err
-			}
-		}
-		if err := s.upsertSavedLocalLocation(ctx, workID, localSourceID, item, targetAbsPath); err != nil {
-			_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)+index, len(plan.Items)*2, plan.Summary)
-			return remoteWorkSaveResult{}, err
-		}
-		syncedLocations++
-	}
-	if err := s.finishFetchPresence(ctx, workID, remoteFetchPlanSourceIDs(plan, source.ID), localSourceID, workCode); err != nil {
-		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
-		return remoteWorkSaveResult{}, err
-	}
-	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"locations": syncedLocations}), syncNodeID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(rawWork) + len(rawTracks)}), runID); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	if err := s.insertFetchCleanupCandidate(ctx, runID, workID, localSourceID, workCode, plan.Items); err != nil {
-		return remoteWorkSaveResult{}, err
-	}
-	return remoteWorkSaveResult{
-		RunID:         runID,
-		JobID:         jobID,
-		WorkID:        workID,
-		PrimaryCode:   workCode,
-		Status:        "succeeded",
-		SaveRoot:      plan.SaveRoot,
-		SavedFiles:    promoted,
-		SkippedFiles:  skipped,
-		CachedFiles:   cacheHits + cacheDownloads,
-		PromotedFiles: promoted,
-		Plan:          plan.Summary,
-	}, nil
 }
 
 type remoteSaveFile struct {

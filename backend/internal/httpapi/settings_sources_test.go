@@ -3,7 +3,14 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
 func TestSelectedRemotePathMatches(t *testing.T) {
@@ -73,6 +80,68 @@ func TestRemoteSourceSortMapping(t *testing.T) {
 		if name != test.name || order != test.order {
 			t.Fatalf("remoteSourceSort(%q) = (%q, %q), want (%q, %q)", test.input, name, order, test.name, test.order)
 		}
+	}
+}
+
+func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) {
+	upstream := make([]kikoeru.Work, 0, 102)
+	for index := 1; index <= 102; index++ {
+		tags := []kikoeru.Tag{{Name: "Other"}}
+		if index == 1 || index == 102 {
+			tags = []kikoeru.Tag{{Name: "Wanted"}}
+		}
+		upstream = append(upstream, kikoeru.Work{
+			ID:       int64(index),
+			SourceID: fmt.Sprintf("RJ%08d", index),
+			Title:    fmt.Sprintf("Work %d", index),
+			Tags:     tags,
+		})
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		start := (page - 1) * 100
+		if start < 0 {
+			start = 0
+		}
+		end := min(start+100, len(upstream))
+		works := []kikoeru.Work{}
+		if start < len(upstream) {
+			works = upstream[start:end]
+		}
+		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
+			Works: works,
+			Pagination: kikoeru.Pagination{
+				CurrentPage: page,
+				PageSize:    100,
+				TotalCount:  len(upstream),
+			},
+		})
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	works, total, sortApplied, err := server.remotePostFilteredPage(
+		context.Background(),
+		0,
+		7,
+		kikoeru.NewClient(remote.URL, remote.Client()),
+		remoteSourceQueryPlan{PostFilterClauses: []listSearchClause{{Kind: "tag", Value: "wanted"}}},
+		"create_date",
+		"desc",
+		"",
+		2,
+		1,
+		"ja-jp",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(works) != 1 || works[0].PrimaryCode != "RJ00000102" {
+		t.Fatalf("works = %+v, total = %d", works, total)
+	}
+	if !sortApplied {
+		t.Fatal("sortApplied = false, want true")
 	}
 }
 

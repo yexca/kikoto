@@ -1209,6 +1209,7 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var newRunID int64
+	resumedExistingRun := false
 	switch run.WorkflowCode {
 	case "local_library_scan":
 		result, err := s.runLocalScan(r.Context(), "manual", "retry_run")
@@ -1225,14 +1226,52 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		}
 		newRunID = result.RunID
 	default:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "retry is not implemented for this workflow type yet"})
-		return
+		if err := s.retryFailedWorkflowJob(r.Context(), id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "this workflow has no recoverable failed job"})
+				return
+			}
+			writeError(w, err)
+			return
+		}
+		newRunID = id
+		resumedExistingRun = true
 	}
-	if err := s.recordWorkflowRunEvent(r.Context(), id, "info", "run.retry_requested", "Retry started", map[string]any{"new_run_id": newRunID}); err != nil {
+	detail := map[string]any{"new_run_id": newRunID}
+	if resumedExistingRun {
+		detail = map[string]any{"resumed_run_id": id}
+	}
+	if err := s.recordWorkflowRunEvent(r.Context(), id, "info", "run.retry_requested", "Retry started", detail); err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, workflowRunActionResult{RunID: id, Status: "retried", Message: "retry started", NewRunID: &newRunID})
+	result := workflowRunActionResult{RunID: id, Status: "retried", Message: "retry started"}
+	if !resumedExistingRun {
+		result.NewRunID = &newRunID
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error {
+	var job workflowJobRecord
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), worker_type,
+			payload_json, checkpoint_json, '', resume_count, retry_count, max_retries
+		FROM workflow_job
+		WHERE workflow_run_id = ? AND status = 'failed' AND recoverable = 1
+			AND worker_type IN (
+				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
+				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup'
+			)
+		ORDER BY id DESC LIMIT 1
+	`, runID).Scan(
+		&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType,
+		&job.PayloadJSON, &job.CheckpointJSON, &job.LockedBy, &job.ResumeCount, &job.RetryCount, &job.MaxRetries,
+	)
+	if err != nil {
+		return err
+	}
+	return s.requeueFailedWorkflowJob(ctx, job, 0, "Manual retry requested")
 }
 
 func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {

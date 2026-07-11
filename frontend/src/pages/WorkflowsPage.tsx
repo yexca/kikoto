@@ -287,7 +287,8 @@ export function WorkflowsPage({
     setRunningSystemAction(kind);
     try {
       const result = await api.runRemotePopularCollection({ action });
-      toast.success(`Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `fetched ${result.fetched}`}, failed ${result.failed}.`);
+      const message = `Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `queued ${result.fetched} Fetch jobs`}, failed ${result.failed}.`;
+      if (result.failed > 0) toast.warning(message); else toast.success(message);
       refresh();
       setActivityView("completed");
       setRunPage(1);
@@ -1980,7 +1981,10 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
 
 function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
   const cancellable = ["queued", "running"].includes(run.status);
-  const retryable = !cancellable && ["local_library_scan", "metadata_sync"].includes(run.workflowCode);
+  const retryable = run.status === "failed" && [
+    "local_library_scan", "metadata_sync", "remote_work_fetch", "media_cache",
+    "media_cache_cleanup", "local_media_delete", "local_location_cleanup", "remote_popular_collection",
+  ].includes(run.workflowCode);
   if (!cancellable && !retryable) {
     return null;
   }

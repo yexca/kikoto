@@ -22,6 +22,8 @@ type workflowJobRecord struct {
 	CheckpointJSON string
 	LockedBy       string
 	ResumeCount    int
+	RetryCount     int
+	MaxRetries     int
 }
 
 func (s *Server) StartJobRunner(ctx context.Context) {
@@ -53,21 +55,22 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 	}
 	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
 	defer stopHeartbeat()
+	var runErr error
 	switch job.WorkerType {
 	case "remote_work_fetch":
-		return s.executeRemoteWorkFetchJob(jobCtx, job)
+		runErr = s.executeRemoteWorkFetchJob(jobCtx, job)
 	case "remote_media_cache":
-		return s.executeRemoteMediaCacheJob(jobCtx, job)
+		runErr = s.executeRemoteMediaCacheJob(jobCtx, job)
 	case "remote_popular_collection":
-		return s.executeRemotePopularCollectionJob(jobCtx, job)
+		runErr = s.executeRemotePopularCollectionJob(jobCtx, job)
 	case "media_cache_limit_cleanup":
-		return s.executeMediaCacheLimitCleanupJob(jobCtx, job)
+		runErr = s.executeMediaCacheLimitCleanupJob(jobCtx, job)
 	case "media_cache_cleanup":
-		return s.executeMediaCacheCleanupJob(jobCtx, job)
+		runErr = s.executeMediaCacheCleanupJob(jobCtx, job)
 	case "local_media_delete":
-		return s.executeLocalMediaDeleteJob(jobCtx, job)
+		runErr = s.executeLocalMediaDeleteJob(jobCtx, job)
 	case "local_location_cleanup":
-		return s.executeLocalLocationCleanupJob(jobCtx, job)
+		runErr = s.executeLocalLocationCleanupJob(jobCtx, job)
 	default:
 		message := "unsupported workflow job type: " + job.WorkerType
 		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {
@@ -75,6 +78,14 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 		return errors.New(message)
 	}
+	if runErr != nil && isRetryableWorkflowError(runErr) && job.RetryCount < job.MaxRetries {
+		delay := time.Duration(job.RetryCount+1) * 30 * time.Second
+		if err := s.requeueFailedWorkflowJob(jobCtx, job, delay, "Automatic retry after a transient source failure"); err != nil {
+			return err
+		}
+		return nil
+	}
+	return runErr
 }
 
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
@@ -109,7 +120,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	var job workflowJobRecord
 	err = tx.QueryRowContext(ctx, `
 		SELECT job.id, job.workflow_run_id, COALESCE(job.workflow_node_run_id, 0), job.worker_type, job.payload_json,
-			job.checkpoint_json, job.resume_count
+			job.checkpoint_json, job.resume_count, job.retry_count, job.max_retries
 		FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued'
@@ -117,7 +128,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
 		ORDER BY job.created_at ASC, job.id ASC
 		LIMIT 1
-	`).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount)
+		`).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return workflowJobRecord{}, false, nil
@@ -167,6 +178,54 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	}
 	job.LockedBy = runnerID
 	return job, true, nil
+}
+
+func isRetryableWorkflowError(runErr error) bool {
+	var downloadErr remoteDownloadError
+	return errors.As(runErr, &downloadErr) && downloadErr.Retryable
+}
+
+func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {
+	availableAt := time.Now().UTC().Add(delay).Format("2006-01-02 15:04:05")
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'queued', retry_count = retry_count + 1, available_at = ?, error_message = '',
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = 'failed'
+	`, availableAt, job.ID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'queued', error_message = '', finished_at = NULL
+		WHERE workflow_run_id = ? AND status IN ('failed', 'running', 'queued')
+	`, job.RunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run SET status = 'queued', finished_at = NULL,
+			summary_json = json_set(COALESCE(NULLIF(summary_json, ''), '{}'), '$.retry_reason', ?, '$.retry_at', ?)
+		WHERE id = ?
+	`, reason, availableAt, job.RunID); err != nil {
+		return err
+	}
+	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "job.retry_scheduled",
+		Message: reason, Detail: map[string]any{"available_at": availableAt, "retry_count": job.RetryCount + 1},
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) updateWorkflowJobCheckpoint(ctx context.Context, jobID int64, phase string, detail any, current int, total int) error {

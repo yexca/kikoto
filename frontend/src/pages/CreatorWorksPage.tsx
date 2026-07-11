@@ -544,8 +544,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const results = await runVoiceBulkBySource(selectedSyncable, "track_fetch");
       const synced = results.reduce((total, result) => total + result.synced, 0);
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      toast.success(`Bulk workflow ${runIds}: tracked ${synced} and fetched ${fetched} selected works.`);
+      const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
+      if (failed > 0) toast.warning(message); else toast.success(message);
       await refreshDetail();
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk track/fetch failed."));
@@ -565,8 +567,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     try {
       const results = await runVoiceBulkBySource(selectedSaveable, "fetch");
       const fetched = results.reduce((total, result) => total + result.fetched, 0);
+      const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
-      toast.success(`Bulk workflow ${runIds}: fetched ${fetched} selected works.`);
+      const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
+      if (failed > 0) toast.warning(message); else toast.success(message);
       await refreshDetail();
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk fetch failed."));
@@ -837,7 +841,7 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   const cache = "cache" in work ? work.cache : work.hasCache;
   const cover = assetURL(work.coverUrl);
   const tags = "sourceTags" in work ? sourceTags(work.sourceTags) : [];
-  const metadataTags = work.tags.slice(0, 4);
+  const metadataTags = work.tags;
   const sourceName = "sourceName" in work ? work.sourceName : "";
   const workId = "workId" in work ? work.workId : null;
   const favorite = "favorite" in work ? work.favorite : false;

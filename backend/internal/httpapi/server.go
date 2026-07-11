@@ -2478,20 +2478,21 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 		request.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
-			lastErr = err
+			downloadErr := remoteDownloadError{Err: err, Retryable: true}
+			lastErr = downloadErr
 			if attempt < 2 {
 				if sleepErr := sleepContext(ctx, s.remoteBackoffDuration(ctx, nil, attempt)); sleepErr != nil {
 					return 0, sleepErr
 				}
 				continue
 			}
-			return 0, err
+			return 0, downloadErr
 		}
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
 			defer response.Body.Close()
 			return writeDownloadResponse(response.Body, targetPath)
 		}
-		statusErr := fmt.Errorf("remote media download returned HTTP %d", response.StatusCode)
+		statusErr := remoteDownloadError{StatusCode: response.StatusCode, Retryable: isRetryableRemoteStatus(response.StatusCode)}
 		lastErr = statusErr
 		retryable := isRetryableRemoteStatus(response.StatusCode)
 		backoff := s.remoteBackoffDuration(ctx, response, attempt)
@@ -2505,6 +2506,21 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 	}
 	return 0, lastErr
 }
+
+type remoteDownloadError struct {
+	Err        error
+	StatusCode int
+	Retryable  bool
+}
+
+func (e remoteDownloadError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("remote media download returned HTTP %d", e.StatusCode)
+}
+
+func (e remoteDownloadError) Unwrap() error { return e.Err }
 
 func writeDownloadResponse(body io.Reader, targetPath string) (int64, error) {
 	tempPath := targetPath + ".tmp"
@@ -3559,6 +3575,8 @@ type remoteBulkWorkflowResult struct {
 	Status    string   `json:"status"`
 	Synced    int      `json:"synced"`
 	Fetched   int      `json:"fetched"`
+	Failed    int      `json:"failed"`
+	Failures  []string `json:"failures"`
 	ChildRuns []int64  `json:"childRuns"`
 }
 
@@ -3630,28 +3648,36 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 		return remoteBulkWorkflowResult{}, err
 	}
 
-	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded"}
+	result := remoteBulkWorkflowResult{RunID: runID, SourceID: sourceID, Action: action, Codes: codes, Status: "succeeded", Failures: []string{}}
 	for _, code := range codes {
+		workFailed := false
 		if action == "track" || action == "track_fetch" {
 			syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
 			if err != nil {
-				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
-				return remoteBulkWorkflowResult{}, err
+				result.Failed++
+				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+				workFailed = true
+			} else {
+				result.Synced++
+				result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
 			}
-			result.Synced++
-			result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
 		}
-		if action == "fetch" || action == "track_fetch" {
-			saveResult, err := s.runRemoteWorkSave(ctx, sourceID, code, []string{})
+		if !workFailed && (action == "fetch" || action == "track_fetch") {
+			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil)
 			if err != nil {
-				_ = s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "failed", result, err)
-				return remoteBulkWorkflowResult{}, err
+				result.Failed++
+				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+				continue
 			}
 			result.Fetched++
 			result.ChildRuns = append(result.ChildRuns, saveResult.RunID)
 		}
 	}
-	if err := s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, "succeeded", result, nil); err != nil {
+	status := "succeeded"
+	if result.Failed > 0 {
+		status = "partial"
+	}
+	if err := s.finishRemoteBulkWorkflow(ctx, runID, dispatchNodeID, status, result, nil); err != nil {
 		return remoteBulkWorkflowResult{}, err
 	}
 	return result, nil
@@ -3665,6 +3691,8 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 		"codes":      result.Codes,
 		"synced":     result.Synced,
 		"fetched":    result.Fetched,
+		"failed":     result.Failed,
+		"failures":   result.Failures,
 		"child_runs": result.ChildRuns,
 	}
 	errorMessage := ""
@@ -5051,9 +5079,6 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		}
 		seenTags[name] = true
 		metadata.Tags = append(metadata.Tags, name)
-		if len(metadata.Tags) >= 8 {
-			break
-		}
 	}
 
 	seenActors := map[string]bool{}

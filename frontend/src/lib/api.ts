@@ -1339,6 +1339,6 @@ export const api = {
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
   recordRemoteBulkRun: (payload: { action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
-    postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
+    postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; failed: number; failures: string[]; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };
