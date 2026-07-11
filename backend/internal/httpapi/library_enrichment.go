@@ -39,11 +39,6 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 		}
 		if ok {
 			works[index].mediaWorkID = selection.WorkID
-			if !strings.EqualFold(selection.Code, works[index].PrimaryCode) {
-				works[index].MediaEditionCode = selection.Code
-				works[index].MediaEditionKind = selection.TranslationKind
-				works[index].OfficialTranslation = selection.TranslationKind == "official"
-			}
 		}
 		mediaWorkIDs = append(mediaWorkIDs, works[index].mediaWorkID)
 	}
@@ -64,6 +59,11 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 		return err
 	}
 	for index := range works {
+		credits, err := s.voiceCreditsForWork(ctx, works[index].ID)
+		if err != nil {
+			return err
+		}
+		works[index].VoiceCredits = credits
 		if item, ok := availability[works[index].mediaWorkID]; ok && works[index].mediaWorkID != works[index].ID {
 			works[index].TrackCount = item.TrackCount
 			works[index].AvailableLocations = item.AvailableLocations

@@ -85,6 +85,7 @@ type circleCatalogWork struct {
 	CircleExternalID string              `json:"circleExternalId"`
 	Tags             []string            `json:"tags"`
 	VoiceActors      []string            `json:"voiceActors"`
+	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Series           string              `json:"series"`
@@ -1188,6 +1189,10 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		}
 		item.SourceTags = tags
 		if item.WorkID != nil {
+			item.VoiceCredits, err = s.voiceCreditsForWork(ctx, *item.WorkID)
+			if err != nil {
+				return nil, err
+			}
 			progress, err := s.workProgressSummary(ctx, userID, *item.WorkID)
 			if err != nil {
 				return nil, err

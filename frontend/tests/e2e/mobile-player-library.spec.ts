@@ -15,6 +15,7 @@ const work = {
   sales: 10,
   tags: ["ロリ"],
   voiceActors: [],
+  voiceCredits: [],
   series: "",
   seriesTitleId: "",
   trackCount: 1,
@@ -24,9 +25,6 @@ const work = {
   progress: { mediaItemId: null, title: "", positionSeconds: 0, durationSeconds: null, lastPlayedAt: null, completed: false },
   listeningStatus: "none",
   favorite: false,
-  mediaEditionCode: "",
-  mediaEditionKind: "",
-  officialTranslation: false,
 };
 
 const persistedTrack = {

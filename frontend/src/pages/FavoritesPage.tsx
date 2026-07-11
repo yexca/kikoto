@@ -884,6 +884,7 @@ function favoriteWorkCardView(work: Work): WorkCardViewModel {
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
     voiceActors: work.voiceActors,
+    voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,

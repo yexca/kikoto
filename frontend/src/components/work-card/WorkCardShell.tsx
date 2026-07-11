@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, assetURL, type FavoriteList, type ListeningStatus, type WorkProgressSummary } from "@/lib/api";
+import { api, assetURL, type FavoriteList, type ListeningStatus, type VoiceCredit, type WorkEntityLink, type WorkProgressSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export type WorkCardBadge = {
@@ -29,6 +29,7 @@ export type WorkCardViewModel = {
   circle: string;
   circleExternalId?: string;
   voiceActors?: string[];
+  voiceCredits?: VoiceCredit[];
   coverUrl?: string;
   rating?: number | null;
   series?: string | null;
@@ -60,10 +61,42 @@ export function WorkCardShell({
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
 }) {
+  const toast = useToast();
+  const [resolvingEntity, setResolvingEntity] = useState<WorkEntityLink["kind"] | null>(null);
+  const resolveEntity = async (kind: WorkEntityLink["kind"], name = "") => {
+    if (!work.code || resolvingEntity) return;
+    setResolvingEntity(kind);
+    toast.info(kind === "series" ? "Loading series information…" : `Loading ${kind} information…`);
+    try {
+      const result = await api.resolveWorkEntityLink(work.code, kind, name);
+      if (result.route) openEntityRoute(result.route);
+    } catch (error) {
+      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
+    } finally {
+      setResolvingEntity(null);
+    }
+  };
+  const circleOpen = work.circleExternalId
+    ? () => onCircleOpen ? onCircleOpen(work.circleExternalId as string) : openEntityRoute(`/circles/${encodeURIComponent(work.circleExternalId as string)}`)
+    : work.circle && work.circle !== "Unknown circle" ? () => void resolveEntity("circle", work.circle) : undefined;
+  const seriesOpen = onSeriesOpen ?? (work.series ? () => void resolveEntity("series", work.series ?? "") : undefined);
+  const voiceOpen = (name: string) => {
+    const nameKey = name.trim().toLocaleLowerCase();
+    const credit = work.voiceCredits?.find((item) => item.displayName.trim().toLocaleLowerCase() === nameKey);
+    if (credit?.personId) {
+      openEntityRoute(`/voices/${credit.personId}`);
+      return;
+    }
+    if (onVoiceOpen) {
+      onVoiceOpen(name);
+      return;
+    }
+    void resolveEntity("voice", name);
+  };
   const content = (
     <>
       <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} />
-      <WorkCardBody work={work} onCircleOpen={onCircleOpen} onVoiceOpen={onVoiceOpen} onSeriesOpen={onSeriesOpen} onTagOpen={onTagOpen} />
+      <WorkCardBody work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} onSeriesOpen={seriesOpen} onTagOpen={onTagOpen} />
     </>
   );
 
@@ -132,7 +165,7 @@ function WorkCardBody({
   onTagOpen,
 }: {
   work: WorkCardViewModel;
-  onCircleOpen?: (externalId: string) => void;
+  onCircleOpen?: () => void;
   onVoiceOpen?: (name: string) => void;
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
@@ -141,15 +174,19 @@ function WorkCardBody({
     <div className="flex min-h-52 flex-1 flex-col gap-3 p-4">
       <div className="space-y-1">
         <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-        <button
-          className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (work.circleExternalId) onCircleOpen?.(work.circleExternalId);
-          }}
-        >
-          {work.circle || "Unknown circle"}
-        </button>
+        {onCircleOpen ? (
+          <button
+            className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCircleOpen();
+            }}
+          >
+            {work.circle || "Unknown circle"}
+          </button>
+        ) : (
+          <div className="block max-w-full truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</div>
+        )}
       </div>
       {work.series && (
         onSeriesOpen ? (
@@ -190,7 +227,7 @@ function WorkCardBody({
                 ) : name}
               </span>
             ))}
-            {work.voiceActors.length > 2 && <span> +{work.voiceActors.length - 2}</span>}
+            {work.voiceActors.length > 2 && <VoiceOverflow names={work.voiceActors.slice(2)} onOpen={onVoiceOpen} />}
           </div>
         </div>
       )}
@@ -583,6 +620,50 @@ export function formatTime(seconds: number) {
 function workProgressPercent(progress: WorkProgressSummary) {
   if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
+}
+
+function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        className="ml-1 hover:text-primary"
+        aria-label={`Show ${names.length} more voice actors`}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+      >
+        +{names.length}
+      </button>
+      <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-56 p-2">
+        <div className="flex flex-col gap-1">
+          {names.map((name) => onOpen ? (
+            <button
+              key={name}
+              className="rounded px-2 py-1.5 text-left text-sm hover:bg-muted hover:text-primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onOpen(name);
+              }}
+            >
+              {name}
+            </button>
+          ) : <div key={name} className="px-2 py-1.5 text-sm">{name}</div>)}
+        </div>
+      </AnchoredPopover>
+    </>
+  );
+}
+
+function openEntityRoute(route: string) {
+  if (!route.startsWith("/")) return;
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  window.history.pushState({ returnTo, returnLabel: "Back" }, "", route);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function isMobileViewport() {

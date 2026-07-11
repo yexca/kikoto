@@ -170,23 +170,25 @@ type librarySource struct {
 }
 
 type remoteWorkSummary struct {
-	RemoteID        string   `json:"remoteId"`
-	PrimaryCode     string   `json:"primaryCode"`
-	RemoteCode      string   `json:"remoteCode"`
-	Title           string   `json:"title"`
-	ReleaseDate     string   `json:"releaseDate"`
-	UpdatedAt       string   `json:"updatedAt"`
-	CoverURL        string   `json:"coverUrl"`
-	Circle          string   `json:"circle"`
-	Rating          *float64 `json:"rating"`
-	Sales           *int64   `json:"sales"`
-	Tags            []string `json:"tags"`
-	VoiceActors     []string `json:"voiceActors"`
-	ImportStatus    string   `json:"importStatus"`
-	RemotePlayable  bool     `json:"remotePlayable"`
-	WorkID          *int64   `json:"workId"`
-	Favorite        bool     `json:"favorite"`
-	ListeningStatus string   `json:"listeningStatus"`
+	RemoteID        string            `json:"remoteId"`
+	PrimaryCode     string            `json:"primaryCode"`
+	RemoteCode      string            `json:"remoteCode"`
+	Title           string            `json:"title"`
+	ReleaseDate     string            `json:"releaseDate"`
+	UpdatedAt       string            `json:"updatedAt"`
+	CoverURL        string            `json:"coverUrl"`
+	Circle          string            `json:"circle"`
+	CircleRef       *remoteEntityRef  `json:"circleRef,omitempty"`
+	Rating          *float64          `json:"rating"`
+	Sales           *int64            `json:"sales"`
+	Tags            []string          `json:"tags"`
+	VoiceActors     []string          `json:"voiceActors"`
+	VoiceRefs       []remoteEntityRef `json:"voiceRefs"`
+	ImportStatus    string            `json:"importStatus"`
+	RemotePlayable  bool              `json:"remotePlayable"`
+	WorkID          *int64            `json:"workId"`
+	Favorite        bool              `json:"favorite"`
+	ListeningStatus string            `json:"listeningStatus"`
 }
 
 type remoteWorkDetail struct {
@@ -200,6 +202,7 @@ type remoteWorkDetail struct {
 	CoverURL        string              `json:"coverUrl"`
 	SourceURL       string              `json:"sourceUrl"`
 	Circle          string              `json:"circle"`
+	CircleRef       *remoteEntityRef    `json:"circleRef,omitempty"`
 	Rating          *float64            `json:"rating"`
 	Sales           *int64              `json:"sales"`
 	AgeRating       string              `json:"ageRating"`
@@ -207,9 +210,16 @@ type remoteWorkDetail struct {
 	DurationSeconds *int64              `json:"durationSeconds"`
 	Tags            []string            `json:"tags"`
 	VoiceActors     []string            `json:"voiceActors"`
+	VoiceRefs       []remoteEntityRef   `json:"voiceRefs"`
 	ImportStatus    string              `json:"importStatus"`
 	WorkID          *int64              `json:"workId"`
 	Tracks          []remoteTrackDetail `json:"tracks"`
+}
+
+type remoteEntityRef struct {
+	SourceID   int64  `json:"sourceId"`
+	ExternalID string `json:"externalId"`
+	Name       string `json:"name"`
 }
 
 type sourceAvailabilityResponse struct {
@@ -831,7 +841,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
-	works, err := s.remoteWorkSummaries(r.Context(), userID, remotePage.Works, language)
+	works, err := s.remoteWorkSummaries(r.Context(), userID, source.ID, remotePage.Works, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1857,7 +1867,7 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 	}
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
 	for _, work := range works {
@@ -1902,10 +1912,16 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			circle = work.Circle.Name
 		}
 		voiceActors := make([]string, 0, len(work.VAs))
+		voiceRefs := make([]remoteEntityRef, 0, len(work.VAs))
 		for _, voiceActor := range work.VAs {
 			if name := strings.TrimSpace(voiceActor.Name); name != "" {
 				voiceActors = append(voiceActors, name)
+				voiceRefs = append(voiceRefs, remoteEntityRef{SourceID: sourceID, ExternalID: strings.TrimSpace(voiceActor.ID), Name: name})
 			}
+		}
+		var circleRef *remoteEntityRef
+		if work.Circle != nil && work.Circle.ID > 0 {
+			circleRef = &remoteEntityRef{SourceID: sourceID, ExternalID: strconv.FormatInt(work.Circle.ID, 10), Name: circle}
 		}
 		status := "remote_only"
 		if workID != nil {
@@ -1920,10 +1936,12 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, works []
 			UpdatedAt:       work.Release,
 			CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 			Circle:          circle,
+			CircleRef:       circleRef,
 			Rating:          work.RateAverage2DP,
 			Sales:           work.DLCount,
 			Tags:            tags,
 			VoiceActors:     voiceActors,
+			VoiceRefs:       voiceRefs,
 			ImportStatus:    status,
 			RemotePlayable:  true,
 			WorkID:          workID,
@@ -4258,14 +4276,20 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		}
 	}
 	voiceActors := make([]string, 0, len(work.VAs))
+	voiceRefs := make([]remoteEntityRef, 0, len(work.VAs))
 	for _, va := range work.VAs {
 		if strings.TrimSpace(va.Name) != "" {
 			voiceActors = append(voiceActors, va.Name)
+			voiceRefs = append(voiceRefs, remoteEntityRef{SourceID: source.ID, ExternalID: strings.TrimSpace(va.ID), Name: strings.TrimSpace(va.Name)})
 		}
 	}
 	circle := ""
 	if work.Circle != nil {
 		circle = work.Circle.Name
+	}
+	var circleRef *remoteEntityRef
+	if work.Circle != nil && work.Circle.ID > 0 {
+		circleRef = &remoteEntityRef{SourceID: source.ID, ExternalID: strconv.FormatInt(work.Circle.ID, 10), Name: strings.TrimSpace(work.Circle.Name)}
 	}
 	status := "remote_only"
 	if workID != nil {
@@ -4295,6 +4319,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 		SourceURL:       work.SourceURL,
 		Circle:          circle,
+		CircleRef:       circleRef,
 		Rating:          work.RateAverage2DP,
 		Sales:           work.DLCount,
 		AgeRating:       work.AgeCategoryString,
@@ -4302,6 +4327,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		DurationSeconds: duration,
 		Tags:            tags,
 		VoiceActors:     voiceActors,
+		VoiceRefs:       voiceRefs,
 		ImportStatus:    status,
 		WorkID:          workID,
 		Tracks:          remoteTrackDetails(source.Code, code, tracks, "", locationState),
@@ -4587,6 +4613,11 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
 		VALUES (?, ?, ?, ?)
 	`, workID, providerID, code, string(rawWork)); err != nil {
+		return 0, err
+	}
+	if err := syncVoiceCreditSnapshot(ctx, tx, voiceCreditSnapshotRow{
+		WorkID: workID, ProviderID: sql.NullInt64{Int64: providerID, Valid: true}, Raw: string(rawWork),
+	}); err != nil {
 		return 0, err
 	}
 	if remoteWork.Circle != nil && strings.TrimSpace(remoteWork.Circle.Name) != "" {

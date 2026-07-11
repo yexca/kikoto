@@ -143,6 +143,7 @@ type voiceKnownWork struct {
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
 	VoiceActors      []string            `json:"voiceActors"`
+	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Series           string              `json:"series"`
 	SeriesTitleID    string              `json:"seriesTitleId"`
 	ListeningMark    string              `json:"listeningMark"`
@@ -852,6 +853,10 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			SourceTags:       sourceTags,
 			Progress:         progress,
 		}
+		item.VoiceCredits, err = s.voiceCreditsForWork(ctx, displayWorkID)
+		if err != nil {
+			return nil, err
+		}
 		if err := s.applyManualOverridesToVoiceWork(ctx, &item); err != nil {
 			return nil, err
 		}
@@ -1217,21 +1222,24 @@ func (s *Server) syncVoiceCreditsForWorkFromSnapshots(ctx context.Context, workI
 
 func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCreditSnapshotRow) error {
 	metadata := parseDLsiteSnapshot(snapshot.Raw)
-	actors := metadata.VoiceActors
-	if len(actors) == 0 {
-		actors = parseKikoeruVoiceActors(snapshot.Raw)
+	actors := make([]voiceActorIdentity, 0, len(metadata.VoiceActors))
+	for _, name := range metadata.VoiceActors {
+		actors = append(actors, voiceActorIdentity{Name: name})
 	}
 	if len(actors) == 0 {
-		actors = []string{unknownVoiceActorName}
+		actors = parseKikoeruVoiceActorIdentities(snapshot.Raw)
+	}
+	if len(actors) == 0 {
+		actors = []voiceActorIdentity{{Name: unknownVoiceActorName}}
 	}
 	seenActor := map[string]bool{}
 	for _, actor := range actors {
-		name := strings.TrimSpace(actor)
+		name := strings.TrimSpace(actor.Name)
 		if name == "" || seenActor[voiceNameKey(name)] {
 			continue
 		}
 		seenActor[voiceNameKey(name)] = true
-		personID, err := upsertPerson(ctx, tx, name)
+		personID, err := upsertPersonIdentity(ctx, tx, name, snapshot.ProviderID, actor.ExternalID)
 		if err != nil {
 			return err
 		}
@@ -1251,6 +1259,58 @@ func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCred
 		}
 	}
 	return nil
+}
+
+type voiceActorIdentity struct {
+	Name       string
+	ExternalID string
+}
+
+func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, name string, providerID sql.NullInt64, externalID string) (int64, error) {
+	externalID = strings.TrimSpace(externalID)
+	if providerID.Valid && externalID != "" {
+		var personID int64
+		err := tx.QueryRowContext(ctx, `
+			SELECT person_id FROM person_external_id
+			WHERE provider_id = ? AND id_type = 'voice_actor_id' AND external_id = ?
+		`, providerID.Int64, externalID).Scan(&personID)
+		if err == nil {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE person
+				SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE id = ? AND NOT EXISTS (
+					SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
+				)
+			`, name, strings.ToLower(name), personID, personID, name); err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO person_alias (person_id, alias, source)
+				VALUES (?, ?, 'external_identity')
+				ON CONFLICT(person_id, alias) DO NOTHING
+			`, personID, name); err != nil {
+				return 0, err
+			}
+			return personID, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+	}
+	personID, err := upsertPerson(ctx, tx, name)
+	if err != nil {
+		return 0, err
+	}
+	if providerID.Valid && externalID != "" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO person_external_id (person_id, provider_id, id_type, external_id, is_primary)
+			VALUES (?, ?, 'voice_actor_id', ?, 1)
+			ON CONFLICT(provider_id, id_type, external_id) DO UPDATE SET person_id = excluded.person_id
+		`, personID, providerID.Int64, externalID); err != nil {
+			return 0, err
+		}
+	}
+	return personID, nil
 }
 
 func isUnknownVoiceActorName(value string) bool {
@@ -2036,28 +2096,38 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 }
 
 func parseKikoeruVoiceActors(raw string) []string {
+	identities := parseKikoeruVoiceActorIdentities(raw)
+	names := make([]string, 0, len(identities))
+	for _, identity := range identities {
+		names = append(names, identity.Name)
+	}
+	return names
+}
+
+func parseKikoeruVoiceActorIdentities(raw string) []voiceActorIdentity {
 	if strings.TrimSpace(raw) == "" {
-		return []string{}
+		return []voiceActorIdentity{}
 	}
 	var payload struct {
 		VAs []struct {
+			ID   string `json:"id"`
 			Name string `json:"name"`
 		} `json:"vas"`
 	}
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return []string{}
+		return []voiceActorIdentity{}
 	}
 	seen := map[string]bool{}
-	names := []string{}
+	actors := []voiceActorIdentity{}
 	for _, va := range payload.VAs {
 		name := strings.TrimSpace(va.Name)
 		if name == "" || seen[name] {
 			continue
 		}
 		seen[name] = true
-		names = append(names, name)
+		actors = append(actors, voiceActorIdentity{Name: name, ExternalID: strings.TrimSpace(va.ID)})
 	}
-	return names
+	return actors
 }
 
 func splitAliases(raw string) []string {

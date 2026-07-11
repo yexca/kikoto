@@ -1185,6 +1185,7 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
     circle: work.circle || sourceName || "Unknown circle",
     circleExternalId: "circleExternalId" in work ? work.circleExternalId : undefined,
     voiceActors: work.voiceActors,
+    voiceCredits: "voiceCredits" in work ? work.voiceCredits : undefined,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: "series" in work ? work.series || null : null,

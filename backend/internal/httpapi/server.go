@@ -71,6 +71,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/metadata-suggestions/voices", s.suggestVoices)
 	mux.HandleFunc("GET /api/metadata-suggestions/series", s.suggestSeries)
 	mux.HandleFunc("GET /api/works/{code}/resolve", s.resolveWorkCode)
+	mux.HandleFunc("POST /api/works/{code}/entity-links/resolve", s.resolveWorkEntityLink)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
@@ -420,6 +421,7 @@ type libraryWorkSummary struct {
 	Sales                  *int64               `json:"sales"`
 	Tags                   []string             `json:"tags"`
 	VoiceActors            []string             `json:"voiceActors"`
+	VoiceCredits           []voiceCredit        `json:"voiceCredits"`
 	Series                 string               `json:"series"`
 	SeriesTitleID          string               `json:"seriesTitleId"`
 	TrackCount             int64                `json:"trackCount"`
@@ -429,9 +431,6 @@ type libraryWorkSummary struct {
 	Progress               workProgressSummary  `json:"progress"`
 	ListeningStatus        string               `json:"listeningStatus"`
 	Favorite               bool                 `json:"favorite"`
-	MediaEditionCode       string               `json:"mediaEditionCode"`
-	MediaEditionKind       string               `json:"mediaEditionKind"`
-	OfficialTranslation    bool                 `json:"officialTranslation"`
 	mediaWorkID            int64
 	availableLocationTypes string
 	fallbackEditionCodes   []string

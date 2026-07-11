@@ -415,9 +415,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       }
       if (refreshStarted && !metadataSyncToastShown && circleCatalogNeedsMetadataRefresh(next)) {
         metadataSyncToastShown = true;
-        toast.info("Catalog fetched. Metadata is still syncing; refresh the page to show completed details.");
+        toast.info("Catalog fetched. Work metadata is still syncing and will appear here automatically.");
       }
-      if ((autoRefresh.status === "queued" || autoRefresh.status === "running" || refreshStarted) && attempt < 30 && !metadataSyncToastShown) {
+      const metadataPending = refreshStarted && circleCatalogNeedsMetadataRefresh(next);
+      if ((autoRefresh.status === "queued" || autoRefresh.status === "running" || metadataPending) && attempt < 60) {
         timeoutID = window.setTimeout(() => void pollAutoRefresh(attempt + 1), 2000);
       }
     };
@@ -913,7 +914,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                             } : current);
                           }}
                           onEnsureWork={() => ensureCatalogWorkForList(work)}
-                          onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
+                          onSeriesOpen={(work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) ? () => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) : undefined}
                         />
                       </div>
                     )) : (
@@ -983,7 +984,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   } : current);
                 }}
                 onEnsureWork={() => ensureCatalogWorkForList(work)}
-                onSeriesOpen={() => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode))}
+                onSeriesOpen={(work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) ? () => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) : undefined}
               />
               </div>
             )) : (
@@ -1060,7 +1061,7 @@ function CatalogWorkCard({
   onStatusChange: (status: ListeningStatus) => void;
   onFavoriteSaved: (favorite: boolean) => void;
   onEnsureWork: () => Promise<number | null>;
-  onSeriesOpen: () => void;
+  onSeriesOpen?: () => void;
 }) {
   const directoryTarget = preferredDirectoryTarget(work);
   const isUnavailable = !work.local && !work.remote;
@@ -1168,6 +1169,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
     voiceActors: work.voiceActors,
+    voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,

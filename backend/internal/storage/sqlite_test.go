@@ -204,7 +204,7 @@ func TestMigrateUpgradesV010DatabaseWithSingleV011Migration(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 3 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" {
+	if len(migrations) != 4 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var lyricsPreferenceTable int

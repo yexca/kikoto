@@ -1895,26 +1895,13 @@ function UntrackConfirmModal({
 }
 
 function libraryWorkCardView(work: Work): WorkCardViewModel {
-	const sourceBadges = sourcePresenceBadges(work.sourcePresence, work.availability);
-	if (work.officialTranslation) {
-		sourceBadges.unshift({
-			key: `official-translation:${work.mediaEditionCode}`,
-			label: work.mediaEditionCode ? `Official translation · ${work.mediaEditionCode}` : "Official translation",
-			variant: "secondary",
-		});
-	} else if (work.mediaEditionCode && work.mediaEditionKind && work.mediaEditionKind !== "origin") {
-		sourceBadges.unshift({
-			key: `${work.mediaEditionKind}:${work.mediaEditionCode}`,
-			label: `${translationKindLabel(work.mediaEditionKind)} · ${work.mediaEditionCode}`,
-			variant: "secondary",
-		});
-	}
   return {
     code: work.primaryCode,
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
     voiceActors: work.voiceActors,
+    voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
     series: work.series || null,
@@ -1922,7 +1909,7 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
     progress: work.progress,
     userTags: [],
-		sourceBadges,
+		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
   };
 }
 
@@ -3535,11 +3522,26 @@ function DetailHero({
   loading?: boolean;
   actions?: ReactNode;
 }) {
+  const toast = useToast();
+  const [resolvingEntity, setResolvingEntity] = useState<"circle" | "series" | "voice" | null>(null);
   const codeLabel = code || fallbackCode || "Remote";
   const displayVoiceCredits = voiceCredits.length > 0
     ? voiceCredits
     : voiceActors.map((name) => ({ personId: 0, displayName: name }));
   const baseTranslation = translations?.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
+  const resolveEntity = async (kind: "circle" | "series" | "voice", name: string) => {
+    if (resolvingEntity || !code) return;
+    setResolvingEntity(kind);
+    toast.info(kind === "series" ? "Loading series information…" : `Loading ${kind} information…`);
+    try {
+      const result = await api.resolveWorkEntityLink(code, kind, name);
+      if (result.route) openResolvedEntityRoute(result.route);
+    } catch (error) {
+      toast.notify(toastFromError(error, `Could not open this ${kind}.`));
+    } finally {
+      setResolvingEntity(null);
+    }
+  };
 
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(420px,560px)_minmax(0,1fr)]">
@@ -3561,8 +3563,8 @@ function DetailHero({
             {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {circleExternalId ? (
-              <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => openCircleRoute(circleExternalId)}>
+            {circle ? (
+              <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => circleExternalId ? openCircleRoute(circleExternalId) : void resolveEntity("circle", circle)}>
                 <CircleUserRound className="h-4 w-4 shrink-0" />
                 <span className="truncate">{circle || "Unknown circle"}</span>
               </button>
@@ -3575,11 +3577,7 @@ function DetailHero({
             {series && (
               <span className="inline-flex max-w-full items-center gap-1 truncate">
                 <span className="text-border">/</span>
-                {seriesTitleId && seriesCircleExternalId ? (
-                  <button className="truncate hover:text-primary" onClick={() => openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId)}>{series}</button>
-                ) : (
-                  <span className="truncate">{series}</span>
-                )}
+                <button className="truncate hover:text-primary" onClick={() => seriesTitleId && seriesCircleExternalId ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId) : void resolveEntity("series", series)}>{series}</button>
               </span>
             )}
           </div>
@@ -3614,7 +3612,7 @@ function DetailHero({
             items={displayVoiceCredits.map((credit) => ({
               key: `${credit.personId}:${credit.displayName}`,
               label: credit.displayName,
-              onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : undefined,
+              onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : () => void resolveEntity("voice", credit.displayName),
             }))}
           />
           <DetailChipRow
@@ -5391,6 +5389,13 @@ function RemoteSaveSelectionPanel({
       </div>
     </div>
   );
+}
+
+function openResolvedEntityRoute(route: string) {
+  if (!route.startsWith("/")) return;
+  const returnTo = `${window.location.pathname}${window.location.search}`;
+  window.history.pushState({ returnTo, returnLabel: "Back" }, "", route);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 type RemoteFetchResultNode = {

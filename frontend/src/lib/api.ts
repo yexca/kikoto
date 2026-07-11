@@ -13,6 +13,7 @@ export type Work = {
   sales: number | null;
   tags: string[];
   voiceActors: string[];
+  voiceCredits: VoiceCredit[];
   series: string;
   seriesTitleId: string;
   trackCount: number;
@@ -22,9 +23,6 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
-	mediaEditionCode: string;
-	mediaEditionKind: "origin" | "official" | "community" | "third_party" | "unknown" | "";
-	officialTranslation: boolean;
 };
 
 export type SourcePresenceItem = {
@@ -210,11 +208,19 @@ export type WorkResolveResponse = {
   sales: number | null;
   tags: string[];
   voiceActors: string[];
+  voiceCredits: VoiceCredit[];
 };
 
 export type VoiceCredit = {
   personId: number;
   displayName: string;
+};
+
+export type WorkEntityLink = {
+  kind: "circle" | "series" | "voice";
+  route: string;
+  resolved: boolean;
+  fetched: boolean;
 };
 
 export type ListeningStatus = "none" | "want_to_listen" | "listening" | "finished" | "relisten" | "paused";
@@ -340,10 +346,12 @@ export type RemoteWork = {
   updatedAt: string;
   coverUrl: string;
   circle: string;
+  circleRef?: RemoteEntityRef;
   rating: number | null;
   sales: number | null;
   tags: string[];
   voiceActors: string[];
+  voiceRefs: RemoteEntityRef[];
   importStatus: string;
   remotePlayable: boolean;
   workId: number | null;
@@ -379,6 +387,7 @@ export type RemoteWorkDetail = {
   coverUrl: string;
   sourceUrl: string;
   circle: string;
+  circleRef?: RemoteEntityRef;
   rating: number | null;
   sales: number | null;
   ageRating: string;
@@ -803,6 +812,8 @@ export type CircleCatalogWork = {
   circleExternalId: string;
   tags: string[];
   voiceActors: string[];
+  voiceRefs: RemoteEntityRef[];
+  voiceCredits: VoiceCredit[];
   rating: number | null;
   sales: number | null;
   series: string;
@@ -815,6 +826,12 @@ export type CircleCatalogWork = {
   remote: boolean;
   sourceTags: CircleSourceStat[];
   progress?: WorkProgressSummary;
+};
+
+export type RemoteEntityRef = {
+  sourceId: number;
+  externalId: string;
+  name: string;
 };
 
 export type CircleSeries = {
@@ -899,6 +916,7 @@ export type VoiceKnownWork = {
   sales: number | null;
   tags: string[];
   voiceActors: string[];
+  voiceCredits: VoiceCredit[];
   series: string;
   seriesTitleId: string;
   listeningMark: ListeningStatus;
@@ -1161,6 +1179,8 @@ export const api = {
       `/api/metadata-suggestions/series?q=${encodeURIComponent(query)}&limit=${limit}${circleId.trim() ? `&circleId=${encodeURIComponent(circleId.trim())}` : ""}`,
     ),
   resolveWorkCode: (code: string, signal?: AbortSignal) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
+  resolveWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>
+    postJSONBody<WorkEntityLink>(`/api/works/${encodeURIComponent(code)}/entity-links/resolve`, { kind, name }),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
   createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
   updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>

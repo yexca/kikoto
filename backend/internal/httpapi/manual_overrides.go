@@ -331,6 +331,7 @@ func applyManualOverridesToLibrarySummary(work *libraryWorkSummary, overrides wo
 	}
 	if len(overrides.VoiceActors) > 0 {
 		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
+		work.VoiceCredits = manualPeopleCredits(overrides.VoiceActors)
 	}
 }
 
@@ -395,6 +396,7 @@ func (s *Server) applyManualOverridesToCircleWork(ctx context.Context, work *cir
 	}
 	if len(overrides.VoiceActors) > 0 {
 		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
+		work.VoiceCredits = manualPeopleCredits(overrides.VoiceActors)
 	}
 	return nil
 }
@@ -423,6 +425,7 @@ func (s *Server) applyManualOverridesToVoiceWork(ctx context.Context, work *voic
 	}
 	if len(overrides.VoiceActors) > 0 {
 		work.VoiceActors = manualPeopleNames(overrides.VoiceActors)
+		work.VoiceCredits = manualPeopleCredits(overrides.VoiceActors)
 	}
 	return nil
 }
