@@ -17,6 +17,7 @@ import {
   RotateCcw,
   ScanLine,
   Search,
+  Server,
   Settings,
   Sun,
   UserRound,
@@ -26,10 +27,18 @@ import {
 } from "lucide-react";
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
-import { applyThemeMode, getStoredThemeMode, resolvedThemeMode, storeThemeMode, type ThemeMode, watchSystemTheme } from "@/app/theme";
+import {
+  applyThemeMode,
+  getStoredThemeMode,
+  resolvedThemeMode,
+  storeThemeMode,
+  type ThemeMode,
+  watchSystemTheme,
+} from "@/app/theme";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type CurrentUser, type WorkflowRun } from "@/lib/api";
+import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { cn } from "@/lib/utils";
 
 type HeaderActionsProps = {
@@ -44,13 +53,23 @@ type HeaderActionsProps = {
 
 type SystemAction = "local_scan" | "dlsite_sync" | "recover_stale";
 
-export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOpenPage, onOpenPath, onOpenCommandPalette }: HeaderActionsProps) {
+export function HeaderActions({
+  user,
+  hasPermission,
+  onLogout,
+  onOpenLogin,
+  onOpenPage,
+  onOpenPath,
+  onOpenCommandPalette,
+}: HeaderActionsProps) {
   const canRunWorkflows = hasPermission("workflows:run");
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [reviewOpen, setReviewOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("");
   const [themeOpen, setThemeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [reviewRuns, setReviewRuns] = useState<WorkflowRun[]>([]);
@@ -100,11 +119,73 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
     }
   };
 
+  const checkConnection = async () => {
+    setConnectionStatus("Checking...");
+    try {
+      const health = await api.health();
+      setConnectionStatus(`Connected · ${health.version}`);
+    } catch (error) {
+      setConnectionStatus(error instanceof Error ? error.message : "Connection check failed.");
+    }
+  };
+
   return (
     <div className="flex items-center gap-2">
-      <Button variant="outline" size="icon" aria-label="Open command palette" title="Command palette" onClick={onOpenCommandPalette}>
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label="Open command palette"
+        title="Command palette"
+        onClick={onOpenCommandPalette}
+      >
         <Search className="h-4 w-4" />
       </Button>
+
+      {isNativeApp() && (
+        <HeaderPopover
+          open={connectionOpen}
+          onOpenChange={(open) => {
+            setConnectionOpen(open);
+            if (open) setConnectionStatus("");
+          }}
+          trigger={
+            <Button variant="outline" size="icon" aria-label="Server connection" title="Server connection">
+              <Server className="h-4 w-4" />
+            </Button>
+          }
+          align="right"
+        >
+          <div className="w-80">
+            <PopoverHeader title="Connection" subtitle="Android client server" />
+            <div className="space-y-3 border-b p-3 text-sm">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Server</div>
+                <div className="mt-1 break-all font-medium">{getStoredServerURL() || "Not configured"}</div>
+              </div>
+              {connectionStatus && (
+                <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                  {connectionStatus}
+                </div>
+              )}
+            </div>
+            <MenuList>
+              <ActionItem
+                icon={<Server className="h-4 w-4" />}
+                label="Test connection"
+                onClick={() => void checkConnection()}
+              />
+              <ActionItem
+                icon={<RotateCcw className="h-4 w-4" />}
+                label="Change server"
+                onClick={() => {
+                  clearStoredServerURL();
+                  window.location.reload();
+                }}
+              />
+            </MenuList>
+          </div>
+        </HeaderPopover>
+      )}
 
       {canRunWorkflows && (
         <HeaderPopover
@@ -116,16 +197,25 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
           trigger={
             <Button variant="outline" size="icon" aria-label="Review runs" title="Review runs" className="relative">
               <Bell className="h-4 w-4" />
-              {reviewCount > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">{reviewCount > 99 ? "99+" : reviewCount}</span>}
+              {reviewCount > 0 && (
+                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">
+                  {reviewCount > 99 ? "99+" : reviewCount}
+                </span>
+              )}
             </Button>
           }
           align="right"
         >
           <div className="w-80">
-            <PopoverHeader title="Review runs" subtitle={reviewCount > 0 ? `${reviewCount} runs need attention` : "No runs need review"} />
+            <PopoverHeader
+              title="Review runs"
+              subtitle={reviewCount > 0 ? `${reviewCount} runs need attention` : "No runs need review"}
+            />
             <div className="max-h-80 overflow-auto p-2">
               {reviewRuns.length === 0 ? (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No review items right now.</div>
+                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  No review items right now.
+                </div>
               ) : (
                 reviewRuns.map((run) => (
                   <button
@@ -139,7 +229,9 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
                     <Workflow className="mt-0.5 h-4 w-4 text-primary" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{run.displayName}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{run.workflowCode} · {run.status}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {run.workflowCode} · {run.status}
+                      </span>
                     </span>
                     <Badge variant="warning">{workflowReviewCount(run)}</Badge>
                   </button>
@@ -147,7 +239,14 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
               )}
             </div>
             <PopoverFooter>
-              <Button variant="outline" size="sm" onClick={() => { setReviewOpen(false); onOpenPath("/activity?view=review"); }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setReviewOpen(false);
+                  onOpenPath("/activity?view=review");
+                }}
+              >
                 <Activity className="h-4 w-4" />
                 Open Activity
               </Button>
@@ -170,11 +269,48 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
           <div className="w-72">
             <PopoverHeader title="Quick actions" subtitle="Run common maintenance tasks" />
             <MenuList>
-              {canRunWorkflows && <ActionItem icon={<ScanLine className="h-4 w-4" />} label="Run local scan" busy={runningAction === "local_scan"} onClick={() => void runSystemAction("local_scan")} />}
-              {canSyncMetadata && <ActionItem icon={<Database className="h-4 w-4" />} label="Run DLsite sync" busy={runningAction === "dlsite_sync"} onClick={() => void runSystemAction("dlsite_sync")} />}
-              {canRunWorkflows && <ActionItem icon={<RotateCcw className="h-4 w-4" />} label="Recover stale runs" busy={runningAction === "recover_stale"} onClick={() => void runSystemAction("recover_stale")} />}
-              <ActionItem icon={<Settings className="h-4 w-4" />} label="Open Settings" onClick={() => { setActionsOpen(false); onOpenPage("settings"); }} />
-              {canRunWorkflows && <ActionItem icon={<Workflow className="h-4 w-4" />} label="Open Workflows" onClick={() => { setActionsOpen(false); onOpenPage("workflows"); }} />}
+              {canRunWorkflows && (
+                <ActionItem
+                  icon={<ScanLine className="h-4 w-4" />}
+                  label="Run local scan"
+                  busy={runningAction === "local_scan"}
+                  onClick={() => void runSystemAction("local_scan")}
+                />
+              )}
+              {canSyncMetadata && (
+                <ActionItem
+                  icon={<Database className="h-4 w-4" />}
+                  label="Run DLsite sync"
+                  busy={runningAction === "dlsite_sync"}
+                  onClick={() => void runSystemAction("dlsite_sync")}
+                />
+              )}
+              {canRunWorkflows && (
+                <ActionItem
+                  icon={<RotateCcw className="h-4 w-4" />}
+                  label="Recover stale runs"
+                  busy={runningAction === "recover_stale"}
+                  onClick={() => void runSystemAction("recover_stale")}
+                />
+              )}
+              <ActionItem
+                icon={<Settings className="h-4 w-4" />}
+                label="Open Settings"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onOpenPage("settings");
+                }}
+              />
+              {canRunWorkflows && (
+                <ActionItem
+                  icon={<Workflow className="h-4 w-4" />}
+                  label="Open Workflows"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onOpenPage("workflows");
+                  }}
+                />
+              )}
             </MenuList>
           </div>
         </HeaderPopover>
@@ -196,7 +332,12 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
             <MenuList>
               <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={setThemeMode} />
               <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={setThemeMode} />
-              <ThemeItem mode="system" current={themeMode} icon={<Command className="h-4 w-4" />} onSelect={setThemeMode} />
+              <ThemeItem
+                mode="system"
+                current={themeMode}
+                icon={<Command className="h-4 w-4" />}
+                onSelect={setThemeMode}
+              />
             </MenuList>
           </div>
         </HeaderPopover>
@@ -208,10 +349,17 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
           onOpenChange={setUserOpen}
           trigger={
             <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{userInitial(user)}</span>
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                {userInitial(user)}
+              </span>
               <span className="hidden min-w-0 text-left sm:block">
-                <span className="block max-w-32 truncate text-xs font-medium leading-4">{user.displayName || user.username}</span>
-                <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">{user.role}{user.devMode ? " · dev" : ""}</span>
+                <span className="block max-w-32 truncate text-xs font-medium leading-4">
+                  {user.displayName || user.username}
+                </span>
+                <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
+                  {user.role}
+                  {user.devMode ? " · dev" : ""}
+                </span>
               </span>
               <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
             </Button>
@@ -221,7 +369,9 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
           <div className="w-72">
             <div className="border-b p-3">
               <div className="flex items-center gap-3">
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{userInitial(user)}</span>
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                  {userInitial(user)}
+                </span>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
                   <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
@@ -233,12 +383,37 @@ export function HeaderActions({ user, hasPermission, onLogout, onOpenLogin, onOp
               </div>
             </div>
             <MenuList>
-              <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setUserOpen(false); onOpenPage("settings"); }} />
-              {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setUserOpen(false); onOpenPage("users"); }} />}
+              <ActionItem
+                icon={<Settings className="h-4 w-4" />}
+                label="Settings"
+                onClick={() => {
+                  setUserOpen(false);
+                  onOpenPage("settings");
+                }}
+              />
+              {canManageUsers && (
+                <ActionItem
+                  icon={<Users className="h-4 w-4" />}
+                  label="Users"
+                  onClick={() => {
+                    setUserOpen(false);
+                    onOpenPage("users");
+                  }}
+                />
+              )}
               {user.devMode ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">Dev mode session does not require sign out.</div>
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  Dev mode session does not require sign out.
+                </div>
               ) : (
-                <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setUserOpen(false); onLogout(); }} />
+                <ActionItem
+                  icon={<LogOut className="h-4 w-4" />}
+                  label="Sign out"
+                  onClick={() => {
+                    setUserOpen(false);
+                    onLogout();
+                  }}
+                />
               )}
             </MenuList>
           </div>
@@ -288,7 +463,12 @@ function HeaderPopover({
     <div className="relative" ref={ref}>
       {cloneElement(trigger, { onClick: () => onOpenChange(!open) })}
       {open && (
-        <div className={cn("absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl", align === "right" ? "right-0" : "left-0")}>
+        <div
+          className={cn(
+            "absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
+            align === "right" ? "right-0" : "left-0",
+          )}
+        >
           {children}
         </div>
       )}
@@ -313,18 +493,45 @@ function MenuList({ children }: { children: ReactNode }) {
   return <div className="p-2">{children}</div>;
 }
 
-function ActionItem({ icon, label, busy, onClick }: { icon: ReactNode; label: string; busy?: boolean; onClick: () => void }) {
+function ActionItem({
+  icon,
+  label,
+  busy,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  busy?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <button className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted disabled:opacity-60" disabled={busy} onClick={onClick}>
+    <button
+      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted disabled:opacity-60"
+      disabled={busy}
+      onClick={onClick}
+    >
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
     </button>
   );
 }
 
-function ThemeItem({ mode, current, icon, onSelect }: { mode: ThemeMode; current: ThemeMode; icon: ReactNode; onSelect: (mode: ThemeMode) => void }) {
+function ThemeItem({
+  mode,
+  current,
+  icon,
+  onSelect,
+}: {
+  mode: ThemeMode;
+  current: ThemeMode;
+  icon: ReactNode;
+  onSelect: (mode: ThemeMode) => void;
+}) {
   return (
-    <button className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted" onClick={() => onSelect(mode)}>
+    <button
+      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+      onClick={() => onSelect(mode)}
+    >
       {icon}
       <span className="min-w-0 flex-1 capitalize">{mode}</span>
       {mode === current && <CheckCircle2 className="h-4 w-4 text-primary" />}
@@ -333,7 +540,12 @@ function ThemeItem({ mode, current, icon, onSelect }: { mode: ThemeMode; current
 }
 
 function workflowReviewCount(run: WorkflowRun) {
-  return run.pendingCandidates + run.skippedNodeRuns + run.skippedJobs + (run.status === "partial" || run.status === "skipped" ? 1 : 0);
+  return (
+    run.pendingCandidates +
+    run.skippedNodeRuns +
+    run.skippedJobs +
+    (run.status === "partial" || run.status === "skipped" ? 1 : 0)
+  );
 }
 
 function userInitial(user: CurrentUser) {
@@ -361,19 +573,57 @@ export function commandActions({
     })),
     ...(hasPermission("workflows:run")
       ? [
-          { id: "activity:running", label: "Running runs", description: "Open current workflow activity", icon: <Activity className="h-4 w-4" />, run: () => onOpenPath("/activity") },
-          { id: "activity:review", label: "Review runs", description: "Open workflow runs needing review", icon: <ListChecks className="h-4 w-4" />, run: () => onOpenPath("/activity?view=review") },
-          { id: "activity:failed", label: "Failed runs", description: "Open failed workflow runs", icon: <Clock3 className="h-4 w-4" />, run: () => onOpenPath("/activity?view=failed") },
+          {
+            id: "activity:running",
+            label: "Running runs",
+            description: "Open current workflow activity",
+            icon: <Activity className="h-4 w-4" />,
+            run: () => onOpenPath("/activity"),
+          },
+          {
+            id: "activity:review",
+            label: "Review runs",
+            description: "Open workflow runs needing review",
+            icon: <ListChecks className="h-4 w-4" />,
+            run: () => onOpenPath("/activity?view=review"),
+          },
+          {
+            id: "activity:failed",
+            label: "Failed runs",
+            description: "Open failed workflow runs",
+            icon: <Clock3 className="h-4 w-4" />,
+            run: () => onOpenPath("/activity?view=failed"),
+          },
         ]
       : []),
     ...(hasPermission("workflows:run")
       ? [
-          { id: "action:local_scan", label: "Run local scan", description: "Queue a local library scan", icon: <ScanLine className="h-4 w-4" />, run: () => void api.runLocalScan().then(() => onOpenPath("/activity")) },
-          { id: "action:recover_stale", label: "Recover stale workflow runs", description: "Mark stale claimed jobs recoverable", icon: <RotateCcw className="h-4 w-4" />, run: () => void api.recoverStaleWorkflowRuns().then(() => onOpenPath("/activity")) },
+          {
+            id: "action:local_scan",
+            label: "Run local scan",
+            description: "Queue a local library scan",
+            icon: <ScanLine className="h-4 w-4" />,
+            run: () => void api.runLocalScan().then(() => onOpenPath("/activity")),
+          },
+          {
+            id: "action:recover_stale",
+            label: "Recover stale workflow runs",
+            description: "Mark stale claimed jobs recoverable",
+            icon: <RotateCcw className="h-4 w-4" />,
+            run: () => void api.recoverStaleWorkflowRuns().then(() => onOpenPath("/activity")),
+          },
         ]
       : []),
     ...(hasPermission("metadata:sync")
-      ? [{ id: "action:dlsite_sync", label: "Run DLsite sync", description: "Queue metadata synchronization", icon: <Play className="h-4 w-4" />, run: () => void api.runDLsiteSync().then(() => onOpenPath("/activity")) }]
+      ? [
+          {
+            id: "action:dlsite_sync",
+            label: "Run DLsite sync",
+            description: "Queue metadata synchronization",
+            icon: <Play className="h-4 w-4" />,
+            run: () => void api.runDLsiteSync().then(() => onOpenPath("/activity")),
+          },
+        ]
       : []),
   ];
 }

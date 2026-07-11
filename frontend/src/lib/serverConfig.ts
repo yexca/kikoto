@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
 
 const SERVER_URL_STORAGE_KEY = "kikoto:mobile-server-url";
 const SESSION_TOKEN_STORAGE_KEY = "kikoto:mobile-session-token";
@@ -28,11 +29,14 @@ export function getStoredServerURL() {
 }
 
 export function setStoredServerURL(value: string) {
-  localStorage.setItem(SERVER_URL_STORAGE_KEY, normalizeServerURL(value));
+  const normalized = normalizeServerURL(value);
+  localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
+  if (isNativeApp()) void Preferences.set({ key: SERVER_URL_STORAGE_KEY, value: normalized });
 }
 
 export function clearStoredServerURL() {
   localStorage.removeItem(SERVER_URL_STORAGE_KEY);
+  if (isNativeApp()) void Preferences.remove({ key: SERVER_URL_STORAGE_KEY });
   clearStoredSessionToken();
 }
 
@@ -42,10 +46,23 @@ export function getStoredSessionToken() {
 
 export function setStoredSessionToken(value: string) {
   if (value.trim()) {
-    localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, value.trim());
+    const token = value.trim();
+    localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+    if (isNativeApp()) void Preferences.set({ key: SESSION_TOKEN_STORAGE_KEY, value: token });
   }
 }
 
 export function clearStoredSessionToken() {
   localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  if (isNativeApp()) void Preferences.remove({ key: SESSION_TOKEN_STORAGE_KEY });
+}
+
+export async function hydrateNativeConfig() {
+  if (!isNativeApp()) return;
+  const [server, token] = await Promise.all([
+    Preferences.get({ key: SERVER_URL_STORAGE_KEY }),
+    Preferences.get({ key: SESSION_TOKEN_STORAGE_KEY }),
+  ]);
+  if (server.value) localStorage.setItem(SERVER_URL_STORAGE_KEY, server.value);
+  if (token.value) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token.value);
 }

@@ -29,6 +29,14 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { api, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
+import {
+  abandonNativeAudioFocus,
+  addNativeMediaListeners,
+  requestNativeAudioFocus,
+  stopNativeMedia,
+  supportsNativeMedia,
+  updateNativeMedia,
+} from "@/lib/nativeMedia";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -121,7 +129,13 @@ const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(nul
 const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
 
-function loadPersistedQueue(): { queue: PlayerTrack[]; currentIndex: number; mode: PlayMode; playbackRate: number; sleepTimer: SleepTimerState } {
+function loadPersistedQueue(): {
+  queue: PlayerTrack[];
+  currentIndex: number;
+  mode: PlayMode;
+  playbackRate: number;
+  sleepTimer: SleepTimerState;
+} {
   try {
     const parsed = JSON.parse(localStorage.getItem(PLAYER_QUEUE_STORAGE_KEY) ?? "null") as {
       version?: number;
@@ -136,18 +150,22 @@ function loadPersistedQueue(): { queue: PlayerTrack[]; currentIndex: number; mod
       : [];
     const currentIndex = Math.max(0, Math.min(queue.length - 1, Number(parsed?.currentIndex) || 0));
     const mode = parsed?.mode === "loop" || parsed?.mode === "single" ? parsed.mode : "order";
-    const playbackRate = [0.75, 1, 1.25, 1.5, 2].includes(Number(parsed?.playbackRate)) ? Number(parsed?.playbackRate) : 1;
+    const playbackRate = [0.75, 1, 1.25, 1.5, 2].includes(Number(parsed?.playbackRate))
+      ? Number(parsed?.playbackRate)
+      : 1;
     const rawSleepTimer = parsed?.sleepTimer;
-    const sleepTimer: SleepTimerState = rawSleepTimer?.mode === "track_end"
-      ? { mode: "deadline", deadline: Date.now(), finishCurrentTrack: true, waitingForTrackEnd: true }
-      : rawSleepTimer?.mode === "deadline" && (rawSleepTimer.deadline > Date.now() || rawSleepTimer.waitingForTrackEnd)
-        ? {
-            mode: "deadline",
-            deadline: rawSleepTimer.deadline,
-            finishCurrentTrack: Boolean(rawSleepTimer.finishCurrentTrack),
-            waitingForTrackEnd: Boolean(rawSleepTimer.waitingForTrackEnd),
-          }
-        : null;
+    const sleepTimer: SleepTimerState =
+      rawSleepTimer?.mode === "track_end"
+        ? { mode: "deadline", deadline: Date.now(), finishCurrentTrack: true, waitingForTrackEnd: true }
+        : rawSleepTimer?.mode === "deadline" &&
+            (rawSleepTimer.deadline > Date.now() || rawSleepTimer.waitingForTrackEnd)
+          ? {
+              mode: "deadline",
+              deadline: rawSleepTimer.deadline,
+              finishCurrentTrack: Boolean(rawSleepTimer.finishCurrentTrack),
+              waitingForTrackEnd: Boolean(rawSleepTimer.waitingForTrackEnd),
+            }
+          : null;
     return { queue, currentIndex, mode, playbackRate, sleepTimer };
   } catch {
     return { queue: [], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null };
@@ -156,9 +174,10 @@ function loadPersistedQueue(): { queue: PlayerTrack[]; currentIndex: number; mod
 
 function withQueueIdentity(track: PlayerTrack): PlayerTrack {
   if (track.queueItemId) return track;
-  const randomID = typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const randomID =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return { ...track, queueItemId: randomID };
 }
 
@@ -179,15 +198,19 @@ function orderedTrackLocations(track: PlayerTrack | null) {
   if (!track) return [];
   const locations = track.locations?.length
     ? track.locations
-    : [{
-        locationId: track.locationId,
-        locationType: track.locationType,
-        streamUrl: track.streamUrl,
-        sourceId: track.remoteSourceId ?? 0,
-        sourceName: track.locationType,
-        availability: track.availability,
-      }];
-  return [...locations].sort((left, right) => locationPriority(left.locationType) - locationPriority(right.locationType));
+    : [
+        {
+          locationId: track.locationId,
+          locationType: track.locationType,
+          streamUrl: track.streamUrl,
+          sourceId: track.remoteSourceId ?? 0,
+          sourceName: track.locationType,
+          availability: track.availability,
+        },
+      ];
+  return [...locations].sort(
+    (left, right) => locationPriority(left.locationType) - locationPriority(right.locationType),
+  );
 }
 
 function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLocation): PlayerTrack {
@@ -218,18 +241,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const cacheRequestedRef = useRef<Set<string>>(new Set());
   const failedLocationIDsRef = useRef<Set<number>>(new Set());
+  const nativeControlRef = useRef({
+    play: () => {},
+    pause: () => {},
+    previous: () => {},
+    next: () => {},
+    seekBackward: () => {},
+    seekForward: () => {},
+    seekTo: (_seconds: number) => {},
+  });
   const currentTrack = queue[currentIndex] ?? null;
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const deadlineFade = sleepTimer && !sleepTimer.waitingForTrackEnd && sleepRemainingSeconds > 0 && sleepRemainingSeconds <= 10
-      ? Math.max(0, sleepRemainingSeconds / 10)
-      : 1;
+    const deadlineFade =
+      sleepTimer && !sleepTimer.waitingForTrackEnd && sleepRemainingSeconds > 0 && sleepRemainingSeconds <= 10
+        ? Math.max(0, sleepRemainingSeconds / 10)
+        : 1;
     const trackRemaining = Math.max(0, duration - currentTime);
-    const trackEndFade = sleepTimer?.waitingForTrackEnd && duration > 0 && trackRemaining <= 10
-      ? trackRemaining / 10
-      : 1;
+    const trackEndFade =
+      sleepTimer?.waitingForTrackEnd && duration > 0 && trackRemaining <= 10 ? trackRemaining / 10 : 1;
     audio.volume = Math.max(0, Math.min(1, Math.min(deadlineFade, trackEndFade)));
   }, [sleepTimer, sleepRemainingSeconds, currentTime, duration]);
 
@@ -242,16 +274,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const persistentQueue = queue.filter((track) => track.mediaItemId > 0 && track.progressRecordable);
     const currentQueueItemId = queue[currentIndex]?.queueItemId ?? "";
-    const persistedCurrentIndex = Math.max(0, persistentQueue.findIndex((track) => track.queueItemId === currentQueueItemId));
-    localStorage.setItem(PLAYER_QUEUE_STORAGE_KEY, JSON.stringify({
-      version: 1,
-      queue: persistentQueue,
-      currentIndex: persistedCurrentIndex,
-      mode,
-      playbackRate,
-      sleepTimer,
-      sleepRemainingSeconds,
-    }));
+    const persistedCurrentIndex = Math.max(
+      0,
+      persistentQueue.findIndex((track) => track.queueItemId === currentQueueItemId),
+    );
+    localStorage.setItem(
+      PLAYER_QUEUE_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        queue: persistentQueue,
+        currentIndex: persistedCurrentIndex,
+        mode,
+        playbackRate,
+        sleepTimer,
+        sleepRemainingSeconds,
+      }),
+    );
   }, [queue, currentIndex, mode, playbackRate, sleepTimer]);
 
   useEffect(() => {
@@ -275,18 +313,31 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const cacheKey = remoteCacheKey(currentTrack);
     if (cacheRequestedRef.current.has(cacheKey)) return;
     cacheRequestedRef.current.add(cacheKey);
-    api.getRuntimeSettings()
+    api
+      .getRuntimeSettings()
       .then((settings) => {
         if (settings.cacheEnabled) {
           if (currentTrack.locationId > 0) {
             void api.cacheMediaLocation(currentTrack.locationId).catch(() => {});
           } else if (currentTrack.remoteSourceId && currentTrack.remoteWorkCode && currentTrack.remotePath) {
-            void api.cacheRemoteSourceWorkMedia(currentTrack.remoteSourceId, currentTrack.remoteWorkCode, currentTrack.remotePath).catch(() => {});
+            void api
+              .cacheRemoteSourceWorkMedia(
+                currentTrack.remoteSourceId,
+                currentTrack.remoteWorkCode,
+                currentTrack.remotePath,
+              )
+              .catch(() => {});
           }
         }
       })
       .catch(() => {});
-  }, [currentTrack?.locationId, currentTrack?.locationType, currentTrack?.remoteSourceId, currentTrack?.remoteWorkCode, currentTrack?.remotePath]);
+  }, [
+    currentTrack?.locationId,
+    currentTrack?.locationType,
+    currentTrack?.remoteSourceId,
+    currentTrack?.remoteWorkCode,
+    currentTrack?.remotePath,
+  ]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -409,15 +460,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (remaining > 0) return;
       const audio = audioRef.current;
       if (
-        sleepTimer.finishCurrentTrack
-        && audio
-        && !audio.paused
-        && !audio.ended
-        && Number.isFinite(audio.duration)
-        && audio.duration > 0
-        && audio.currentTime < audio.duration - 0.25
+        sleepTimer.finishCurrentTrack &&
+        audio &&
+        !audio.paused &&
+        !audio.ended &&
+        Number.isFinite(audio.duration) &&
+        audio.duration > 0 &&
+        audio.currentTime < audio.duration - 0.25
       ) {
-        setSleepTimer((current) => current ? { ...current, waitingForTrackEnd: true } : null);
+        setSleepTimer((current) => (current ? { ...current, waitingForTrackEnd: true } : null));
         return;
       }
       saveProgress(false, true);
@@ -459,14 +510,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(false);
   };
 
-  const playNext = useCallback((track: PlayerTrack) => {
-    const nextTrack = withQueueIdentity(track);
-    setQueue((items) => {
-      const next = [...items];
-      next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
-      return next;
-    });
-  }, [currentIndex]);
+  const playNext = useCallback(
+    (track: PlayerTrack) => {
+      const nextTrack = withQueueIdentity(track);
+      setQueue((items) => {
+        const next = [...items];
+        next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
+        return next;
+      });
+    },
+    [currentIndex],
+  );
 
   const appendQueue = useCallback((tracks: PlayerTrack[]) => {
     if (tracks.length === 0) return;
@@ -513,31 +567,130 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const selectLocation = (locationId: number) => {
     failedLocationIDsRef.current.clear();
-    setQueue((items) => items.map((item, index) => {
-      if (index !== currentIndex) return item;
-      const location = item.locations?.find((candidate) => candidate.locationId === locationId);
-      return location ? applyTrackLocation(item, location) : item;
-    }));
+    setQueue((items) =>
+      items.map((item, index) => {
+        if (index !== currentIndex) return item;
+        const location = item.locations?.find((candidate) => candidate.locationId === locationId);
+        return location ? applyTrackLocation(item, location) : item;
+      }),
+    );
   };
 
   const tryNextLocation = () => {
     if (!currentTrack) return;
     failedLocationIDsRef.current.add(currentTrack.locationId);
     const locations = orderedTrackLocations(currentTrack);
-    const nextLocation = locations.find((location) =>
-      location.locationId !== currentTrack.locationId
-      && !failedLocationIDsRef.current.has(location.locationId)
-      && (location.availability === "available" || location.availability === "remote"),
+    const nextLocation = locations.find(
+      (location) =>
+        location.locationId !== currentTrack.locationId &&
+        !failedLocationIDsRef.current.has(location.locationId) &&
+        (location.availability === "available" || location.availability === "remote"),
     );
     if (!nextLocation) {
       setIsPlaying(false);
       toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
       return;
     }
-    setQueue((items) => items.map((item, index) => index === currentIndex ? applyTrackLocation(item, nextLocation) : item));
+    setQueue((items) =>
+      items.map((item, index) => (index === currentIndex ? applyTrackLocation(item, nextLocation) : item)),
+    );
     setIsPlaying(true);
     toast.warning(`Playback source failed. Switched to ${nextLocation.sourceName || nextLocation.locationType}.`);
   };
+
+  useEffect(() => {
+    nativeControlRef.current = {
+      play: () => setIsPlaying((value) => (currentTrack ? true : value)),
+      pause: () => setIsPlaying(false),
+      previous,
+      next,
+      seekBackward: () => seekBy(-5),
+      seekForward: () => seekBy(10),
+      seekTo,
+    };
+  });
+
+  useEffect(() => {
+    if (!supportsNativeMedia()) return;
+    let removeListeners: (() => void) | null = null;
+    let disposed = false;
+    addNativeMediaListeners({
+      onControl: (event) => {
+        const controls = nativeControlRef.current;
+        switch (event.command) {
+          case "play":
+            controls.play();
+            break;
+          case "pause":
+            controls.pause();
+            break;
+          case "previous":
+            controls.previous();
+            break;
+          case "next":
+            controls.next();
+            break;
+          case "seekBackward":
+            controls.seekBackward();
+            break;
+          case "seekForward":
+            controls.seekForward();
+            break;
+          case "seekTo":
+            controls.seekTo((event.positionMs ?? 0) / 1000);
+            break;
+        }
+      },
+      onAudioFocus: (event) => {
+        if (event.kind === "loss") nativeControlRef.current.pause();
+      },
+    }).then((remove) => {
+      if (disposed) {
+        remove();
+        return;
+      }
+      removeListeners = remove;
+    });
+    return () => {
+      disposed = true;
+      removeListeners?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supportsNativeMedia()) return;
+    if (!currentTrack) {
+      void stopNativeMedia();
+      return;
+    }
+    void updateNativeMedia({
+      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
+      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
+      album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
+      playing: isPlaying,
+      positionMs: Math.max(0, Math.floor(currentTime * 1000)),
+      durationMs: duration > 0 && Number.isFinite(duration) ? Math.floor(duration * 1000) : 0,
+      playbackRate,
+      canPrevious: currentIndex > 0 || mode === "loop",
+      canNext: currentIndex < queue.length - 1 || mode === "loop",
+    });
+  }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, playbackRate, mode]);
+
+  useEffect(() => {
+    if (!supportsNativeMedia()) return;
+    if (isPlaying && currentTrack) {
+      void requestNativeAudioFocus();
+    } else {
+      void abandonNativeAudioFocus();
+    }
+  }, [isPlaying, currentTrack]);
+
+  useEffect(
+    () => () => {
+      void stopNativeMedia();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -579,7 +732,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
-  }, [currentTrack?.locationId, currentTrack?.title, currentTrack?.workTitle, currentTrack?.circle, currentTrack?.coverUrl, currentIndex, queue.length]);
+  }, [
+    currentTrack?.locationId,
+    currentTrack?.title,
+    currentTrack?.workTitle,
+    currentTrack?.circle,
+    currentTrack?.coverUrl,
+    currentIndex,
+    queue.length,
+  ]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -616,29 +777,43 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       previous,
       seekBy,
       seekTo,
-      cyclePlaybackRate: () => setPlaybackRate((value) => {
-        const rates = [0.75, 1, 1.25, 1.5, 2];
-        const index = rates.indexOf(value);
-        return rates[(index + 1) % rates.length];
-      }),
+      cyclePlaybackRate: () =>
+        setPlaybackRate((value) => {
+          const rates = [0.75, 1, 1.25, 1.5, 2];
+          const index = rates.indexOf(value);
+          return rates[(index + 1) % rates.length];
+        }),
       playNext,
       appendQueue,
       moveQueueItem,
       removeQueueItem,
       clearQueue,
       selectLocation,
-      setSleepTimerMinutes: (minutes, finishCurrentTrack) => setSleepTimer({
-        mode: "deadline",
-        deadline: Date.now() + Math.max(1, minutes) * 60_000,
-        finishCurrentTrack,
-        waitingForTrackEnd: false,
-      }),
-      setSleepFinishCurrentTrack: (enabled) => setSleepTimer((current) => current ? { ...current, finishCurrentTrack: enabled } : null),
+      setSleepTimerMinutes: (minutes, finishCurrentTrack) =>
+        setSleepTimer({
+          mode: "deadline",
+          deadline: Date.now() + Math.max(1, minutes) * 60_000,
+          finishCurrentTrack,
+          waitingForTrackEnd: false,
+        }),
+      setSleepFinishCurrentTrack: (enabled) =>
+        setSleepTimer((current) => (current ? { ...current, finishCurrentTrack: enabled } : null)),
       clearSleepTimer: () => setSleepTimer(null),
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
       setMode,
     }),
-    [queue, currentIndex, currentTrack, isPlaying, currentTime, duration, playbackRate, sleepTimer, sleepRemainingSeconds, mode],
+    [
+      queue,
+      currentIndex,
+      currentTrack,
+      isPlaying,
+      currentTime,
+      duration,
+      playbackRate,
+      sleepTimer,
+      sleepRemainingSeconds,
+      mode,
+    ],
   );
   const libraryValue = useMemo<LibraryPlayerContextValue>(
     () => ({
@@ -661,7 +836,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setCurrentTime(event.currentTarget.currentTime);
             saveProgress(false);
           }}
-          onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+          onDurationChange={(event) =>
+            setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
+          }
           onPlay={() => setIsPlaying(true)}
           onPause={() => {
             saveProgress(false, true);
@@ -704,7 +881,9 @@ export function PlayerDock() {
   const isMobile = useIsMobilePlayer();
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
-  const [dockMode, setDockMode] = useState<DockMode>(() => (window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact"));
+  const [dockMode, setDockMode] = useState<DockMode>(() =>
+    window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact",
+  );
   const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
@@ -726,7 +905,10 @@ export function PlayerDock() {
   const suppressCollapseClickRef = useRef(false);
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
-  const activeLyricIndex = useMemo(() => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime), [parsedLyrics.lines, player.currentTime]);
+  const activeLyricIndex = useMemo(
+    () => activeTimedLyricIndex(parsedLyrics.lines, player.currentTime),
+    [parsedLyrics.lines, player.currentTime],
+  );
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
 
   useEffect(() => {
@@ -736,9 +918,13 @@ export function PlayerDock() {
       return;
     }
     const hasOverride = Object.prototype.hasOwnProperty.call(lyricsPreferenceOverrides, track.mediaItemId);
-    const preferredMediaItemId = hasOverride ? lyricsPreferenceOverrides[track.mediaItemId] : track.preferredLyricsMediaItemId;
+    const preferredMediaItemId = hasOverride
+      ? lyricsPreferenceOverrides[track.mediaItemId]
+      : track.preferredLyricsMediaItemId;
     const preferredChoice = track.lyricsChoices?.find((choice) => choice.mediaItemId === preferredMediaItemId);
-    setActiveLyricsLocationId(preferredChoice?.locationId ?? track.autoLyricsLocationId ?? track.lyricsLocationId ?? null);
+    setActiveLyricsLocationId(
+      preferredChoice?.locationId ?? track.autoLyricsLocationId ?? track.lyricsLocationId ?? null,
+    );
     setUsingAutomaticLyrics(!preferredMediaItemId);
   }, [lyricsPreferenceOverrides, track]);
 
@@ -751,7 +937,10 @@ export function PlayerDock() {
       try {
         await api.clearMediaLyricsPreference(track.mediaItemId);
       } catch (error) {
-        toast.notify({ kind: "warning", message: error instanceof Error ? error.message : "Lyrics preference could not be cleared." });
+        toast.notify({
+          kind: "warning",
+          message: error instanceof Error ? error.message : "Lyrics preference could not be cleared.",
+        });
       }
       return;
     }
@@ -763,7 +952,10 @@ export function PlayerDock() {
     try {
       await api.setMediaLyricsPreference(track.mediaItemId, choice.mediaItemId);
     } catch (error) {
-      toast.notify({ kind: "warning", message: error instanceof Error ? error.message : "Lyrics preference could not be saved." });
+      toast.notify({
+        kind: "warning",
+        message: error instanceof Error ? error.message : "Lyrics preference could not be saved.",
+      });
     }
   };
 
@@ -771,7 +963,8 @@ export function PlayerDock() {
     setLyricsText(null);
     setLyricsError("");
     if (!activeLyricsLocationId) return;
-    api.getMediaText(activeLyricsLocationId)
+    api
+      .getMediaText(activeLyricsLocationId)
       .then((result) => setLyricsText(result.content))
       .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
   }, [activeLyricsLocationId]);
@@ -813,9 +1006,12 @@ export function PlayerDock() {
     };
   }, [isMobile, miniActionsOpen]);
 
-  useEffect(() => () => {
-    if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (miniActionsTimerRef.current !== null) window.clearTimeout(miniActionsTimerRef.current);
+    },
+    [],
+  );
 
   const showDesktopMiniActions = () => {
     if (isMobile) return;
@@ -834,7 +1030,8 @@ export function PlayerDock() {
   };
 
   useEffect(() => {
-    const handleResize = () => setMiniPosition((current) => current ? clampMiniPosition(current) : restoreMiniPosition());
+    const handleResize = () =>
+      setMiniPosition((current) => (current ? clampMiniPosition(current) : restoreMiniPosition()));
     window.addEventListener("resize", handleResize);
     window.visualViewport?.addEventListener("resize", handleResize);
     return () => {
@@ -866,7 +1063,8 @@ export function PlayerDock() {
   const progress = player.duration > 0 ? Math.min(100, (player.currentTime / player.duration) * 100) : 0;
   const modeLabel = player.mode === "order" ? "Order" : player.mode === "loop" ? "Loop" : "Repeat one";
   const availableLocations = orderedTrackLocations(track);
-  const currentLocation = availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
+  const currentLocation =
+    availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
   const hasPanel = panel !== null;
   const openWorkDetail = () => {
     if (!track.workCode) return;
@@ -902,7 +1100,11 @@ export function PlayerDock() {
     return (
       <div
         className={`mini-player group fixed z-40 touch-none ${miniActionsOpen ? "actions-open" : ""}`}
-        style={miniPosition ? { left: miniPosition.x, top: miniPosition.y } : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }}
+        style={
+          miniPosition
+            ? { left: miniPosition.x, top: miniPosition.y }
+            : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }
+        }
         onPointerEnter={showDesktopMiniActions}
         onPointerLeave={hideDesktopMiniActionsLater}
         onFocusCapture={showDesktopMiniActions}
@@ -953,9 +1155,7 @@ export function PlayerDock() {
           miniDragRef.current = null;
         }}
       >
-        <div
-          className="relative h-[92px] w-[92px] animate-player-enter cursor-grab rounded-full border border-primary/20 bg-card shadow-xl shadow-primary/15 ring-4 ring-primary/10 transition-all duration-300 ease-out active:cursor-grabbing"
-        >
+        <div className="relative h-[92px] w-[92px] animate-player-enter cursor-grab rounded-full border border-primary/20 bg-card shadow-xl shadow-primary/15 ring-4 ring-primary/10 transition-all duration-300 ease-out active:cursor-grabbing">
           <MiniProgress progress={progress} />
           <div
             className="pointer-events-none absolute inset-[9px] z-10 overflow-hidden rounded-full bg-background shadow-inner"
@@ -1018,7 +1218,10 @@ export function PlayerDock() {
     return (
       <div className="fixed inset-x-3 bottom-[calc(76px+env(safe-area-inset-bottom))] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
         <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
-          <div className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300" style={{ width: `${progress}%` }} />
+          <div
+            className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300"
+            style={{ width: `${progress}%` }}
+          />
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
@@ -1027,10 +1230,21 @@ export function PlayerDock() {
                 <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
               </div>
             </button>
-            <Button className="h-9 w-9 rounded-full border-primary/15 bg-card/80" size="icon" variant="outline" onClick={() => setDockMode("mini")} aria-label="Mini player">
+            <Button
+              className="h-9 w-9 rounded-full border-primary/15 bg-card/80"
+              size="icon"
+              variant="outline"
+              onClick={() => setDockMode("mini")}
+              aria-label="Mini player"
+            >
               <CircleDot className="h-4 w-4" />
             </Button>
-            <Button className="h-11 w-11 rounded-full" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
+            <Button
+              className="h-11 w-11 rounded-full"
+              size="icon"
+              onClick={player.togglePlay}
+              aria-label={player.isPlaying ? "Pause" : "Play"}
+            >
               {player.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           </div>
@@ -1042,7 +1256,11 @@ export function PlayerDock() {
   return (
     <section
       className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-[transform,opacity] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:h-[620px] lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78"
-      style={isMobile && fullDragOffset > 0 ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) } : undefined}
+      style={
+        isMobile && fullDragOffset > 0
+          ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
+          : undefined
+      }
     >
       {track.coverUrl && (
         <img
@@ -1065,7 +1283,12 @@ export function PlayerDock() {
           const rect = event.currentTarget.getBoundingClientRect();
           if (!isHandle && event.clientY > rect.top + rect.height * 0.6) return;
           if (target.closest("input, [data-player-no-drag]")) return;
-          fullDragRef.current = { pointerId: event.pointerId, startY: event.clientY, startedAt: performance.now(), moved: false };
+          fullDragRef.current = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            startedAt: performance.now(),
+            moved: false,
+          };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
@@ -1110,7 +1333,10 @@ export function PlayerDock() {
         <div className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
           {hasPanel ? (
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
-              <div data-player-drag-zone className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5">
+              <div
+                data-player-drag-zone
+                className="flex min-h-[76px] touch-none items-center gap-3 rounded-2xl border border-white/30 bg-white/25 p-2.5 shadow-inner dark:border-white/10 dark:bg-white/5"
+              >
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
@@ -1144,26 +1370,54 @@ export function PlayerDock() {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between px-2 py-1 text-xs text-muted-foreground">
                       <span>{player.queue.length} queued</span>
-                      <button className="rounded px-2 py-1 hover:bg-muted hover:text-foreground" onClick={player.clearQueue}>Clear</button>
+                      <button
+                        className="rounded px-2 py-1 hover:bg-muted hover:text-foreground"
+                        onClick={player.clearQueue}
+                      >
+                        Clear
+                      </button>
                     </div>
                     {player.queue.map((item, index) => (
                       <div
                         key={item.queueItemId ?? `${item.locationId}:${index}`}
                         className={`flex min-h-11 w-full items-center gap-1 rounded-md border-l-2 px-1.5 text-xs transition-colors ${
-                          index === player.currentIndex ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground" : "border-transparent hover:bg-muted"
+                          index === player.currentIndex
+                            ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground"
+                            : "border-transparent hover:bg-muted"
                         }`}
                       >
-                        <button className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left" onClick={() => player.selectTrack(index)}>
-                          {index === player.currentIndex ? <Pause className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Play className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                        <button
+                          className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left"
+                          onClick={() => player.selectTrack(index)}
+                        >
+                          {index === player.currentIndex ? (
+                            <Pause className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          )}
                           <span className="truncate">{item.title}</span>
                         </button>
-                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30" disabled={index === 0} onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, -1)} aria-label={`Move ${item.title} up`}>
+                        <button
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30"
+                          disabled={index === 0}
+                          onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, -1)}
+                          aria-label={`Move ${item.title} up`}
+                        >
                           <ArrowUp className="h-3.5 w-3.5" />
                         </button>
-                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30" disabled={index === player.queue.length - 1} onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, 1)} aria-label={`Move ${item.title} down`}>
+                        <button
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30"
+                          disabled={index === player.queue.length - 1}
+                          onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, 1)}
+                          aria-label={`Move ${item.title} down`}
+                        >
                           <ArrowDown className="h-3.5 w-3.5" />
                         </button>
-                        <button className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70" onClick={() => item.queueItemId && player.removeQueueItem(item.queueItemId)} aria-label={`Remove ${item.title}`}>
+                        <button
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70"
+                          onClick={() => item.queueItemId && player.removeQueueItem(item.queueItemId)}
+                          aria-label={`Remove ${item.title}`}
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -1181,14 +1435,21 @@ export function PlayerDock() {
                 title="Double-click to open work detail"
                 aria-label="Open work detail"
               >
-                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15" />
+                <CoverImage
+                  track={track}
+                  className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-2xl shadow-primary/15"
+                />
               </button>
               <div className="space-y-1 text-center">
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
               </div>
               {parsedLyrics.timed && activeLyricIndex >= 0 && (
-                <InlineLyricsPreview parsed={parsedLyrics} activeIndex={activeLyricIndex} onOpen={() => setPanel("lyrics")} />
+                <InlineLyricsPreview
+                  parsed={parsedLyrics}
+                  activeIndex={activeLyricIndex}
+                  onOpen={() => setPanel("lyrics")}
+                />
               )}
             </div>
           )}
@@ -1196,7 +1457,9 @@ export function PlayerDock() {
 
         <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-[0_-12px_36px_hsl(var(--foreground)/0.04)] dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
           <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="truncate">{player.currentIndex + 1} / {player.queue.length}</span>
+            <span className="truncate">
+              {player.currentIndex + 1} / {player.queue.length}
+            </span>
             <button
               className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/15 bg-card/55 px-2.5 py-1 hover:bg-muted"
               onClick={() => setIsSourceOpen((value) => !value)}
@@ -1204,7 +1467,9 @@ export function PlayerDock() {
               aria-label="Choose playback source"
             >
               <HardDrive className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-36 truncate">{currentLocation?.sourceName || currentLocation?.locationType || "Playback source"}</span>
+              <span className="max-w-36 truncate">
+                {currentLocation?.sourceName || currentLocation?.locationType || "Playback source"}
+              </span>
             </button>
             {isSourceOpen && (
               <div className="absolute bottom-8 right-0 z-20 w-60 rounded-lg border bg-card p-1.5 text-card-foreground shadow-xl">
@@ -1228,159 +1493,224 @@ export function PlayerDock() {
             )}
           </div>
           <div className="space-y-1">
-          <SeekBar
-            currentTime={player.currentTime}
-            duration={player.duration}
-            progress={progress}
-            onSeek={player.seekTo}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{formatTime(player.currentTime)}</span>
-            <span>{formatTime(player.duration)}</span>
-          </div>
+            <SeekBar
+              currentTime={player.currentTime}
+              duration={player.duration}
+              progress={progress}
+              onSeek={player.seekTo}
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{formatTime(player.currentTime)}</span>
+              <span>{formatTime(player.duration)}</span>
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-2">
-          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={player.previous} aria-label="Previous">
-            <SkipBack className="h-4 w-4" />
-          </Button>
-          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={() => player.seekBy(-5)} aria-label="Back 5 seconds">
-            <SeekIcon direction="back" seconds={5} />
-          </Button>
-          <Button className="h-14 w-14 rounded-full transition-transform active:scale-95" size="icon" onClick={player.togglePlay} aria-label={player.isPlaying ? "Pause" : "Play"}>
-            {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-          </Button>
-          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={() => player.seekBy(10)} aria-label="Forward 10 seconds">
-            <SeekIcon direction="forward" seconds={10} />
-          </Button>
-          <Button className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45" variant="outline" size="icon" onClick={player.next} aria-label="Next">
-            <SkipForward className="h-4 w-4" />
-          </Button>
+            <Button
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              variant="outline"
+              size="icon"
+              onClick={player.previous}
+              aria-label="Previous"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+            <Button
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              variant="outline"
+              size="icon"
+              onClick={() => player.seekBy(-5)}
+              aria-label="Back 5 seconds"
+            >
+              <SeekIcon direction="back" seconds={5} />
+            </Button>
+            <Button
+              className="h-14 w-14 rounded-full transition-transform active:scale-95"
+              size="icon"
+              onClick={player.togglePlay}
+              aria-label={player.isPlaying ? "Pause" : "Play"}
+            >
+              {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            </Button>
+            <Button
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              variant="outline"
+              size="icon"
+              onClick={() => player.seekBy(10)}
+              aria-label="Forward 10 seconds"
+            >
+              <SeekIcon direction="forward" seconds={10} />
+            </Button>
+            <Button
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              variant="outline"
+              size="icon"
+              onClick={player.next}
+              aria-label="Next"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
           </div>
 
           <div className="relative grid grid-cols-5 gap-2">
-          <Button
-            className="rounded-full border-primary/15"
-            variant={player.mode === "order" ? "outline" : "secondary"}
-            size="sm"
-            onClick={player.cycleMode}
-            aria-label={`${modeLabel}. Change playback mode`}
-            title={modeLabel}
-          >
-            {player.mode === "order" ? <ListOrdered className="h-4 w-4" /> : player.mode === "loop" ? <Repeat className="h-4 w-4" /> : <Repeat1 className="h-4 w-4" />}
-          </Button>
-
-          <Button
-            className="rounded-full border-primary/15"
-            variant={panel === "queue" ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
-            aria-label="Playback queue"
-            title="Playback queue"
-          >
-            <ListMusic className="h-4 w-4" />
-          </Button>
-          <Button
-            className="rounded-full border-primary/15"
-            variant={panel === "lyrics" ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
-            disabled={!track.lyricsLocationId}
-            aria-label="Lyrics"
-            title={track.lyricsLocationId ? "Lyrics" : "No matched lyrics"}
-          >
-            <Captions className="h-4 w-4" />
-          </Button>
-          <Button
-            className="rounded-full border-primary/15"
-            variant={player.playbackRate === 1 ? "outline" : "secondary"}
-            size="sm"
-            onClick={player.cyclePlaybackRate}
-            aria-label={`Playback speed ${player.playbackRate} times`}
-            title="Playback speed"
-          >
-            <Gauge className="h-4 w-4" />
-            <span className="text-[10px]">{player.playbackRate}×</span>
-          </Button>
-
-          <Button
-            ref={sleepButtonRef}
-            className="rounded-full border-primary/15"
-            variant={player.sleepTimer ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setIsSleepOpen((value) => !value)}
-            aria-label="Sleep timer"
-            title="Sleep timer"
-          >
-            <Timer className="h-4 w-4" />
-            {player.sleepTimer && <span className="text-[10px]">{player.sleepTimer.waitingForTrackEnd ? "Track" : formatSleepRemaining(player.sleepRemainingSeconds)}</span>}
-          </Button>
-
-          <AnchoredPopover open={isSleepOpen} anchorRef={sleepButtonRef} className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl">
-            <div ref={sleepPopoverRef} className="p-2">
-              <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
-                <span>Sleep timer</span>
-                {player.sleepTimer && <span>{player.sleepTimer.waitingForTrackEnd ? "Finishing track" : formatSleepRemaining(player.sleepRemainingSeconds)}</span>}
-              </div>
-              <label className="mb-1 flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-muted">
-                <span>
-                  <span className="block font-medium">Finish current track</span>
-                  <span className="block text-xs text-muted-foreground">After the timer expires</span>
-                </span>
-                <Switch
-                  checked={finishCurrentTrack}
-                  onCheckedChange={(enabled) => {
-                    setFinishCurrentTrack(enabled);
-                    if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
-                  }}
-                  aria-label="Finish current track"
-                />
-              </label>
-              {[30, 60].map((minutes) => (
-                <button key={minutes} className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted" onClick={() => {
-                  player.setSleepTimerMinutes(minutes, finishCurrentTrack);
-                  setIsSleepOpen(false);
-                }}>
-                  {minutes} min
-                </button>
-              ))}
-              <button className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted" onClick={() => setIsCustomSleepOpen((value) => !value)} aria-expanded={isCustomSleepOpen}>
-                Custom
-              </button>
-              {isCustomSleepOpen && (
-                <div className="flex items-center gap-2 px-2 py-2">
-                  <label className="min-w-0 flex-1 text-xs text-muted-foreground">
-                    Minutes
-                    <input
-                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-                      type="number"
-                      min={1}
-                      max={1440}
-                      step={1}
-                      inputMode="numeric"
-                      value={customSleepMinutes}
-                      onChange={(event) => setCustomSleepMinutes(event.currentTarget.value)}
-                      aria-label="Custom sleep minutes"
-                    />
-                  </label>
-                  <Button className="mt-5" size="sm" disabled={!validSleepMinutes(customSleepMinutes)} onClick={() => {
-                    player.setSleepTimerMinutes(Number(customSleepMinutes), finishCurrentTrack);
-                    setIsSleepOpen(false);
-                  }}>
-                    Set
-                  </Button>
-                </div>
+            <Button
+              className="rounded-full border-primary/15"
+              variant={player.mode === "order" ? "outline" : "secondary"}
+              size="sm"
+              onClick={player.cycleMode}
+              aria-label={`${modeLabel}. Change playback mode`}
+              title={modeLabel}
+            >
+              {player.mode === "order" ? (
+                <ListOrdered className="h-4 w-4" />
+              ) : player.mode === "loop" ? (
+                <Repeat className="h-4 w-4" />
+              ) : (
+                <Repeat1 className="h-4 w-4" />
               )}
+            </Button>
+
+            <Button
+              className="rounded-full border-primary/15"
+              variant={panel === "queue" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
+              aria-label="Playback queue"
+              title="Playback queue"
+            >
+              <ListMusic className="h-4 w-4" />
+            </Button>
+            <Button
+              className="rounded-full border-primary/15"
+              variant={panel === "lyrics" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
+              disabled={!track.lyricsLocationId}
+              aria-label="Lyrics"
+              title={track.lyricsLocationId ? "Lyrics" : "No matched lyrics"}
+            >
+              <Captions className="h-4 w-4" />
+            </Button>
+            <Button
+              className="rounded-full border-primary/15"
+              variant={player.playbackRate === 1 ? "outline" : "secondary"}
+              size="sm"
+              onClick={player.cyclePlaybackRate}
+              aria-label={`Playback speed ${player.playbackRate} times`}
+              title="Playback speed"
+            >
+              <Gauge className="h-4 w-4" />
+              <span className="text-[10px]">{player.playbackRate}×</span>
+            </Button>
+
+            <Button
+              ref={sleepButtonRef}
+              className="rounded-full border-primary/15"
+              variant={player.sleepTimer ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setIsSleepOpen((value) => !value)}
+              aria-label="Sleep timer"
+              title="Sleep timer"
+            >
+              <Timer className="h-4 w-4" />
               {player.sleepTimer && (
-                <button className="mt-1 flex h-9 w-full items-center rounded-md px-2 text-sm text-destructive hover:bg-muted" onClick={() => {
-                  player.clearSleepTimer();
-                  setIsSleepOpen(false);
-                }}>
-                  <X className="mr-2 h-4 w-4" /> Cancel timer
-                </button>
+                <span className="text-[10px]">
+                  {player.sleepTimer.waitingForTrackEnd ? "Track" : formatSleepRemaining(player.sleepRemainingSeconds)}
+                </span>
               )}
-            </div>
-          </AnchoredPopover>
+            </Button>
+
+            <AnchoredPopover
+              open={isSleepOpen}
+              anchorRef={sleepButtonRef}
+              className="w-[min(14rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl"
+            >
+              <div ref={sleepPopoverRef} className="p-2">
+                <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted-foreground">
+                  <span>Sleep timer</span>
+                  {player.sleepTimer && (
+                    <span>
+                      {player.sleepTimer.waitingForTrackEnd
+                        ? "Finishing track"
+                        : formatSleepRemaining(player.sleepRemainingSeconds)}
+                    </span>
+                  )}
+                </div>
+                <label className="mb-1 flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-muted">
+                  <span>
+                    <span className="block font-medium">Finish current track</span>
+                    <span className="block text-xs text-muted-foreground">After the timer expires</span>
+                  </span>
+                  <Switch
+                    checked={finishCurrentTrack}
+                    onCheckedChange={(enabled) => {
+                      setFinishCurrentTrack(enabled);
+                      if (player.sleepTimer) player.setSleepFinishCurrentTrack(enabled);
+                    }}
+                    aria-label="Finish current track"
+                  />
+                </label>
+                {[30, 60].map((minutes) => (
+                  <button
+                    key={minutes}
+                    className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
+                    onClick={() => {
+                      player.setSleepTimerMinutes(minutes, finishCurrentTrack);
+                      setIsSleepOpen(false);
+                    }}
+                  >
+                    {minutes} min
+                  </button>
+                ))}
+                <button
+                  className="flex h-9 w-full items-center rounded-md px-2 text-sm hover:bg-muted"
+                  onClick={() => setIsCustomSleepOpen((value) => !value)}
+                  aria-expanded={isCustomSleepOpen}
+                >
+                  Custom
+                </button>
+                {isCustomSleepOpen && (
+                  <div className="flex items-center gap-2 px-2 py-2">
+                    <label className="min-w-0 flex-1 text-xs text-muted-foreground">
+                      Minutes
+                      <input
+                        className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        step={1}
+                        inputMode="numeric"
+                        value={customSleepMinutes}
+                        onChange={(event) => setCustomSleepMinutes(event.currentTarget.value)}
+                        aria-label="Custom sleep minutes"
+                      />
+                    </label>
+                    <Button
+                      className="mt-5"
+                      size="sm"
+                      disabled={!validSleepMinutes(customSleepMinutes)}
+                      onClick={() => {
+                        player.setSleepTimerMinutes(Number(customSleepMinutes), finishCurrentTrack);
+                        setIsSleepOpen(false);
+                      }}
+                    >
+                      Set
+                    </Button>
+                  </div>
+                )}
+                {player.sleepTimer && (
+                  <button
+                    className="mt-1 flex h-9 w-full items-center rounded-md px-2 text-sm text-destructive hover:bg-muted"
+                    onClick={() => {
+                      player.clearSleepTimer();
+                      setIsSleepOpen(false);
+                    }}
+                  >
+                    <X className="mr-2 h-4 w-4" /> Cancel timer
+                  </button>
+                )}
+              </div>
+            </AnchoredPopover>
           </div>
         </div>
       </div>
@@ -1432,8 +1762,12 @@ function clampMiniPosition(position: { x: number; y: number }) {
 
 function restoreMiniPosition() {
   try {
-    const stored = JSON.parse(localStorage.getItem(MINI_POSITION_STORAGE_KEY) ?? "null") as { side?: "left" | "right"; verticalRatio?: number } | null;
-    if (!stored || (stored.side !== "left" && stored.side !== "right") || !Number.isFinite(stored.verticalRatio)) return null;
+    const stored = JSON.parse(localStorage.getItem(MINI_POSITION_STORAGE_KEY) ?? "null") as {
+      side?: "left" | "right";
+      verticalRatio?: number;
+    } | null;
+    if (!stored || (stored.side !== "left" && stored.side !== "right") || !Number.isFinite(stored.verticalRatio))
+      return null;
     const bounds = miniVerticalBounds();
     const ratio = Math.max(0, Math.min(1, Number(stored.verticalRatio)));
     return {
@@ -1448,11 +1782,14 @@ function restoreMiniPosition() {
 function persistMiniPosition(position: { x: number; y: number }) {
   const bounds = miniVerticalBounds();
   const verticalRatio = bounds.max > bounds.min ? (position.y - bounds.min) / (bounds.max - bounds.min) : 0;
-  localStorage.setItem(MINI_POSITION_STORAGE_KEY, JSON.stringify({
-    version: 1,
-    side: position.x + 46 < window.innerWidth / 2 ? "left" : "right",
-    verticalRatio: Math.max(0, Math.min(1, verticalRatio)),
-  }));
+  localStorage.setItem(
+    MINI_POSITION_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      side: position.x + 46 < window.innerWidth / 2 ? "left" : "right",
+      verticalRatio: Math.max(0, Math.min(1, verticalRatio)),
+    }),
+  );
 }
 
 function miniActionLayout(position: { x: number; y: number } | null) {
@@ -1557,7 +1894,15 @@ type ParsedLyrics = {
   lines: TimedLyricLine[];
 };
 
-function InlineLyricsPreview({ parsed, activeIndex, onOpen }: { parsed: ParsedLyrics; activeIndex: number; onOpen: () => void }) {
+function InlineLyricsPreview({
+  parsed,
+  activeIndex,
+  onOpen,
+}: {
+  parsed: ParsedLyrics;
+  activeIndex: number;
+  onOpen: () => void;
+}) {
   const rowHeight = 28;
   const firstVisibleIndex = Math.max(0, Math.min(activeIndex - 1, Math.max(0, parsed.lines.length - 3)));
   return (
@@ -1622,7 +1967,13 @@ function LyricsPanel({
   if (!parsed.timed) {
     return (
       <div className="space-y-3 p-3">
-        <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} automatic={automatic} onChoiceChange={onChoiceChange} />
+        <LyricsSourceSelector
+          title={title}
+          choices={choices}
+          activeLocationId={activeLocationId}
+          automatic={automatic}
+          onChoiceChange={onChoiceChange}
+        />
         <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</pre>
       </div>
     );
@@ -1630,7 +1981,13 @@ function LyricsPanel({
 
   return (
     <div className="space-y-3 p-3">
-      <LyricsSourceSelector title={title} choices={choices} activeLocationId={activeLocationId} automatic={automatic} onChoiceChange={onChoiceChange} />
+      <LyricsSourceSelector
+        title={title}
+        choices={choices}
+        activeLocationId={activeLocationId}
+        automatic={automatic}
+        onChoiceChange={onChoiceChange}
+      />
       <div className="space-y-1 py-12 text-center">
         {parsed.lines.map((line, index) => {
           const active = index === activeIndex;
@@ -1655,7 +2012,9 @@ function CoverImage({ track, className }: { track: PlayerTrack; className: strin
   return track.coverUrl ? (
     <img src={assetURL(track.coverUrl)} alt="" className={`${className} shrink-0 rounded-md bg-muted object-contain`} />
   ) : (
-    <div className={`${className} grid shrink-0 place-items-center rounded-md bg-secondary text-sm font-bold text-secondary-foreground`}>
+    <div
+      className={`${className} grid shrink-0 place-items-center rounded-md bg-secondary text-sm font-bold text-secondary-foreground`}
+    >
       {track.workCode.slice(0, 2)}
     </div>
   );
@@ -1673,14 +2032,35 @@ function formatTime(value: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function LyricsSourceSelector({ title, choices, activeLocationId, automatic, onChoiceChange }: { title: string; choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[]; activeLocationId: number; automatic: boolean; onChoiceChange: (locationId: number | null) => void }) {
-  if (choices.length <= 1 && automatic) return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
+function LyricsSourceSelector({
+  title,
+  choices,
+  activeLocationId,
+  automatic,
+  onChoiceChange,
+}: {
+  title: string;
+  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
+  activeLocationId: number;
+  automatic: boolean;
+  onChoiceChange: (locationId: number | null) => void;
+}) {
+  if (choices.length <= 1 && automatic)
+    return <div className="truncate text-xs font-semibold text-muted-foreground">{title}</div>;
   return (
     <label className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0 font-semibold">Lyrics</span>
-      <select className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1" value={automatic ? "auto" : String(activeLocationId)} onChange={(event) => onChoiceChange(event.target.value === "auto" ? null : Number(event.target.value))}>
+      <select
+        className="min-w-0 flex-1 truncate rounded-md border bg-background px-2 py-1"
+        value={automatic ? "auto" : String(activeLocationId)}
+        onChange={(event) => onChoiceChange(event.target.value === "auto" ? null : Number(event.target.value))}
+      >
         <option value="auto">Auto</option>
-        {choices.map((choice) => <option key={choice.locationId} value={choice.locationId}>{choice.title}</option>)}
+        {choices.map((choice) => (
+          <option key={choice.locationId} value={choice.locationId}>
+            {choice.title}
+          </option>
+        ))}
       </select>
     </label>
   );

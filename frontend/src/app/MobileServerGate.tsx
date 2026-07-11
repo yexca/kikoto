@@ -3,7 +3,13 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { getStoredServerURL, isNativeApp, normalizeServerURL, setStoredServerURL } from "@/lib/serverConfig";
+import {
+  getStoredServerURL,
+  hydrateNativeConfig,
+  isNativeApp,
+  normalizeServerURL,
+  setStoredServerURL,
+} from "@/lib/serverConfig";
 
 type ConnectionState = "checking" | "ready" | "setup";
 
@@ -15,20 +21,27 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isNativeApp()) return;
-    const stored = getStoredServerURL();
-    if (!stored) {
-      setState("setup");
-      return;
-    }
-    api
-      .health(stored)
-      .then((result) => {
-        setVersion(result.version);
-        setState("ready");
+    hydrateNativeConfig()
+      .then(() => {
+        const stored = getStoredServerURL();
+        if (!stored) {
+          setState("setup");
+          return;
+        }
+        return api
+          .health(stored)
+          .then((result) => {
+            setVersion(result.version);
+            setState("ready");
+          })
+          .catch(() => {
+            setServerURL(stored);
+            setError("Kikoto server is not reachable from this device.");
+            setState("setup");
+          });
       })
       .catch(() => {
-        setServerURL(stored);
-        setError("Kikoto server is not reachable from this device.");
+        setError("Stored connection settings could not be loaded.");
         setState("setup");
       });
   }, []);
