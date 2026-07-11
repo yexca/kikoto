@@ -172,10 +172,10 @@ export type WorkTranslation = {
   primaryCode: string;
   title: string;
   metadataLanguage: string;
-	editionLabel: string;
-	origin: boolean;
-	official: boolean;
-	translationKind: "origin" | "official" | "community" | "third_party" | "unknown";
+  editionLabel: string;
+  origin: boolean;
+  official: boolean;
+  translationKind: "origin" | "official" | "community" | "third_party" | "unknown";
   current: boolean;
   hasMedia: boolean;
 };
@@ -725,9 +725,12 @@ export type ManagedUser = {
   updatedAt: string;
 };
 
-export type AuthState =
-  | { authenticated: false }
-  | { authenticated: true; user: CurrentUser };
+export type AuthState = { authenticated: false } | { authenticated: true; user: CurrentUser; sessionToken?: string };
+
+export type HealthStatus = {
+  status: string;
+  version: string;
+};
 
 export type LocalScanResult = {
   runId: number;
@@ -1019,12 +1022,23 @@ export type MediaLocalDeleteResult = {
   clearedWorkStates: number;
 };
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const BUILD_API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
+export function API_BASE() {
+  if (isNativeApp()) return getStoredServerURL();
+  return BUILD_API_BASE;
+}
+
+function apiURL(path: string, base = API_BASE()) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!base) return path;
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export function assetURL(path: string) {
   if (!path) return "";
-  if (path.startsWith("http")) return path;
-  return `${API_BASE}${path}`;
+  return apiURL(path);
 }
 
 export class ApiError extends Error {
@@ -1047,7 +1061,7 @@ export function mediaDownloadURL(locationId: number) {
 }
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { credentials: "include", signal });
+  const response = await fetch(apiURL(path), requestInit({ signal }));
   if (!response.ok) {
     throw await responseError(response, `GET ${path} failed with ${response.status}`);
   }
@@ -1055,7 +1069,7 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 async function postJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "POST", credentials: "include" });
+  const response = await fetch(apiURL(path), requestInit({ method: "POST" }));
   if (!response.ok) {
     throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
@@ -1063,12 +1077,14 @@ async function postJSON<T>(path: string): Promise<T> {
 }
 
 async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(
+    apiURL(path),
+    requestInit({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
   if (!response.ok) {
     throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
@@ -1076,12 +1092,14 @@ async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(
+    apiURL(path),
+    requestInit({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
   if (!response.ok) {
     throw await responseError(response, `PATCH ${path} failed with ${response.status}`);
   }
@@ -1089,12 +1107,14 @@ async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(
+    apiURL(path),
+    requestInit({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
   if (!response.ok) {
     throw await responseError(response, `PUT ${path} failed with ${response.status}`);
   }
@@ -1102,38 +1122,104 @@ async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function deleteJSON<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
+  const response = await fetch(apiURL(path), requestInit({ method: "DELETE" }));
   if (!response.ok) {
     throw await responseError(response, `DELETE ${path} failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
 
+function requestInit(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  if (isNativeApp()) {
+    headers.set("X-Kikoto-Mobile", "1");
+    const token = getStoredSessionToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+  return {
+    ...init,
+    credentials: isNativeApp() ? "omit" : "include",
+    headers,
+  };
+}
+
+async function login(username: string, password: string) {
+  const state = await postJSONBody<AuthState>("/api/auth/login", { username, password });
+  if (state.authenticated && state.sessionToken) setStoredSessionToken(state.sessionToken);
+  return state;
+}
+
+async function logout() {
+  try {
+    return await postJSON<{ ok: boolean }>("/api/auth/logout");
+  } finally {
+    if (isNativeApp()) clearStoredSessionToken();
+  }
+}
+
 export const api = {
+  health: async (baseURL?: string) => {
+    const response = await fetch(apiURL("/health", baseURL), requestInit());
+    if (!response.ok) {
+      throw await responseError(response, `GET /health failed with ${response.status}`);
+    }
+    return response.json() as Promise<HealthStatus>;
+  },
   me: () => getJSON<AuthState>("/api/auth/me"),
-  login: (username: string, password: string) => postJSONBody<AuthState>("/api/auth/login", { username, password }),
-  logout: () => postJSON<{ ok: boolean }>("/api/auth/logout"),
+  login,
+  logout,
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),
-  createUser: (payload: { username: string; displayName: string; role: ManagedUser["role"]; password: string; enabled: boolean }) =>
-    postJSONBody<ManagedUser>("/api/users", payload),
+  createUser: (payload: {
+    username: string;
+    displayName: string;
+    role: ManagedUser["role"];
+    password: string;
+    enabled: boolean;
+  }) => postJSONBody<ManagedUser>("/api/users", payload),
   updateUser: (
     id: number,
     payload: { displayName?: string; role?: ManagedUser["role"]; password?: string; enabled?: boolean },
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-  listWorksPage: (page = 1, pageSize = 24, query = "", scope = "all", status = "all", sort: LibrarySort = "recent", direction: SortDirection = "desc", seed = 1, signal?: AbortSignal) =>
+  listWorksPage: (
+    page = 1,
+    pageSize = 24,
+    query = "",
+    scope = "all",
+    status = "all",
+    sort: LibrarySort = "recent",
+    direction: SortDirection = "desc",
+    seed = 1,
+    signal?: AbortSignal,
+  ) =>
     getJSON<WorksPage>(
       `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
-  listFavoriteWorksPage: (page = 1, pageSize = 24, query = "", listId: number | "all" = "all", status = "all", availability = "all") =>
+  listFavoriteWorksPage: (
+    page = 1,
+    pageSize = 24,
+    query = "",
+    listId: number | "all" = "all",
+    status = "all",
+    availability = "all",
+  ) =>
     getJSON<FavoriteWorksPage>(
       `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
-  listRemoteSourceWorks: (id: number, page = 1, pageSize = 24, query = "", sort: LibrarySort = "recent", direction: SortDirection = "desc", seed = 1, signal?: AbortSignal) =>
+  listRemoteSourceWorks: (
+    id: number,
+    page = 1,
+    pageSize = 24,
+    query = "",
+    sort: LibrarySort = "recent",
+    direction: SortDirection = "desc",
+    seed = 1,
+    signal?: AbortSignal,
+  ) =>
     getJSON<RemoteWorksResponse>(
       `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
@@ -1143,24 +1229,60 @@ export const api = {
   getSourceAvailability: (code: string) =>
     getJSON<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`),
   checkSourceAvailability: (code: string, sourceId = 0) =>
-    postJSONBody<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`, { sourceId }),
+    postJSONBody<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`, {
+      sourceId,
+    }),
   planRemoteSourceWorkSave: (id: number, code: string, paths: string[]) =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths }),
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, {
+      paths,
+    }),
   saveRemoteSourceWork: (id: number, code: string, paths: string[]) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths }),
-  planRemoteSourceWorkFetch: (id: number, code: string, paths: string[], localPaths: string[] = [], targetRoot = "", decisions: RemoteFetchFileDecision[] = []) =>
-    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, { paths, localPaths, targetRoot, decisions }),
-  fetchRemoteSourceWork: (id: number, code: string, paths: string[], localPaths: string[] = [], requestId = "", targetRoot = "", decisions: RemoteFetchFileDecision[] = []) =>
-    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, { paths, localPaths, requestId, targetRoot, decisions }),
+  planRemoteSourceWorkFetch: (
+    id: number,
+    code: string,
+    paths: string[],
+    localPaths: string[] = [],
+    targetRoot = "",
+    decisions: RemoteFetchFileDecision[] = [],
+  ) =>
+    postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, {
+      paths,
+      localPaths,
+      targetRoot,
+      decisions,
+    }),
+  fetchRemoteSourceWork: (
+    id: number,
+    code: string,
+    paths: string[],
+    localPaths: string[] = [],
+    requestId = "",
+    targetRoot = "",
+    decisions: RemoteFetchFileDecision[] = [],
+  ) =>
+    postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, {
+      paths,
+      localPaths,
+      requestId,
+      targetRoot,
+      decisions,
+    }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
-    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, { triggerReason }),
+    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {
+      triggerReason,
+    }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
-    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, { triggerReason }),
+    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/sync`, {
+      triggerReason,
+    }),
   untrackWorkSource: (workId: number, sourceId: number) =>
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
   getWork: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}`, signal),
-  getWorkSummary: (id: number, signal?: AbortSignal) => getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
-  getWorkMedia: (id: number, signal?: AbortSignal) => getJSON<{ workId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
+  getWorkSummary: (id: number, signal?: AbortSignal) =>
+    getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
+  getWorkMedia: (id: number, signal?: AbortSignal) =>
+    getJSON<{ workId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
   updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),
@@ -1171,45 +1293,67 @@ export const api = {
   setWorkCoverOverride: (id: number, locationId: number) =>
     postJSONBody<WorkManualOverrides>(`/api/works/${id}/cover-override`, { locationId }),
   suggestCircles: (query: string, limit = 20) =>
-    getJSON<MetadataSuggestionResponse<CircleSuggestion>>(`/api/metadata-suggestions/circles?q=${encodeURIComponent(query)}&limit=${limit}`),
+    getJSON<MetadataSuggestionResponse<CircleSuggestion>>(
+      `/api/metadata-suggestions/circles?q=${encodeURIComponent(query)}&limit=${limit}`,
+    ),
   suggestVoices: (query: string, limit = 20) =>
-    getJSON<MetadataSuggestionResponse<VoiceSuggestion>>(`/api/metadata-suggestions/voices?q=${encodeURIComponent(query)}&limit=${limit}`),
+    getJSON<MetadataSuggestionResponse<VoiceSuggestion>>(
+      `/api/metadata-suggestions/voices?q=${encodeURIComponent(query)}&limit=${limit}`,
+    ),
   suggestSeries: (query: string, circleId = "", limit = 20) =>
     getJSON<MetadataSuggestionResponse<SeriesSuggestion>>(
       `/api/metadata-suggestions/series?q=${encodeURIComponent(query)}&limit=${limit}${circleId.trim() ? `&circleId=${encodeURIComponent(circleId.trim())}` : ""}`,
     ),
-  resolveWorkCode: (code: string, signal?: AbortSignal) => getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
+  resolveWorkCode: (code: string, signal?: AbortSignal) =>
+    getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
   resolveWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>
     postJSONBody<WorkEntityLink>(`/api/works/${encodeURIComponent(code)}/entity-links/resolve`, { kind, name }),
   listFavoriteLists: () => getJSON<FavoriteList[]>("/api/favorite-lists"),
-  createFavoriteList: (payload: { name: string; description?: string }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
+  createFavoriteList: (payload: { name: string; description?: string }) =>
+    postJSONBody<FavoriteList>("/api/favorite-lists", payload),
   updateFavoriteList: (id: number, payload: { name?: string; description?: string; sortOrder?: number }) =>
     patchJSONBody<FavoriteList>(`/api/favorite-lists/${id}`, payload),
   deleteFavoriteList: (id: number) => deleteJSON<{ ok: boolean; deleted: number }>(`/api/favorite-lists/${id}`),
   listFavoriteListWorkIDs: (id: number) => getJSON<FavoriteListWorkIDs>(`/api/favorite-lists/${id}/work-ids`),
   getWorkFavoriteLists: (id: number) => getJSON<FavoriteList[]>(`/api/works/${id}/favorite-lists`),
   setWorkFavoriteLists: (id: number, listIds: number[]) =>
-    putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, { listIds }),
+    putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, {
+      listIds,
+    }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   setMediaLyricsPreference: (audioMediaItemId: number, lyricsMediaItemId: number) =>
-    putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(`/api/media/${audioMediaItemId}/lyrics-preference`, { lyricsMediaItemId }),
+    putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(
+      `/api/media/${audioMediaItemId}/lyrics-preference`,
+      { lyricsMediaItemId },
+    ),
   clearMediaLyricsPreference: (audioMediaItemId: number) =>
-    deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(`/api/media/${audioMediaItemId}/lyrics-preference`),
+    deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(
+      `/api/media/${audioMediaItemId}/lyrics-preference`,
+    ),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
-  deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCacheDeleteResult>(`/api/media/${locationId}/cache`),
-  deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
+  deleteMediaCacheLocation: (locationId: number) =>
+    deleteJSON<MediaCacheDeleteResult>(`/api/media/${locationId}/cache`),
+  deleteMediaLocalLocation: (locationId: number) =>
+    deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
   updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; favorite?: boolean }) =>
-    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(`/api/works/${id}/user-state`, payload),
+    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(
+      `/api/works/${id}/user-state`,
+      payload,
+    ),
   listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
   listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
   getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
-  getVoiceSummary: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
-  getVoiceWorks: (personId: number | string) => getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
+  getVoiceSummary: (personId: number | string) =>
+    getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),
+  getVoiceWorks: (personId: number | string) =>
+    getJSON<{ personId: number; works: VoiceKnownWork[] }>(`/api/voices/${encodeURIComponent(String(personId))}/works`),
   getVoiceRemoteMatches: (personId: number | string) =>
-    getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[] }>(`/api/voices/${encodeURIComponent(String(personId))}/remote-matches`),
+    getJSON<{ personId: number; remoteMatches: VoiceRemoteSourceSet[] }>(
+      `/api/voices/${encodeURIComponent(String(personId))}/remote-matches`,
+    ),
   listVoiceAliasCandidates: (personId: number, query = "") =>
     getJSON<VoiceAliasCandidate[]>(
       `/api/voices/${personId}/alias-candidates${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
@@ -1219,10 +1363,13 @@ export const api = {
   deleteVoiceAlias: (personId: number, aliasId: number) =>
     deleteJSON<{ deleted: number; aliases: VoiceAlias[] }>(`/api/voices/${personId}/aliases/${aliasId}`),
   mergeVoiceAliasCandidate: (personId: number, sourcePersonId: number) =>
-    postJSONBody<{ mergeId: number; targetPersonId: number; sourcePersonId: number; targetName: string; mergedName: string }>(
-      `/api/voices/${personId}/merge`,
-      { sourcePersonId },
-    ),
+    postJSONBody<{
+      mergeId: number;
+      targetPersonId: number;
+      sourcePersonId: number;
+      targetName: string;
+      mergedName: string;
+    }>(`/api/voices/${personId}/merge`, { sourcePersonId }),
   listVoiceMergeReviews: (personId: number) => getJSON<VoiceMergeReview[]>(`/api/voices/${personId}/merges`),
   undoVoiceMerge: (personId: number, mergeId: number) =>
     postJSON<{ mergeId: number; targetPersonId: number; restoredPersonId: number; restoredName: string }>(
@@ -1235,23 +1382,35 @@ export const api = {
   updateCircleUserState: (externalId: string, payload: { rating?: number | null; note?: string; favorite?: boolean }) =>
     patchJSONBody<CircleSummary>(`/api/circles/${encodeURIComponent(externalId)}/user-state`, payload),
   setCircleUserTags: (externalId: string, tags: string[]) =>
-    putJSONBody<{ externalId: string; userTags: VoiceUserTag[] }>(`/api/circles/${encodeURIComponent(externalId)}/tags`, { tags }),
+    putJSONBody<{ externalId: string; userTags: VoiceUserTag[] }>(
+      `/api/circles/${encodeURIComponent(externalId)}/tags`,
+      { tags },
+    ),
   autoRefreshCircle: (externalId: string) =>
     postJSON<CircleSummary["autoRefresh"]>(`/api/circles/${encodeURIComponent(externalId)}/auto-refresh`),
   refreshCircle: (
     externalId: string,
-    payload: { scope: "all" | "catalog" | "work" | "source"; mode: "incremental" | "full"; productMode: "available" | "all" },
-  ) =>
-    postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
+    payload: {
+      scope: "all" | "catalog" | "work" | "source";
+      mode: "incremental" | "full";
+      productMode: "available" | "all";
+    },
+  ) => postJSONBody<CircleRefreshResult>(`/api/circles/${encodeURIComponent(externalId)}/refresh`, payload),
   deleteCircleCatalogWork: (externalId: string, code: string) =>
-    deleteJSON<{ ok: boolean; deleted: number }>(`/api/circles/${encodeURIComponent(externalId)}/catalog/${encodeURIComponent(code)}`),
+    deleteJSON<{ ok: boolean; deleted: number }>(
+      `/api/circles/${encodeURIComponent(externalId)}/catalog/${encodeURIComponent(code)}`,
+    ),
   updateMediaProgress: (
     id: number,
     payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },
-  ) => patchJSONBody<{ mediaItemId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean; lastPlayedAt: string | null }>(
-    `/api/media-items/${id}/progress`,
-    payload,
-  ),
+  ) =>
+    patchJSONBody<{
+      mediaItemId: number;
+      positionSeconds: number;
+      durationSeconds: number | null;
+      completed: boolean;
+      lastPlayedAt: string | null;
+    }>(`/api/media-items/${id}/progress`, payload),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateSettings: (payload: {
@@ -1266,8 +1425,7 @@ export const api = {
     circleAutoRefreshDays?: number;
     dlsiteMetadataLanguage?: string;
     directoryRoutingRules?: DirectoryRoutingRule[];
-  }) =>
-    patchJSONBody<AppSettings>("/api/settings", payload),
+  }) => patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {
     displayName: string;
     sourceType: string;
@@ -1290,8 +1448,12 @@ export const api = {
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
-  createWorkflowDefinition: (payload: { code: string; displayName: string; description: string; definitionJson: string }) =>
-    postJSONBody<WorkflowDefinition>("/api/workflow-definitions", payload),
+  createWorkflowDefinition: (payload: {
+    code: string;
+    displayName: string;
+    description: string;
+    definitionJson: string;
+  }) => postJSONBody<WorkflowDefinition>("/api/workflow-definitions", payload),
   updateWorkflowDefinition: (
     id: number,
     payload: { code: string; displayName: string; description: string; definitionJson: string },
@@ -1327,10 +1489,18 @@ export const api = {
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   listWorkflowRunEvents: (id: number) => getJSON<WorkflowEvent[]>(`/api/workflow-runs/${id}/events`),
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
-  updateWorkflowCandidate: (id: number, payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string }) =>
-    patchJSONBody<WorkflowCandidate>(`/api/workflow-candidates/${id}`, { status: payload.status, decisionJson: payload.decisionJson ?? "{}" }),
-  cleanupLocalWorkflowCandidate: (id: number, payload: { action: "mark_unavailable" | "delete_files"; locationIds?: number[] }) =>
-    postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
+  updateWorkflowCandidate: (
+    id: number,
+    payload: { status: "accepted" | "rejected" | "ignored" | "resolved"; decisionJson?: string },
+  ) =>
+    patchJSONBody<WorkflowCandidate>(`/api/workflow-candidates/${id}`, {
+      status: payload.status,
+      decisionJson: payload.decisionJson ?? "{}",
+    }),
+  cleanupLocalWorkflowCandidate: (
+    id: number,
+    payload: { action: "mark_unavailable" | "delete_files"; locationIds?: number[] },
+  ) => postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
   cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
@@ -1338,7 +1508,29 @@ export const api = {
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
-  recordRemoteBulkRun: (payload: { action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save"; sourceId: number; codes: string[] }) =>
-    postJSONBody<{ runId: number; sourceId: number; action: string; codes: string[]; status: string; synced: number; fetched: number; failed: number; failures: string[]; childRuns: number[] }>("/api/workflow-runs/remote-bulk", payload),
+  recordRemoteBulkRun: (payload: {
+    action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";
+    sourceId: number;
+    codes: string[];
+  }) =>
+    postJSONBody<{
+      runId: number;
+      sourceId: number;
+      action: string;
+      codes: string[];
+      status: string;
+      synced: number;
+      fetched: number;
+      failed: number;
+      failures: string[];
+      childRuns: number[];
+    }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
 };
+import {
+  clearStoredSessionToken,
+  getStoredServerURL,
+  getStoredSessionToken,
+  isNativeApp,
+  setStoredSessionToken,
+} from "@/lib/serverConfig";

@@ -60,14 +60,14 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !allowed[origin] && !requestOriginMatches(r, origin) && !(s.cfg.DevMode && isLoopbackOrigin(origin)) {
+		if !allowed[origin] && !requestOriginMatches(r, origin) && !isMobileAppOrigin(origin) && !(s.cfg.DevMode && isLoopbackOrigin(origin)) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
 			return
 		}
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kikoto-Mobile")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -75,6 +75,22 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isMobileAppOrigin(origin string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(parsed.Hostname(), "localhost") {
+		return false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https", "capacitor":
+		return true
+	default:
+		return false
+	}
 }
 
 func requestOriginMatches(r *http.Request, origin string) bool {

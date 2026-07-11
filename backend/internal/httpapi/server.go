@@ -241,10 +241,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": session.User})
+	payload := map[string]any{"authenticated": true, "user": session.User}
+	if isMobileAuthRequest(r) {
+		payload["sessionToken"] = session.ID
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if sessionID := bearerSessionID(r); sessionID != "" {
+		_ = s.accountStore.DeleteSession(r.Context(), sessionID)
+	}
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		_ = s.accountStore.DeleteSession(r.Context(), cookie.Value)
 	}

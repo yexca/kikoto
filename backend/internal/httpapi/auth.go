@@ -13,6 +13,7 @@ import (
 )
 
 const sessionCookieName = "kikoto_session"
+const mobileAuthHeader = "X-Kikoto-Mobile"
 
 type contextKey string
 
@@ -47,11 +48,30 @@ func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (c
 		user.DevMode = true
 		return user, nil
 	}
+	if sessionID := bearerSessionID(r); sessionID != "" {
+		return s.accountStore.UserForSession(ctx, sessionID, time.Now())
+	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return currentUser{}, sql.ErrNoRows
 	}
 	return s.accountStore.UserForSession(ctx, cookie.Value, time.Now())
+}
+
+func bearerSessionID(r *http.Request) string {
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if header == "" {
+		return ""
+	}
+	scheme, value, ok := strings.Cut(header, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func isMobileAuthRequest(r *http.Request) bool {
+	return r.Header.Get(mobileAuthHeader) == "1"
 }
 
 func userFromContext(ctx context.Context) (currentUser, bool) {
