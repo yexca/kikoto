@@ -570,6 +570,7 @@ export function LibraryPage() {
   const openWork = (work: Work) => {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
     const path = `/${work.primaryCode}`;
+	setSelectedRemoteTarget(null);
 	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library", workPreview: work }, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedWorkPreview(work);
@@ -861,7 +862,14 @@ export function LibraryPage() {
         onBack={backToLibrary}
         onOpenLocal={(workID) => {
           const work = works.find((item) => item.id === workID);
-          if (work) openWork(work);
+		  if (work) {
+			openWork(work);
+			return;
+		  }
+		  void api.getWork(workID).then((detail) => {
+			setSelectedRemoteTarget(null);
+			openWorkCodeRoute(detail.primaryCode);
+		  }).catch((error) => toast.notify(toastFromError(error, "Local detail could not be opened.")));
         }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
@@ -2553,7 +2561,6 @@ function RemoteWorkDetailView({
       setSavePlanDirty(false);
       setSavePlanMessage("");
       await onWorksChanged();
-      onOpenLocal(result.workId);
     } catch (error) {
       toast.notify(toastFromError(error, "Save failed."));
     } finally {
@@ -2910,6 +2917,7 @@ function WorkDetailView({
   useEffect(() => {
     setActiveEdition(null);
     setActiveEditionCode("");
+	setActiveSourceKey("local");
   }, [work?.id]);
 
   useEffect(() => {
@@ -3051,7 +3059,6 @@ function WorkDetailView({
       setSavePlanDirty(false);
       setSavePlanMessage("");
       await onWorksChanged();
-      openRemoteLocal(result.workId);
     } catch (error) {
       toast.notify(toastFromError(error, "Save failed."));
     } finally {
@@ -5198,13 +5205,14 @@ function buildSourceTabs(
   }
   const tabs = Array.from(sources.values());
   const baseTabs: SourceTabInfo[] = [...tabs];
+	const trackedSourceIDs = new Set<number>();
   for (const presence of sourcePresence) {
     if (presence.type !== "tracked") continue;
     const sourceID = trackedPresenceSourceID(presence);
-    if (sourceID && remoteSources.some((remote) => remote.source.id === sourceID && remoteSourceCanBrowse(remote.summary))) continue;
+	if (sourceID) trackedSourceIDs.add(sourceID);
     baseTabs.push({
-      key: sourceID ? remoteSourceTabKey(sourceID) : trackedSourceTabKey(presence),
-      label: presence.fileSourceName || presence.fileSourceCode || "Tracked source",
+	  key: trackedSourceTabKey(presence),
+	  label: "Tracked",
       fileSourceId: null,
       kind: "tracked",
       presence,
@@ -5212,6 +5220,7 @@ function buildSourceTabs(
   }
   for (const remote of remoteSources) {
     if (!remoteSourceCanBrowse(remote.summary)) continue;
+	if (trackedSourceIDs.has(remote.source.id)) continue;
     baseTabs.push({
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
@@ -5552,6 +5561,7 @@ function RemoteSaveSelectionPanel({
   onTargetRootChange?: (root: string) => void;
 }) {
   const [activePane, setActivePane] = useState<"local" | "remote" | "result">("remote");
+	const [selectedEditionCode, setSelectedEditionCode] = useState("");
   const allPaths = remoteSelectablePaths(root);
   const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
   const localTree = useMemo(() => buildRemoteFetchLocalTree(plan), [plan]);
@@ -5560,7 +5570,7 @@ function RemoteSaveSelectionPanel({
   const plannedRoot = activeEdition?.localRoots.find((root) => root.rootPath === plan?.saveRoot);
   const messageIsConflict = Boolean(plan && hasRemoteFetchConflicts(plan));
   const setAll = () => onChange(new Set(allPaths));
-  const setAudioOnly = () => onChange(new Set(remoteSelectableFiles(root).filter((file) => file.kind === "audio").map((file) => file.sourcePath)));
+	const excludeExtension = (extension: string) => onChange(new Set(Array.from(selectedPaths).filter((path) => !path.toLowerCase().endsWith(`.${extension}`))));
   const clear = () => onChange(new Set());
   const selectLocalPath = (path: string, selected: boolean) => {
     const next = new Set(selectedLocalPaths);
@@ -5588,18 +5598,34 @@ function RemoteSaveSelectionPanel({
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {plan.preparation.editions.map((edition) => {
-                const active = (activeEditionCode ?? plan.primaryCode).toUpperCase() === edition.primaryCode.toUpperCase();
+				const viewing = (activeEditionCode ?? plan.primaryCode).toUpperCase() === edition.primaryCode.toUpperCase();
+				const selected = selectedEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
                 const availableSources = edition.sources.filter((source) => source.status === "available").length;
                 const selectedSourceAvailable = !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
                 return (
-                  <button key={edition.primaryCode} type="button" className={`min-w-48 rounded-md border px-3 py-2 text-left transition-colors ${active ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"}`} disabled={disabled || active || !onEditionChange || !selectedSourceAvailable} onClick={() => onEditionChange?.(edition.primaryCode)}>
+				  <label key={edition.primaryCode} className={`flex min-w-48 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"} ${!selectedSourceAvailable ? "cursor-not-allowed opacity-50" : ""}`}>
+					<Checkbox
+					  checked={selected}
+					  disabled={disabled || !selectedSourceAvailable}
+					  aria-label={`Select ${edition.primaryCode}`}
+					  onCheckedChange={(checked) => {
+						if (!checked) {
+						  setSelectedEditionCode("");
+						  return;
+						}
+						setSelectedEditionCode(edition.primaryCode);
+						if (!viewing) onEditionChange?.(edition.primaryCode);
+					  }}
+					/>
+					<span className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold">{translationKindLabel(edition.translationKind)}</span>
                       <span className="font-mono text-[11px] text-muted-foreground">{edition.primaryCode}</span>
                     </div>
                     <div className="mt-1 truncate text-xs" title={edition.title}>{edition.metadataLanguage || edition.editionLabel || "Unknown language"}</div>
                     <div className="mt-1 flex gap-1 text-[10px] text-muted-foreground"><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span></div>
-                  </button>
+					</span>
+				  </label>
                 );
               })}
             </div>
@@ -5613,7 +5639,21 @@ function RemoteSaveSelectionPanel({
           {planDirty && <Badge variant="outline">Changes need review</Badge>}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
-            <Button variant="outline" size="sm" disabled={disabled} onClick={setAudioOnly}>Audio</Button>
+			<select
+			  className="h-8 rounded-md border bg-background px-2 text-xs"
+			  aria-label="Exclude file type"
+			  defaultValue=""
+			  disabled={disabled}
+			  onChange={(event) => {
+				if (event.target.value) excludeExtension(event.target.value);
+				event.target.value = "";
+			  }}
+			>
+			  <option value="" disabled>Exclude</option>
+			  <option value="mp3">MP3</option>
+			  <option value="wav">WAV</option>
+			  <option value="flac">FLAC</option>
+			</select>
             <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
           </div>
         </div>
@@ -5680,7 +5720,7 @@ function RemoteSaveSelectionPanel({
           <Button variant="outline" onClick={onClose} disabled={disabled}>
             Cancel
           </Button>
-          <Button onClick={onSave} disabled={disabled || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)}>
+		  <Button onClick={onSave} disabled={disabled || !selectedEditionCode || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)}>
             <HardDriveDownload className="h-4 w-4" />
             {!plan || planDirty ? "Review changes" : "Publish Fetch"}
           </Button>

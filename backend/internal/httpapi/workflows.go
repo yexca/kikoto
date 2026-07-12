@@ -276,6 +276,7 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 			{"id": "verify", "type": "verify_files", "displayName": "Verify files"},
 			{"id": "promote", "type": "publish_staged_fetch", "displayName": "Publish staged result"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync local locations"},
+			{"id": "cleanup", "type": "cleanup_cache", "displayName": "Remove promoted cache files"},
 		},
 	},
 	{

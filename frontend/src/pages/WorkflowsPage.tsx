@@ -293,6 +293,21 @@ export function WorkflowsPage({
     ]).finally(() => setIsRunDetailLoading(false));
   }, [selectedRunSummary?.id]);
 
+	useEffect(() => {
+	  if (!selectedRunSummary || !["queued", "running"].includes(selectedRunSummary.status)) return;
+	  const refreshRunningDetail = () => {
+		void Promise.all([
+		  api.getWorkflowRun(selectedRunSummary.id).then((next) => {
+			setSelectedRun(next);
+			setRuns((items) => items.map((item) => item.id === next.id ? { ...item, ...next } : item));
+		  }),
+		  api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents),
+		]).catch(() => undefined);
+	  };
+	  const timer = window.setInterval(refreshRunningDetail, 1500);
+	  return () => window.clearInterval(timer);
+	}, [selectedRunSummary?.id, selectedRunSummary?.status]);
+
   const runLocalScan = async () => {
     setIsRunningScan(true);
     try {

@@ -128,3 +128,18 @@ func TestFetchSubmissionRequiresDownloadsManage(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 }
+
+func TestFetchPlanRequiresDownloadsManageBecauseItMaySyncMetadata(t *testing.T) {
+	server := NewServer(nil, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/1/works/RJTEST001/fetch-plan", nil)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID: 1, Permissions: []string{"library:read"},
+	}))
+	response := httptest.NewRecorder()
+
+	server.planRemoteSourceWorkSave(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}

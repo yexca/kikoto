@@ -1275,14 +1275,19 @@ func (s *Server) attachSourceAvailabilityFlags(ctx context.Context, result *sour
 }
 
 func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
 	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
 	if !ok {
 		return
 	}
+	metadataErr := s.ensureRemoteFetchMetadata(r.Context(), code)
 	preparation := s.prepareRemoteFetch(r.Context(), code)
+	if metadataErr != nil {
+		preparation.MetadataStatus = "degraded"
+		preparation.Warnings = append(preparation.Warnings, "metadata refresh: "+metadataErr.Error())
+	}
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -2944,6 +2949,12 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	}); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Remove promoted cache files", Position: 9, Status: "queued",
+		Input: map[string]any{"items": len(plan.Items)}, Output: nil,
+	}); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
 	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -3003,6 +3014,7 @@ func remoteWorkFetchDefinition() map[string]any {
 			{"id": "verify", "type": "verify_files"},
 			{"id": "promote", "type": "publish_staged_fetch"},
 			{"id": "sync", "type": "sync_file_locations"},
+			{"id": "cleanup", "type": "cleanup_cache"},
 		},
 	}
 }
@@ -3067,7 +3079,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
-	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
+	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, cleanupNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
@@ -3089,6 +3101,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 			_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
 			continue
 		}
+		_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index, len(plan.Items), item, 0)
 		cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
 		if err != nil {
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
@@ -3096,6 +3109,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		}
 		if item.Action == "cache_hit" {
 			cacheHits++
+			_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index+1, len(plan.Items), item, 0)
 			_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
 			_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
 			continue
@@ -3126,6 +3140,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		}
 		_, _ = s.runCacheLimitCleanup(ctx, cacheSourceID, cacheLocationID)
 		cacheDownloads++
+		_ = s.updateRemoteFetchCacheProgress(ctx, cacheNodeID, index+1, len(plan.Items), item, written)
 		_ = updateWorkflowJobProgress(ctx, s.db, jobID, index+1, len(plan.Items)*2)
 		_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "materialize", map[string]any{"index": index + 1, "itemKey": item.ItemKey, "action": item.Action}, index+1, len(plan.Items)*2)
 	}
@@ -3187,6 +3202,24 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
 		return remoteWorkSaveResult{}, err
 	}
+	if cleanupNodeID > 0 {
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", cleanupNodeID)
+	}
+	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan)
+	if err != nil {
+		failedNodeID := cleanupNodeID
+		if failedNodeID == 0 {
+			failedNodeID = syncNodeID
+		}
+		_ = finishWorkflowRunSimple(ctx, s.db, runID, failedNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
+		return remoteWorkSaveResult{}, err
+	}
+	_ = s.updateWorkflowJobCheckpoint(ctx, jobID, "cache_cleaned", map[string]any{"removed": removedCache}, len(plan.Items)*2, len(plan.Items)*2)
+	if cleanupNodeID > 0 {
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"removed": removedCache}), cleanupNodeID); err != nil {
+			return remoteWorkSaveResult{}, err
+		}
+	}
 	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
 		_ = finishWorkflowRunSimple(ctx, s.db, runID, syncNodeID, jobID, "failed", err.Error(), len(plan.Items)*2, len(plan.Items)*2, plan.Summary)
 		return remoteWorkSaveResult{}, err
@@ -3208,7 +3241,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(manifest.PlanJSON)}), runID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "cache_removed": removedCache, "promoted": promoted, "snapshot_bytes": len(manifest.PlanJSON)}), runID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if err := s.insertFetchCleanupCandidate(ctx, runID, workID, localSourceID, workCode, plan.Items); err != nil {
@@ -3229,21 +3262,84 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	}, nil
 }
 
-func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, int64, int64, int64, error) {
+func (s *Server) updateRemoteFetchCacheProgress(ctx context.Context, nodeRunID int64, current int, total int, item remoteWorkSavePlanItem, written int64) error {
+	output := map[string]any{
+		"current": current, "total": total, "item_key": item.ItemKey,
+		"action": item.Action, "cache_path": item.CachePath, "target_path": item.TargetPath,
+	}
+	if written > 0 {
+		output["bytes"] = written
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'running', output_json = ?, started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
+		WHERE id = ?
+	`, mustJSON(output), nodeRunID)
+	return err
+}
+
+func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, int64, int64, int64, int64, error) {
 	if manifest.WorkID <= 0 || manifest.LocalSourceID <= 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
+		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
 	}
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, runID)
 	if err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
 	cacheNodeID := nodeIDs["cache"]
 	promoteNodeID := nodeIDs["promote"]
 	syncNodeID := nodeIDs["sync"]
 	if cacheNodeID == 0 || promoteNodeID == 0 || syncNodeID == 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
+		return 0, 0, 0, 0, 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
 	}
-	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nil
+	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nodeIDs["cleanup"], nil
+}
+
+func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkSavePlan) (int, error) {
+	removed := 0
+	seen := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.Action != "cache_hit" && item.Action != "cache_download" {
+			continue
+		}
+		key := fmt.Sprintf("%d:%s", item.RemoteSourceID, item.CachePath)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		var locationID int64
+		err := s.db.QueryRowContext(ctx, `
+			SELECT id FROM media_file_location
+			WHERE file_source_id = ? AND location_type = 'cache' AND path = ?
+			ORDER BY availability = 'available' DESC, id DESC LIMIT 1
+		`, item.RemoteSourceID, item.CachePath).Scan(&locationID)
+		if errors.Is(err, sql.ErrNoRows) {
+			targetPath, pathErr := safeCachePath(s.cfg.CacheRoot, item.CachePath)
+			if pathErr != nil {
+				return removed, pathErr
+			}
+			if removeErr := os.Remove(targetPath); removeErr == nil {
+				removed++
+			} else if !errors.Is(removeErr, os.ErrNotExist) {
+				return removed, removeErr
+			}
+			if err := s.markCacheLocationUnavailable(ctx, item.RemoteSourceID, item.CachePath); err != nil {
+				return removed, err
+			}
+			continue
+		}
+		if err != nil {
+			return removed, err
+		}
+		_, deleted, err := s.clearCacheLocation(ctx, locationID, item.CachePath)
+		if err != nil {
+			return removed, err
+		}
+		if deleted {
+			removed++
+		}
+	}
+	return removed, nil
 }
 
 func workflowNodeIDsByNodeID(ctx context.Context, db *sql.DB, runID int64) (map[string]int64, error) {

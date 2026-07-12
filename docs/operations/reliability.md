@@ -12,8 +12,9 @@
   expired job was first observed.
 - DLsite metadata sync uses configured request delay and backoff for provider
   requests.
-- Fetch planning reads persisted DLsite metadata and cached source availability;
-  it does not trigger an implicit provider refresh.
+- Fetch planning reuses complete persisted DLsite family metadata and cached
+  source availability. If the requested work lacks a DLsite snapshot or edition
+  relationship, preparation performs one bounded targeted family sync.
 - Fetch, remote playback cache, and cache/local location deletion run as durable
   recoverable jobs with lease heartbeats and restart checkpoints.
 - A single cache/local deletion and a mixed batch deletion use the same queued

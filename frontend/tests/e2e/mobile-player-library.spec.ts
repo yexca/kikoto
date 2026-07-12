@@ -290,6 +290,12 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Origin", { exact: true })).toBeVisible();
   await expect(page.getByText("Community", { exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeDisabled();
+	await page.getByLabel("Select RJ09999991").click();
+	await page.getByLabel("Exclude file type").selectOption("mp3");
+	await expect(page.getByText("0 remote / 1")).toBeVisible();
+	await page.getByRole("button", { name: "All", exact: true }).click();
+	await page.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "result", exact: true }).click();
   await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
   await expect(page.getByText("Add", { exact: true })).toBeVisible();
@@ -308,6 +314,7 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
   await page.getByTitle("Fetch").click();
+	await page.getByLabel("Select RJ09999991").click();
   await page.getByRole("button", { name: "result", exact: true }).click();
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
   await page.getByLabel("Remote source").selectOption("2");

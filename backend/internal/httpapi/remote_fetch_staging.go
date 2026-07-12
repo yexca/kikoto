@@ -565,17 +565,21 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID), manifest.LocalSourceID, manifest.EditionCode); err != nil {
 		return err
 	}
+	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan)
+	if err != nil {
+		return err
+	}
 	if err := s.completeRemoteFetchManifest(ctx, manifest); err != nil {
 		return err
 	}
-	summary := mustJSON(map[string]any{"recovered": true, "published": countPromotedFetchItems(plan.Items), "plan": plan.Summary})
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND node_id IN ('stage', 'verify', 'promote', 'sync')", summary, manifest.WorkflowRunID); err != nil {
+	summary := mustJSON(map[string]any{"recovered": true, "published": countPromotedFetchItems(plan.Items), "cache_removed": removedCache, "plan": plan.Summary})
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE workflow_run_id = ? AND node_id IN ('stage', 'verify', 'promote', 'sync', 'cleanup')", summary, manifest.WorkflowRunID); err != nil {
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_job SET status = 'succeeded', error_message = '', locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.WorkflowJobID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", summary, manifest.WorkflowRunID)
+	_, err = s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", summary, manifest.WorkflowRunID)
 	return err
 }
 

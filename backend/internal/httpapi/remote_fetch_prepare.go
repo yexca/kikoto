@@ -80,6 +80,38 @@ func (s *Server) prepareRemoteFetch(ctx context.Context, requestedCode string) r
 	return result
 }
 
+func (s *Server) ensureRemoteFetchMetadata(ctx context.Context, requestedCode string) error {
+	requestedCode = normalizeDLsiteCode(requestedCode)
+	if requestedCode == "" {
+		return nil
+	}
+	ready, err := s.remoteFetchMetadataReady(ctx, requestedCode)
+	if err != nil {
+		return err
+	}
+	if ready {
+		return nil
+	}
+	return s.syncWorkEntityMetadata(ctx, requestedCode)
+}
+
+func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode string) (bool, error) {
+	var ready bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work
+			INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
+			INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id AND provider.code = 'dlsite'
+			INNER JOIN work_edition AS edition ON edition.work_id = work.id
+			WHERE UPPER(work.primary_code) = UPPER(?)
+		)
+	`, requestedCode).Scan(&ready); err != nil {
+		return false, err
+	}
+	return ready, nil
+}
+
 func (s *Server) loadRemoteFetchEditions(ctx context.Context, requestedCode string) ([]remoteFetchEdition, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT edition.work_id, edition.primary_code, work.title,

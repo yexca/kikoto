@@ -83,6 +83,61 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	}
 }
 
+func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
+	db := openMigratedTestDB(t)
+	cacheRoot := t.TempDir()
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Selected', 'selected'), (2, 1, 'audio', 'Other', 'other')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES
+			(1, 1, 'cache', 'remote/RJ01234567/selected.mp3', 'available'),
+			(2, 1, 'cache', 'remote/RJ01234567/other.flac', 'available')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	selectedPath := filepath.Join(cacheRoot, "remote", "RJ01234567", "selected.mp3")
+	otherPath := filepath.Join(cacheRoot, "remote", "RJ01234567", "other.flac")
+	if err := os.MkdirAll(filepath.Dir(selectedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{selectedPath, otherPath} {
+		if err := os.WriteFile(path, []byte("cache"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := remoteWorkSavePlan{Items: []remoteWorkSavePlanItem{{
+		Action: "cache_hit", RemoteSourceID: 1, CachePath: "remote/RJ01234567/selected.mp3",
+	}}}
+	removed, err := server.cleanupPromotedFetchCache(context.Background(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1", removed)
+	}
+	if _, err := os.Stat(selectedPath); !os.IsNotExist(err) {
+		t.Fatalf("selected cache still exists: %v", err)
+	}
+	if _, err := os.Stat(otherPath); err != nil {
+		t.Fatalf("unselected cache was removed: %v", err)
+	}
+	var selectedAvailability, otherAvailability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE media_item_id = 1").Scan(&selectedAvailability); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE media_item_id = 2").Scan(&otherAvailability); err != nil {
+		t.Fatal(err)
+	}
+	if selectedAvailability != "unavailable" || otherAvailability != "available" {
+		t.Fatalf("availability selected=%s other=%s", selectedAvailability, otherAvailability)
+	}
+}
+
 func TestReconcileRemoteFetchDoesNotRequeueFailedRun(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir()})

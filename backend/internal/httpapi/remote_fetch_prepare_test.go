@@ -49,6 +49,9 @@ func TestPrepareRemoteFetchUsesPersistedMetadata(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
+	if err := server.ensureRemoteFetchMetadata(context.Background(), "RJ09999996"); err != nil {
+		t.Fatal(err)
+	}
 	preparation := server.prepareRemoteFetch(context.Background(), "RJ09999996")
 	var after int
 	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot").Scan(&after); err != nil {
@@ -60,6 +63,21 @@ func TestPrepareRemoteFetchUsesPersistedMetadata(t *testing.T) {
 	}
 	if after != before {
 		t.Fatalf("metadata snapshots changed from %d to %d during Fetch preparation", before, after)
+	}
+}
+
+func TestRemoteFetchMetadataReadyRejectsRemoteOnlyWorkShell(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999994', 'Remote shell')"); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := server.remoteFetchMetadataReady(context.Background(), "RJ09999994")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ready {
+		t.Fatal("remote-only work shell was treated as complete Fetch metadata")
 	}
 }
 
