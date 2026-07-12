@@ -1013,7 +1013,7 @@ export type MediaCacheResult = {
 };
 
 export type MediaCleanupTarget = {
-  kind: "cache" | "local";
+  kind: "cache" | "local" | "local_root";
   locationId: number;
 };
 

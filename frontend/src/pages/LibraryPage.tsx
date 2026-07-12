@@ -3018,19 +3018,25 @@ function WorkDetailView({
     setIsDeleting(true);
     setMessage("");
     try {
-      const batches = Array.from({ length: Math.ceil(targets.length / 500) }, (_, index) => targets.slice(index * 500, (index + 1) * 500));
+      const orderedTargets = [...targets.filter((target) => target.kind !== "local_root"), ...targets.filter((target) => target.kind === "local_root")];
+      const batches = Array.from({ length: Math.ceil(orderedTargets.length / 500) }, (_, index) => orderedTargets.slice(index * 500, (index + 1) * 500));
       const results = [];
       for (const batch of batches) {
-        results.push(await api.cleanupMediaLocations(batch.map(({ kind, locationId }) => ({ kind, locationId }))));
-      }
-      toast.success(`Queued ${targets.length} file ${targets.length === 1 ? "location" : "locations"} for deletion in ${results.length} workflow ${results.length === 1 ? "run" : "runs"}.`);
-      await Promise.all(results.map(async (result) => {
+        const result = await api.cleanupMediaLocations(batch.map(({ kind, locationId }) => ({ kind, locationId })));
+        results.push(result);
+        let completed = false;
         for (let attempt = 0; attempt < 60; attempt += 1) {
           const run = await api.getWorkflowRun(result.runId);
-          if (["succeeded", "failed", "cancelled"].includes(run.status)) return;
+          if (run.status === "succeeded") {
+            completed = true;
+            break;
+          }
+          if (["failed", "cancelled"].includes(run.status)) throw new Error(`Delete workflow #${result.runId} ${run.status}.`);
           await new Promise((resolve) => window.setTimeout(resolve, 500));
         }
-      }));
+        if (!completed) throw new Error(`Delete workflow #${result.runId} did not finish in time.`);
+      }
+      toast.success(`Deleted ${targets.length} ${targets.length === 1 ? "item" : "items"} in ${results.length} workflow ${results.length === 1 ? "run" : "runs"}.`);
       if (activeEdition) {
         setActiveEdition(await api.getWork(activeEdition.id));
       } else if (work) {
@@ -3540,6 +3546,7 @@ function WorkDetailView({
           onDeleteTargets={deleteMediaTargets}
           allowCacheDelete={!selectedRemoteSource}
           allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
+          localRootPath={work?.sourcePresence?.find((presence) => presence.type === "local" && presence.availability === "available" && presence.fileSourceId === selectedSource?.fileSourceId)?.sourceUrl ?? ""}
           showCachedFilter={Boolean(selectedTrackedPresence)}
         />
       )}
@@ -5150,7 +5157,7 @@ type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
   | { kind: "text"; title: string; locationId: number };
 
-type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string; sizeBytes: number | null };
+type MediaDeleteTarget = { kind: "cache" | "local" | "local_root"; locationId: number; title: string; path: string; sizeBytes: number | null };
 
 type DetailSourceIntent = "local" | "tracked";
 
@@ -6457,6 +6464,7 @@ function DirectoryManagerModal({
   onDeleteTargets,
   allowCacheDelete,
   allowLocalDelete,
+  localRootPath = "",
   showCachedFilter = false,
 }: {
   root: TreeNode;
@@ -6466,13 +6474,20 @@ function DirectoryManagerModal({
   onDeleteTargets?: (targets: MediaDeleteTarget[]) => void;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
+  localRootPath?: string;
   showCachedFilter?: boolean;
 }) {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
   const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
   const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
-  const targets = useMemo(() => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), [root, allowCacheDelete, allowLocalDelete]);
+  const fileTargets = useMemo(() => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), [root, allowCacheDelete, allowLocalDelete]);
+  const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
+    const representative = fileTargets.find((target) => target.kind === "local");
+    if (!allowLocalDelete || !localRootPath || !representative) return null;
+    return { kind: "local_root", locationId: representative.locationId, title: "Work root", path: localRootPath, sizeBytes: null };
+  }, [allowLocalDelete, fileTargets, localRootPath]);
+  const targets = useMemo(() => rootTarget ? [...fileTargets, rootTarget] : fileTargets, [fileTargets, rootTarget]);
   const selectedTargets = useMemo(() => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))), [targets, selectedKeys]);
   const selectedSignature = selectedTargets.map(mediaDeleteTargetKey).sort().join("|");
   const previewSignature = previewTargets.map(mediaDeleteTargetKey).sort().join("|");
@@ -6566,6 +6581,7 @@ function DirectoryManagerModal({
               allowLocalDelete={allowLocalDelete}
               showOnlyDeletable={showOnlyDeletable}
               onToggleTarget={toggleTarget}
+              rootTarget={rootTarget}
             />
           </div>
           <div className="app-scroll min-h-0 overflow-auto p-3">
@@ -6574,7 +6590,7 @@ function DirectoryManagerModal({
                 <div className="text-sm font-medium">Delete preview</div>
               </div>
               <Badge variant={previewRefreshing ? "outline" : "secondary"}>
-                {previewRefreshing ? "Refreshing" : `${previewTargets.length} files`}
+                {previewRefreshing ? "Refreshing" : `${previewTargets.length} items`}
               </Badge>
             </div>
             {previewRefreshing && (
@@ -6630,6 +6646,7 @@ function DirectoryManager({
   allowLocalDelete,
   showOnlyDeletable,
   onToggleTarget,
+  rootTarget,
 }: {
   root: TreeNode;
   emptyLabel: string;
@@ -6638,6 +6655,7 @@ function DirectoryManager({
   allowLocalDelete?: boolean;
   showOnlyDeletable?: boolean;
   onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
+  rootTarget?: MediaDeleteTarget | null;
 }) {
   const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
   if (!hasFiles) {
@@ -6645,6 +6663,21 @@ function DirectoryManager({
   }
   return (
     <div className="space-y-1">
+      {rootTarget && (() => {
+        const rootTargets = [...directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), rootTarget];
+        const selectedCount = rootTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
+        const checked = selectedCount === rootTargets.length;
+        const mixed = selectedCount > 0 && !checked;
+        return (
+          <div className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-muted">
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <Checkbox checked={checked} indeterminate={mixed} onCheckedChange={() => rootTargets.forEach((target) => onToggleTarget(target, !checked))} aria-label={`Select work root ${rootTarget.path}`} />
+            <Folder className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 truncate" title={rootTarget.path}>{rootTarget.path}</span>
+            <span className="text-xs text-muted-foreground">{selectedCount}/{rootTargets.length}</span>
+          </div>
+        );
+      })()}
       <DirectoryManagerNode
         node={root}
         depth={0}

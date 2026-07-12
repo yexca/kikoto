@@ -2078,6 +2078,11 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		return remoteWorkSyncResult{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		return remoteWorkSyncResult{}, err
+	}
 	workCode := normalizedRemoteWorkCode(remoteWork)
 	if workCode == "" {
 		workCode = code
@@ -2099,6 +2104,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 			{"id": "filter", "type": "filter_candidates"},
 			{"id": "match", "type": "match_works"},
 			{"id": "metadata", "type": "sync_metadata"},
+			{"id": "tree", "type": "fetch_remote_tree"},
 		},
 	})
 	if err != nil {
@@ -2139,6 +2145,10 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
+	syncedMediaItems, syncedLocations, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks)
+	if err != nil {
+		return remoteWorkSyncResult{}, err
+	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "discover", NodeType: "discover_remote_works", DisplayName: "Discover remote works", Position: 2, Status: "succeeded",
 		Input: map[string]any{"work_code": workCode}, Output: map[string]any{"remote_work_id": remoteWork.ID},
@@ -2169,6 +2179,17 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	}); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
+	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "tree", NodeType: "fetch_remote_tree", DisplayName: "Fork remote directory", Position: 6, Status: "succeeded",
+		Input: map[string]any{"work_id": workID, "source_id": source.ID}, Output: map[string]any{"media_items": syncedMediaItems, "locations": syncedLocations},
+	}); err != nil {
+		return remoteWorkSyncResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(map[string]any{
+		"remote_work_id": remoteWork.ID, "tracked": true, "media_items": syncedMediaItems, "locations": syncedLocations,
+	}), runID); err != nil {
+		return remoteWorkSyncResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2178,8 +2199,8 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		WorkID:           workID,
 		PrimaryCode:      workCode,
 		Status:           "succeeded",
-		SyncedMediaItems: 0,
-		SyncedLocations:  0,
+		SyncedMediaItems: syncedMediaItems,
+		SyncedLocations:  syncedLocations,
 		TriggerReason:    triggerReason,
 	}, nil
 }

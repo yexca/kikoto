@@ -389,7 +389,10 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
       { id: 2, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "cache", path: "local/RJ09999999/track.mp3", streamUrl: "/api/media/2/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
     ],
   }];
-  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), { onLocalRefresh: () => { localRefreshes += 1; } });
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
+    work: { ...work, sourcePresence: [{ type: "local", availability: "available", fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", sourceUrl: work.primaryCode }] },
+    onLocalRefresh: () => { localRefreshes += 1; },
+  });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
   await page.getByRole("button", { name: "Manage", exact: true }).click();
@@ -400,11 +403,12 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
 
   await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(page.getByLabel("Include MP3")).toBeVisible();
+  await expect(page.getByLabel(`Select work root ${work.primaryCode}`)).toBeVisible();
   await expect(page.getByText("Delete preview", { exact: true })).toBeVisible();
-  await page.getByLabel("Select track.mp3").click();
+  await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Review deletion" })).toBeEnabled();
-  await expect(page.getByText("2 files", { exact: true })).toBeVisible();
+  await expect(page.getByText("3 items", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Review deletion" }).click();
   await expect(page.getByRole("heading", { name: "Review deletion" })).toBeVisible();
@@ -412,7 +416,7 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
   await page.getByRole("button", { name: "Permanently delete" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
-  expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }, { kind: "local", locationId: 1 }] });
+  expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }, { kind: "local", locationId: 1 }, { kind: "local_root", locationId: 1 }] });
 });
 
 test("work detail preserves Local and Tracked entry intent while keeping every remote source tab", async ({ page }) => {

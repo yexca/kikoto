@@ -14,7 +14,11 @@ import (
 func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	dataRoot := t.TempDir()
 	cacheRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dataRoot, "local.mp3"), []byte("local"), 0o644); err != nil {
+	localPath := filepath.Join("RJTEST001", "audio", "local.mp3")
+	if err := os.MkdirAll(filepath.Join(dataRoot, "RJTEST001", "audio"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataRoot, localPath), []byte("local"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cacheRoot, "cached.mp3"), []byte("cache"), 0o644); err != nil {
@@ -22,9 +26,13 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	}
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
-	localID := insertTestLocalMediaLocation(t, db, "local.mp3")
+	localID := insertTestLocalMediaLocation(t, db, filepath.ToSlash(localPath))
 	var mediaItemID, sourceID int64
 	if err := db.QueryRow("SELECT media_item_id, file_source_id FROM media_file_location WHERE id = ?", localID).Scan(&mediaItemID, &sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability)
+		SELECT work_id, ?, 'local', 'RJTEST001', 'available' FROM media_item WHERE id = ?`, sourceID, mediaItemID); err != nil {
 		t.Fatal(err)
 	}
 	result, err := db.Exec(`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
@@ -44,12 +52,13 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 		{Kind: "local", LocationID: localID},
 		{Kind: "cache", LocationID: cacheID},
 		{Kind: "cache", LocationID: cacheID},
+		{Kind: "local_root", LocationID: localID},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queued.Status != "queued" || queued.Queued != 2 {
-		t.Fatalf("queued result = %#v, want two unique queued targets", queued)
+	if queued.Status != "queued" || queued.Queued != 3 {
+		t.Fatalf("queued result = %#v, want three unique queued targets", queued)
 	}
 	var job workflowJobRecord
 	if err := db.QueryRow(`SELECT id, workflow_run_id, workflow_node_run_id, worker_type, payload_json, checkpoint_json,
@@ -62,7 +71,7 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	if job.WorkerType != "media_location_cleanup" {
 		t.Fatalf("worker type = %q", job.WorkerType)
 	}
-	if deleted, err := server.clearLocalMediaLocation(context.Background(), localID, "local.mp3"); err != nil || !deleted {
+	if deleted, err := server.clearLocalMediaLocation(context.Background(), localID, filepath.ToSlash(localPath)); err != nil || !deleted {
 		t.Fatalf("seed completed local cleanup = deleted %t, error %v", deleted, err)
 	}
 	job.CheckpointJSON = mustJSON(mediaCleanupCheckpoint{CompletedKeys: []string{mediaCleanupTargetKey(mediaCleanupTarget{Kind: "local", LocationID: localID})}, Deleted: 1})
@@ -72,7 +81,7 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	if err := server.executeMediaLocationCleanupJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{filepath.Join(dataRoot, "local.mp3"), filepath.Join(cacheRoot, "cached.mp3")} {
+	for _, path := range []string{filepath.Join(dataRoot, "RJTEST001"), filepath.Join(cacheRoot, "cached.mp3")} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("path %s still exists or stat failed unexpectedly: %v", path, err)
 		}
@@ -93,6 +102,13 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	if remoteAvailability != "available" {
 		t.Fatalf("remote location availability = %q, want available", remoteAvailability)
 	}
+	var localPresence string
+	if err := db.QueryRow("SELECT availability FROM work_source_presence WHERE file_source_id = ? AND presence_type = 'local'", sourceID).Scan(&localPresence); err != nil {
+		t.Fatal(err)
+	}
+	if localPresence != "unavailable" {
+		t.Fatalf("local presence availability = %q, want unavailable", localPresence)
+	}
 	var runStatus, jobStatus string
 	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
 		t.Fatal(err)
@@ -107,7 +123,7 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", queued.RunID).Scan(&summary); err != nil {
 		t.Fatal(err)
 	}
-	if summary != `{"deleted":2,"locations":2}` {
+	if summary != `{"deleted":3,"locations":3}` {
 		t.Fatalf("summary = %s, want recovered total delete count", summary)
 	}
 }

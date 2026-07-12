@@ -62,6 +62,43 @@ func TestUpdateSourceHealthOnlyWritesSameStatusAfterThrottleWindow(t *testing.T)
 	}
 }
 
+func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/workInfo/RJ09999999":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: "RJ09999999", Title: "Forked work"})
+		case "/api/tracks/10":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaStreamURL: "/media/track.mp3"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	result, err := server.runRemoteWorkSync(context.Background(), 1, "RJ09999999", "test_fork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SyncedMediaItems != 1 || result.SyncedLocations != 1 {
+		t.Fatalf("sync counts = %d items, %d locations", result.SyncedMediaItems, result.SyncedLocations)
+	}
+	var locations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE file_source_id = 1 AND location_type = 'remote_stream' AND availability = 'available'`).Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if locations != 1 {
+		t.Fatalf("remote stream locations = %d, want 1", locations)
+	}
+}
+
 func TestSelectedRemotePathMatches(t *testing.T) {
 	tests := []struct {
 		name     string

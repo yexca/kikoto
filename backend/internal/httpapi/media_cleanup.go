@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -146,7 +147,7 @@ func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []me
 
 func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaCleanupTargetRequest) (mediaCleanupTarget, error) {
 	requested.Kind = strings.TrimSpace(requested.Kind)
-	if requested.LocationID <= 0 || (requested.Kind != "cache" && requested.Kind != "local") {
+	if requested.LocationID <= 0 || (requested.Kind != "cache" && requested.Kind != "local" && requested.Kind != "local_root") {
 		return mediaCleanupTarget{}, fmt.Errorf("invalid media cleanup target")
 	}
 	var target mediaCleanupTarget
@@ -162,6 +163,28 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 			return mediaCleanupTarget{}, fmt.Errorf("media location not found")
 		}
 		return mediaCleanupTarget{}, err
+	}
+	if requested.Kind == "local_root" && locationType == "local" {
+		target.Kind = requested.Kind
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT source_url
+			FROM work_source_presence
+			WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+			LIMIT 1
+		`, target.WorkID, target.SourceID).Scan(&target.Path); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return mediaCleanupTarget{}, fmt.Errorf("local work root not found")
+			}
+			return mediaCleanupTarget{}, err
+		}
+		rootPath, err := safeDataPath(s.cfg.DataRoot, target.Path)
+		if err != nil {
+			return mediaCleanupTarget{}, err
+		}
+		if isSymlinkPath(rootPath) {
+			return mediaCleanupTarget{}, fmt.Errorf("refusing to delete symlink %s", filepath.ToSlash(target.Path))
+		}
+		return target, nil
 	}
 	if locationType != requested.Kind {
 		return mediaCleanupTarget{}, fmt.Errorf("media location %d is not %s", requested.LocationID, requested.Kind)
@@ -216,6 +239,8 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		var err error
 		if target.Kind == "cache" {
 			_, didDelete, err = s.clearCacheLocation(ctx, target.LocationID, target.Path)
+		} else if target.Kind == "local_root" {
+			didDelete, err = s.clearLocalWorkRoot(ctx, target)
 		} else {
 			didDelete, err = s.clearLocalMediaLocation(ctx, target.LocationID, target.Path)
 		}
@@ -247,6 +272,53 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarget) (bool, error) {
+	rootPath, err := safeDataPath(s.cfg.DataRoot, target.Path)
+	if err != nil {
+		return false, err
+	}
+	directories := []string{}
+	err = filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, os.ErrNotExist) && path == rootPath {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+			return fmt.Errorf("local work root still contains %s", filepath.ToSlash(path))
+		}
+		directories = append(directories, path)
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
+	deleted := false
+	for _, directory := range directories {
+		if err := os.Remove(directory); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		} else if err == nil && directory == rootPath {
+			deleted = true
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ? AND location_type = 'local'
+			AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+	`, target.SourceID, target.WorkID); err != nil {
+		return false, err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE work_source_presence
+		SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+	`, target.WorkID, target.SourceID)
+	return deleted, err
 }
 
 func (s *Server) clearLocalMediaLocation(ctx context.Context, locationID int64, relPath string) (bool, error) {
