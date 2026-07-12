@@ -567,9 +567,9 @@ export function LibraryPage() {
     };
   }, [isDatabaseMenuOpen]);
 
-  const openWork = (work: Work) => {
+  const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
-    const path = `/${work.primaryCode}`;
+    const path = `/${work.primaryCode}?view=${sourceIntent}`;
 	setSelectedRemoteTarget(null);
 	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library", workPreview: work }, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
@@ -865,12 +865,12 @@ export function LibraryPage() {
         onOpenLocal={(workID) => {
           const work = works.find((item) => item.id === workID);
 		  if (work) {
-			openWork(work);
+			openWork(work, "local");
 			return;
 		  }
 		  void api.getWork(workID).then((detail) => {
 			setSelectedRemoteTarget(null);
-			openWorkCodeRoute(detail.primaryCode);
+			openWorkCodeRoute(detail.primaryCode, "local");
 		  }).catch((error) => toast.notify(toastFromError(error, "Local detail could not be opened.")));
         }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
@@ -886,6 +886,7 @@ export function LibraryPage() {
         workPreview={selectedWorkPreview}
         mediaLoading={isSelectedMediaLoading}
         sources={sources}
+        initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onWorkReload={async (workID) => {
@@ -1097,7 +1098,7 @@ export function LibraryPage() {
                 return;
               }
               const detail = await api.getWork(workId);
-              openWorkCodeRoute(detail.primaryCode);
+              openWorkCodeRoute(detail.primaryCode, "local");
             }}
           />
         </div>
@@ -2429,7 +2430,7 @@ function RemoteWorkDetailView({
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
-  const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null }] : [], [detail, source.id]);
+  const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, fileSourceId: null, kind: "remote", status: "green", statusLabel: "Available" }] : [], [detail, source.id]);
   const player = useLibraryPlayer();
 
   useEffect(() => {
@@ -2749,6 +2750,7 @@ function WorkDetailView({
   workPreview,
   mediaLoading,
   sources,
+  initialSourceIntent,
   onBack,
   onStatusChange,
   onWorkReload,
@@ -2759,6 +2761,7 @@ function WorkDetailView({
   workPreview: WorkPreview | null;
   mediaLoading: boolean;
   sources: LibrarySource[];
+  initialSourceIntent: DetailSourceIntent;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onWorkReload: (workID: number) => Promise<void>;
@@ -2769,7 +2772,7 @@ function WorkDetailView({
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
   const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []), [work, remoteSources]);
-  const [activeSourceKey, setActiveSourceKey] = useState("local");
+  const [activeSourceKey, setActiveSourceKey] = useState<string>(initialSourceIntent);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
@@ -2793,7 +2796,10 @@ function WorkDetailView({
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
-  const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey) ?? sourceTabs[0];
+  const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey)
+    ?? sourceTabs.find((source) => source.kind === activeSourceKey)
+    ?? sourceTabs[0];
+  const resolvedActiveSourceKey = selectedSource?.key ?? activeSourceKey;
   const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
   const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
   const selectedTrackedForked = trackedPresenceForked(selectedTrackedPresence, work?.mediaItems ?? []);
@@ -2868,10 +2874,14 @@ function WorkDetailView({
   }, [localDirectoryWork, mediaLoading, work?.primaryCode, selectedSource, selectedRemoteDetail, selectedRemoteSource, selectedTrackedPresence, selectedTrackedForked, selectedTrackedSourceID]);
 
   useEffect(() => {
-    if (sourceTabs.length > 0 && !sourceTabs.some((source) => source.key === activeSourceKey)) {
+    if (!work || sourceTabs.length === 0 || sourceTabs.some((source) => source.key === activeSourceKey)) return;
+    const intendedSource = sourceTabs.find((source) => source.kind === activeSourceKey);
+    if (intendedSource) {
+      setActiveSourceKey(intendedSource.key);
+    } else {
       setActiveSourceKey(sourceTabs[0].key);
     }
-  }, [activeSourceKey, sourceTabs]);
+  }, [activeSourceKey, sourceTabs, work]);
 
   useEffect(() => {
     setRemoteSources([]);
@@ -2897,7 +2907,7 @@ function WorkDetailView({
   }, [work?.primaryCode, sources]);
 
   useEffect(() => {
-    if (!selectedRemoteSource || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
+    if (!selectedRemoteSource || !remoteSourceCanBrowse(selectedRemoteSource.summary) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
     const controller = new AbortController();
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
@@ -2922,8 +2932,8 @@ function WorkDetailView({
   useEffect(() => {
     setActiveEdition(null);
     setActiveEditionCode("");
-	setActiveSourceKey("local");
-  }, [work?.id]);
+	setActiveSourceKey(initialSourceIntent);
+  }, [initialSourceIntent, work?.id]);
 
   useEffect(() => {
     if (!work || activeEditionCode) return;
@@ -3221,7 +3231,7 @@ function WorkDetailView({
       toast.success(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId);
       await onWorksChanged();
-      setActiveSourceKey(`${remote.source.id}:remote_stream`);
+      setActiveSourceKey("tracked");
     } catch (error) {
       toast.notify(toastFromError(error, "Fork failed."));
     } finally {
@@ -3252,7 +3262,7 @@ function WorkDetailView({
 
   const openRemoteLocal = (workID: number) => {
     if (!work || work.id === workID) {
-      setActiveSourceKey("local");
+      setActiveSourceKey(sourceTabs.find((source) => source.kind === "local")?.key ?? "local");
     }
   };
 
@@ -3312,19 +3322,11 @@ function WorkDetailView({
       description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
       statsLabel={sourceStatsLabel}
       tabs={sourceTabs}
-      activeKey={activeSourceKey}
+      activeKey={resolvedActiveSourceKey}
       onActiveKeyChange={changeSourceKey}
-      checkingLabel={isCheckingSources ? "Checking sources..." : ""}
-      sourceSummary={work ? (
-        <SourceAvailabilitySummary
-          tabs={sourceTabs}
-          remoteSources={remoteSources}
-          sourcePresence={work.sourcePresence ?? []}
-          checking={isCheckingSources}
-          checkedAt={sourceCheckedAt}
-          onRefresh={() => void refreshSourceAvailability()}
-        />
-      ) : <DirectorySkeletonSummary />}
+      checkingSources={isCheckingSources}
+      checkedAt={sourceCheckedAt}
+      onCheckSources={() => void refreshSourceAvailability()}
       directoryMode={directoryMode}
       onDirectoryModeChange={setDirectoryMode}
       root={tree}
@@ -3369,7 +3371,15 @@ function WorkDetailView({
           onSave={() => void planRemoteSave()}
         />
       ) : null}
-      emptyState={!work ? <DirectorySkeleton /> : selectedTrackedPresence && !selectedTrackedForked ? (
+      emptyState={!work ? <DirectorySkeleton /> : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
+        <LocalSourceStatePanel
+          status={selectedSource.status}
+          remoteSources={remoteSources}
+          onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
+        />
+      ) : selectedRemoteSource && !remoteSourceCanBrowse(selectedRemoteSource.summary) ? (
+        <RemoteSourceStatePanel remote={selectedRemoteSource} />
+      ) : selectedTrackedPresence && !selectedTrackedForked ? (
         <TrackedUnforkedPanel
           presence={selectedTrackedPresence}
           remoteSources={remoteSources}
@@ -3942,17 +3952,6 @@ function DetailSkeletonActions() {
   );
 }
 
-function DirectorySkeletonSummary() {
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="flex flex-wrap gap-2">
-        <div className="h-7 w-28 animate-pulse rounded-full bg-muted" />
-        <div className="h-7 w-36 animate-pulse rounded-full bg-muted" />
-      </div>
-    </div>
-  );
-}
-
 function DirectorySkeleton() {
   return (
     <div className="space-y-2">
@@ -3995,92 +3994,6 @@ function useCompactDetailLayout() {
   return compact;
 }
 
-function SourceAvailabilitySummary({
-  tabs,
-  remoteSources,
-  sourcePresence,
-  checking,
-  checkedAt,
-  onRefresh,
-}: {
-  tabs: SourceTabInfo[];
-  remoteSources: RemoteSourceAvailability[];
-  sourcePresence: NonNullable<WorkDetail["sourcePresence"]>;
-  checking: boolean;
-  checkedAt: string;
-  onRefresh: () => void;
-}) {
-  const localTabs = tabs.filter((tab) => !tab.key.startsWith("remote-source:"));
-  const unforkedSources = trackedUnforkedSources(sourcePresence, remoteSources);
-  if (localTabs.length === 0 && remoteSources.length === 0 && unforkedSources.length === 0 && !checking) return null;
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {localTabs.map((tab) => (
-            <Badge key={tab.key} variant="secondary">
-              {tab.label}
-            </Badge>
-          ))}
-          {remoteSources.map((remote) => (
-            <SourceStatusBadge key={remote.source.id} remote={remote} />
-          ))}
-          {unforkedSources.map((presence) => (
-            <UnforkedSourceBadge key={`${presence.type}:${presence.availability}`} presence={presence} />
-          ))}
-          {checking && <Badge variant="secondary">Checking sources</Badge>}
-          {!checking && checkedAt && <span className="text-xs text-muted-foreground">Checked {formatDateTime(checkedAt)}</span>}
-        </div>
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
-          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function UnforkedSourceBadge({ presence }: { presence: NonNullable<WorkDetail["sourcePresence"]>[number] }) {
-  const availability = presence.availability || "unknown";
-  const sourceName = presence.fileSourceName || presence.fileSourceCode || "Tracked";
-  const title = availability === "available"
-    ? "Tracked from a remote source, but no forked directory tree has been saved yet."
-    : `Tracked source is ${availability}. Fork is unavailable until the source can be refreshed.`;
-  return (
-    <div
-      className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900"
-      title={title}
-    >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
-      <span className="truncate font-medium">{sourceName}</span>
-      <span>unforked</span>
-      {availability !== "available" && (
-        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px]">{availability}</span>
-      )}
-    </div>
-  );
-}
-
-function SourceStatusBadge({ remote }: { remote: RemoteSourceAvailability }) {
-  const meta = sourceStatusMeta(remote.summary);
-  const known = sourceKnownStates(remote.summary);
-  return (
-    <div
-      className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
-      title={sourceStatusTitle(remote.summary, known)}
-    >
-      <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dotClass}`} />
-      <span className="truncate font-medium">{remote.source.displayName}</span>
-      <span className="text-muted-foreground">{meta.label}</span>
-      {known.map((item) => (
-        <span key={item} className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-          {item}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function TrackedUnforkedPanel({
   presence,
   remoteSources,
@@ -4109,6 +4022,42 @@ function TrackedUnforkedPanel({
           <Badge variant="warning">No browsable remote source</Badge>
         )}
       </div>
+    </div>
+  );
+}
+
+function LocalSourceStatePanel({
+  status,
+  remoteSources,
+  onSelectRemote,
+}: {
+  status: SourceTabInfo["status"];
+  remoteSources: RemoteSourceAvailability[];
+  onSelectRemote: (remote: RemoteSourceAvailability) => void;
+}) {
+  const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
+  return (
+    <div className={`rounded-md border p-4 text-sm ${status === "red" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+      <div className="font-medium">Local files unavailable</div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {availableSources.length > 0 ? availableSources.map((remote) => (
+          <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
+            Fetch from {remote.source.displayName}
+          </Button>
+        )) : (
+          <Badge variant={status === "red" ? "outline" : "warning"} className={status === "red" ? "border-red-300 text-red-800" : ""}>{status === "red" ? "No remote source available" : "Check remote sources"}</Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RemoteSourceStatePanel({ remote }: { remote: RemoteSourceAvailability }) {
+  const status = remoteSourceTabStatus(remote.summary);
+  return (
+    <div className={`rounded-md border p-4 text-sm ${status.status === "red" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+      <div className="font-medium">{remote.source.displayName} · {status.statusLabel}</div>
+      {remote.summary.error && <div className="mt-1 text-xs opacity-80">{remote.summary.error}</div>}
     </div>
   );
 }
@@ -4149,38 +4098,6 @@ function NoSourceDirectoryPanel({
   );
 }
 
-function sourceStatusMeta(summary: SourceAvailabilitySource) {
-  if (summary.status === "available") {
-    return { label: summary.hasCache ? "available + cache" : "available", dotClass: "bg-emerald-500" };
-  }
-  if (summary.status === "not_found") {
-    return { label: "not found", dotClass: "bg-muted-foreground" };
-  }
-  if (summary.status === "disabled") {
-    return { label: "disabled", dotClass: "bg-muted-foreground" };
-  }
-  if (summary.status === "unavailable") {
-    return { label: "unsupported", dotClass: "bg-amber-500" };
-  }
-  if (summary.status === "unknown") {
-    return { label: "not checked", dotClass: "bg-muted-foreground" };
-  }
-  return { label: "error", dotClass: "bg-destructive" };
-}
-
-function sourceKnownStates(summary: SourceAvailabilitySource) {
-  const states: string[] = [];
-  if (summary.hasLocal) states.push("local");
-  if (summary.hasCache) states.push("cache");
-  if (summary.hasRemote && summary.status !== "available") states.push("source known");
-  return states;
-}
-
-function sourceStatusTitle(summary: SourceAvailabilitySource, known: string[]) {
-  const details = [summary.title || summary.primaryCode || summary.remoteId, known.length > 0 ? `Known: ${known.join(", ")}` : "", summary.error].filter(Boolean);
-  return details.join("\n");
-}
-
 type DirectoryMode = "browse" | "tree";
 
 function SourceDirectoryPanel({
@@ -4190,8 +4107,9 @@ function SourceDirectoryPanel({
   tabs,
   activeKey,
   onActiveKeyChange,
-  checkingLabel,
-  sourceSummary,
+  checkingSources = false,
+  checkedAt,
+  onCheckSources,
   directoryMode,
   onDirectoryModeChange,
   root,
@@ -4214,8 +4132,9 @@ function SourceDirectoryPanel({
   tabs: SourceTabInfo[];
   activeKey: string;
   onActiveKeyChange: (key: string) => void;
-  checkingLabel?: string;
-  sourceSummary?: ReactNode;
+  checkingSources?: boolean;
+  checkedAt?: string;
+  onCheckSources?: () => void;
   directoryMode: DirectoryMode;
   onDirectoryModeChange: (mode: DirectoryMode) => void;
   root: TreeNode;
@@ -4268,23 +4187,35 @@ function SourceDirectoryPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto rounded-md border bg-card p-1">
-            {tabs.map((source) => (
-              <button
-                key={source.key}
-                className={`h-7 shrink-0 rounded px-2.5 text-xs font-medium ${
-                  source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                }`}
-                onClick={() => onActiveKeyChange(source.key)}
+          <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border bg-card p-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {tabs.map((source) => (
+                <button
+                  key={source.key}
+                  className={`inline-flex h-7 shrink-0 items-center gap-2 rounded px-2.5 text-xs font-medium ${
+                    source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => onActiveKeyChange(source.key)}
+                  title={`${source.label}: ${source.statusLabel}`}
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`} aria-hidden="true" />
+                  <span>{source.label}</span>
+                  <span className="sr-only">{source.statusLabel}</span>
+                </button>
+              ))}
+            </div>
+            {onCheckSources && (
+              <IconButton
+                title={checkingSources ? "Checking sources" : checkedAt ? `Check sources · Last checked ${formatDateTime(checkedAt)}` : "Check sources"}
+                onClick={onCheckSources}
+                disabled={checkingSources}
               >
-                {source.label}
-              </button>
-            ))}
+                <RefreshCw className={`h-3.5 w-3.5 ${checkingSources ? "animate-spin" : ""}`} />
+              </IconButton>
+            )}
           </div>
-          {checkingLabel && <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">{checkingLabel}</span>}
         </div>
         {routeSummary && <DirectoryRouteSummary summary={routeSummary} />}
-        {sourceSummary}
       </div>
       <Card>
         <CardContent className="p-4">
@@ -5166,12 +5097,16 @@ type FilePreviewState =
 
 type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string; sizeBytes: number | null };
 
+type DetailSourceIntent = "local" | "tracked";
+
 type SourceTabInfo = {
   key: string;
   label: string;
   fileSourceId: number | null;
   kind?: "local" | "remote" | "tracked" | "no_source";
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
+  status: "green" | "yellow" | "red";
+  statusLabel: string;
 };
 
 type RemoteSourceAvailability = {
@@ -5181,6 +5116,12 @@ type RemoteSourceAvailability = {
   loading?: boolean;
   error?: string;
 };
+
+function sourceTabStatusClass(status: SourceTabInfo["status"]) {
+  if (status === "green") return "bg-emerald-500";
+  if (status === "yellow") return "bg-amber-500";
+  return "bg-red-500";
+}
 
 type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" | "remote_source";
 
@@ -5201,50 +5142,70 @@ function buildSourceTabs(
   const sources = new Map<number, SourceTabInfo>();
   for (const item of items) {
     for (const location of item.locations) {
-      if (location.locationType !== "local") continue;
+      if (location.locationType !== "local" || location.availability !== "available") continue;
       if (!sources.has(location.fileSourceId)) {
         sources.set(location.fileSourceId, {
           key: `${location.fileSourceId}:${location.locationType}`,
           label: "Local",
           fileSourceId: location.fileSourceId,
+          kind: "local",
+          status: "green",
+          statusLabel: "Local files available",
         });
       }
     }
   }
+  const availableRemotes = remoteSources.filter((remote) => remote.summary.status === "available");
+  const pendingRemotes = remoteSources.filter((remote) => ["unknown", "error"].includes(remote.summary.status));
   const tabs = Array.from(sources.values());
+  if (tabs.length === 0) {
+    tabs.push({
+      key: "local",
+      label: "Local",
+      fileSourceId: -1,
+      kind: "local",
+      status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "yellow" : "red",
+      statusLabel: availableRemotes.length > 0 ? `Fetch available from ${availableRemotes[0].source.displayName}` : pendingRemotes.length > 0 || remoteSources.length === 0 ? "Remote sources need checking" : "No local or remote files available",
+    });
+  }
   const baseTabs: SourceTabInfo[] = [...tabs];
-	const trackedSourceIDs = new Set<number>();
   for (const presence of sourcePresence) {
     if (presence.type !== "tracked") continue;
     const sourceID = trackedPresenceSourceID(presence);
-	if (sourceID) trackedSourceIDs.add(sourceID);
+    const forked = trackedPresenceForked(presence, items);
+    const matchingRemote = remoteSources.find((remote) => remote.source.id === sourceID);
+    const canFork = matchingRemote?.summary.status === "available" || availableRemotes.length > 0;
+    const sourceName = presence.fileSourceName || presence.fileSourceCode || "Source";
     baseTabs.push({
 	  key: trackedSourceTabKey(presence),
-	  label: "Tracked",
+	  label: `Tracked · ${sourceName}`,
       fileSourceId: null,
       kind: "tracked",
       presence,
+      status: forked ? "green" : canFork ? "yellow" : "red",
+      statusLabel: forked ? "Tracked directory available" : canFork ? `Fork available from ${matchingRemote?.source.displayName ?? availableRemotes[0].source.displayName}` : "Tracked directory unavailable",
     });
   }
   for (const remote of remoteSources) {
-    if (!remoteSourceCanBrowse(remote.summary)) continue;
-	if (trackedSourceIDs.has(remote.source.id)) continue;
+    const status = remoteSourceTabStatus(remote.summary);
     baseTabs.push({
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
       fileSourceId: null,
       kind: "remote",
+      status: status.status,
+      statusLabel: status.statusLabel,
     });
-  }
-  if (baseTabs.length === 0) {
-    baseTabs.push({ key: "no-source", label: "No source", fileSourceId: null, kind: "no_source" });
   }
   return baseTabs;
 }
 
-function trackedUnforkedSources(sourcePresence: NonNullable<WorkDetail["sourcePresence"]>, remoteSources: RemoteSourceAvailability[]) {
-  if (remoteSources.some((remote) => remoteSourceCanBrowse(remote.summary))) return [];
-  return sourcePresence.filter((presence) => presence.type === "tracked");
+function remoteSourceTabStatus(summary: SourceAvailabilitySource): Pick<SourceTabInfo, "status" | "statusLabel"> {
+  if (summary.status === "available") return { status: "green", statusLabel: "Available" };
+  if (summary.status === "unknown" || summary.status === "error") return { status: "yellow", statusLabel: summary.status === "unknown" ? "Needs checking" : "Check failed" };
+  if (summary.status === "not_found") return { status: "red", statusLabel: "Not found" };
+  if (summary.status === "disabled") return { status: "red", statusLabel: "Disabled" };
+  return { status: "red", statusLabel: summary.error || "Unavailable" };
 }
 
 function trackedPresenceSourceID(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null) {
@@ -5571,7 +5532,8 @@ function RemoteSaveSelectionPanel({
   onTargetRootChange?: (root: string) => void;
 }) {
   const [activePane, setActivePane] = useState<"local" | "remote" | "result">("remote");
-	const [selectedEditionCode, setSelectedEditionCode] = useState("");
+  const currentEditionCode = remoteFetchCurrentEditionCode(plan, activeEditionCode);
+	const [selectedEditionCode, setSelectedEditionCode] = useState(currentEditionCode);
   const [checkingEditionCode, setCheckingEditionCode] = useState("");
   const [refreshScheduled, setRefreshScheduled] = useState(false);
   const onSaveRef = useRef(onSave);
@@ -5596,16 +5558,16 @@ function RemoteSaveSelectionPanel({
     const selected = matching.filter((path) => selectedPaths.has(path)).length;
     return {
       count: matching.length,
-      checked: matching.length > 0 && selected === 0,
+      checked: matching.length > 0 && selected === matching.length,
       indeterminate: selected > 0 && selected < matching.length,
     };
   };
-  const setExtensionExcluded = (extension: string, excluded: boolean) => {
+  const setExtensionIncluded = (extension: string, included: boolean) => {
     const next = new Set(selectedPaths);
     for (const path of allPaths) {
       if (!path.toLowerCase().endsWith(`.${extension}`)) continue;
-      if (excluded) next.delete(path);
-      else next.add(path);
+      if (included) next.add(path);
+      else next.delete(path);
     }
     onChange(next);
   };
@@ -5620,6 +5582,10 @@ function RemoteSaveSelectionPanel({
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
+
+  useEffect(() => {
+    if (currentEditionCode) setSelectedEditionCode(currentEditionCode);
+  }, [currentEditionCode]);
 
   useEffect(() => {
     if (!selectedEditionCode || disabled || !previewNeedsRefresh || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)) {
@@ -5709,8 +5675,8 @@ function RemoteSaveSelectionPanel({
                     checked={state.checked}
                     indeterminate={state.indeterminate}
                     disabled={disabled || state.count === 0}
-                    onCheckedChange={() => setExtensionExcluded(extension, !state.checked)}
-                    aria-label={`Exclude ${extension.toUpperCase()}`}
+                    onCheckedChange={() => setExtensionIncluded(extension, !state.checked)}
+                    aria-label={`Include ${extension.toUpperCase()}`}
                   />
                   <span>{extension.toUpperCase()}</span>
                 </label>
@@ -7446,11 +7412,16 @@ function languageLabel(value: string) {
   }
 }
 
-function openWorkCodeRoute(code: string) {
+function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
-  window.history.pushState({ returnTo: window.location.pathname, returnLabel: "Back" }, "", `/${cleanCode}`);
+  const query = sourceIntent ? `?view=${sourceIntent}` : "";
+  window.history.pushState({ returnTo: window.location.pathname, returnLabel: "Back" }, "", `/${cleanCode}${query}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function detailSourceIntentFromLocation(search: string): DetailSourceIntent {
+  return new URLSearchParams(search).get("view") === "tracked" ? "tracked" : "local";
 }
 
 function detailReturnTarget(fallbackPath: string) {
@@ -7979,6 +7950,15 @@ function remoteWorkActionCode(work: RemoteWork) {
 
 function remoteDetailActionCode(detail: RemoteWorkDetail) {
   return detail.remoteCode || detail.primaryCode || detail.remoteId;
+}
+
+function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | undefined, activeEditionCode?: string) {
+  const active = (activeEditionCode ?? "").trim();
+  if (!plan) return active;
+  const activeEdition = plan.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === active.toUpperCase());
+  if (activeEdition) return activeEdition.primaryCode;
+  const plannedEdition = plan.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === plan.primaryCode.toUpperCase());
+  return plannedEdition?.primaryCode ?? plan.primaryCode;
 }
 
 function sourcePresenceActionCode(presence: SourcePresenceItem, fallbackCode: string) {

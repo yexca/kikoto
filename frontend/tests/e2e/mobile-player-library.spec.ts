@@ -49,6 +49,14 @@ const persistedTrack = {
   locations: [{ locationId: 1, locationType: "local", streamUrl: "/api/media/1/stream", sourceId: 1, sourceName: "Local", availability: "available" }],
 };
 
+type MockApplicationFixture = {
+  work?: typeof work;
+  librarySources?: Record<string, unknown>[];
+  sourceAvailability?: Record<string, unknown>;
+  remoteDetail?: Record<string, unknown>;
+  onSourceCheck?: () => void;
+};
+
 function silentWav() {
   const sampleCount = 800;
   const body = Buffer.alloc(44 + sampleCount, 128);
@@ -75,6 +83,7 @@ async function mockApplication(
   mediaDelayMs = 0,
   mediaItems: Record<string, unknown>[] = [],
   onCleanup?: (body: Record<string, unknown>) => void,
+  fixture: MockApplicationFixture = {},
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -87,7 +96,7 @@ async function mockApplication(
       return;
     }
     if (url.pathname === "/api/library-sources") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: fixture.librarySources ?? [] });
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
@@ -104,8 +113,9 @@ async function mockApplication(
     }
     if (url.pathname === "/api/works") {
       onWorksRequest?.(url);
-      const works = Array.from({ length: workCount }, (_, index) => index === 0 ? work : {
-        ...work,
+      const fixtureWork = fixture.work ?? work;
+      const works = Array.from({ length: workCount }, (_, index) => index === 0 ? fixtureWork : {
+        ...fixtureWork,
         id: index + 1,
         primaryCode: `RJ${String(9999999 + index).padStart(8, "0")}`,
         title: `Mobile work ${index + 1}`,
@@ -113,10 +123,20 @@ async function mockApplication(
       await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
       return;
     }
+    if (url.pathname === `/api/works/${fixture.work?.primaryCode ?? work.primaryCode}/source-availability`) {
+      if (route.request().method() === "POST") fixture.onSourceCheck?.();
+      await route.fulfill({ json: fixture.sourceAvailability ?? { workCode: fixture.work?.primaryCode ?? work.primaryCode, checkedAt: "", sources: [] } });
+      return;
+    }
+    if (fixture.remoteDetail && url.pathname === `/api/remote-sources/7/works/${fixture.work?.primaryCode ?? work.primaryCode}`) {
+      await route.fulfill({ json: fixture.remoteDetail });
+      return;
+    }
     const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
     if (detailMatch) {
       const id = Number(detailMatch[1]);
-      const detailWork = id === 1 ? work : { ...work, id, primaryCode: `RJ${String(9999998 + id).padStart(8, "0")}`, title: `Mobile work ${id}` };
+      const fixtureWork = fixture.work ?? work;
+      const detailWork = id === 1 ? fixtureWork : { ...fixtureWork, id, primaryCode: `RJ${String(9999998 + id).padStart(8, "0")}`, title: `Mobile work ${id}` };
       await route.fulfill({ json: {
         ...detailWork,
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
@@ -303,16 +323,15 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Origin", { exact: true })).toBeVisible();
 	await expect(page.getByText("Community", { exact: true })).toBeVisible();
-	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeDisabled();
-	await expect(page.getByLabel("Select RJ09999991")).toBeEnabled();
-	await page.getByLabel("Select RJ09999991").click();
-	await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
+	await expect(page.getByLabel("Select RJ09999991")).toBeChecked();
+	await expect(page.getByLabel("Include MP3")).toBeChecked();
 	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
-	await page.getByLabel("Exclude MP3").click();
-	await expect(page.getByLabel("Exclude MP3")).toBeChecked();
+	await expect(page.getByLabel("Select RJ09999991")).toBeEnabled();
+	await page.getByLabel("Include MP3").click();
+	await expect(page.getByLabel("Include MP3")).not.toBeChecked();
 	await expect(page.getByText("0 remote / 1")).toBeVisible();
 	await page.getByRole("button", { name: "All", exact: true }).click();
-  await expect(page.getByLabel("Exclude MP3")).not.toBeChecked();
+  await expect(page.getByLabel("Include MP3")).toBeChecked();
 	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await page.getByRole("button", { name: "result", exact: true }).click();
   await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
@@ -328,11 +347,10 @@ test("mobile Fetch prepares language editions and switches between local, remote
 
 test("mobile Fetch resolves conflicts and selects a source per file before publishing", async ({ page }) => {
   const planBodies: Record<string, unknown>[] = [];
-  await mockRemoteSource(page, () => undefined, { conflict: true, onFetchPlan: (body) => planBodies.push(body) });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
-  await page.getByTitle("Fetch").click();
-	await page.getByLabel("Select RJ09999991").click();
+	await mockRemoteSource(page, () => undefined, { conflict: true, onFetchPlan: (body) => planBodies.push(body) });
+	await page.goto("/");
+	await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+	await page.getByTitle("Fetch").click();
   await page.getByRole("button", { name: "result", exact: true }).click();
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
   await page.getByLabel("Remote source").selectOption("2");
@@ -381,6 +399,58 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   await page.getByRole("button", { name: "Permanently delete" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
   expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }, { kind: "local", locationId: 1 }] });
+});
+
+test("work detail preserves Local and Tracked entry intent while keeping every remote source tab", async ({ page }) => {
+  let sourceChecks = 0;
+  const trackedPresence = { type: "tracked", availability: "available", fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", remoteCode: work.primaryCode };
+  const trackedWork = { ...work, availability: ["local", "tracked"], sourcePresence: [trackedPresence] };
+  const mediaItems = [{
+    id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12, fingerprint: "source-tab-track", progress: null,
+    locations: [{ id: 1, fileSourceId: 9, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `${work.primaryCode}/track.mp3`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+  }];
+  const availability = {
+    workCode: work.primaryCode,
+    checkedAt: "2026-07-13T00:00:00Z",
+    runId: 9,
+    sources: [
+      { sourceId: 7, sourceCode: "remote_a", displayName: "Remote A", status: "available", remoteId: "1", primaryCode: work.primaryCode, title: work.title, coverUrl: "", workId: 1, hasRemote: true, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 },
+      { sourceId: 8, sourceCode: "remote_b", displayName: "Remote B", status: "not_found", remoteId: "", primaryCode: work.primaryCode, title: "", coverUrl: "", workId: 1, hasRemote: false, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 },
+    ],
+  };
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
+    work: trackedWork,
+    librarySources: [
+      { id: 7, code: "remote_a", displayName: "Remote A", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
+      { id: 8, code: "remote_b", displayName: "Remote B", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
+    ],
+    sourceAvailability: availability,
+    remoteDetail: { sourceId: 7, sourceCode: "remote_a", sourceName: "Remote A", remoteId: "1", primaryCode: work.primaryCode, remoteCode: work.primaryCode, title: work.title, coverUrl: "", sourceUrl: "", circle: work.circle, rating: 4.5, sales: 10, ageRating: "", releaseDate: work.releaseDate, durationSeconds: 10, tags: [], voiceActors: [], importStatus: "tracked", workId: 1, tracks: [] },
+    onSourceCheck: () => { sourceChecks += 1; },
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await expect(page).toHaveURL(/view=local/);
+  const localTab = page.locator('button[title="Local: Local files available"]');
+  const trackedTab = page.locator('button[title^="Tracked · Remote A:"]');
+  const remoteTab = page.locator('button[title="Remote A: Available"]');
+  await expect(localTab).toHaveClass(/bg-primary/);
+  await expect(trackedTab).toBeVisible();
+  await expect(remoteTab).toBeVisible();
+  await expect(remoteTab.locator(".bg-emerald-500")).toHaveCount(1);
+  const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
+  await expect(missingRemoteTab).toBeVisible();
+  await expect(missingRemoteTab.locator(".bg-red-500")).toHaveCount(1);
+  await page.getByTitle(/Check sources/).click();
+  await expect.poll(() => sourceChecks).toBe(1);
+
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("button", { name: "Tracked", exact: true }).click();
+  await page.getByText(work.title, { exact: true }).click();
+  await expect(page).toHaveURL(/view=tracked/);
+  await expect(page.locator('button[title^="Tracked · Remote A:"]')).toHaveClass(/bg-primary/);
+  await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {
