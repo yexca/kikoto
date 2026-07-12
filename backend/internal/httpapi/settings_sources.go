@@ -848,7 +848,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			writeUpstreamError(w, err)
 			return
 		}
 		_ = s.updateSourceHealth(r.Context(), id, "healthy")
@@ -861,7 +861,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	remotePage, err := client.ListWorksSortedSeeded(r.Context(), page, pageSize, plan.PushdownQuery, upstreamOrder, direction, r.URL.Query().Get("seed"))
 	if err != nil {
 		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
@@ -1086,10 +1086,12 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
 			result.Status = "error"
-			result.Error = err.Error()
+			result.Error = "remote source request failed"
 			if isNotFoundLikeError(err) {
 				result.Status = "not_found"
+				result.Error = "work was not found"
 			}
+			slog.Warn("remote source availability check failed", "source_id", source.ID, "work_code", code, "error", err)
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 			if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
 				return sourceAvailabilityResponse{}, err
@@ -1355,7 +1357,7 @@ func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.runRemoteWorkSync(r.Context(), id, code, payload.TriggerReason)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
@@ -1377,7 +1379,7 @@ func (s *Server) untrackWorkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.runWorkSourceUntrack(r.Context(), workID, sourceID)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -1411,17 +1413,17 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 	}
 	syncResult, err := s.runRemoteWorkSync(r.Context(), sourceID, code, "auto_cache_on_preview_play")
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	locationID, err := s.findRemoteMediaLocationByPath(r.Context(), syncResult.WorkID, sourceID, remotePath)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", "remote media was not found", false)
 		return
 	}
 	cacheResult, err := s.enqueueRemoteMediaCache(r.Context(), locationID)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, cacheResult)
@@ -4684,7 +4686,13 @@ func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status 
 		SET health_status = ?,
 			last_checked_at = CURRENT_TIMESTAMP
 		WHERE file_source_id = ?
-	`, status, sourceID)
+			AND (
+				health_status IS NULL
+				OR health_status <> ?
+				OR last_checked_at IS NULL
+				OR last_checked_at <= datetime('now', '-10 minutes')
+			)
+	`, status, sourceID, status)
 	return err
 }
 

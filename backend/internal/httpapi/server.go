@@ -1190,7 +1190,7 @@ func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.enqueueRemoteMediaCache(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
@@ -1207,7 +1207,7 @@ func (s *Server) deleteMediaCacheLocation(w http.ResponseWriter, r *http.Request
 	}
 	result, err := s.runMediaCacheCleanup(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -1233,7 +1233,7 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -1242,7 +1242,7 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 	path, relPath, err := s.localMediaPath(r, r.PathValue("id"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
 		return
 	}
 	serveRevalidatedFile(w, r, path, relPath)
@@ -1260,7 +1260,7 @@ func serveRevalidatedFile(w http.ResponseWriter, r *http.Request, filePath strin
 func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 	path, relPath, err := s.localMediaPath(r, r.PathValue("id"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
 		return
 	}
 	if !isTextFile(relPath) {
@@ -1290,7 +1290,7 @@ func (s *Server) serveMediaText(w http.ResponseWriter, r *http.Request) {
 func (s *Server) downloadMedia(w http.ResponseWriter, r *http.Request) {
 	path, relPath, err := s.mediaDownloadPath(r, r.PathValue("id"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
 		return
 	}
 	filename := filepath.Base(filepath.FromSlash(relPath))

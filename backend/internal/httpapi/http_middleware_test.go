@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -70,11 +71,66 @@ func TestRequestBodyLimitRejectsKnownOversizeBody(t *testing.T) {
 	}
 }
 
+func TestWriteJSONAddsStableErrorClassification(t *testing.T) {
+	tests := []struct {
+		status    int
+		code      string
+		retryable bool
+	}{
+		{status: http.StatusBadRequest, code: "invalid_request", retryable: false},
+		{status: http.StatusUnauthorized, code: "authentication_required", retryable: false},
+		{status: http.StatusForbidden, code: "permission_denied", retryable: false},
+		{status: http.StatusNotFound, code: "not_found", retryable: false},
+		{status: http.StatusConflict, code: "conflict", retryable: false},
+		{status: http.StatusBadGateway, code: "upstream_unavailable", retryable: true},
+	}
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		writeJSON(response, test.status, map[string]string{"error": "safe message"})
+		body := response.Body.String()
+		if !strings.Contains(body, `"code":"`+test.code+`"`) ||
+			!strings.Contains(body, fmt.Sprintf(`"retryable":%t`, test.retryable)) {
+			t.Fatalf("status %d body = %q", test.status, body)
+		}
+	}
+}
+
 func TestWriteErrorHidesInternalMessage(t *testing.T) {
 	response := httptest.NewRecorder()
 	writeError(response, errors.New("private database path"))
-	if strings.Contains(response.Body.String(), "private database path") || !strings.Contains(response.Body.String(), "internal server error") {
+	if strings.Contains(response.Body.String(), "private database path") ||
+		!strings.Contains(response.Body.String(), "internal server error") ||
+		!strings.Contains(response.Body.String(), `"code":"internal_error"`) ||
+		!strings.Contains(response.Body.String(), `"retryable":false`) {
 		t.Fatalf("body = %q", response.Body.String())
+	}
+}
+
+func TestWriteUpstreamErrorHidesInternalMessage(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeUpstreamError(response, errors.New("Get https://private.invalid/api: connection refused"))
+	body := response.Body.String()
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", response.Code)
+	}
+	if strings.Contains(body, "private.invalid") ||
+		!strings.Contains(body, `"code":"upstream_unavailable"`) ||
+		!strings.Contains(body, `"retryable":true`) {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestPublicCircleProductFailuresHideInternalMessage(t *testing.T) {
+	got := publicCircleProductFailures([]string{
+		"RJ00000001: Get https://private.invalid/api: connection refused",
+		"database path C:/private/library.db",
+	})
+	joined := strings.Join(got, " ")
+	if strings.Contains(joined, "private.invalid") || strings.Contains(joined, "C:/private") {
+		t.Fatalf("failures exposed internal details: %q", joined)
+	}
+	if got[0] != "RJ00000001: metadata sync failed" {
+		t.Fatalf("failure = %q", got[0])
 	}
 }
 

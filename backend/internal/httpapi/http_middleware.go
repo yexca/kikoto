@@ -12,9 +12,64 @@ import (
 const maxJSONRequestBytes int64 = 1 << 20
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	if status >= http.StatusBadRequest {
+		value = normalizeErrorResponse(status, value)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func normalizeErrorResponse(status int, value any) any {
+	var response map[string]any
+	switch typed := value.(type) {
+	case map[string]string:
+		response = make(map[string]any, len(typed)+2)
+		for key, item := range typed {
+			response[key] = item
+		}
+	case map[string]any:
+		response = make(map[string]any, len(typed)+2)
+		for key, item := range typed {
+			response[key] = item
+		}
+	default:
+		return value
+	}
+	if _, ok := response["error"]; !ok {
+		return value
+	}
+	code, retryable := defaultErrorClassification(status)
+	if _, ok := response["code"]; !ok {
+		response["code"] = code
+	}
+	if _, ok := response["retryable"]; !ok {
+		response["retryable"] = retryable
+	}
+	return response
+}
+
+func defaultErrorClassification(status int) (string, bool) {
+	switch status {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return "invalid_request", false
+	case http.StatusUnauthorized:
+		return "authentication_required", false
+	case http.StatusForbidden:
+		return "permission_denied", false
+	case http.StatusNotFound:
+		return "not_found", false
+	case http.StatusConflict:
+		return "conflict", false
+	case http.StatusTooManyRequests:
+		return "rate_limited", true
+	case http.StatusBadGateway:
+		return "upstream_unavailable", true
+	case http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return "service_unavailable", true
+	default:
+		return "internal_error", false
+	}
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -27,7 +82,7 @@ func writeError(w http.ResponseWriter, err error) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+	writeAPIError(w, http.StatusInternalServerError, "internal_error", "internal server error", false)
 }
 
 func writeUpstreamError(w http.ResponseWriter, err error) {
@@ -36,10 +91,14 @@ func writeUpstreamError(w http.ResponseWriter, err error) {
 		return
 	}
 	slog.Error("upstream request failed", "error", err)
-	writeJSON(w, http.StatusBadGateway, map[string]any{
-		"error":     "remote source request failed",
-		"code":      "upstream_unavailable",
-		"retryable": true,
+	writeAPIError(w, http.StatusBadGateway, "upstream_unavailable", "remote source request failed", true)
+}
+
+func writeAPIError(w http.ResponseWriter, status int, code string, message string, retryable bool) {
+	writeJSON(w, status, map[string]any{
+		"error":     message,
+		"code":      code,
+		"retryable": retryable,
 	})
 }
 

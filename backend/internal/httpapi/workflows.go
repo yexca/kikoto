@@ -739,7 +739,7 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 	}
 	result, err := s.runLocalCandidateCleanup(r.Context(), id, payload.Action, payload.LocationIDs)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)

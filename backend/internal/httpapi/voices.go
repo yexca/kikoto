@@ -161,7 +161,7 @@ type voiceRemoteSourceSet struct {
 	DisplayName string            `json:"displayName"`
 	Status      string            `json:"status"`
 	Error       string            `json:"error"`
-	DebugError  string            `json:"debugError,omitempty"`
+	DebugError  string            `json:"-"`
 	ElapsedMS   int64             `json:"elapsedMs"`
 	Total       int               `json:"total"`
 	Works       []voiceRemoteWork `json:"works"`

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,54 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
+
+func TestUpdateSourceHealthOnlyWritesSameStatusAfterThrottleWindow(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {
+		t.Fatalf("insert source: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO file_source_endpoint (file_source_id, base_url, health_status, last_checked_at)
+		VALUES (1, 'https://example.invalid', 'healthy', '2026-01-01 00:00:00')
+	`); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+	server := NewServer(db, config.Config{})
+	if err := server.updateSourceHealth(context.Background(), 1, "healthy"); err != nil {
+		t.Fatal(err)
+	}
+	var firstChecked string
+	if err := db.QueryRow(`SELECT last_checked_at FROM file_source_endpoint WHERE file_source_id = 1`).Scan(&firstChecked); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE file_source_endpoint SET last_checked_at = '2099-01-02 00:00:00' WHERE file_source_id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.updateSourceHealth(context.Background(), 1, "healthy"); err != nil {
+		t.Fatal(err)
+	}
+	var unchanged string
+	if err := db.QueryRow(`SELECT last_checked_at FROM file_source_endpoint WHERE file_source_id = 1`).Scan(&unchanged); err != nil {
+		t.Fatal(err)
+	}
+	if unchanged != "2099-01-02 00:00:00" {
+		t.Fatalf("same status refreshed too soon: %q", unchanged)
+	}
+	if err := server.updateSourceHealth(context.Background(), 1, "unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var changedAt sql.NullString
+	if err := db.QueryRow(`SELECT health_status, last_checked_at FROM file_source_endpoint WHERE file_source_id = 1`).Scan(&status, &changedAt); err != nil {
+		t.Fatal(err)
+	}
+	if status != "unavailable" || !changedAt.Valid || changedAt.String == unchanged {
+		t.Fatalf("transition was not persisted: status=%q checked=%q", status, changedAt.String)
+	}
+	if firstChecked == "" || firstChecked == "2026-01-01 00:00:00" {
+		t.Fatalf("stale same-status check was not refreshed: %q", firstChecked)
+	}
+}
 
 func TestSelectedRemotePathMatches(t *testing.T) {
 	tests := []struct {

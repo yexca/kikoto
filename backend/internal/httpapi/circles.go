@@ -18,7 +18,10 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-var dlsiteMakerIDPattern = regexp.MustCompile(`(?i)^[RBV]G[0-9]{5,8}$`)
+var (
+	dlsiteMakerIDPattern     = regexp.MustCompile(`(?i)^[RBV]G[0-9]{5,8}$`)
+	dlsiteProductCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`)
+)
 
 type circleSummary struct {
 	ID              int64              `json:"id"`
@@ -215,10 +218,6 @@ func (s *Server) autoRefreshCircle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid circle external id"})
 		return
 	}
-	if err := s.syncPartiesFromDLsiteSnapshots(r.Context()); err != nil {
-		writeError(w, err)
-		return
-	}
 	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
 	if err != nil {
 		writeError(w, err)
@@ -384,7 +383,7 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.runCircleRefresh(r.Context(), partyID, externalID, payload)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
@@ -397,11 +396,24 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		"productSynced":   result.ProductSynced,
 		"productSkipped":  result.ProductSkipped,
 		"productFailed":   result.ProductFailed,
-		"productFailures": result.ProductFailures,
+		"productFailures": publicCircleProductFailures(result.ProductFailures),
 		"sourceSynced":    result.SourceSynced,
 		"mode":            result.Mode,
 		"productMode":     result.ProductMode,
 	})
+}
+
+func publicCircleProductFailures(failures []string) []string {
+	public := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		code := strings.TrimSpace(strings.SplitN(failure, ":", 2)[0])
+		if !dlsiteProductCodePattern.MatchString(code) {
+			public = append(public, "metadata sync failed")
+			continue
+		}
+		public = append(public, code+": metadata sync failed")
+	}
+	return public
 }
 
 func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request) {
@@ -414,7 +426,7 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
-	if !regexp.MustCompile(`(?i)^(RJ|BJ|VJ)[0-9]{5,8}$`).MatchString(code) {
+	if !dlsiteProductCodePattern.MatchString(code) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return
 	}
