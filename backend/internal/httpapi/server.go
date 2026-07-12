@@ -111,6 +111,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
+	mux.HandleFunc("POST /api/media/cleanup", s.cleanupMediaLocations)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)
@@ -1197,7 +1198,7 @@ func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteMediaCacheLocation(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -1205,16 +1206,16 @@ func (s *Server) deleteMediaCacheLocation(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
 		return
 	}
-	result, err := s.runMediaCacheCleanup(r.Context(), id)
+	result, err := s.enqueueMediaLocationCleanup(r.Context(), []mediaCleanupTargetRequest{{Kind: "cache", LocationID: id}})
 	if err != nil {
-		writeError(w, err)
+		writeMediaCleanupError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusAccepted, result)
 }
 
 func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -1222,21 +1223,12 @@ func (s *Server) deleteMediaLocalLocation(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
 		return
 	}
-	result, err := s.runLocalMediaDelete(r.Context(), id)
+	result, err := s.enqueueMediaLocationCleanup(r.Context(), []mediaCleanupTargetRequest{{Kind: "local", LocationID: id}})
 	if err != nil {
-		var symlinkErr symlinkMediaLocationError
-		if errors.As(err, &symlinkErr) {
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":       symlinkErr.Error(),
-				"runId":       symlinkErr.RunID,
-				"candidateId": symlinkErr.CandidateID,
-			})
-			return
-		}
-		writeError(w, err)
+		writeMediaCleanupError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusAccepted, result)
 }
 
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
@@ -2182,7 +2174,7 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_media_delete", "Delete local media", "Delete a local media file and mark only that file location unavailable.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_media_items"},
-			{"id": "delete", "type": "materialize_save"},
+			{"id": "delete", "type": "delete_local_media"},
 		},
 	})
 	if err != nil {
@@ -2200,7 +2192,7 @@ func (s *Server) runLocalMediaDelete(ctx context.Context, localLocationID int64)
 		return mediaLocalDeleteResult{}, err
 	}
 	deleteNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "delete", NodeType: "materialize_save", DisplayName: "Delete local file", Position: 2, Status: "running",
+		NodeID: "delete", NodeType: "delete_local_media", DisplayName: "Delete local file", Position: 2, Status: "running",
 		Input: input, Output: nil,
 	})
 	if err != nil {
@@ -3494,7 +3486,13 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, definitions)
+	visible := definitions[:0]
+	for _, definition := range definitions {
+		if definition.Code != "remote_work_save" {
+			visible = append(visible, definition)
+		}
+	}
+	writeJSON(w, http.StatusOK, visible)
 }
 
 func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {

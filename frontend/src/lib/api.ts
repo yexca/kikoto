@@ -1005,23 +1005,16 @@ export type MediaCacheResult = {
   alreadyDone: boolean;
 };
 
-export type MediaCacheDeleteResult = {
-  runId: number;
+export type MediaCleanupTarget = {
+  kind: "cache" | "local";
   locationId: number;
-  cachePath: string;
-  status: string;
-  deleted: boolean;
 };
 
-export type MediaLocalDeleteResult = {
+export type MediaCleanupResult = {
   runId: number;
-  locationId: number;
-  workId: number;
-  path: string;
-  status: string;
-  deleted: boolean;
-  clearedProgress: number;
-  clearedWorkStates: number;
+  jobId: number;
+  status: "queued" | "running" | "succeeded" | "failed";
+  queued: number;
 };
 
 const BUILD_API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -1361,9 +1354,11 @@ export const api = {
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
   deleteMediaCacheLocation: (locationId: number) =>
-    deleteJSON<MediaCacheDeleteResult>(`/api/media/${locationId}/cache`),
+    deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
   deleteMediaLocalLocation: (locationId: number) =>
-    deleteJSON<MediaLocalDeleteResult>(`/api/media/${locationId}/local`),
+    deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/local`),
+  cleanupMediaLocations: (targets: MediaCleanupTarget[]) =>
+    postJSONBody<MediaCleanupResult>("/api/media/cleanup", { targets }),
   updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; favorite?: boolean }) =>
     patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(
       `/api/works/${id}/user-state`,

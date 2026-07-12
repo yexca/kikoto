@@ -1293,7 +1293,7 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
 	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)

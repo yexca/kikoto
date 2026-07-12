@@ -16,6 +16,9 @@ Sources describe where files come from.
 - Remote sync imports metadata and source file trees into the unified database.
 - Remote cache materializes selected remote files under the cache root.
 - Remote fetch promotes selected remote files into the local data tree.
+- Cache and local deletion target concrete file locations, not the unified work.
+  Mixed selections are submitted as one recoverable workflow; local deletion
+  preserves work progress and listening marks.
 - Remote source list and detail pages should remain source-scoped views; they do
   not replace the unified local work detail model.
 

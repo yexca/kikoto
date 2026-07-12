@@ -45,6 +45,9 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("materialize_save", "execute", "Materialize save", "Compatibility node for older save workflows.", false, schemaObject("overwrite", "dryRun"), schemaObject("items", "saveRoot"), schemaObject("saved", "skipped", "downloaded", "copiedFromCache")),
 	nodeType("promote_cache_to_local", "execute", "Promote cache to local", "Move cached media into the local library.", true, schemaObject("mode", "overwrite"), schemaObject("cachePath", "targetPath"), schemaObject("localPath", "moved")),
 	nodeType("cleanup_cache", "execute", "Cleanup cache", "Delete cached files or clear cache-related state.", true, schemaObject("deleteFiles", "clearState"), schemaObject("locationIds", "cachePath"), schemaObject("deleted", "cleared")),
+	nodeType("cleanup_local_locations", "execute", "Cleanup local locations", "Mark selected local locations unavailable and optionally delete their files.", true, schemaObject("deleteFiles"), schemaObject("locationIds"), schemaObject("deleted", "marked")),
+	nodeType("delete_local_media", "execute", "Delete local media", "Delete local media files and mark their locations unavailable.", true, schemaObject(), schemaObject("locationIds"), schemaObject("deleted")),
+	nodeType("cleanup_media_locations", "execute", "Cleanup media locations", "Delete selected cache or local files and mark their locations unavailable.", true, schemaObject(), schemaObject("targets"), schemaObject("deleted")),
 	nodeType("dispatch_child_workflows", "execute", "Dispatch child workflows", "Run child workflows from a parent workflow.", false, schemaObject("workflowCode", "mode"), schemaObject("codes", "action"), schemaObject("childRuns")),
 
 	nodeType("verify_files", "verify", "Verify files", "Validate materialized file outputs.", true, schemaObject("checkSize", "checkHash"), schemaObject("paths", "expected"), schemaObject("verified", "failed")),
@@ -252,15 +255,26 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
-		Code:        "remote_work_save",
-		Name:        "Save remote work",
-		Description: "Save selected remote files to the local library, reusing cache hits and downloading misses.",
+		Code:        "media_location_cleanup",
+		Name:        "Clean media locations",
+		Description: "Delete selected cache or local files and mark their locations unavailable.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_media_items", "displayName": "Select media locations"},
+			{"id": "cleanup", "type": "cleanup_media_locations", "displayName": "Delete media files"},
+		},
+	},
+	{
+		Code:        "remote_work_fetch",
+		Name:        "Fetch remote work",
+		Description: "Fetch selected remote files into the local library through cache-backed staging and verified publication.",
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
 			{"id": "tree", "type": "fetch_remote_tree", "displayName": "Fetch remote tree"},
 			{"id": "plan", "type": "plan_save", "displayName": "Plan save"},
-			{"id": "materialize", "type": "materialize_save", "displayName": "Materialize files"},
+			{"id": "cache", "type": "materialize_cache", "displayName": "Cache selected files"},
+			{"id": "stage", "type": "stage_fetch_result", "displayName": "Assemble staging directory"},
 			{"id": "verify", "type": "verify_files", "displayName": "Verify files"},
+			{"id": "promote", "type": "publish_staged_fetch", "displayName": "Publish staged result"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync local locations"},
 		},
 	},
@@ -767,7 +781,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_location_cleanup", "Clean up local locations", "Mark reviewed local locations unavailable and optionally delete the files.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_media_items"},
-			{"id": "cleanup", "type": "cleanup_cache"},
+			{"id": "cleanup", "type": "cleanup_local_locations"},
 			{"id": "review", "type": "filter_candidates"},
 		},
 	})
@@ -786,7 +800,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 		return localCandidateCleanupResult{}, err
 	}
 	cleanupNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "cleanup", NodeType: "cleanup_cache", DisplayName: "Clean local files", Position: 2, Status: "running",
+		NodeID: "cleanup", NodeType: "cleanup_local_locations", DisplayName: "Clean local files", Position: 2, Status: "running",
 		Input: input, Output: nil,
 	})
 	if err != nil {
@@ -1261,7 +1275,8 @@ func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error 
 		WHERE workflow_run_id = ? AND status = 'failed' AND recoverable = 1
 			AND worker_type IN (
 				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
-				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup'
+				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup',
+				'media_location_cleanup'
 			)
 		ORDER BY id DESC LIMIT 1
 	`, runID).Scan(

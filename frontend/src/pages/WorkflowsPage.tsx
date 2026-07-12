@@ -2027,7 +2027,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
   const cancellable = ["queued", "running"].includes(run.status);
   const retryable = run.status === "failed" && [
     "local_library_scan", "metadata_sync", "remote_work_fetch", "media_cache",
-    "media_cache_cleanup", "local_media_delete", "local_location_cleanup", "remote_popular_collection",
+    "media_cache_cleanup", "media_location_cleanup", "local_media_delete", "local_location_cleanup", "remote_popular_collection",
   ].includes(run.workflowCode);
   if (!cancellable && !retryable) {
     return null;

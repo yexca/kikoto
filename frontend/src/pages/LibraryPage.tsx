@@ -2993,20 +2993,12 @@ function WorkDetailView({
     if (targets.length === 0) return;
     setIsDeleting(true);
     setMessage("");
-    let deleted = 0;
     try {
-      for (const target of targets) {
-        if (target.kind === "cache") {
-          await api.deleteMediaCacheLocation(target.locationId);
-        } else {
-          await api.deleteMediaLocalLocation(target.locationId);
-        }
-        deleted += 1;
-      }
-      toast.success(`Deleted ${deleted} file ${deleted === 1 ? "location" : "locations"}.`);
+      const result = await api.cleanupMediaLocations(targets.map(({ kind, locationId }) => ({ kind, locationId })));
+      toast.success(`Queued ${result.queued} file ${result.queued === 1 ? "location" : "locations"} for deletion in workflow #${result.runId}.`);
       await onWorksChanged();
     } catch (error) {
-      toast.notify(toastFromError(error, deleted > 0 ? `Deleted ${deleted} before the next delete failed.` : "Delete failed."));
+      toast.notify(toastFromError(error, "Delete submission failed."));
       await onWorksChanged();
     } finally {
       setIsDeleting(false);
@@ -6029,7 +6021,7 @@ function ConfirmMediaDeleteModal({
           <div>
             <h3 className="text-base font-semibold">{isLocal ? "Delete local file" : "Delete cached file"}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isLocal ? "This removes the local file and clears playback state for the work." : "The remote source and saved local files will not be deleted."}
+              {isLocal ? "This removes only this local file location." : "The remote source and saved local files will not be deleted."}
             </p>
           </div>
           <IconButton title="Close" onClick={onCancel}>
@@ -6043,7 +6035,7 @@ function ConfirmMediaDeleteModal({
           </div>
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
             {isLocal
-              ? "This removes the local file from disk, marks its location unavailable, and clears progress and marks for the work."
+              ? "This removes the local file from disk and marks only this location unavailable. Work progress and marks are preserved."
               : "This removes the cached file from disk and marks the cache location unavailable."}
           </div>
         </div>

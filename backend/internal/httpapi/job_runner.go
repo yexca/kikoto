@@ -71,6 +71,8 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		runErr = s.executeLocalMediaDeleteJob(jobCtx, job)
 	case "local_location_cleanup":
 		runErr = s.executeLocalLocationCleanupJob(jobCtx, job)
+	case "media_location_cleanup":
+		runErr = s.executeMediaLocationCleanupJob(jobCtx, job)
 	default:
 		message := "unsupported workflow job type: " + job.WorkerType
 		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {

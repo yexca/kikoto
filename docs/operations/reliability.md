@@ -14,15 +14,20 @@
   requests.
 - Fetch planning reads persisted DLsite metadata and cached source availability;
   it does not trigger an implicit provider refresh.
+- Fetch, remote playback cache, and cache/local location deletion run as durable
+  recoverable jobs with lease heartbeats and restart checkpoints.
+- A single cache/local deletion and a mixed batch deletion use the same queued
+  workflow. Deleting a local location preserves work progress and listening
+  marks.
 - Database contention is reported as a retryable service error and is not
   mistaken for an expired mobile login.
 - Workflow runs preserve structured status and error context.
 
 ## Current Limits
 
-- Long-running remote fetches are not yet backed by a durable async queue.
-- Running job restart recovery is not complete.
-- Retry controls are limited.
+- Activity download progress remains coarser than per-byte transfer progress.
+- Failed or cancelled Fetch staging manifests do not yet have retention-based
+  garbage collection.
 
 ## Operational Guidance
 
