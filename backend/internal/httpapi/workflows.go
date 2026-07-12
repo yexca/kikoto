@@ -760,6 +760,112 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+type archivedFetchRoot struct {
+	FolderID     int64  `json:"folder_id"`
+	OriginalPath string `json:"original_path"`
+	ArchivePath  string `json:"archive_path"`
+}
+
+func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow candidate id"})
+		return
+	}
+	var request struct {
+		Action  string `json:"action"`
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	request.Action = strings.TrimSpace(request.Action)
+	if request.Action != "keep_archived" && request.Action != "delete_archived" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be keep_archived or delete_archived"})
+		return
+	}
+	if request.Action == "delete_archived" && request.Confirm != "DELETE" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "permanent deletion requires DELETE confirmation"})
+		return
+	}
+	candidate, err := s.loadWorkflowCandidateForCleanup(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if candidate.Type != "local_fetch_merge_cleanup" || !candidateNeedsResolution(candidate.Status) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "candidate is not an unresolved Fetch archive review"})
+		return
+	}
+	var payload struct {
+		ArchivedRoots []archivedFetchRoot `json:"archived_roots"`
+	}
+	if err := json.Unmarshal([]byte(candidate.PayloadJSON), &payload); err != nil || len(payload.ArchivedRoots) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "candidate has no archived roots"})
+		return
+	}
+	if request.Action == "delete_archived" {
+		for _, root := range payload.ArchivedRoots {
+			archive := filepath.ToSlash(strings.Trim(root.ArchivePath, "/"))
+			if !strings.HasPrefix(archive, ".kikoto-trash/fetch/") {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "archived root is outside the Fetch trash area"})
+				return
+			}
+			path, err := safeDataPath(s.cfg.DataRoot, archive)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			if err := os.RemoveAll(path); err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, root := range payload.ArchivedRoots {
+		if request.Action == "delete_archived" {
+			if _, err := tx.ExecContext(r.Context(), "DELETE FROM work_folder_location WHERE id = ? AND state = 'pending_cleanup'", root.FolderID); err != nil {
+				writeError(w, err)
+				return
+			}
+		} else if _, err := tx.ExecContext(r.Context(), "UPDATE work_folder_location SET state = 'ignored', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'pending_cleanup'", root.FolderID); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	decision := map[string]any{"action": request.Action, "archived_roots": len(payload.ArchivedRoots)}
+	if _, err := tx.ExecContext(r.Context(), "UPDATE workflow_candidate SET status = 'resolved', decision_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(decision), id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := workflow.InsertEvent(r.Context(), tx, candidate.RunID, workflow.EventSpec{
+		Level: "info", Type: "candidate.fetch_archive_reviewed", Message: "Fetch archive " + request.Action, Detail: decision,
+	}); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"candidateId": id, "status": "resolved", "action": request.Action})
+}
+
+func candidateNeedsResolution(status string) bool {
+	status = strings.TrimSpace(status)
+	return status != "accepted" && status != "rejected" && status != "ignored" && status != "resolved"
+}
+
 func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64, action string, requestedLocationIDs []int64) (localCandidateCleanupResult, error) {
 	candidate, err := s.loadWorkflowCandidateForCleanup(ctx, candidateID)
 	if err != nil {

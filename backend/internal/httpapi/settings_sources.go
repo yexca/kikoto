@@ -4172,6 +4172,25 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 }
 
 func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, workID int64, localSourceID int64, workCode string, items []remoteWorkSavePlanItem) error {
+	archivedRoots, err := s.quarantineFetchLocalRoots(ctx, runID, workID, localSourceID, items)
+	if err != nil {
+		return err
+	}
+	if len(archivedRoots) > 0 {
+		_, err = s.db.ExecContext(ctx, `
+			INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+			SELECT ?, 'local_fetch_merge_cleanup', ?, 'pending', ?
+			WHERE NOT EXISTS (
+				SELECT 1 FROM workflow_candidate
+				WHERE workflow_run_id = ? AND candidate_type = 'local_fetch_merge_cleanup'
+			)
+		`, runID, workCode, mustJSON(map[string]any{
+			"work_id": workID, "work_code": workCode, "local_source_id": localSourceID,
+			"archived_roots": archivedRoots,
+			"message":        "Old local roots were archived after Fetch. Keep the archive or permanently delete it after review.",
+		}), runID)
+		return err
+	}
 	targets := map[string]bool{}
 	for _, item := range items {
 		if item.TargetPath != "" {
@@ -4245,6 +4264,166 @@ func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, w
 		"message":                "Fetch completed while other local files for this work still exist. Review before deleting or hiding old local files.",
 	}))
 	return err
+}
+
+func (s *Server) quarantineFetchLocalRoots(ctx context.Context, runID int64, workID int64, localSourceID int64, items []remoteWorkSavePlanItem) ([]map[string]any, error) {
+	targetRoots := map[string]bool{}
+	for _, item := range items {
+		path := filepath.ToSlash(strings.TrimSpace(item.TargetPath))
+		if path == "" {
+			continue
+		}
+		for _, root := range fetchRootCandidatesForPath(path) {
+			targetRoots[root] = true
+		}
+	}
+	var publishedRoot string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT root_path FROM work_folder_location
+		WHERE work_id = ? AND file_source_id = ? AND role = 'managed_fetch' AND state = 'active' AND is_primary = 1
+		ORDER BY updated_at DESC, id DESC LIMIT 1
+	`, workID, localSourceID).Scan(&publishedRoot); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	publishedRoot = filepath.ToSlash(strings.Trim(publishedRoot, "/"))
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, root_path, role
+		FROM work_folder_location
+		WHERE work_id = ? AND file_source_id = ? AND state = 'active' AND root_path <> ?
+		ORDER BY id ASC
+	`, workID, localSourceID, publishedRoot)
+	if err != nil {
+		return nil, err
+	}
+	type rootRecord struct {
+		id         int64
+		path, role string
+	}
+	records := []rootRecord{}
+	for rows.Next() {
+		var record rootRecord
+		if err := rows.Scan(&record.id, &record.path, &record.role); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	archived := []map[string]any{}
+	for _, record := range records {
+		root := filepath.ToSlash(strings.Trim(record.path, "/"))
+		if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
+			continue
+		}
+		archive := filepath.ToSlash(filepath.Join(".kikoto-trash", "fetch", fmt.Sprintf("%d", runID), fmt.Sprintf("%d-%s", record.id, filepath.Base(filepath.FromSlash(root)))))
+		sourcePath, err := safeDataPath(s.cfg.DataRoot, root)
+		if err != nil {
+			return nil, err
+		}
+		archivePath, err := safeDataPath(s.cfg.DataRoot, archive)
+		if err != nil {
+			return nil, err
+		}
+		var files []map[string]any
+		var totalBytes int64
+		if info, statErr := os.Lstat(sourcePath); statErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				continue
+			}
+			files, totalBytes, err = archivedRootFileSummary(sourcePath)
+			if err != nil {
+				return nil, err
+			}
+			if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+				return nil, err
+			}
+			if err := os.Rename(sourcePath, archivePath); err != nil {
+				return nil, fmt.Errorf("archive old fetch root %s: %w", root, err)
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return nil, statErr
+		} else if _, archiveErr := os.Stat(archivePath); archiveErr != nil {
+			continue
+		} else {
+			files, totalBytes, err = archivedRootFileSummary(archivePath)
+			if err != nil {
+				return nil, err
+			}
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE work_folder_location SET state = 'pending_cleanup', is_primary = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", record.id); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE media_file_location
+			SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
+			WHERE file_source_id = ? AND location_type = 'local'
+				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+				AND (path = ? OR substr(path, 1, length(?) + 1) = ? || '/')
+		`, localSourceID, workID, root, root, root); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		archived = append(archived, map[string]any{
+			"folder_id": record.id, "original_path": root, "archive_path": archive,
+			"role": record.role, "files": files, "file_count": len(files), "size_bytes": totalBytes,
+		})
+	}
+	return archived, nil
+}
+
+func fetchRootCandidatesForPath(path string) []string {
+	parts := strings.Split(strings.Trim(filepath.ToSlash(path), "/"), "/")
+	result := make([]string, 0, len(parts))
+	for index := 1; index < len(parts); index++ {
+		result = append(result, strings.Join(parts[:index], "/"))
+	}
+	return result
+}
+
+func fetchRootsOverlap(left string, right string) bool {
+	left = strings.Trim(filepath.ToSlash(left), "/")
+	right = strings.Trim(filepath.ToSlash(right), "/")
+	return left == right || strings.HasPrefix(left, right+"/") || strings.HasPrefix(right, left+"/")
+}
+
+func archivedRootFileSummary(root string) ([]map[string]any, int64, error) {
+	files := []map[string]any{}
+	var totalBytes int64
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("archived root contains unsupported symbolic link: %s", filepath.ToSlash(path))
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		totalBytes += info.Size()
+		files = append(files, map[string]any{"path": filepath.ToSlash(relative), "size_bytes": info.Size()})
+		return nil
+	})
+	return files, totalBytes, err
 }
 
 func sortedStringKeys(values map[string]bool) []string {

@@ -70,6 +70,7 @@ func TestDiscoverFoldersIgnoresKikotoInternalTrees(t *testing.T) {
 	for _, relative := range []string{
 		filepath.Join(".kikoto-staging", "12", "RJ01234567"),
 		filepath.Join(".kikoto-backup", "12", "RJ07654321"),
+		filepath.Join(".kikoto-trash", "fetch", "12", "RJ02222222"),
 		filepath.Join("Library", "RJ01111111"),
 	} {
 		if err := os.MkdirAll(filepath.Join(root, relative), 0o755); err != nil {

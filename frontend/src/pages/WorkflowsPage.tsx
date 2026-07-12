@@ -1289,8 +1289,10 @@ function RunItems({
 
 function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: WorkflowCandidate; onCandidateUpdate: () => Promise<void> }) {
   const [confirmDeleteOldFiles, setConfirmDeleteOldFiles] = useState(false);
+  const [archiveDeleteStep, setArchiveDeleteStep] = useState<0 | 1 | 2>(0);
   const payload = parseJSONRecord(candidate.payloadJson);
   const cleanupLocations = candidate.type === "local_fetch_merge_cleanup" ? localCleanupLocations(payload) : [];
+  const archivedRoots = candidate.type === "local_fetch_merge_cleanup" ? localArchivedRoots(payload) : [];
   const duplicateFolders = candidate.type === "local_duplicate_work_folder" ? localDuplicateFolders(payload) : [];
   const needsReview = candidateNeedsReview(candidate);
   const cleanup = async (action: "mark_unavailable" | "delete_files") => {
@@ -1300,6 +1302,11 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
       locationIds: cleanupLocations.map((location) => location.locationId),
     });
     setConfirmDeleteOldFiles(false);
+    await onCandidateUpdate();
+  };
+  const reviewArchive = async (action: "keep_archived" | "delete_archived") => {
+    await api.reviewArchivedFetchRoots(candidate.id, action, action === "delete_archived" ? "DELETE" : "");
+    setArchiveDeleteStep(0);
     await onCandidateUpdate();
   };
   return (
@@ -1314,15 +1321,24 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
 
       {candidate.type === "local_fetch_merge_cleanup" && (
         <div className="rounded-md border bg-muted/40 p-2 text-xs">
-          <div className="mb-1 font-medium">Old local locations</div>
-          {cleanupLocations.length > 0 ? cleanupLocations.slice(0, 8).map((location) => (
+          <div className="mb-1 font-medium">{archivedRoots.length > 0 ? "Archived local roots" : "Old local locations"}</div>
+          {archivedRoots.map((root) => (
+            <div key={root.folderId} className="space-y-1 border-b py-2 last:border-b-0">
+              <div className="font-medium">{root.originalPath}</div>
+              <div className="truncate text-muted-foreground" title={root.archivePath}>{root.archivePath}</div>
+              <div className="text-muted-foreground">{root.fileCount} files · {formatBytes(root.sizeBytes)}</div>
+              {root.files.slice(0, 12).map((file) => <div key={file.path} className="flex gap-2 pl-2"><span className="min-w-0 flex-1 truncate">{file.path}</span><span className="shrink-0 text-muted-foreground">{formatBytes(file.sizeBytes)}</span></div>)}
+              {root.files.length > 12 && <div className="pl-2 text-muted-foreground">+{root.files.length - 12} more</div>}
+            </div>
+          ))}
+          {archivedRoots.length === 0 && cleanupLocations.length > 0 ? cleanupLocations.slice(0, 8).map((location) => (
             <div key={location.locationId} className="flex gap-2 py-0.5">
               <span className="w-12 shrink-0 text-muted-foreground">#{location.locationId}</span>
               <span className="min-w-0 flex-1 truncate">{location.path}</span>
               {location.sizeBytes !== null && <span className="shrink-0 text-muted-foreground">{formatBytes(location.sizeBytes)}</span>}
             </div>
-          )) : <div className="text-muted-foreground">No selectable local locations in this candidate.</div>}
-          {cleanupLocations.length > 8 && <div className="pt-1 text-muted-foreground">+{cleanupLocations.length - 8} more</div>}
+          )) : archivedRoots.length === 0 && <div className="text-muted-foreground">No selectable local locations in this candidate.</div>}
+          {archivedRoots.length === 0 && cleanupLocations.length > 8 && <div className="pt-1 text-muted-foreground">+{cleanupLocations.length - 8} more</div>}
         </div>
       )}
 
@@ -1354,26 +1370,36 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
               </Button>
             </>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
-              await onCandidateUpdate();
-            }}
-          >
-            Mark resolved
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => {
-              await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
-              await onCandidateUpdate();
-            }}
-          >
-            Ignore
-          </Button>
+          {candidate.type === "local_fetch_merge_cleanup" && archivedRoots.length > 0 && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => void reviewArchive("keep_archived")}>Keep archived</Button>
+              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setArchiveDeleteStep(1)}>Delete archive</Button>
+            </>
+          )}
+          {archivedRoots.length === 0 && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await api.updateWorkflowCandidate(candidate.id, { status: "resolved" });
+                  await onCandidateUpdate();
+                }}
+              >
+                Mark resolved
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await api.updateWorkflowCandidate(candidate.id, { status: "ignored" });
+                  await onCandidateUpdate();
+                }}
+              >
+                Ignore
+              </Button>
+            </>
+          )}
         </div>
       )}
       {confirmDeleteOldFiles && (
@@ -1387,6 +1413,21 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
             <Button size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void cleanup("delete_files")}>
               Delete files
             </Button>
+          </div>
+        </div>
+      )}
+      {archiveDeleteStep > 0 && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+          <div className="text-sm font-semibold text-destructive">{archiveDeleteStep === 1 ? "Review archived directories" : "Final confirmation"}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{archiveDeleteStep === 1 ? "These archived roots will be permanently removed from disk." : "This cannot be undone. Work metadata and the published Fetch result will be kept."}</div>
+          <div className="mt-2 space-y-1 text-xs">{archivedRoots.map((root) => <div key={root.folderId} className="truncate" title={root.archivePath}>{root.archivePath}</div>)}</div>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(0)}>Cancel</Button>
+            {archiveDeleteStep === 1 ? (
+              <Button size="sm" variant="outline" onClick={() => setArchiveDeleteStep(2)}>Continue</Button>
+            ) : (
+              <Button size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void reviewArchive("delete_archived")}>Permanently delete</Button>
+            )}
           </div>
         </div>
       )}
@@ -2298,6 +2339,7 @@ function candidateNeedsReview(candidate: WorkflowCandidate) {
 
 type LocalCleanupLocation = { locationId: number; path: string; sizeBytes: number | null };
 type LocalDuplicateFolder = { relPath: string; files: number; audioFiles: number; sizeBytes: number | null };
+type LocalArchivedRoot = { folderId: number; originalPath: string; archivePath: string; fileCount: number; sizeBytes: number | null; files: Array<{ path: string; sizeBytes: number | null }> };
 
 function parseJSONRecord(value: string): Record<string, unknown> {
   try {
@@ -2317,6 +2359,25 @@ function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLo
     const path = stringValue(record.path);
     if (!locationId || !path) return [];
     return [{ locationId, path, sizeBytes: nullableNumberValue(record.size_bytes) }];
+  });
+}
+
+function localArchivedRoots(payload: Record<string, unknown>): LocalArchivedRoot[] {
+  const roots = Array.isArray(payload.archived_roots) ? payload.archived_roots : [];
+  return roots.flatMap((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const record = raw as Record<string, unknown>;
+    const folderId = numberValue(record.folder_id);
+    const originalPath = stringValue(record.original_path);
+    const archivePath = stringValue(record.archive_path);
+    if (!folderId || !originalPath || !archivePath) return [];
+    const files = Array.isArray(record.files) ? record.files.flatMap((file) => {
+      if (!file || typeof file !== "object" || Array.isArray(file)) return [];
+      const item = file as Record<string, unknown>;
+      const path = stringValue(item.path);
+      return path ? [{ path, sizeBytes: nullableNumberValue(item.size_bytes) }] : [];
+    }) : [];
+    return [{ folderId, originalPath, archivePath, fileCount: numberValue(record.file_count) ?? files.length, sizeBytes: nullableNumberValue(record.size_bytes), files }];
   });
 }
 

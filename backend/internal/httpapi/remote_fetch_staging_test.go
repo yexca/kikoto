@@ -2,12 +2,91 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 )
+
+func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
+	dataRoot := t.TempDir()
+	oldRoot := filepath.Join(dataRoot, "Library", "RJ01234567")
+	publishedRoot := filepath.Join(dataRoot, "remote", "RJ", "012", "RJ01234567")
+	if err := os.MkdirAll(oldRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(publishedRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldRoot, "old.mp3"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Old', 'old')`,
+		`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 1, 'local', 'Library/RJ01234567/old.mp3', 'available')`,
+		`INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary) VALUES (1, 1, 1, 'Library/RJ01234567', 'external', 'active', 0), (2, 1, 1, 'remote/RJ/012/RJ01234567', 'managed_fetch', 'active', 1)`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'succeeded', 'manual')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, []remoteWorkSavePlanItem{{TargetPath: "remote/RJ/012/RJ01234567/track.mp3"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 1 {
+		t.Fatalf("archived roots = %d, want 1", len(archived))
+	}
+	archivePath := archived[0]["archive_path"].(string)
+	if _, err := os.Stat(oldRoot); !os.IsNotExist(err) {
+		t.Fatalf("old root still exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataRoot, filepath.FromSlash(archivePath), "old.mp3")); err != nil {
+		t.Fatalf("archived file: %v", err)
+	}
+	var folderState, locationAvailability string
+	if err := db.QueryRow("SELECT state FROM work_folder_location WHERE id = 1").Scan(&folderState); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = 1").Scan(&locationAvailability); err != nil {
+		t.Fatal(err)
+	}
+	if folderState != "pending_cleanup" || locationAvailability != "unavailable" {
+		t.Fatalf("state = %q, availability = %q", folderState, locationAvailability)
+	}
+	result, err := db.Exec(`INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json) VALUES (1, 'local_fetch_merge_cleanup', 'RJ01234567', 'pending', ?)`, mustJSON(map[string]any{"archived_roots": archived}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidateID, _ := result.LastInsertId()
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-candidates/1/archived-root-review", strings.NewReader(`{"action":"delete_archived","confirm":"DELETE"}`))
+	request.SetPathValue("id", fmt.Sprintf("%d", candidateID))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.reviewArchivedFetchRoots(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("review status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataRoot, filepath.FromSlash(archivePath))); !os.IsNotExist(err) {
+		t.Fatalf("archive still exists: %v", err)
+	}
+	var remaining int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_folder_location WHERE id = 1").Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("remaining folder rows = %d, error = %v", remaining, err)
+	}
+}
 
 func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing.T) {
 	db := openMigratedTestDB(t)

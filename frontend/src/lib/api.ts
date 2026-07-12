@@ -1532,6 +1532,8 @@ export const api = {
     id: number,
     payload: { action: "mark_unavailable" | "delete_files"; locationIds?: number[] },
   ) => postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
+  reviewArchivedFetchRoots: (id: number, action: "keep_archived" | "delete_archived", confirm = "") =>
+    postJSONBody<{ candidateId: number; status: string; action: string }>(`/api/workflow-candidates/${id}/archived-root-review`, { action, confirm }),
   cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
