@@ -788,13 +788,15 @@ export function LibraryPage() {
   };
 
   const selectTrackedFetchEdition = async (code: string) => {
-    if (!trackedFetchSelection) return;
+    if (!trackedFetchSelection) return false;
     setIsTrackedFetching(true);
     try {
       const detail = await api.getRemoteSourceWork(trackedFetchSelection.source.id, code);
       setTrackedFetchSelection((current) => current ? { ...current, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), selectedLocalPaths: new Set(), targetRoot: "", plan: null, message: "", requestId: createFetchRequestID() } : current);
+      return true;
     } catch (error) {
       toast.notify(toastFromError(error, `The ${code} edition is not available from ${trackedFetchSelection.source.displayName}.`));
+      return false;
     } finally {
       setIsTrackedFetching(false);
     }
@@ -1186,7 +1188,7 @@ export function LibraryPage() {
           message={trackedFetchSelection.message}
           sourceId={trackedFetchSelection.source.id}
           activeEditionCode={remoteDetailActionCode(trackedFetchSelection.detail)}
-          onEditionChange={(code) => void selectTrackedFetchEdition(code)}
+          onEditionChange={selectTrackedFetchEdition}
           targetRoot={trackedFetchSelection.targetRoot}
           onTargetRootChange={(targetRoot) => setTrackedFetchSelection((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
           onChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
@@ -1499,15 +1501,16 @@ function RemoteSourcePanel({
   };
 
   const selectSaveEdition = async (code: string) => {
-    if (!saveSelection) return;
+    if (!saveSelection) return false;
     setIsSyncingCode(code);
     try {
       const detail = await api.getRemoteSourceWork(source.id, code);
       const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
-      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), paths);
-      setSaveSelection((current) => current ? { ...current, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() } : current);
+      setSaveSelection((current) => current ? { ...current, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan: null, message: "", requestId: createFetchRequestID() } : current);
+      return true;
     } catch (error) {
       toast.notify(toastFromError(error, `The ${code} edition is not available from ${source.displayName}.`));
+      return false;
     } finally {
       setIsSyncingCode(null);
     }
@@ -1663,7 +1666,7 @@ function RemoteSourcePanel({
           message={saveSelection.message}
           sourceId={source.id}
           activeEditionCode={remoteDetailActionCode(saveSelection.detail)}
-          onEditionChange={(code) => void selectSaveEdition(code)}
+          onEditionChange={selectSaveEdition}
           targetRoot={saveSelection.targetRoot}
           onTargetRootChange={(targetRoot) => setSaveSelection((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
           onChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
@@ -2589,8 +2592,10 @@ function RemoteWorkDetailView({
       setSaveDecisions({});
       setSavePlanDirty(false);
       setSavePlanMessage("");
+      return true;
     } catch (error) {
       toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -2697,7 +2702,7 @@ function RemoteWorkDetailView({
             message={savePlanMessage}
             sourceId={source.id}
             activeEditionCode={detail ? remoteDetailActionCode(detail) : code}
-            onEditionChange={(editionCode) => void selectPreparedRemoteEdition(editionCode)}
+            onEditionChange={selectPreparedRemoteEdition}
             targetRoot={selectedTargetRoot}
             onTargetRootChange={(targetRoot) => {
               setSelectedTargetRoot(targetRoot);
@@ -3067,7 +3072,7 @@ function WorkDetailView({
   };
 
   const selectPreparedWorkEdition = async (editionCode: string) => {
-    if (!selectedRemoteSource) return;
+    if (!selectedRemoteSource) return false;
     setIsSaving(true);
     try {
       const detail = await api.getRemoteSourceWork(selectedRemoteSource.source.id, editionCode);
@@ -3079,8 +3084,10 @@ function WorkDetailView({
       setSaveDecisions({});
       setSavePlanDirty(false);
       setSavePlanMessage("");
+      return true;
     } catch (error) {
       toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${selectedRemoteSource.source.displayName}.`));
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -3336,7 +3343,7 @@ function WorkDetailView({
           message={savePlanMessage}
           sourceId={selectedRemoteSource?.source.id}
           activeEditionCode={remoteDetailActionCode(selectedRemoteDetail)}
-          onEditionChange={(editionCode) => void selectPreparedWorkEdition(editionCode)}
+          onEditionChange={selectPreparedWorkEdition}
           targetRoot={selectedTargetRoot}
           onTargetRootChange={(targetRoot) => {
             setSelectedTargetRoot(targetRoot);
@@ -3480,8 +3487,9 @@ function WorkDetailView({
           onClose={() => setIsManageOpen(false)}
           deleting={isDeleting}
           onDeleteTargets={deleteMediaTargets}
-          allowCacheDelete
-          allowLocalDelete={!selectedRemoteSource}
+          allowCacheDelete={!selectedRemoteSource}
+          allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
+          showCachedFilter={Boolean(selectedTrackedPresence)}
         />
       )}
       {isMetadataEditorOpen && work && (
@@ -5156,7 +5164,7 @@ type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
   | { kind: "text"; title: string; locationId: number };
 
-type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string };
+type MediaDeleteTarget = { kind: "cache" | "local"; locationId: number; title: string; path: string; sizeBytes: number | null };
 
 type SourceTabInfo = {
   key: string;
@@ -5281,6 +5289,8 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
     const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
     const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? sourceLocations[0];
     if (!location) continue;
+    const cacheLocation = sourceLocations.find((candidate) => candidate.locationType === "cache" && candidate.availability === "available");
+    const localLocation = sourceLocations.find((candidate) => candidate.locationType === "local" && candidate.availability === "available");
     const parts = displayPathParts(location.path, location.locationType, workCode);
     const fileName = parts.pop() ?? item.title;
     let cursor = root;
@@ -5306,13 +5316,13 @@ function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: st
       sizeBytes: location.sizeBytes,
       durationSeconds: location.durationSeconds ?? item.durationSeconds,
       availability: location.availability,
-      cacheLocationId: location.locationType === "cache" && location.availability === "available" ? location.id : null,
-      cachePath: location.locationType === "cache" ? location.path : "",
-      cacheAvailable: location.locationType === "cache" && location.availability === "available",
-      cacheStreamUrl: location.locationType === "cache" && location.availability === "available" ? `/api/media/${location.id}/stream` : "",
-      localLocationId: location.locationType === "local" && location.availability === "available" ? location.id : null,
-      localPath: location.locationType === "local" ? location.path : "",
-      localAvailable: location.locationType === "local" && location.availability === "available",
+      cacheLocationId: cacheLocation?.id ?? null,
+      cachePath: cacheLocation?.path ?? "",
+      cacheAvailable: Boolean(cacheLocation),
+      cacheStreamUrl: cacheLocation ? `/api/media/${cacheLocation.id}/stream` : "",
+      localLocationId: localLocation?.id ?? null,
+      localPath: localLocation?.path ?? "",
+      localAvailable: Boolean(localLocation),
       progress: item.progress,
       locations: item.locations
         .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
@@ -5555,13 +5565,16 @@ function RemoteSaveSelectionPanel({
   onLocalChange: (paths: Set<string>) => void;
   onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
   activeEditionCode?: string;
-  onEditionChange?: (code: string) => void;
+  onEditionChange?: (code: string) => Promise<boolean>;
   sourceId?: number;
   targetRoot?: string;
   onTargetRootChange?: (root: string) => void;
 }) {
   const [activePane, setActivePane] = useState<"local" | "remote" | "result">("remote");
 	const [selectedEditionCode, setSelectedEditionCode] = useState("");
+  const [checkingEditionCode, setCheckingEditionCode] = useState("");
+  const [refreshScheduled, setRefreshScheduled] = useState(false);
+  const onSaveRef = useRef(onSave);
   const allPaths = remoteSelectablePaths(root);
   const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
   const localTree = useMemo(() => buildRemoteFetchLocalTree(plan), [plan]);
@@ -5569,8 +5582,33 @@ function RemoteSaveSelectionPanel({
   const activeEdition = plan?.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === (activeEditionCode ?? plan.primaryCode).toUpperCase());
   const plannedRoot = activeEdition?.localRoots.find((root) => root.rootPath === plan?.saveRoot);
   const messageIsConflict = Boolean(plan && hasRemoteFetchConflicts(plan));
+  const previewNeedsRefresh = !plan || Boolean(planDirty);
+  const previewRevision = useMemo(() => JSON.stringify({
+    edition: selectedEditionCode,
+    remote: Array.from(selectedPaths).sort(),
+    local: Array.from(selectedLocalPaths).sort(),
+    targetRoot: targetRoot ?? "",
+    decisions: Object.values(decisions ?? {}).sort((a, b) => a.itemKey.localeCompare(b.itemKey)),
+  }), [decisions, selectedEditionCode, selectedLocalPaths, selectedPaths, targetRoot]);
   const setAll = () => onChange(new Set(allPaths));
-	const excludeExtension = (extension: string) => onChange(new Set(Array.from(selectedPaths).filter((path) => !path.toLowerCase().endsWith(`.${extension}`))));
+  const extensionSelection = (extension: string) => {
+    const matching = allPaths.filter((path) => path.toLowerCase().endsWith(`.${extension}`));
+    const selected = matching.filter((path) => selectedPaths.has(path)).length;
+    return {
+      count: matching.length,
+      checked: matching.length > 0 && selected === 0,
+      indeterminate: selected > 0 && selected < matching.length,
+    };
+  };
+  const setExtensionExcluded = (extension: string, excluded: boolean) => {
+    const next = new Set(selectedPaths);
+    for (const path of allPaths) {
+      if (!path.toLowerCase().endsWith(`.${extension}`)) continue;
+      if (excluded) next.delete(path);
+      else next.add(path);
+    }
+    onChange(next);
+  };
   const clear = () => onChange(new Set());
   const selectLocalPath = (path: string, selected: boolean) => {
     const next = new Set(selectedLocalPaths);
@@ -5578,6 +5616,23 @@ function RemoteSaveSelectionPanel({
     else next.delete(path);
     onLocalChange(next);
   };
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
+  useEffect(() => {
+    if (!selectedEditionCode || disabled || !previewNeedsRefresh || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)) {
+      setRefreshScheduled(false);
+      return;
+    }
+    setRefreshScheduled(true);
+    const timer = window.setTimeout(() => {
+      setRefreshScheduled(false);
+      onSaveRef.current();
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [disabled, previewNeedsRefresh, previewRevision, selectedEditionCode, selectedLocalPaths.size, selectedPaths.size]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
       <div className="flex max-h-[90dvh] w-full max-w-7xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -5602,19 +5657,26 @@ function RemoteSaveSelectionPanel({
 				const selected = selectedEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
                 const availableSources = edition.sources.filter((source) => source.status === "available").length;
                 const selectedSourceAvailable = !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
+                const checking = checkingEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
                 return (
-				  <label key={edition.primaryCode} className={`flex min-w-48 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"} ${!selectedSourceAvailable ? "cursor-not-allowed opacity-50" : ""}`}>
+				  <label key={edition.primaryCode} className={`flex min-w-48 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"}`}>
 					<Checkbox
 					  checked={selected}
-					  disabled={disabled || !selectedSourceAvailable}
+					  disabled={disabled || checking}
 					  aria-label={`Select ${edition.primaryCode}`}
 					  onCheckedChange={(checked) => {
 						if (!checked) {
 						  setSelectedEditionCode("");
 						  return;
 						}
-						setSelectedEditionCode(edition.primaryCode);
-						if (!viewing) onEditionChange?.(edition.primaryCode);
+						if (!onEditionChange) {
+						  setSelectedEditionCode(edition.primaryCode);
+						  return;
+						}
+						setCheckingEditionCode(edition.primaryCode);
+						void onEditionChange(edition.primaryCode).then((available) => {
+						  if (available) setSelectedEditionCode(edition.primaryCode);
+						}).finally(() => setCheckingEditionCode(""));
 					  }}
 					/>
 					<span className="min-w-0 flex-1">
@@ -5623,7 +5685,7 @@ function RemoteSaveSelectionPanel({
                       <span className="font-mono text-[11px] text-muted-foreground">{edition.primaryCode}</span>
                     </div>
                     <div className="mt-1 truncate text-xs" title={edition.title}>{edition.metadataLanguage || edition.editionLabel || "Unknown language"}</div>
-                    <div className="mt-1 flex gap-1 text-[10px] text-muted-foreground"><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span></div>
+                    <div className="mt-1 flex gap-1 text-[10px] text-muted-foreground"><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span><span>·</span><span>{checking ? "checking" : viewing || selectedSourceAvailable ? "available" : "not checked"}</span></div>
 					</span>
 				  </label>
                 );
@@ -5636,24 +5698,24 @@ function RemoteSaveSelectionPanel({
           {plan && plan.localFiles.length > 0 && <Badge variant="secondary">{selectedLocalPaths.size} local</Badge>}
           {plan && plan.summary.conflict > 0 && <Badge variant="outline" className="border-destructive/40 text-destructive">{plan.summary.conflict} conflicts</Badge>}
           {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} to fetch</Badge>}
-          {planDirty && <Badge variant="outline">Changes need review</Badge>}
+          {previewNeedsRefresh && <Badge variant="outline">{disabled ? "Refreshing preview" : refreshScheduled ? "Preview scheduled" : "Preview required"}</Badge>}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
-			<select
-			  className="h-8 rounded-md border bg-background px-2 text-xs"
-			  aria-label="Exclude file type"
-			  defaultValue=""
-			  disabled={disabled}
-			  onChange={(event) => {
-				if (event.target.value) excludeExtension(event.target.value);
-				event.target.value = "";
-			  }}
-			>
-			  <option value="" disabled>Exclude</option>
-			  <option value="mp3">MP3</option>
-			  <option value="wav">WAV</option>
-			  <option value="flac">FLAC</option>
-			</select>
+            {(["mp3", "wav", "flac"] as const).map((extension) => {
+              const state = extensionSelection(extension);
+              return (
+                <label key={extension} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+                  <Checkbox
+                    checked={state.checked}
+                    indeterminate={state.indeterminate}
+                    disabled={disabled || state.count === 0}
+                    onCheckedChange={() => setExtensionExcluded(extension, !state.checked)}
+                    aria-label={`Exclude ${extension.toUpperCase()}`}
+                  />
+                  <span>{extension.toUpperCase()}</span>
+                </label>
+              );
+            })}
             <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
           </div>
         </div>
@@ -5720,9 +5782,9 @@ function RemoteSaveSelectionPanel({
           <Button variant="outline" onClick={onClose} disabled={disabled}>
             Cancel
           </Button>
-		  <Button onClick={onSave} disabled={disabled || !selectedEditionCode || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)}>
+		  <Button onClick={onSave} disabled={disabled || refreshScheduled || previewNeedsRefresh || messageIsConflict || !selectedEditionCode || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)}>
             <HardDriveDownload className="h-4 w-4" />
-            {!plan || planDirty ? "Review changes" : "Publish Fetch"}
+            {disabled || refreshScheduled ? "Refreshing preview" : "Publish Fetch"}
           </Button>
         </div>
       </div>
@@ -6374,6 +6436,7 @@ function DirectoryManagerModal({
   onDeleteTargets,
   allowCacheDelete,
   allowLocalDelete,
+  showCachedFilter = false,
 }: {
   root: TreeNode;
   emptyLabel: string;
@@ -6382,11 +6445,17 @@ function DirectoryManagerModal({
   onDeleteTargets?: (targets: MediaDeleteTarget[]) => void;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
+  showCachedFilter?: boolean;
 }) {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [confirming, setConfirming] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
+  const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
+  const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
   const targets = useMemo(() => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), [root, allowCacheDelete, allowLocalDelete]);
   const selectedTargets = useMemo(() => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))), [targets, selectedKeys]);
+  const selectedSignature = selectedTargets.map(mediaDeleteTargetKey).sort().join("|");
+  const previewSignature = previewTargets.map(mediaDeleteTargetKey).sort().join("|");
+  const previewRefreshing = selectedTargets.length > 0 && selectedSignature !== previewSignature;
   const allSelected = targets.length > 0 && selectedTargets.length === targets.length;
   const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
   const toggleTarget = (target: MediaDeleteTarget, selected: boolean) => {
@@ -6399,10 +6468,15 @@ function DirectoryManagerModal({
     });
   };
   const confirmDelete = () => {
-    onDeleteTargets?.(selectedTargets);
-    setConfirming(false);
+    onDeleteTargets?.(previewTargets);
+    setConfirmStep(0);
     setSelectedKeys(new Set());
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreviewTargets(selectedTargets), selectedTargets.length === 0 ? 0 : 600);
+    return () => window.clearTimeout(timer);
+  }, [selectedSignature, selectedTargets]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
       <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -6415,15 +6489,57 @@ function DirectoryManagerModal({
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-        <div className="app-scroll min-h-0 flex-1 overflow-auto bg-card p-3">
-          <DirectoryManager
-            root={root}
-            emptyLabel={emptyLabel}
-            selectedKeys={selectedKeys}
-            allowCacheDelete={allowCacheDelete}
-            allowLocalDelete={allowLocalDelete}
-            onToggleTarget={toggleTarget}
-          />
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+          <div className="app-scroll min-h-0 overflow-auto border-b p-3 md:border-b-0 md:border-r">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium">Select files</div>
+              </div>
+              {showCachedFilter && (
+                <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+                  <Checkbox checked={showOnlyDeletable} onCheckedChange={setShowOnlyDeletable} aria-label="Show cached files only" />
+                  <span>Cached only</span>
+                </label>
+              )}
+            </div>
+            <DirectoryManager
+              root={root}
+              emptyLabel={emptyLabel}
+              selectedKeys={selectedKeys}
+              allowCacheDelete={allowCacheDelete}
+              allowLocalDelete={allowLocalDelete}
+              showOnlyDeletable={showOnlyDeletable}
+              onToggleTarget={toggleTarget}
+            />
+          </div>
+          <div className="app-scroll min-h-0 overflow-auto p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium">Delete preview</div>
+              </div>
+              <Badge variant={previewRefreshing ? "outline" : "secondary"}>
+                {previewRefreshing ? "Refreshing" : `${previewTargets.length} files`}
+              </Badge>
+            </div>
+            {previewRefreshing && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Updating after your selection changes
+              </div>
+            )}
+            {previewTargets.length === 0 ? (
+              <div className="text-sm text-muted-foreground">Select deletable files to build the preview.</div>
+            ) : (
+              <div className="space-y-1">
+                {previewTargets.map((target) => (
+                  <div key={mediaDeleteTargetKey(target)} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 border-b py-2 text-xs last:border-b-0">
+                    <Badge variant="outline" className="row-span-2 h-fit">{target.kind}</Badge>
+                    <span className="truncate font-medium" title={target.path}>{target.path}</span>
+                    <span className="text-muted-foreground">{target.title}{target.sizeBytes !== null ? ` · ${formatBytes(target.sizeBytes)}` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -6432,17 +6548,19 @@ function DirectoryManagerModal({
             </Button>
             <span className="text-xs text-muted-foreground">{selectedTargets.length} selected / {targets.length} deletable</span>
           </div>
-          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" disabled={selectedTargets.length === 0 || deleting} onClick={() => setConfirming(true)}>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" disabled={selectedTargets.length === 0 || previewRefreshing || deleting} onClick={() => setConfirmStep(1)}>
             <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting" : "Delete selected"}
+            {deleting ? "Deleting" : previewRefreshing ? "Refreshing preview" : "Review deletion"}
           </Button>
         </div>
       </div>
-      {confirming && (
+      {confirmStep > 0 && (
         <ConfirmMediaBatchDeleteModal
-          targets={selectedTargets}
+          targets={previewTargets}
+          step={confirmStep === 2 ? 2 : 1}
           deleting={deleting}
-          onCancel={() => setConfirming(false)}
+          onCancel={() => setConfirmStep(0)}
+          onContinue={() => setConfirmStep(2)}
           onConfirm={confirmDelete}
         />
       )}
@@ -6456,6 +6574,7 @@ function DirectoryManager({
   selectedKeys,
   allowCacheDelete,
   allowLocalDelete,
+  showOnlyDeletable,
   onToggleTarget,
 }: {
   root: TreeNode;
@@ -6463,6 +6582,7 @@ function DirectoryManager({
   selectedKeys: Set<string>;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
+  showOnlyDeletable?: boolean;
   onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
   const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
@@ -6477,6 +6597,7 @@ function DirectoryManager({
         selectedKeys={selectedKeys}
         allowCacheDelete={allowCacheDelete}
         allowLocalDelete={allowLocalDelete}
+        showOnlyDeletable={showOnlyDeletable}
         onToggleTarget={onToggleTarget}
         isRoot
       />
@@ -6491,6 +6612,7 @@ function DirectoryManagerNode({
   selectedKeys,
   allowCacheDelete,
   allowLocalDelete,
+  showOnlyDeletable,
   onToggleTarget,
 }: {
   node: TreeNode;
@@ -6499,11 +6621,13 @@ function DirectoryManagerNode({
   selectedKeys: Set<string>;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
+  showOnlyDeletable?: boolean;
   onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
   const [open, setOpen] = useState(isRoot);
-  const folders = sortedFolders(node);
-  const files = sortedFiles(node);
+  const options = { allowCacheDelete, allowLocalDelete };
+  const folders = sortedFolders(node).filter((folder) => !showOnlyDeletable || directoryManageTargets(folder, options).length > 0);
+  const files = sortedFiles(node).filter((file) => !showOnlyDeletable || mediaDeleteTargetsForFile(file, options).length > 0);
   const stats = treeStats(node);
   const hasChildren = folders.length > 0 || files.length > 0;
   return (
@@ -6530,6 +6654,7 @@ function DirectoryManagerNode({
               selectedKeys={selectedKeys}
               allowCacheDelete={allowCacheDelete}
               allowLocalDelete={allowLocalDelete}
+              showOnlyDeletable={showOnlyDeletable}
               onToggleTarget={onToggleTarget}
             />
           ))}
@@ -6606,13 +6731,17 @@ function ManagedFileRow({
 
 function ConfirmMediaBatchDeleteModal({
   targets,
+  step,
   deleting,
   onCancel,
+  onContinue,
   onConfirm,
 }: {
   targets: MediaDeleteTarget[];
+  step: 1 | 2;
   deleting: boolean;
   onCancel: () => void;
+  onContinue: () => void;
   onConfirm: () => void;
 }) {
   const localCount = targets.filter((target) => target.kind === "local").length;
@@ -6622,8 +6751,8 @@ function ConfirmMediaBatchDeleteModal({
       <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
-            <h3 className="text-base font-semibold">Confirm delete</h3>
-            <p className="mt-1 text-sm text-muted-foreground">This is the second confirmation before deleting selected file locations.</p>
+            <h3 className="text-base font-semibold">{step === 1 ? "Review deletion" : "Final confirmation"}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{step === 1 ? "Confirm that the refreshed preview contains only the intended files." : "Deleted files cannot be restored by Kikoto."}</p>
           </div>
           <IconButton title="Close" onClick={onCancel}>
             <X className="h-4 w-4" />
@@ -6647,10 +6776,14 @@ function ConfirmMediaBatchDeleteModal({
           <Button variant="outline" onClick={onCancel} disabled={deleting}>
             Cancel
           </Button>
-          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting || targets.length === 0}>
-            <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting" : "Delete selected"}
-          </Button>
+          {step === 1 ? (
+            <Button onClick={onContinue} disabled={targets.length === 0}>Continue</Button>
+          ) : (
+            <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting || targets.length === 0}>
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting" : "Permanently delete"}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -6664,10 +6797,10 @@ function directoryManageTargets(root: TreeNode, options: { allowCacheDelete?: bo
 function mediaDeleteTargetsForFile(file: TreeTrack, options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean }) {
   const targets: MediaDeleteTarget[] = [];
   if (options.allowCacheDelete && file.cacheAvailable && file.cacheLocationId !== null) {
-    targets.push({ kind: "cache", locationId: file.cacheLocationId, title: file.title, path: file.cachePath });
+    targets.push({ kind: "cache", locationId: file.cacheLocationId, title: file.title, path: file.cachePath, sizeBytes: file.sizeBytes });
   }
   if (options.allowLocalDelete && file.localAvailable && file.localLocationId !== null) {
-    targets.push({ kind: "local", locationId: file.localLocationId, title: file.title, path: file.localPath });
+    targets.push({ kind: "local", locationId: file.localLocationId, title: file.title, path: file.localPath, sizeBytes: file.sizeBytes });
   }
   return targets;
 }

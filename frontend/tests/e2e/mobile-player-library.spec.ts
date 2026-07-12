@@ -67,7 +67,15 @@ function silentWav() {
   return body;
 }
 
-async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, failLocalAudio = false, workCount = 1, mediaDelayMs = 0) {
+async function mockApplication(
+  page: Page,
+  onWorksRequest?: (url: URL) => void,
+  failLocalAudio = false,
+  workCount = 1,
+  mediaDelayMs = 0,
+  mediaItems: Record<string, unknown>[] = [],
+  onCleanup?: (body: Record<string, unknown>) => void,
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -112,14 +120,19 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
       await route.fulfill({ json: {
         ...detailWork,
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
-        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {}, mediaItems: [],
+        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {}, mediaItems,
       } });
       return;
     }
     const mediaMatch = url.pathname.match(/^\/api\/works\/(\d+)\/media$/);
     if (mediaMatch) {
       if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
-      await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems: [] } });
+      await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems } });
+      return;
+    }
+    if (url.pathname === "/api/media/cleanup" && route.request().method() === "POST") {
+      onCleanup?.(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ status: 202, json: { runId: 41, jobId: 42, status: "queued", queued: 2 } });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -228,7 +241,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
           requestedCode: "RJ09999991", canonicalCode: "RJ09999990", metadataStatus: "complete", warnings: [],
           editions: [
             { workId: 10, primaryCode: "RJ09999990", title: "Origin", metadataLanguage: "JPN", editionLabel: "日本語", translationKind: "origin", classificationSource: "canonical", makerId: "RG1", originMakerId: "RG1", origin: true, localRoots: [], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "2", primaryCode: "RJ09999990", title: "Origin", coverUrl: "", workId: 10, hasRemote: true, hasCache: false, hasLocal: false, error: "", elapsedMs: 1 }] },
-            { workId: 11, primaryCode: "RJ09999991", title: "Community", metadataLanguage: "CHI_HANS", editionLabel: "簡体中文", translationKind: "community", classificationSource: "translation_umbrella", makerId: "RG60289", originMakerId: "RG1", origin: false, localRoots: [{ id: 1, fileSourceId: 2, rootPath: "Existing/RJ09999991", role: "external", state: "active", primary: false }], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "1", primaryCode: "RJ09999991", title: "Community", coverUrl: "", workId: 11, hasRemote: true, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 }] },
+            { workId: 11, primaryCode: "RJ09999991", title: "Community", metadataLanguage: "CHI_HANS", editionLabel: "簡体中文", translationKind: "community", classificationSource: "translation_umbrella", makerId: "RG60289", originMakerId: "RG1", origin: false, localRoots: [{ id: 1, fileSourceId: 2, rootPath: "Existing/RJ09999991", role: "external", state: "active", primary: false }], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "unavailable", remoteId: "1", primaryCode: "RJ09999991", title: "Community", coverUrl: "", workId: 11, hasRemote: true, hasCache: false, hasLocal: true, error: "stale availability", elapsedMs: 1 }] },
           ],
         },
       } });
@@ -289,13 +302,18 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("Fetch selection", { exact: true })).toBeVisible();
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Origin", { exact: true })).toBeVisible();
-  await expect(page.getByText("Community", { exact: true })).toBeVisible();
+	await expect(page.getByText("Community", { exact: true })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeDisabled();
+	await expect(page.getByLabel("Select RJ09999991")).toBeEnabled();
 	await page.getByLabel("Select RJ09999991").click();
-	await page.getByLabel("Exclude file type").selectOption("mp3");
+	await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
+	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
+	await page.getByLabel("Exclude MP3").click();
+	await expect(page.getByLabel("Exclude MP3")).toBeChecked();
 	await expect(page.getByText("0 remote / 1")).toBeVisible();
 	await page.getByRole("button", { name: "All", exact: true }).click();
-	await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(page.getByLabel("Exclude MP3")).not.toBeChecked();
+	await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await page.getByRole("button", { name: "result", exact: true }).click();
   await expect(page.getByText("After Fetch", { exact: true })).toBeVisible();
   await expect(page.getByText("Add", { exact: true })).toBeVisible();
@@ -319,10 +337,50 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
   await page.getByLabel("Remote source").selectOption("2");
   await page.getByLabel("Conflict action").selectOption("keep_both");
-  await page.getByRole("button", { name: "Review changes" }).click();
   await expect.poll(() => planBodies.some((body) => JSON.stringify(body).includes('"sourceId":2') && JSON.stringify(body).includes('"resolution":"keep_both"'))).toBe(true);
-  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await expect(page.getByText("track (mirror).mp3", { exact: true })).toBeVisible();
+});
+
+test("local Delete builds a refreshed preview and requires two confirmations", async ({ page }) => {
+  const cleanupBodies: Record<string, unknown>[] = [];
+  const mediaItems = [{
+    id: 1,
+    parentId: null,
+    kind: "audio",
+    title: "track.mp3",
+    discNo: null,
+    trackNo: 1,
+    durationSeconds: 10,
+    sizeBytes: 12,
+    fingerprint: "test-track",
+    progress: null,
+    locations: [
+      { id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: "RJ09999999/track.mp3", streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
+      { id: 2, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "cache", path: "local/RJ09999999/track.mp3", streamUrl: "/api/media/2/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
+    ],
+  }];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body));
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await page.getByRole("button", { name: "Manage", exact: true }).click();
+  await page.getByRole("button", { name: "Manage files", exact: true }).click();
+
+  await expect(page.getByText("Select files", { exact: true })).toBeVisible();
+  await expect(page.getByText("Delete preview", { exact: true })).toBeVisible();
+  await page.getByLabel("Select local copy").click();
+  await page.getByLabel("Select cache copy").click();
+  await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Review deletion" })).toBeEnabled();
+  await expect(page.getByText("2 files", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Review deletion" }).click();
+  await expect(page.getByRole("heading", { name: "Review deletion" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
+  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await expect.poll(() => cleanupBodies).toHaveLength(1);
+  expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }, { kind: "local", locationId: 1 }] });
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {
