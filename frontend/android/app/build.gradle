@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
-def kikotoVersionCode = (project.findProperty("KIKOTO_VERSION_CODE") ?: System.getenv("KIKOTO_VERSION_CODE") ?: "3").toString().toInteger()
-def kikotoVersionName = (project.findProperty("KIKOTO_VERSION_NAME") ?: System.getenv("KIKOTO_VERSION_NAME") ?: "0.1.2").toString()
+def kikotoVersionCode = (project.findProperty("KIKOTO_VERSION_CODE") ?: System.getenv("KIKOTO_VERSION_CODE") ?: "4").toString().toInteger()
+def kikotoVersionName = (project.findProperty("KIKOTO_VERSION_NAME") ?: System.getenv("KIKOTO_VERSION_NAME") ?: "0.1.3").toString()
 def releaseKeystoreFile = project.findProperty("KIKOTO_KEYSTORE_FILE") ?: System.getenv("KIKOTO_KEYSTORE_FILE")
 def releaseKeystorePassword = project.findProperty("KIKOTO_KEYSTORE_PASSWORD") ?: System.getenv("KIKOTO_KEYSTORE_PASSWORD")
 def releaseKeyAlias = project.findProperty("KIKOTO_KEY_ALIAS") ?: System.getenv("KIKOTO_KEY_ALIAS")
