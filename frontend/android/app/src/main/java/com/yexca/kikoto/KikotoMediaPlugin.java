@@ -15,6 +15,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import androidx.core.content.ContextCompat;
+
 @CapacitorPlugin(name = "KikotoMedia")
 public class KikotoMediaPlugin extends Plugin {
     private BroadcastReceiver controlReceiver;
@@ -36,11 +38,7 @@ public class KikotoMediaPlugin extends Plugin {
             }
         };
         IntentFilter filter = new IntentFilter(KikotoMediaService.BROADCAST_CONTROL);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getContext().registerReceiver(controlReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            getContext().registerReceiver(controlReceiver, filter);
-        }
+        ContextCompat.registerReceiver(getContext(), controlReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     @Override

@@ -50,6 +50,7 @@ export type PlayerTrack = {
   locationType: string;
   streamUrl: string;
   sizeBytes: number | null;
+  durationSeconds?: number | null;
   availability: string;
   workId: number;
   workCode: string;
@@ -233,6 +234,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [durationLocationId, setDurationLocationId] = useState<number | null>(null);
   const [playbackRate, setPlaybackRate] = useState(restoredQueueRef.current.playbackRate);
   const [mode, setMode] = useState<PlayMode>(restoredQueueRef.current.mode);
   const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueueRef.current.sleepTimer);
@@ -302,6 +304,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.src = assetURL(currentTrack.streamUrl);
     setCurrentTime(0);
     setDuration(0);
+    setDurationLocationId(currentTrack.locationId);
     restoredMediaItemRef.current = null;
     if (isPlaying) {
       void audio.play().catch(() => setIsPlaying(false));
@@ -663,14 +666,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     async function syncNativeMedia() {
       if (cancelled) return;
+      const currentMediaDuration = durationLocationId === currentTrack.locationId ? duration : 0;
+      const durationSeconds = [
+        currentMediaDuration,
+        currentTrack.durationSeconds,
+        currentTrack.progress?.durationSeconds,
+      ].find((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      const durationMs = durationSeconds ? Math.floor(durationSeconds * 1000) : 0;
+      const positionMs = Math.min(Math.max(0, Math.floor(currentTime * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
       await updateNativeMedia({
         title: currentTrack.title || currentTrack.workTitle || "Kikoto",
         artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
         album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
         coverUrl: currentTrack.coverUrl ? new URL(assetURL(currentTrack.coverUrl), window.location.href).href : "",
         playing: isPlaying,
-        positionMs: Math.max(0, Math.floor(currentTime * 1000)),
-        durationMs: duration > 0 && Number.isFinite(duration) ? Math.floor(duration * 1000) : 0,
+        positionMs,
+        durationMs,
         playbackRate,
         canPrevious: currentIndex > 0 || mode === "loop",
         canNext: currentIndex < queue.length - 1 || mode === "loop",
@@ -680,7 +691,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, playbackRate, mode]);
+  }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, durationLocationId, playbackRate, mode]);
 
   useEffect(
     () => () => {
