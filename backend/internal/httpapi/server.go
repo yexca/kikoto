@@ -37,6 +37,8 @@ type Server struct {
 	cfg                  config.Config
 	circleAutoRefreshMu  sync.Mutex
 	circleAutoRefreshing map[int64]bool
+	remoteWorkCacheMu    sync.Mutex
+	remoteWorkCache      map[string]remoteWorkTracksSnapshot
 	jobRunnerMu          sync.Mutex
 }
 
@@ -44,6 +46,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		circleAutoRefreshing: map[int64]bool{},
+		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
 	}
 }
 

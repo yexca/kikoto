@@ -34,6 +34,11 @@ Remote downloads wait for configured delay and retry temporary errors with
 backoff. DLsite metadata sync also uses configured base delay and backoff for
 provider product and cover requests.
 
+Fetch planning uses already persisted metadata and cached source availability.
+It does not refresh DLsite implicitly; metadata refresh remains a separate,
+explicit workflow. A queued Fetch reuses the remote tree accepted during
+submission instead of immediately requesting the same tree again.
+
 ## Related Docs
 
 - [Work detail](work-detail.md)

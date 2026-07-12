@@ -13,6 +13,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  MoreHorizontal,
   Moon,
   Play,
   RotateCcw,
@@ -77,6 +78,7 @@ export function HeaderActions({
   const [diagnosticsText, setDiagnosticsText] = useState("");
   const [themeOpen, setThemeOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [reviewRuns, setReviewRuns] = useState<WorkflowRun[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [runningAction, setRunningAction] = useState<SystemAction | null>(null);
@@ -142,7 +144,7 @@ export function HeaderActions({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       <Button
         variant="outline"
         size="icon"
@@ -153,8 +155,57 @@ export function HeaderActions({
         <Search className="h-4 w-4" />
       </Button>
 
-      {isNativeApp() && (
+      <div className="sm:hidden">
         <HeaderPopover
+          open={mobileMenuOpen}
+          onOpenChange={setMobileMenuOpen}
+          trigger={
+            <Button variant="outline" size="icon" aria-label="Open menu" title="Menu" className="relative">
+              <MoreHorizontal className="h-4 w-4" />
+              {reviewCount > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />}
+            </Button>
+          }
+          align="right"
+        >
+          <div className="app-scroll max-h-[calc(100dvh-5rem)] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto">
+            <PopoverHeader title="Menu" subtitle={user ? user.displayName || user.username : "Kikoto"} />
+            <MenuList>
+              {canRunWorkflows && (
+                <>
+                  <ActionItem icon={<Activity className="h-4 w-4" />} label="Activity" onClick={() => { setMobileMenuOpen(false); onOpenPath("/activity"); }} />
+                  <ActionItem icon={<ListChecks className="h-4 w-4" />} label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"} onClick={() => { setMobileMenuOpen(false); onOpenPath("/activity?view=review"); }} />
+                </>
+              )}
+              <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setMobileMenuOpen(false); onOpenPage("settings"); }} />
+              {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setMobileMenuOpen(false); onOpenPage("users"); }} />}
+            </MenuList>
+            <div className="border-t p-2">
+              <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Theme</div>
+              <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
+              <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
+              <ThemeItem mode="system" current={themeMode} icon={<Command className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
+            </div>
+            {isNativeApp() && (
+              <div className="border-t p-2">
+                <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</div>
+                <ActionItem icon={<Server className="h-4 w-4" />} label="Reconnect" onClick={() => void checkConnection()} />
+                <ActionItem icon={<Clipboard className="h-4 w-4" />} label="Copy diagnostics" onClick={() => void showDiagnostics()} />
+                <ActionItem icon={<RotateCcw className="h-4 w-4" />} label="Clear server" onClick={() => { clearStoredServerURL(); window.location.reload(); }} />
+              </div>
+            )}
+            <div className="border-t p-2">
+              {user ? (
+                !user.devMode && <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setMobileMenuOpen(false); onLogout(); }} />
+              ) : (
+                <ActionItem icon={<LogIn className="h-4 w-4" />} label="Sign in" onClick={() => { setMobileMenuOpen(false); onOpenLogin(); }} />
+              )}
+            </div>
+          </div>
+        </HeaderPopover>
+      </div>
+
+      {isNativeApp() && (
+        <div className="hidden sm:block"><HeaderPopover
           open={connectionOpen}
           onOpenChange={(open) => {
             setConnectionOpen(open);
@@ -238,11 +289,11 @@ export function HeaderActions({
               </div>
             )}
           </div>
-        </HeaderPopover>
+        </HeaderPopover></div>
       )}
 
       {canRunWorkflows && (
-        <HeaderPopover
+        <div className="hidden sm:block"><HeaderPopover
           open={reviewOpen}
           onOpenChange={(open) => {
             setReviewOpen(open);
@@ -306,7 +357,7 @@ export function HeaderActions({
               </Button>
             </PopoverFooter>
           </div>
-        </HeaderPopover>
+        </HeaderPopover></div>
       )}
 
       <div className="hidden sm:block">
@@ -397,6 +448,7 @@ export function HeaderActions({
         </HeaderPopover>
       </div>
 
+      <div className="hidden sm:block">
       {user ? (
         <HeaderPopover
           open={userOpen}
@@ -478,6 +530,7 @@ export function HeaderActions({
           <span className="hidden sm:inline">Sign in</span>
         </Button>
       )}
+      </div>
     </div>
   );
 }

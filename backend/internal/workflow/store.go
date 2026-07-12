@@ -16,12 +16,7 @@ func (s *Store) RequeueExpiredJobs(ctx context.Context, leaseTimeout time.Durati
 		leaseTimeout = 30 * time.Second
 	}
 	cutoff := time.Now().UTC().Add(-leaseTimeout).Format("2006-01-02 15:04:05")
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), locked_by
 		FROM workflow_job
 		WHERE status = 'running' AND recoverable = 1 AND resume_count < max_retries
@@ -47,6 +42,14 @@ func (s *Store) RequeueExpiredJobs(ctx context.Context, leaseTimeout time.Durati
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
+	if len(jobs) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	requeued := int64(0)
 	for _, job := range jobs {
 		result, err := tx.ExecContext(ctx, `

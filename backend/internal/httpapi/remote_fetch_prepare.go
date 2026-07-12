@@ -7,11 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
-	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
 type remoteFetchPreparation struct {
@@ -55,44 +52,24 @@ func (s *Server) prepareRemoteFetch(ctx context.Context, requestedCode string) r
 		Warnings:       []string{},
 		Editions:       []remoteFetchEdition{},
 	}
-	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
-		WithCacheRoot(s.cfg.CacheRoot).
-		WithLanguages(dlsiteLanguageFallbacks(language)).
-		WithRequestPacing(
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
-		)
-	family, err := syncer.SyncFamily(ctx, requestedCode)
-	if err != nil {
-		result.MetadataStatus = "degraded"
-		result.Warnings = append(result.Warnings, err.Error())
-	} else {
-		result.CanonicalCode = family.CanonicalCode
-		if len(family.Failures) > 0 {
-			result.MetadataStatus = "partial"
-			result.Warnings = append(result.Warnings, family.Failures...)
-		}
-		if err := s.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
-			result.MetadataStatus = "partial"
-			result.Warnings = append(result.Warnings, "circle metadata: "+err.Error())
-		}
-	}
 	editions, err := s.loadRemoteFetchEditions(ctx, requestedCode)
 	if err != nil {
 		result.MetadataStatus = "degraded"
 		result.Warnings = append(result.Warnings, err.Error())
 		return result
 	}
+	for _, edition := range editions {
+		if edition.Origin {
+			result.CanonicalCode = edition.PrimaryCode
+			break
+		}
+	}
 	for index := range editions {
 		editions[index].LocalRoots, err = s.loadRemoteFetchLocalRoots(ctx, editions[index].WorkID, editions[index].PrimaryCode)
 		if err != nil {
 			result.Warnings = append(result.Warnings, editions[index].PrimaryCode+" local roots: "+err.Error())
 		}
-		checkCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-		availability, checkErr := s.checkWorkSourceAvailabilityForSources(checkCtx, editions[index].PrimaryCode, 0, "manual", "fetch_prepare")
-		cancel()
+		availability, checkErr := s.readWorkSourceAvailability(ctx, editions[index].PrimaryCode)
 		if checkErr != nil {
 			result.Warnings = append(result.Warnings, editions[index].PrimaryCode+" sources: "+checkErr.Error())
 		} else {

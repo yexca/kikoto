@@ -85,3 +85,45 @@ test("workflow selection stays within its view and survives page navigation", as
   await expect(page.getByRole("button", { name: "System", exact: true })).toHaveClass(/bg-primary/);
   await expect(page.getByRole("heading", { name: "Cache media", exact: true })).toBeVisible();
 });
+
+test("mobile header keeps actions in bounds and exposes theme and activity", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await expect(page.getByRole("button", { name: "Open command palette" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
+  await expect(page.getByText("Theme", { exact: true })).toBeVisible();
+
+  const menuBox = await page
+    .getByText("Theme", { exact: true })
+    .locator("..", { has: page.getByRole("button", { name: "dark" }) })
+    .boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+  await page.getByRole("button", { name: "dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await expect(page).toHaveURL(/\/activity$/);
+});
+
+test("desktop header popovers render above page content", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: "Theme" }).click();
+  const popover = page.getByText("Choose display mode").locator("..");
+  await expect(popover).toBeVisible();
+  const headerBox = await page.locator("header").boundingBox();
+  const popoverBox = await popover.boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(popoverBox).not.toBeNull();
+  expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
+  await page.getByRole("button", { name: "dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+});

@@ -135,7 +135,7 @@ async function mockApplication(page: Page, onWorksRequest?: (url: URL) => void, 
       return;
     }
     if (url.pathname === "/api/media/9/text") {
-      await route.fulfill({ json: { path: "lyrics.lrc", content: "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line" } });
+      await route.fulfill({ json: { path: "lyrics.lrc", content: "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line" } });
       return;
     }
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
@@ -457,7 +457,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await expect(fullPlayer).toBeHidden();
 });
 
-test("inline lyrics keep three rows visible and scroll the active line into the center", async ({ page }) => {
+test("inline lyrics adapt visible rows to height and keep the active line centered", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page, { ...persistedTrack, lyricsLocationId: 9, lyricsTitle: "lyrics.lrc" });
   await page.goto("/");
@@ -466,17 +466,26 @@ test("inline lyrics keep three rows visible and scroll the active line into the 
   const preview = page.getByRole("button", { name: "Open lyrics" });
   await expect(preview).toBeVisible();
   await expect(preview.locator('[data-lyric-index="0"]')).toHaveClass(/text-primary/);
-  await expect(preview.locator('[data-lyric-index="1"]')).not.toHaveClass(/opacity-0/);
-  await expect(preview.locator('[data-lyric-index="2"]')).not.toHaveClass(/opacity-0/);
   await page.locator("audio").evaluate((audio) => {
-    Object.defineProperty(audio, "currentTime", { configurable: true, value: 11 });
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 31 });
     audio.dispatchEvent(new Event("timeupdate"));
   });
-  await expect(preview.locator('[data-lyric-index="0"]')).toHaveClass(/opacity-0/);
-  await expect(preview.locator('[data-lyric-index="1"]')).not.toHaveClass(/opacity-0/);
-  await expect(preview.locator('[data-lyric-index="2"]')).toHaveClass(/text-primary/);
-  await expect(preview.locator('[data-lyric-index="3"]')).not.toHaveClass(/opacity-0/);
-  await expect(preview.locator(":scope > div")).toHaveAttribute("style", /translateY\(-28px\)/);
+  const activeIndex = 6;
+  await expect(preview.locator(`[data-lyric-index="${activeIndex}"]`)).toHaveClass(/text-primary/);
+  await page.waitForTimeout(500);
+  const previewBox = await preview.boundingBox();
+  expect(previewBox).not.toBeNull();
+  const visibleRows = Math.round(previewBox!.height / 28);
+  expect(visibleRows).toBeGreaterThanOrEqual(3);
+  expect(visibleRows).toBeLessThanOrEqual(10);
+  const lineCount = await preview.locator("[data-lyric-index]").count();
+  const firstVisibleIndex = Math.max(0, Math.min(activeIndex - Math.floor(visibleRows / 2), Math.max(0, lineCount - visibleRows)));
+  for (let index = 0; index < lineCount; index += 1) {
+    const line = preview.locator(`[data-lyric-index="${index}"]`);
+    if (index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows) await expect(line).not.toHaveClass(/opacity-0/);
+    else await expect(line).toHaveClass(/opacity-0/);
+  }
+  await expect(preview.locator(":scope > div")).toHaveAttribute("style", new RegExp(`translateY\\(-${firstVisibleIndex * 28}px\\)`));
 });
 
 test("desktop player uses playback speed without volume or colored play glow", async ({ page }) => {

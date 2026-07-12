@@ -1045,16 +1045,20 @@ export function assetURL(path: string) {
 
 export class ApiError extends Error {
   status: number;
+	code: string;
+	retryable: boolean;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code = "", retryable = false) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+		this.code = code;
+		this.retryable = retryable;
   }
 }
 
 async function responseError(response: Response, fallback: string) {
-  const payload = await response.json().catch(() => ({ error: fallback }));
+  const payload = await response.json().catch(() => ({ error: fallback, code: "", retryable: false }));
   const message = payload.error ?? fallback;
   recordApiError({
     method: "HTTP",
@@ -1062,7 +1066,7 @@ async function responseError(response: Response, fallback: string) {
     status: response.status,
     message,
   });
-  return new ApiError(message, response.status);
+  return new ApiError(message, response.status, payload.code ?? "", payload.retryable === true);
 }
 
 export function mediaDownloadURL(locationId: number) {

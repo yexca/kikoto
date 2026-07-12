@@ -111,6 +111,23 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {
+	var candidateID int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT job.id
+		FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.status = 'queued'
+			AND run.status = 'queued'
+			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
+		ORDER BY job.created_at ASC, job.id ASC
+		LIMIT 1
+	`).Scan(&candidateID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return workflowJobRecord{}, false, nil
+	}
+	if err != nil {
+		return workflowJobRecord{}, false, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return workflowJobRecord{}, false, err
@@ -125,13 +142,12 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
+			AND job.id = ?
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-		ORDER BY job.created_at ASC, job.id ASC
-		LIMIT 1
-		`).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries)
+		`, candidateID).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return workflowJobRecord{}, false, nil
+			return workflowJobRecord{}, false, tx.Commit()
 		}
 		return workflowJobRecord{}, false, err
 	}

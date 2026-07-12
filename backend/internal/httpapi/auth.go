@@ -32,7 +32,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, err := s.currentUserFromRequest(r.Context(), r)
 		if err != nil {
-			next.ServeHTTP(w, r)
+			if errors.Is(err, sql.ErrNoRows) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeError(w, err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), currentUserKey, user)))

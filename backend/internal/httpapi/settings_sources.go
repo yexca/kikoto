@@ -344,6 +344,13 @@ type remoteWorkFetchJobPayload struct {
 	Decisions  []remoteFetchFileDecision `json:"decisions"`
 }
 
+type remoteWorkTracksSnapshot struct {
+	Source    remoteSourceForUse
+	Work      kikoeru.Work
+	Tracks    []kikoeru.Track
+	ExpiresAt time.Time
+}
+
 type remoteFetchFileDecision struct {
 	ItemKey    string `json:"itemKey"`
 	SourceID   int64  `json:"sourceId"`
@@ -981,37 +988,15 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
-	source, err := s.loadRemoteSourceForUse(r.Context(), id)
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
 			return
 		}
-		writeError(w, err)
+		writeUpstreamError(w, err)
 		return
 	}
-	if !isKikoeruSourceType(source.SourceType) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is not a supported kikoeru source"})
-		return
-	}
-	if !source.Enabled {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is disabled"})
-		return
-	}
-	client := kikoeruClientForSource(source)
-	remoteWork, _, err := s.resolveKikoeruWork(r.Context(), client, code)
-	if err != nil {
-		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	tracks, _, err := client.Tracks(r.Context(), remoteWork.ID)
-	if err != nil {
-		_ = s.updateSourceHealth(r.Context(), id, "unavailable")
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	_ = s.updateSourceHealth(r.Context(), id, "healthy")
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
 	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, tracks, language)
 	if err != nil {
@@ -1298,7 +1283,7 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	preparation := s.prepareRemoteFetch(r.Context(), code)
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	attachRemoteFetchPreparation(&plan, preparation)
@@ -1340,7 +1325,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
 			return
 		}
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		writeUpstreamError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
@@ -2635,10 +2620,14 @@ func (s *Server) finishRemoteCollectionWorkflow(ctx context.Context, runID int64
 }
 
 func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSavePlan{}, err
 	}
+	return s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, code, selectedPaths, selectedLocalPaths, requestedTargetRoot, decisions)
+}
+
+func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source remoteSourceForUse, remoteWork kikoeru.Work, tracks []kikoeru.Track, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
 	workCode := normalizedRemoteWorkCode(remoteWork)
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
@@ -2869,7 +2858,7 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 
 func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -2877,7 +2866,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
-	plan, err := s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths, targetRoot, decisions)
+	plan, err := s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, workCode, selectedPaths, selectedLocalPaths, targetRoot, decisions)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -2896,7 +2885,10 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	runInput := remoteWorkFetchJobPayload{SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths, TargetRoot: plan.SaveRoot, RequestID: requestID, Decisions: decisions}
+	runInput := remoteWorkFetchJobPayload{
+		SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths,
+		TargetRoot: plan.SaveRoot, RequestID: requestID, Decisions: decisions,
+	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -3019,7 +3011,7 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload.SourceID, payload.WorkCode, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
+	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload)
 	if err != nil {
 		slog.Error("remote work fetch job failed", "run_id", job.RunID, "job_id", job.ID, "error", err)
 		return err
@@ -3028,23 +3020,31 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 	return nil
 }
 
-func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSaveResult, error) {
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID int64, payload remoteWorkFetchJobPayload) (remoteWorkSaveResult, error) {
+	sourceID, code := payload.SourceID, payload.WorkCode
+	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
-	workCode := normalizedRemoteWorkCode(remoteWork)
-	if workCode == "" {
-		workCode = strings.ToUpper(strings.TrimSpace(code))
-	}
+	workCode := strings.ToUpper(strings.TrimSpace(code))
 	manifest, manifestErr := s.loadRemoteFetchManifest(ctx, runID)
 	var plan remoteWorkSavePlan
 	if manifestErr == nil && strings.TrimSpace(manifest.ErrorMessage) == "" {
 		manifestErr = json.Unmarshal([]byte(manifest.PlanJSON), &plan)
 	}
 	if manifestErr != nil || plan.PrimaryCode == "" {
-		plan, err = s.buildRemoteWorkSavePlan(ctx, sourceID, workCode, selectedPaths, selectedLocalPaths, targetRoot, decisions)
+		var remoteWork kikoeru.Work
+		var tracks []kikoeru.Track
+		source, remoteWork, tracks, err = s.loadRemoteWorkTracksCached(ctx, sourceID, code)
+		if err != nil {
+			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+			return remoteWorkSaveResult{}, err
+		}
+		if normalized := normalizedRemoteWorkCode(remoteWork); normalized != "" {
+			workCode = normalized
+		}
+		plan, err = s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, workCode, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 		if err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 			return remoteWorkSaveResult{}, err
@@ -3065,9 +3065,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}
-	rawWork, _ := json.Marshal(remoteWork)
-	rawTracks, _ := json.Marshal(tracks)
-	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, err := s.prepareRemoteWorkFetchJob(ctx, runID, source, remoteWork, tracks, rawWork, workCode)
+	workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, err := s.preparePersistedRemoteWorkFetchJob(ctx, runID, manifest)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
@@ -3208,7 +3206,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	`, len(plan.Items)*2, len(plan.Items)*2, jobID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(rawWork) + len(rawTracks)}), runID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"plan": plan.Summary, "skipped": skipped, "cache_hits": cacheHits, "cache_downloads": cacheDownloads, "promoted": promoted, "snapshot_bytes": len(manifest.PlanJSON)}), runID); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	if err := s.insertFetchCleanupCandidate(ctx, runID, workID, localSourceID, workCode, plan.Items); err != nil {
@@ -3229,25 +3227,11 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	}, nil
 }
 
-func (s *Server) prepareRemoteWorkFetchJob(ctx context.Context, runID int64, source remoteSourceForUse, remoteWork kikoeru.Work, tracks []kikoeru.Track, rawWork []byte, workCode string) (int64, int64, int64, int64, int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, 0, 0, 0, 0, err
+func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID int64, manifest remoteFetchManifestRecord) (int64, int64, int64, int64, int64, error) {
+	if manifest.WorkID <= 0 || manifest.LocalSourceID <= 0 {
+		return 0, 0, 0, 0, 0, fmt.Errorf("remote fetch manifest is missing persisted work locations")
 	}
-	defer func() { _ = tx.Rollback() }()
-	workCode = strings.ToUpper(strings.TrimSpace(workCode))
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
-	if err != nil {
-		return 0, 0, 0, 0, 0, err
-	}
-	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
-		return 0, 0, 0, 0, 0, err
-	}
-	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
-	if err != nil {
-		return 0, 0, 0, 0, 0, err
-	}
-	nodeIDs, err := workflowNodeIDsByNodeID(ctx, tx, runID)
+	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, runID)
 	if err != nil {
 		return 0, 0, 0, 0, 0, err
 	}
@@ -3257,11 +3241,11 @@ func (s *Server) prepareRemoteWorkFetchJob(ctx context.Context, runID int64, sou
 	if cacheNodeID == 0 || promoteNodeID == 0 || syncNodeID == 0 {
 		return 0, 0, 0, 0, 0, fmt.Errorf("remote fetch workflow nodes are incomplete")
 	}
-	return workID, localSourceID, cacheNodeID, promoteNodeID, syncNodeID, tx.Commit()
+	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nil
 }
 
-func workflowNodeIDsByNodeID(ctx context.Context, tx *sql.Tx, runID int64) (map[string]int64, error) {
-	rows, err := tx.QueryContext(ctx, `
+func workflowNodeIDsByNodeID(ctx context.Context, db *sql.DB, runID int64) (map[string]int64, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT node_id, id
 		FROM workflow_node_run
 		WHERE workflow_run_id = ?
@@ -3633,6 +3617,45 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
 	return source, remoteWork, tracks, nil
+}
+
+func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {
+	key := fmt.Sprintf("%d:%s", sourceID, strings.ToUpper(strings.TrimSpace(code)))
+	now := time.Now()
+	s.remoteWorkCacheMu.Lock()
+	snapshot, found := s.remoteWorkCache[key]
+	if found && now.Before(snapshot.ExpiresAt) {
+		s.remoteWorkCacheMu.Unlock()
+		return snapshot.Source, snapshot.Work, snapshot.Tracks, nil
+	}
+	if found {
+		delete(s.remoteWorkCache, key)
+	}
+	s.remoteWorkCacheMu.Unlock()
+
+	source, work, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	if err != nil {
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	s.remoteWorkCacheMu.Lock()
+	for cachedKey, cached := range s.remoteWorkCache {
+		if !now.Before(cached.ExpiresAt) {
+			delete(s.remoteWorkCache, cachedKey)
+		}
+	}
+	if len(s.remoteWorkCache) >= 64 {
+		oldestKey := ""
+		var oldestExpiry time.Time
+		for cachedKey, cached := range s.remoteWorkCache {
+			if oldestKey == "" || cached.ExpiresAt.Before(oldestExpiry) {
+				oldestKey, oldestExpiry = cachedKey, cached.ExpiresAt
+			}
+		}
+		delete(s.remoteWorkCache, oldestKey)
+	}
+	s.remoteWorkCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: now.Add(2 * time.Minute)}
+	s.remoteWorkCacheMu.Unlock()
+	return source, work, tracks, nil
 }
 
 func (s *Server) resolveKikoeruWork(ctx context.Context, client *kikoeru.Client, code string) (kikoeru.Work, json.RawMessage, error) {

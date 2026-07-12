@@ -1,5 +1,9 @@
 # Frontend
 
+On mobile, the app header reserves fixed space for Search and a viewport-bounded
+overflow menu. Theme, Activity, account, and native connection actions remain
+available through that menu without widening the header.
+
 The frontend is a React application focused on library browsing, work detail,
 remote source management, and playback.
 

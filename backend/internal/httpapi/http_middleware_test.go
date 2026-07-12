@@ -77,3 +77,18 @@ func TestWriteErrorHidesInternalMessage(t *testing.T) {
 		t.Fatalf("body = %q", response.Body.String())
 	}
 }
+
+func TestWriteErrorClassifiesDatabaseBusy(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeError(response, errors.New("database is locked (5)"))
+	body := response.Body.String()
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", response.Code)
+	}
+	if !strings.Contains(body, `"code":"database_busy"`) || !strings.Contains(body, `"retryable":true`) {
+		t.Fatalf("body = %q", body)
+	}
+	if strings.Contains(body, "database is locked") {
+		t.Fatalf("body exposed driver error: %q", body)
+	}
+}

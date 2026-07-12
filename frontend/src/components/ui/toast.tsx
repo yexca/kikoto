@@ -84,6 +84,9 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
       onAction: () => window.dispatchEvent(new Event(LOGIN_REQUEST_EVENT)),
     };
   }
+	if (error instanceof ApiError && error.code === "database_busy") {
+		return { kind: "warning", message: "The database is busy. Please retry in a moment." };
+	}
   return { kind: "error", message: error instanceof Error ? error.message : fallback };
 }
 

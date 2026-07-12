@@ -210,8 +210,8 @@ function AuthenticatedApp() {
         </aside>
 
         <main className="min-w-0">
-          <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur" data-toast-avoid>
-            <div className="flex min-h-16 items-center justify-between gap-3 px-4 lg:px-6">
+          <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur" data-toast-avoid>
+            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 px-4 lg:gap-3 lg:px-6">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">{activeItem?.label ?? "Library"}</h1>

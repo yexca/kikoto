@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -18,7 +19,43 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, err error) {
 	slog.Error("http request failed", "error", err)
+	if isDatabaseBusyError(err) {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error":     "database is busy; please retry",
+			"code":      "database_busy",
+			"retryable": true,
+		})
+		return
+	}
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+}
+
+func writeUpstreamError(w http.ResponseWriter, err error) {
+	if isDatabaseBusyError(err) {
+		writeError(w, err)
+		return
+	}
+	slog.Error("upstream request failed", "error", err)
+	writeJSON(w, http.StatusBadGateway, map[string]any{
+		"error":     "remote source request failed",
+		"code":      "upstream_unavailable",
+		"retryable": true,
+	})
+}
+
+func isDatabaseBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		message := strings.ToLower(current.Error())
+		if strings.Contains(message, "database is locked") ||
+			strings.Contains(message, "database table is locked") ||
+			strings.Contains(message, "sqlite_busy") {
+			return true
+		}
+	}
+	return false
 }
 
 func mustJSON(value any) string {

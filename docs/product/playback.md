@@ -17,6 +17,8 @@ Playback is handled by a global browser audio player.
 - If several lyrics files match, the lyrics panel exposes an explicit choice
   instead of depending on database row order. Clearly generic same-directory
   names such as `lyrics` or `subtitle` may be shared by tracks in that folder.
+- The expanded-player inline lyrics preview derives its visible row count from
+  the available height and keeps the active timed line centered when possible.
 
 An authenticated user's explicit lyrics selection is stored per audio media
 item. The preference targets the lyrics media item rather than a concrete file

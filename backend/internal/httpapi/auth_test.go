@@ -63,6 +63,31 @@ func TestSessionCookieSecureForHTTPSRequest(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareDoesNotTreatDatabaseFailureAsAnonymous(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	handler := server.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/api/protected", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session"})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if called {
+		t.Fatal("protected handler was called after an authentication database failure")
+	}
+	if response.Code == http.StatusUnauthorized || response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 and never 401", response.Code)
+	}
+}
+
 func TestLocalMediaDeleteBlocksSymlinkAndCreatesReview(t *testing.T) {
 	dataRoot := t.TempDir()
 	targetPath := filepath.Join(t.TempDir(), "target.mp3")
