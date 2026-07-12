@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -85,5 +86,54 @@ func TestEnsureLocalMediaIndexedHonorsCompletedEmptyScan(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: filepath.Join(t.TempDir(), "does-not-exist")})
 	if err := server.ensureLocalMediaIndexed(context.Background(), 31); err != nil {
 		t.Fatalf("completed empty scan was repeated: %v", err)
+	}
+}
+
+func TestRefreshWorkLocalFilesForcesReindex(t *testing.T) {
+	dataRoot := t.TempDir()
+	workPath := filepath.Join(dataRoot, "RJTEST041")
+	if err := os.MkdirAll(workPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	trackPath := filepath.Join(workPath, "track.mp3")
+	if err := os.WriteFile(trackPath, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	statements := []string{
+		"INSERT INTO work (id, primary_code, title) VALUES (41, 'RJTEST041', 'Refresh work')",
+		"INSERT INTO file_source (id, code, display_name, source_type) VALUES (51, 'refresh-local', 'Refresh local', 'local_folder')",
+		`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
+		 VALUES (41, 51, 'local', 'RJTEST041', 'available', '{"file_tree_scanned":true}')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	refresh := func() *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/works/41/local-files/refresh", strings.NewReader(`{"fileSourceId":51}`))
+		request.SetPathValue("id", "41")
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"downloads:manage"}}))
+		response := httptest.NewRecorder()
+		server.refreshWorkLocalFiles(response, request)
+		return response
+	}
+	if response := refresh(); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"indexedFiles":1`) {
+		t.Fatalf("initial refresh status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if err := os.Remove(trackPath); err != nil {
+		t.Fatal(err)
+	}
+	if response := refresh(); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"indexedFiles":0`) {
+		t.Fatalf("second refresh status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var availability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE file_source_id = 51").Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "missing" {
+		t.Fatalf("removed file availability = %q, want missing", availability)
 	}
 }

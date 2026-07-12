@@ -2778,6 +2778,7 @@ function WorkDetailView({
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
   const [selectedLocalSavePaths, setSelectedLocalSavePaths] = useState<Set<string>>(new Set());
@@ -3017,8 +3018,24 @@ function WorkDetailView({
     setIsDeleting(true);
     setMessage("");
     try {
-      const result = await api.cleanupMediaLocations(targets.map(({ kind, locationId }) => ({ kind, locationId })));
-      toast.success(`Queued ${result.queued} file ${result.queued === 1 ? "location" : "locations"} for deletion in workflow #${result.runId}.`);
+      const batches = Array.from({ length: Math.ceil(targets.length / 500) }, (_, index) => targets.slice(index * 500, (index + 1) * 500));
+      const results = [];
+      for (const batch of batches) {
+        results.push(await api.cleanupMediaLocations(batch.map(({ kind, locationId }) => ({ kind, locationId }))));
+      }
+      toast.success(`Queued ${targets.length} file ${targets.length === 1 ? "location" : "locations"} for deletion in ${results.length} workflow ${results.length === 1 ? "run" : "runs"}.`);
+      await Promise.all(results.map(async (result) => {
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          const run = await api.getWorkflowRun(result.runId);
+          if (["succeeded", "failed", "cancelled"].includes(run.status)) return;
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+        }
+      }));
+      if (activeEdition) {
+        setActiveEdition(await api.getWork(activeEdition.id));
+      } else if (work) {
+        await onWorkReload(work.id);
+      }
       await onWorksChanged();
     } catch (error) {
       toast.notify(toastFromError(error, "Delete submission failed."));
@@ -3046,6 +3063,29 @@ function WorkDetailView({
       toast.notify(toastFromError(error, "Fetch preparation failed."));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const refreshLocalFiles = async () => {
+    const target = localDirectoryWork ?? work;
+    if (!target || selectedSource?.kind !== "local") return;
+    setIsRefreshingLocalFiles(true);
+    setMessage("");
+    try {
+      const result = await api.refreshWorkLocalFiles(target.id, selectedSource.fileSourceId);
+      const refreshed = await api.getWork(result.workId);
+      if (activeEdition || result.workId !== work?.id) {
+        setActiveEdition(refreshed);
+        setActiveEditionCode(refreshed.primaryCode);
+      } else {
+        await onWorkReload(result.workId);
+      }
+      await onWorksChanged();
+      toast.success(`Refreshed ${result.indexedFiles} local files.`);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Local files could not be refreshed."));
+    } finally {
+      setIsRefreshingLocalFiles(false);
     }
   };
 
@@ -3292,7 +3332,7 @@ function WorkDetailView({
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
   const detailActions = work ? <DetailActionBar
     canPlay={allTracks.length > 0}
-    busy={isSyncingDetail || isSaving}
+    busy={isSyncingDetail || isSaving || isRefreshingLocalFiles}
     mode={actionMode}
     listeningStatus={work.listeningStatus}
     favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
@@ -3311,6 +3351,7 @@ function WorkDetailView({
     onFetch={selectedRemoteDetail ? () => void openWorkSaveWorkspace() : undefined}
     onEditMetadata={() => setIsMetadataEditorOpen(true)}
     onManage={() => setIsManageOpen(true)}
+    onRefreshLocalFiles={actionMode === "local" && selectedSource?.kind === "local" ? () => void refreshLocalFiles() : undefined}
     dlsiteUrl={work.dlsiteUrl}
     syncLabel="Sync"
     showSync
@@ -4349,6 +4390,7 @@ function DetailActionBar({
   onFetch,
   onEditMetadata,
   onManage,
+  onRefreshLocalFiles,
   dlsiteUrl,
   syncLabel,
   showSync,
@@ -4374,6 +4416,7 @@ function DetailActionBar({
   onFetch?: () => void;
   onEditMetadata?: () => void;
   onManage?: () => void;
+  onRefreshLocalFiles?: () => void;
   dlsiteUrl: string;
   syncLabel: string;
   showSync?: boolean;
@@ -4468,7 +4511,7 @@ function DetailActionBar({
           Fetch
         </Button>
       )}
-      {(onManage || onEditMetadata) && (
+      {(onManage || onEditMetadata || onRefreshLocalFiles) && (
         <div className="relative" ref={manageMenuRef}>
           <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
             <MoreHorizontal className="h-4 w-4" />
@@ -4498,6 +4541,18 @@ function DetailActionBar({
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   <span>Manage files</span>
+                </button>
+              )}
+              {onRefreshLocalFiles && (
+                <button
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
+                  onClick={() => {
+                    setManageMenuOpen(false);
+                    onRefreshLocalFiles();
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Refresh local files</span>
                 </button>
               )}
 		  </AnchoredPopover>
@@ -6424,6 +6479,27 @@ function DirectoryManagerModal({
   const previewRefreshing = selectedTargets.length > 0 && selectedSignature !== previewSignature;
   const allSelected = targets.length > 0 && selectedTargets.length === targets.length;
   const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(mediaDeleteTargetKey)));
+  const extensionSelection = (extension: string) => {
+    const matching = targets.filter((target) => target.path.toLowerCase().endsWith(`.${extension}`));
+    const selected = matching.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
+    return {
+      count: matching.length,
+      checked: matching.length > 0 && selected === matching.length,
+      indeterminate: selected > 0 && selected < matching.length,
+    };
+  };
+  const setExtensionIncluded = (extension: string, included: boolean) => {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      for (const target of targets) {
+        if (!target.path.toLowerCase().endsWith(`.${extension}`)) continue;
+        const key = mediaDeleteTargetKey(target);
+        if (included) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  };
   const toggleTarget = (target: MediaDeleteTarget, selected: boolean) => {
     setSelectedKeys((current) => {
       const next = new Set(current);
@@ -6457,12 +6533,26 @@ function DirectoryManagerModal({
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
           <div className="app-scroll min-h-0 overflow-auto border-b p-3 md:border-b-0 md:border-r">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-sm font-medium">Select files</div>
-              </div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={() => setSelectedKeys(new Set(targets.map(mediaDeleteTargetKey)))}>All</Button>
+              {(["mp3", "wav", "flac"] as const).map((extension) => {
+                const state = extensionSelection(extension);
+                return (
+                  <label key={extension} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+                    <Checkbox
+                      checked={state.checked}
+                      indeterminate={state.indeterminate}
+                      disabled={deleting || state.count === 0}
+                      onCheckedChange={() => setExtensionIncluded(extension, !state.checked)}
+                      aria-label={`Include ${extension.toUpperCase()}`}
+                    />
+                    <span>{extension.toUpperCase()}</span>
+                  </label>
+                );
+              })}
+              <Button variant="outline" size="sm" disabled={deleting} onClick={() => setSelectedKeys(new Set())}>None</Button>
               {showCachedFilter && (
-                <label className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+                <label className="ml-auto inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
                   <Checkbox checked={showOnlyDeletable} onCheckedChange={setShowOnlyDeletable} aria-label="Show cached files only" />
                   <span>Cached only</span>
                 </label>
@@ -6509,9 +6599,7 @@ function DirectoryManagerModal({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={toggleAll}>
-              {allSelected ? "Clear" : "Select all"}
-            </Button>
+            <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
             <span className="text-xs text-muted-foreground">{selectedTargets.length} selected / {targets.length} deletable</span>
           </div>
           <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" disabled={selectedTargets.length === 0 || previewRefreshing || deleting} onClick={() => setConfirmStep(1)}>
@@ -6596,19 +6684,33 @@ function DirectoryManagerNode({
   const files = sortedFiles(node).filter((file) => !showOnlyDeletable || mediaDeleteTargetsForFile(file, options).length > 0);
   const stats = treeStats(node);
   const hasChildren = folders.length > 0 || files.length > 0;
+  const nodeTargets = directoryManageTargets(node, options);
+  const selectedCount = nodeTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
+  const checked = nodeTargets.length > 0 && selectedCount === nodeTargets.length;
+  const mixed = selectedCount > 0 && selectedCount < nodeTargets.length;
+  const toggleNode = () => {
+    for (const target of nodeTargets) onToggleTarget(target, !checked);
+  };
   return (
     <div className="space-y-1">
       {!isRoot && (
-        <button
+        <div
           className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
           style={{ paddingLeft: depth * 14 + 8 }}
-          onClick={() => setOpen((value) => !value)}
         >
-          {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          <button
+            type="button"
+            className="rounded p-0.5 hover:bg-background"
+            onClick={() => setOpen((value) => !value)}
+            aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
+          >
+            {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          <Checkbox checked={checked} indeterminate={mixed} disabled={nodeTargets.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
           <Folder className="h-4 w-4 shrink-0 text-primary" />
-          <span className="min-w-0 flex-1 truncate">{node.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{formatFolderStats(stats, playableFiles(node.files).length)}</span>
-        </button>
+          <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => setOpen((value) => !value)}>{node.name}</button>
+          <span className="shrink-0 text-xs text-muted-foreground">{selectedCount}/{nodeTargets.length} · {formatFolderStats(stats, playableFiles(node.files).length)}</span>
+        </div>
       )}
       {(isRoot || open) && hasChildren && (
         <>
@@ -6657,12 +6759,19 @@ function ManagedFileRow({
   onToggleTarget: (target: MediaDeleteTarget, selected: boolean) => void;
 }) {
   const targets = mediaDeleteTargetsForFile(file, { allowCacheDelete, allowLocalDelete });
+  const selectedCount = targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
+  const checked = targets.length > 0 && selectedCount === targets.length;
+  const mixed = selectedCount > 0 && selectedCount < targets.length;
+  const toggleFile = () => {
+    for (const target of targets) onToggleTarget(target, !checked);
+  };
   const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
   return (
     <div
-      className="grid min-h-10 gap-2 rounded-md border bg-background px-3 py-2 text-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+      className="grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
     >
+      <Checkbox checked={checked} indeterminate={mixed} disabled={targets.length === 0} onCheckedChange={toggleFile} aria-label={`Select ${file.title}`} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {fileIcon(file)}
@@ -6673,20 +6782,8 @@ function ManagedFileRow({
           <span>{fileMeta}</span>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 md:justify-end">
-        {targets.map((target) => {
-          const key = mediaDeleteTargetKey(target);
-          return (
-            <label key={key} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs hover:bg-muted">
-              <Checkbox
-                checked={selectedKeys.has(key)}
-                onCheckedChange={(checked) => onToggleTarget(target, checked)}
-                aria-label={`Select ${target.kind === "cache" ? "cache" : "local"} copy`}
-              />
-              <span>{target.kind === "cache" ? "Cache" : "Local"}</span>
-            </label>
-          );
-        })}
+      <div className="flex flex-wrap justify-end gap-1">
+        {targets.map((target) => <Badge key={mediaDeleteTargetKey(target)} variant="outline">{target.kind === "cache" ? "Cache" : "Local"}</Badge>)}
         {targets.length === 0 && (
           <span className="inline-flex h-8 items-center text-xs text-muted-foreground">No file action</span>
         )}

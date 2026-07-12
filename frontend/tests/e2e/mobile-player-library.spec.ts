@@ -55,6 +55,7 @@ type MockApplicationFixture = {
   sourceAvailability?: Record<string, unknown>;
   remoteDetail?: Record<string, unknown>;
   onSourceCheck?: () => void;
+  onLocalRefresh?: () => void;
 };
 
 function silentWav() {
@@ -153,6 +154,15 @@ async function mockApplication(
     if (url.pathname === "/api/media/cleanup" && route.request().method() === "POST") {
       onCleanup?.(route.request().postDataJSON() as Record<string, unknown>);
       await route.fulfill({ status: 202, json: { runId: 41, jobId: 42, status: "queued", queued: 2 } });
+      return;
+    }
+    if (url.pathname === "/api/works/1/local-files/refresh" && route.request().method() === "POST") {
+      fixture.onLocalRefresh?.();
+      await route.fulfill({ json: { workId: 1, fileSourceId: 1, status: "succeeded", indexedFiles: mediaItems.length } });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/41") {
+      await route.fulfill({ json: { id: 41, status: "succeeded" } });
       return;
     }
     if (url.pathname === "/api/media/1/stream") {
@@ -362,6 +372,7 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
 
 test("local Delete builds a refreshed preview and requires two confirmations", async ({ page }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
+  let localRefreshes = 0;
   const mediaItems = [{
     id: 1,
     parentId: null,
@@ -378,16 +389,19 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
       { id: 2, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "cache", path: "local/RJ09999999/track.mp3", streamUrl: "/api/media/2/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
     ],
   }];
-  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body));
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), { onLocalRefresh: () => { localRefreshes += 1; } });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
   await page.getByRole("button", { name: "Manage", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh local files", exact: true }).click();
+  await expect.poll(() => localRefreshes).toBe(1);
+  await page.getByRole("button", { name: "Manage", exact: true }).click();
   await page.getByRole("button", { name: "Manage files", exact: true }).click();
 
-  await expect(page.getByText("Select files", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Include MP3")).toBeVisible();
   await expect(page.getByText("Delete preview", { exact: true })).toBeVisible();
-  await page.getByLabel("Select local copy").click();
-  await page.getByLabel("Select cache copy").click();
+  await page.getByLabel("Select track.mp3").click();
   await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Review deletion" })).toBeEnabled();
   await expect(page.getByText("2 files", { exact: true })).toBeVisible();
@@ -403,11 +417,16 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
 
 test("work detail preserves Local and Tracked entry intent while keeping every remote source tab", async ({ page }) => {
   let sourceChecks = 0;
+  const cleanupBodies: Record<string, unknown>[] = [];
   const trackedPresence = { type: "tracked", availability: "available", fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", remoteCode: work.primaryCode };
   const trackedWork = { ...work, availability: ["local", "tracked"], sourcePresence: [trackedPresence] };
   const mediaItems = [{
     id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12, fingerprint: "source-tab-track", progress: null,
-    locations: [{ id: 1, fileSourceId: 9, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `${work.primaryCode}/track.mp3`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+    locations: [
+      { id: 1, fileSourceId: 9, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `${work.primaryCode}/track.mp3`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
+      { id: 2, fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", locationType: "cache", path: `remote_a/${work.primaryCode}/track.mp3`, streamUrl: "/api/media/2/stream", downloadUrl: "", remoteHash: "hash", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
+      { id: 3, fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", locationType: "remote_stream", path: "track.mp3", streamUrl: "/remote/track.mp3", downloadUrl: "/remote/track.mp3", remoteHash: "hash", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null },
+    ],
   }];
   const availability = {
     workCode: work.primaryCode,
@@ -418,7 +437,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
       { sourceId: 8, sourceCode: "remote_b", displayName: "Remote B", status: "not_found", remoteId: "", primaryCode: work.primaryCode, title: "", coverUrl: "", workId: 1, hasRemote: false, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 },
     ],
   };
-  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
     work: trackedWork,
     librarySources: [
       { id: 7, code: "remote_a", displayName: "Remote A", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
@@ -451,6 +470,15 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page).toHaveURL(/view=tracked/);
   await expect(page.locator('button[title^="Tracked · Remote A:"]')).toHaveClass(/bg-primary/);
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
+  await page.getByRole("button", { name: "Manage", exact: true }).click();
+  await page.getByRole("button", { name: "Manage files", exact: true }).click();
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.getByText("1 selected / 1 deletable", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Review deletion" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await expect.poll(() => cleanupBodies).toHaveLength(1);
+  expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }] });
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {

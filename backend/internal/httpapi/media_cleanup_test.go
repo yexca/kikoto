@@ -33,6 +33,12 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	cacheID, _ := result.LastInsertId()
+	result, err = db.Exec(`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (?, ?, 'remote_stream', 'remote.mp3', 'available')`, mediaItemID, sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteID, _ := result.LastInsertId()
 
 	queued, err := server.enqueueMediaLocationCleanup(context.Background(), []mediaCleanupTargetRequest{
 		{Kind: "local", LocationID: localID},
@@ -79,6 +85,13 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 		if availability != "unavailable" {
 			t.Fatalf("location %d availability = %q", id, availability)
 		}
+	}
+	var remoteAvailability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", remoteID).Scan(&remoteAvailability); err != nil {
+		t.Fatal(err)
+	}
+	if remoteAvailability != "available" {
+		t.Fatalf("remote location availability = %q, want available", remoteAvailability)
 	}
 	var runStatus, jobStatus string
 	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runStatus); err != nil {
