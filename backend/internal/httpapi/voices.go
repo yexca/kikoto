@@ -139,6 +139,7 @@ type voiceKnownWork struct {
 	DLsiteURL        string              `json:"dlsiteUrl"`
 	Circle           string              `json:"circle"`
 	CircleExternalID string              `json:"circleExternalId"`
+	AgeRating        string              `json:"ageRating"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
@@ -180,6 +181,7 @@ type voiceRemoteWork struct {
 	UpdatedAt      string   `json:"updatedAt"`
 	CoverURL       string   `json:"coverUrl"`
 	Circle         string   `json:"circle"`
+	AgeRating      string   `json:"ageRating"`
 	Rating         *float64 `json:"rating"`
 	Sales          *int64   `json:"sales"`
 	Tags           []string `json:"tags"`
@@ -735,6 +737,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			work.primary_code,
 			work.title,
 			work.release_date,
+			work.age_rating,
 			COALESCE((
 				SELECT snapshot_json
 				FROM metadata_snapshot
@@ -844,6 +847,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			DLsiteURL:        dlsiteURL(displayCode),
 			Circle:           metadata.Circle,
 			CircleExternalID: metadata.CircleExternalID,
+			AgeRating:        row.AgeRating,
 			Rating:           metadata.Rating,
 			Sales:            metadata.Sales,
 			Tags:             metadata.Tags,
@@ -909,6 +913,9 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	if target.Circle == "" {
 		target.Circle = item.Circle
 		target.CircleExternalID = item.CircleExternalID
+	}
+	if target.AgeRating == "" {
+		target.AgeRating = item.AgeRating
 	}
 	if target.Rating == nil {
 		target.Rating = item.Rating
@@ -1046,6 +1053,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 						UpdatedAt:      remoteWork.Release,
 						CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
 						Circle:         remoteCircleName(remoteWork),
+						AgeRating:      remoteWork.AgeCategoryString,
 						Rating:         remoteWork.RateAverage2DP,
 						Sales:          remoteWork.DLCount,
 						Tags:           remoteTagNames(remoteWork.Tags),
@@ -2098,6 +2106,7 @@ type voiceWorkRow struct {
 	PrimaryCode     string
 	Title           string
 	ReleaseDate     sql.NullString
+	AgeRating       string
 	Snapshot        string
 	CircleLink      sql.NullString
 	ListeningStatus string
@@ -2112,7 +2121,7 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var item voiceWorkRow
 	var hasLocal, hasRemote, hasCache int
 	var favorite int
-	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
+	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.AgeRating, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
 	item.Favorite = favorite != 0
 	item.HasLocal = hasLocal != 0
 	item.HasRemote = hasRemote != 0

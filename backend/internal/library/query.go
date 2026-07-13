@@ -38,6 +38,7 @@ type RawWork struct {
 	ID                     int64
 	PrimaryCode            string
 	Title                  string
+	AgeRating              string
 	CreatedAt              string
 	TrackCount             int64
 	AvailableLocations     int64
@@ -112,6 +113,7 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 			&item.ID,
 			&item.PrimaryCode,
 			&item.Title,
+			&item.AgeRating,
 			&item.CreatedAt,
 			&item.TrackCount,
 			&item.AvailableLocations,
@@ -387,7 +389,7 @@ func listSelectSQL(where string, sortKey string, direction string, randomSeed in
 	normalizedSort, _ := normalizeSort(sortKey, direction)
 	orderBy, needsMetadataSort := listOrderBy(sortKey, direction, randomSeed)
 	if needsMetadataSort || normalizedSort == "recommend" {
-		return `SELECT id, primary_code, title, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true, normalizedSort == "recommend") + `) AS library_rows ORDER BY ` + orderBy
+		return `SELECT id, primary_code, title, age_rating, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true, normalizedSort == "recommend") + `) AS library_rows ORDER BY ` + orderBy
 	}
 	return listBaseSelectSQL(where, false, false) + " ORDER BY " + orderBy
 }
@@ -425,7 +427,7 @@ func listBaseSelectSQL(where string, includeMetadataSortColumns bool, includeRec
 			) AS recommend_score`
 	}
 	return `SELECT
-		work.id, work.primary_code, work.title, work.created_at,
+		work.id, work.primary_code, work.title, work.age_rating, work.created_at,
 		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND media_item.kind = 'audio') AS track_count,
 		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_item.kind = 'audio' AND media_file_location.availability = 'available') AS available_locations,
 		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,

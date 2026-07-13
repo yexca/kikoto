@@ -13,7 +13,7 @@ import (
 
 func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	db := openMigratedTestDB(t)
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999997', 'Single connection work')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title, age_rating) VALUES ('RJ09999997', 'Single connection work', 'R18')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,5 +79,8 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	}
 	if response.Works[0].ID != workID || response.Works[0].AvailableLocations != 1 {
 		t.Fatalf("unexpected work summary: %#v", response.Works[0])
+	}
+	if response.Works[0].AgeRating != "R18" {
+		t.Fatalf("age rating = %q, want R18", response.Works[0].AgeRating)
 	}
 }

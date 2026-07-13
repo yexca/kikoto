@@ -12,6 +12,8 @@ The Library is the main browsing surface for works.
   work cards and detail. `mytag:` filters personal tags without changing the
   provider `tag:` search meaning.
 - Keeps source availability visually separate from metadata tags.
+- Shows known age ratings beside the circle name on work cards while retaining
+  the complete age metadata in work detail.
 - Offers the same grid or masonry presentation for work collections across the
   Library, Favorites, circle detail, and voice detail surfaces. Responsive
   column choices are shared instead of being reimplemented per page.

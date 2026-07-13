@@ -89,6 +89,7 @@ import {
   type WorkDetail,
 } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
+import { ageRatingPresentation } from "@/lib/ageRating";
 import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
@@ -2036,6 +2037,7 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void):
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
+    ageRating: work.ageRating,
     voiceActors: work.voiceActors,
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
@@ -2060,6 +2062,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     code: work.primaryCode || work.remoteId,
     title: work.title,
     circle: work.circle || sourceLabel || "Unknown circle",
+    ageRating: work.ageRating,
     voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
@@ -5206,13 +5209,13 @@ function DlsiteMetrics({
   const rateValue = rating === null
     ? "No rating"
     : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
-  const age = ageRatingView(ageRating);
+  const age = ageRatingPresentation(ageRating);
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
     <div className="max-w-3xl rounded-lg border bg-card p-3 text-sm">
       <div className="grid gap-x-5 gap-y-2 sm:grid-cols-[minmax(11rem,0.8fr)_minmax(18rem,1.2fr)]">
         <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
-        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.className} />
+        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.textClassName} />
         <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
         <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
       </div>
@@ -7648,30 +7651,6 @@ function formatDateTime(value: string) {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return value;
   return new Date(timestamp).toLocaleString();
-}
-
-function ageRatingView(value: string) {
-  const normalized = value.trim().toLowerCase();
-  switch (normalized) {
-  case "adult":
-  case "r18":
-  case "r-18":
-  case "18":
-    return { label: "R18", className: "text-destructive" };
-  case "r15":
-  case "r-15":
-  case "15":
-    return { label: "R15", className: "text-blue-600" };
-  case "general":
-  case "all":
-  case "全年齢":
-  case "all ages":
-    return { label: "全年齢", className: "text-emerald-600" };
-  case "":
-    return { label: "Unknown", className: "text-muted-foreground" };
-  default:
-    return { label: value, className: "text-foreground" };
-  }
 }
 
 function languageLabel(value: string) {

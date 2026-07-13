@@ -4,6 +4,7 @@ const baseWork = {
   id: 1,
   primaryCode: "RJ09998001",
   title: "Favorite work 1",
+  ageRating: "R18",
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
   releaseDate: "2026-01-01",
@@ -26,6 +27,7 @@ const baseWork = {
   progress: { mediaItemId: null, title: "", positionSeconds: 0, durationSeconds: null, lastPlayedAt: null, completed: false },
   listeningStatus: "listening",
   favorite: true,
+  recommendScore: 0,
 };
 
 async function mockFavorites(page: Page) {

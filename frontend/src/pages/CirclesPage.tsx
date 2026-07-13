@@ -1173,6 +1173,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     title: work.title,
     circle: work.circle || "Unknown circle",
     circleExternalId: work.circleExternalId,
+    ageRating: work.ageRating,
     voiceActors: work.voiceActors,
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,

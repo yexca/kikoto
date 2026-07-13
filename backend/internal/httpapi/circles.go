@@ -86,6 +86,7 @@ type circleCatalogWork struct {
 	DLsiteURL        string              `json:"dlsiteUrl"`
 	Circle           string              `json:"circle"`
 	CircleExternalID string              `json:"circleExternalId"`
+	AgeRating        string              `json:"ageRating"`
 	Tags             []string            `json:"tags"`
 	UserTags         []workUserTag       `json:"userTags"`
 	VoiceActors      []string            `json:"voiceActors"`
@@ -1099,6 +1100,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			COALESCE(dlsite_catalog.catalog_status, remote_catalog.catalog_status, 'catalog'),
 			COALESCE(dlsite_catalog.dlsite_available, 1),
 			work.id,
+			COALESCE(work.age_rating, ''),
 			COALESCE((
 				SELECT snapshot_json
 				FROM metadata_snapshot
@@ -1157,7 +1159,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var favorite int
 		var snapshot string
 		var seriesLink string
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.AgeRating, &snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
 			return nil, err
 		}
 		originalCode := item.PrimaryCode
@@ -1276,6 +1278,9 @@ func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
 	if target.Circle == "" {
 		target.Circle = item.Circle
 		target.CircleExternalID = item.CircleExternalID
+	}
+	if target.AgeRating == "" {
+		target.AgeRating = item.AgeRating
 	}
 	if len(target.Tags) == 0 {
 		target.Tags = item.Tags

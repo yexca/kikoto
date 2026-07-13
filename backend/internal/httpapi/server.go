@@ -329,6 +329,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 	for _, row := range rows {
 		item := libraryWorkSummary{
 			ID: row.ID, PrimaryCode: row.PrimaryCode, Title: row.Title, CreatedAt: row.CreatedAt,
+			AgeRating:  row.AgeRating,
 			TrackCount: row.TrackCount, AvailableLocations: row.AvailableLocations,
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite,
 		}
@@ -448,6 +449,7 @@ type libraryWorkSummary struct {
 	ID                     int64                `json:"id"`
 	PrimaryCode            string               `json:"primaryCode"`
 	Title                  string               `json:"title"`
+	AgeRating              string               `json:"ageRating"`
 	CreatedAt              string               `json:"createdAt"`
 	UpdatedAt              string               `json:"updatedAt"`
 	ReleaseDate            *string              `json:"releaseDate"`

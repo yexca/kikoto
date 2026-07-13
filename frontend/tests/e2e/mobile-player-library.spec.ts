@@ -4,6 +4,7 @@ const work = {
   id: 1,
   primaryCode: "RJ09999999",
   title: "Tagged mobile work",
+  ageRating: "R18",
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
   releaseDate: "2026-01-01",
@@ -14,6 +15,7 @@ const work = {
   rating: 4.5,
   sales: 10,
   tags: ["ロリ"],
+  userTags: [],
   voiceActors: [],
   voiceCredits: [],
   series: "",
@@ -25,6 +27,7 @@ const work = {
   progress: { mediaItemId: null, title: "", positionSeconds: 0, durationSeconds: null, lastPlayedAt: null, completed: false },
   listeningStatus: "none",
   favorite: false,
+  recommendScore: 0,
 };
 
 const persistedTrack = {
@@ -238,6 +241,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
             updatedAt: "2026-04-03",
             coverUrl: "",
             circle: "Remote circle",
+            ageRating: "R15",
             rating: 4.5,
             sales: 100,
             tags: ["退廃/背徳/インモラル"],
@@ -523,6 +527,23 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await expect(selectedSort).toHaveClass(/bg-primary\/10/);
 	await expect(selectedSort.locator("svg")).toHaveCount(0);
   expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
+});
+
+test("cards show complete tags and age rating in grid and masonry", async ({ page }) => {
+  const tags = Array.from({ length: 14 }, (_, index) => `Long metadata tag ${index + 1}`);
+  const userTags = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, name: `Personal tag ${index + 1}`, color: "" }));
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { work: { ...work, tags, userTags } });
+  await page.goto("/");
+
+  await expect(page.getByText("R18", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show all DLsite tags", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "View: Grid" }).click();
+  await page.getByRole("button", { name: "Masonry", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 });
 
 test("recently played cards stay aligned and remember their collapsed state", async ({ page }) => {

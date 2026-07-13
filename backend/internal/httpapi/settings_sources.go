@@ -180,6 +180,7 @@ type remoteWorkSummary struct {
 	CoverURL        string            `json:"coverUrl"`
 	Circle          string            `json:"circle"`
 	CircleRef       *remoteEntityRef  `json:"circleRef,omitempty"`
+	AgeRating       string            `json:"ageRating"`
 	Rating          *float64          `json:"rating"`
 	Sales           *int64            `json:"sales"`
 	Tags            []string          `json:"tags"`
@@ -2047,6 +2048,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 			Circle:          circle,
 			CircleRef:       circleRef,
+			AgeRating:       work.AgeCategoryString,
 			Rating:          work.RateAverage2DP,
 			Sales:           work.DLCount,
 			Tags:            tags,

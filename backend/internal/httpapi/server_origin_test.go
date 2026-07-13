@@ -46,11 +46,14 @@ func TestWorkSummariesKeepAllProviderTags(t *testing.T) {
 	}
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	works, err := server.remoteWorkSummaries(context.Background(), 0, 7, []kikoeru.Work{{ID: 1, SourceID: "RJ09999999", Tags: remoteTags}}, "ja-jp")
+	works, err := server.remoteWorkSummaries(context.Background(), 0, 7, []kikoeru.Work{{ID: 1, SourceID: "RJ09999999", AgeCategoryString: "R15", Tags: remoteTags}}, "ja-jp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(works) != 1 || len(works[0].Tags) != 12 {
 		t.Fatalf("remote summaries = %+v", works)
+	}
+	if works[0].AgeRating != "R15" {
+		t.Fatalf("remote age rating = %q, want R15", works[0].AgeRating)
 	}
 }

@@ -2,6 +2,7 @@ export type Work = {
   id: number;
   primaryCode: string;
   title: string;
+  ageRating: string;
   createdAt: string;
   updatedAt: string;
   releaseDate: string | null;
@@ -356,6 +357,7 @@ export type RemoteWork = {
   coverUrl: string;
   circle: string;
   circleRef?: RemoteEntityRef;
+  ageRating: string;
   rating: number | null;
   sales: number | null;
   tags: string[];
@@ -846,6 +848,7 @@ export type CircleCatalogWork = {
   dlsiteUrl: string;
   circle: string;
   circleExternalId: string;
+  ageRating: string;
   tags: string[];
   userTags: UserTag[];
   voiceActors: string[];
@@ -951,6 +954,7 @@ export type VoiceKnownWork = {
   dlsiteUrl: string;
   circle: string;
   circleExternalId: string;
+  ageRating: string;
   rating: number | null;
   sales: number | null;
   tags: string[];
@@ -980,6 +984,7 @@ export type VoiceRemoteWork = {
   updatedAt: string;
   coverUrl: string;
   circle: string;
+  ageRating: string;
   rating: number | null;
   sales: number | null;
   tags: string[];

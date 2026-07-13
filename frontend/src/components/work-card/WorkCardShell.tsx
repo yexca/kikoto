@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink, type WorkProgressSummary } from "@/lib/api";
+import { ageRatingPresentation } from "@/lib/ageRating";
 import { cn } from "@/lib/utils";
 
 export type WorkCardBadge = {
@@ -28,6 +29,7 @@ export type WorkCardViewModel = {
   title: string;
   circle: string;
   circleExternalId?: string;
+  ageRating?: string;
   voiceActors?: string[];
   voiceCredits?: VoiceCredit[];
   coverUrl?: string;
@@ -178,23 +180,31 @@ function WorkCardBody({
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
 }) {
+  const ageRating = ageRatingPresentation(work.ageRating ?? "");
   return (
     <div className="flex min-h-52 flex-1 flex-col gap-3 p-4">
       <div className="space-y-1">
         <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
-        {onCircleOpen ? (
-          <button
-            className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary"
-            onClick={(event) => {
-              event.stopPropagation();
-              onCircleOpen();
-            }}
-          >
-            {work.circle || "Unknown circle"}
-          </button>
-        ) : (
-          <div className="block max-w-full truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</div>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          {onCircleOpen ? (
+            <button
+              className="min-w-0 flex-1 truncate text-left text-sm text-muted-foreground hover:text-primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCircleOpen();
+              }}
+            >
+              {work.circle || "Unknown circle"}
+            </button>
+          ) : (
+            <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</div>
+          )}
+          {ageRating.known && (
+            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none", ageRating.badgeClassName)}>
+              {ageRating.label}
+            </span>
+          )}
+        </div>
       </div>
       {work.series && (
         onSeriesOpen ? (
