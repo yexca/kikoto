@@ -64,6 +64,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
   const [circleAutoRefreshDays, setCircleAutoRefreshDays] = useState(30);
   const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
+  const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -93,6 +94,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
         setCircleAutoRefreshDays(next.circleAutoRefreshDays);
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setDirectoryRoutingRules(next.directoryRoutingRules ?? []);
+        setRecommendationThreshold(next.recommendationThreshold ?? 50);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
@@ -123,6 +125,7 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
       circleAutoRefreshDays,
       dlsiteMetadataLanguage,
       directoryRoutingRules,
+      recommendationThreshold,
     });
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
@@ -270,6 +273,8 @@ export function SettingsPage({ canManageSources }: { canManageSources: boolean }
           localScanDepth={localScanDepth}
           pathsOpen={isPathsOpen}
           onScanDepthChange={setLocalScanDepth}
+          recommendationThreshold={recommendationThreshold}
+          onRecommendationThresholdChange={setRecommendationThreshold}
           onPathsOpenChange={setIsPathsOpen}
           onSave={saveRuntimeSettings}
         />
@@ -882,6 +887,8 @@ function LocalLibrarySettings({
   localScanDepth,
   pathsOpen,
   onScanDepthChange,
+  recommendationThreshold,
+  onRecommendationThresholdChange,
   onPathsOpenChange,
   onSave,
 }: {
@@ -890,6 +897,8 @@ function LocalLibrarySettings({
   localScanDepth: number;
   pathsOpen: boolean;
   onScanDepthChange: (value: number) => void;
+  recommendationThreshold: number;
+  onRecommendationThresholdChange: (value: number) => void;
   onPathsOpenChange: (value: boolean) => void;
   onSave: () => Promise<void>;
 }) {
@@ -927,6 +936,10 @@ function LocalLibrarySettings({
               <Badge variant="outline">{localSource?.enabled ? "enabled" : "not scanned"}</Badge>
             </div>
           </div>
+          <label className="grid max-w-[220px] gap-1 text-sm">
+            <span className="font-medium">Recommendation badge threshold</span>
+            <input className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring" type="number" min={1} max={100} value={recommendationThreshold} onChange={(event) => onRecommendationThresholdChange(Number(event.target.value))} />
+          </label>
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
             Save local settings

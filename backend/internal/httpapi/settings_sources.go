@@ -97,20 +97,21 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 }
 
 type appSettingsResponse struct {
-	LocalScanDepth         int                 `json:"localScanDepth"`
-	CacheEnabled           bool                `json:"cacheEnabled"`
-	CacheLimitGB           int                 `json:"cacheLimitGb"`
-	RemoteSaveTemplate     string              `json:"remoteSaveTemplate"`
-	RemoteDelayBase        float64             `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom      float64             `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff          float64             `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff       float64             `json:"remoteMaxBackoffSeconds"`
-	CircleAutoRefreshDays  int                 `json:"circleAutoRefreshDays"`
-	DLsiteMetadataLanguage string              `json:"dlsiteMetadataLanguage"`
-	DirectoryRoutingRules  []directoryRule     `json:"directoryRoutingRules"`
-	DataRoot               string              `json:"dataRoot"`
-	CacheRoot              string              `json:"cacheRoot"`
-	FileSources            []fileSourceSummary `json:"fileSources"`
+	LocalScanDepth          int                 `json:"localScanDepth"`
+	CacheEnabled            bool                `json:"cacheEnabled"`
+	CacheLimitGB            int                 `json:"cacheLimitGb"`
+	RemoteSaveTemplate      string              `json:"remoteSaveTemplate"`
+	RemoteDelayBase         float64             `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom       float64             `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff           float64             `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff        float64             `json:"remoteMaxBackoffSeconds"`
+	CircleAutoRefreshDays   int                 `json:"circleAutoRefreshDays"`
+	DLsiteMetadataLanguage  string              `json:"dlsiteMetadataLanguage"`
+	DirectoryRoutingRules   []directoryRule     `json:"directoryRoutingRules"`
+	RecommendationThreshold int                 `json:"recommendationThreshold"`
+	DataRoot                string              `json:"dataRoot"`
+	CacheRoot               string              `json:"cacheRoot"`
+	FileSources             []fileSourceSummary `json:"fileSources"`
 }
 
 type directoryRule struct {
@@ -189,6 +190,7 @@ type remoteWorkSummary struct {
 	WorkID          *int64            `json:"workId"`
 	Favorite        bool              `json:"favorite"`
 	ListeningStatus string            `json:"listeningStatus"`
+	RecommendScore  int               `json:"recommendScore"`
 }
 
 type remoteWorkDetail struct {
@@ -466,8 +468,9 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"cacheEnabled":          s.settingBool(r, "remote_cache_enabled", false),
-		"directoryRoutingRules": s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		"cacheEnabled":            s.settingBool(r, "remote_cache_enabled", false),
+		"directoryRoutingRules":   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		"recommendationThreshold": s.settingInt(r, "recommendation_threshold", 50),
 	})
 }
 
@@ -476,17 +479,18 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth         *int             `json:"localScanDepth"`
-		CacheEnabled           *bool            `json:"cacheEnabled"`
-		CacheLimitGB           *int             `json:"cacheLimitGb"`
-		RemoteSaveTemplate     *string          `json:"remoteSaveTemplate"`
-		RemoteDelayBase        *float64         `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom      *float64         `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff          *float64         `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff       *float64         `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays  *int             `json:"circleAutoRefreshDays"`
-		DLsiteMetadataLanguage *string          `json:"dlsiteMetadataLanguage"`
-		DirectoryRoutingRules  *[]directoryRule `json:"directoryRoutingRules"`
+		LocalScanDepth          *int             `json:"localScanDepth"`
+		CacheEnabled            *bool            `json:"cacheEnabled"`
+		CacheLimitGB            *int             `json:"cacheLimitGb"`
+		RemoteSaveTemplate      *string          `json:"remoteSaveTemplate"`
+		RemoteDelayBase         *float64         `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom       *float64         `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff           *float64         `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff        *float64         `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays   *int             `json:"circleAutoRefreshDays"`
+		DLsiteMetadataLanguage  *string          `json:"dlsiteMetadataLanguage"`
+		DirectoryRoutingRules   *[]directoryRule `json:"directoryRoutingRules"`
+		RecommendationThreshold *int             `json:"recommendationThreshold"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -603,6 +607,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := upsertSetting(r, tx, "directory_routing_rules", rules); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RecommendationThreshold != nil {
+		if *payload.RecommendationThreshold < 1 || *payload.RecommendationThreshold > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "recommendationThreshold must be between 1 and 100"})
+			return
+		}
+		if err := upsertSetting(r, tx, "recommendation_threshold", *payload.RecommendationThreshold); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -865,7 +879,8 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.updateSourceHealth(r.Context(), id, "healthy")
-	works, err := s.remoteWorkSummaries(r.Context(), userID, source.ID, remotePage.Works, language)
+	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
+	works, err := s.remoteWorkSummaries(r.Context(), userID, source.ID, remotePage.Works, language, includeRecommendation)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1958,7 +1973,7 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 	}
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
 	for _, work := range works {
@@ -1987,6 +2002,13 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 				} else if err == nil {
 					favorite = favoriteInt != 0
 				}
+			}
+		}
+		recommendScore := 0
+		if workID != nil && len(includeRecommendation) > 0 && includeRecommendation[0] {
+			recommendScore, err = s.workRecommendationScore(ctx, userID, *workID)
+			if err != nil {
+				return nil, err
 			}
 		}
 		tags := []string{}
@@ -2035,6 +2057,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			WorkID:          workID,
 			Favorite:        favorite,
 			ListeningStatus: listeningStatus,
+			RecommendScore:  recommendScore,
 		}
 		key := strings.ToUpper(strings.TrimSpace(displayCode))
 		if index, ok := seen[key]; ok {
@@ -5089,20 +5112,21 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		return appSettingsResponse{}, err
 	}
 	return appSettingsResponse{
-		LocalScanDepth:         s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
-		CacheEnabled:           s.settingBool(r, "remote_cache_enabled", false),
-		CacheLimitGB:           s.settingInt(r, "remote_cache_limit_gb", 20),
-		RemoteSaveTemplate:     s.settingString(r, "remote_save_root_template", "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"),
-		RemoteDelayBase:        s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
-		RemoteDelayRandom:      s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
-		RemoteBackoff:          s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
-		RemoteMaxBackoff:       s.settingFloat(r, "remote_max_backoff_seconds", 300),
-		CircleAutoRefreshDays:  s.settingInt(r, "circle_auto_refresh_days", 30),
-		DLsiteMetadataLanguage: normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
-		DirectoryRoutingRules:  s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		DataRoot:               s.cfg.DataRoot,
-		CacheRoot:              s.cfg.CacheRoot,
-		FileSources:            sources,
+		LocalScanDepth:          s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
+		CacheEnabled:            s.settingBool(r, "remote_cache_enabled", false),
+		CacheLimitGB:            s.settingInt(r, "remote_cache_limit_gb", 20),
+		RemoteSaveTemplate:      s.settingString(r, "remote_save_root_template", "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"),
+		RemoteDelayBase:         s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
+		RemoteDelayRandom:       s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
+		RemoteBackoff:           s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
+		RemoteMaxBackoff:        s.settingFloat(r, "remote_max_backoff_seconds", 300),
+		CircleAutoRefreshDays:   s.settingInt(r, "circle_auto_refresh_days", 30),
+		DLsiteMetadataLanguage:  normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
+		DirectoryRoutingRules:   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		RecommendationThreshold: s.settingInt(r, "recommendation_threshold", 50),
+		DataRoot:                s.cfg.DataRoot,
+		CacheRoot:               s.cfg.CacheRoot,
+		FileSources:             sources,
 	}, nil
 }
 

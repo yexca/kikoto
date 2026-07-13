@@ -323,7 +323,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, works)
 }
 
-func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool) ([]libraryWorkSummary, error) {
+func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool, includeRecommendation ...bool) ([]libraryWorkSummary, error) {
 	works := make([]libraryWorkSummary, 0, len(rows))
 	for _, row := range rows {
 		item := libraryWorkSummary{
@@ -365,6 +365,13 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
+		if len(includeRecommendation) > 0 && includeRecommendation[0] {
+			recommendScore, scoreErr := s.workRecommendationScore(ctx, userID, item.ID)
+			if scoreErr != nil {
+				return nil, scoreErr
+			}
+			item.RecommendScore = recommendScore
+		}
 		works = append(works, item)
 	}
 	if err := s.enrichLibraryWorkSummaries(ctx, userID, works); err != nil {
@@ -396,7 +403,8 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		writeError(w, err)
 		return
 	}
-	works, err := s.scanLibraryWorkRows(r.Context(), userID, page.Works, true)
+	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
+	works, err := s.scanLibraryWorkRows(r.Context(), userID, page.Works, true, includeRecommendation)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -461,6 +469,7 @@ type libraryWorkSummary struct {
 	Progress               workProgressSummary  `json:"progress"`
 	ListeningStatus        string               `json:"listeningStatus"`
 	Favorite               bool                 `json:"favorite"`
+	RecommendScore         int                  `json:"recommendScore"`
 	mediaWorkID            int64
 	availableLocationTypes string
 	fallbackEditionCodes   []string

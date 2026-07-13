@@ -39,6 +39,7 @@ import {
   Repeat2,
   Search,
   Star,
+  Sparkles,
   Tags,
   Unlink,
   X,
@@ -243,7 +244,7 @@ export function LibraryPage() {
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
-  const [settings, setSettings] = useState<{ cacheEnabled: boolean } | null>(null);
+  const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() => workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)));
@@ -262,6 +263,7 @@ export function LibraryPage() {
 		viewMode: initialBrowseState.view,
 	});
 	const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
+	const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(() => window.localStorage.getItem("kikoto:recommend-badges") === "true");
 	const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
 	const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
 	const [workPage, setWorkPage] = useState(initialBrowseState.page);
@@ -391,7 +393,7 @@ export function LibraryPage() {
     setLibraryLoadError("");
 	setIsLibraryLoading(true);
     api
-      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, controller.signal)
+      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend", controller.signal)
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
@@ -411,7 +413,7 @@ export function LibraryPage() {
 		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
 	  });
     return () => controller.abort();
-  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, sortDirection, workPage, workPageSize, workScope]);
+  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
@@ -427,7 +429,10 @@ export function LibraryPage() {
   }, []);
 
   useEffect(() => {
-    api.getRuntimeSettings().then((next) => setSettings(next)).catch(() => setSettings(null));
+    api.getRuntimeSettings().then((next) => {
+      setSettings(next);
+      window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
+    }).catch(() => setSettings(null));
   }, []);
 
   useEffect(() => {
@@ -445,7 +450,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, randomSeed, controller.signal).then((result) => {
+    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend", controller.signal).then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -467,7 +472,7 @@ export function LibraryPage() {
       if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
     return () => controller.abort();
-  }, [activeTab, librarySort, randomSeed, remoteSearchQuery, remoteSourceStates, sortDirection]);
+  }, [activeTab, librarySort, randomSeed, recommendBadgesEnabled, remoteSearchQuery, remoteSourceStates, sortDirection]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -742,7 +747,7 @@ export function LibraryPage() {
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
 	setIsLibraryLoading(true);
-    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection, randomSeed).then((result) => {
+    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend").then((result) => {
       if (requestSeq !== libraryRequestSeq.current) return;
       setWorks(result.works);
       setWorkTotal(result.total);
@@ -764,7 +769,7 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setIsRemoteLoading(true);
     if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
-    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection, randomSeed).then((result) => {
+    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend").then((result) => {
       if (requestSeq !== remoteRequestSeq.current) return;
       setRemoteResult(result);
 	  completeResultsUpdate();
@@ -788,7 +793,7 @@ export function LibraryPage() {
 
   const refreshCurrentWorksPage = async () => {
     if (activeTab.kind === "source") return;
-    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed);
+    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend");
     setWorks(page.works);
     setWorkTotal(page.total);
     setLibraryLoadError("");
@@ -928,6 +933,13 @@ export function LibraryPage() {
 		if (sort === "random") setRandomSeed(createRandomSortSeed());
 		setLibrarySort(sort);
 	};
+	const toggleRecommendBadges = () => {
+		setRecommendBadgesEnabled((current) => {
+			const next = !current;
+			window.localStorage.setItem("kikoto:recommend-badges", String(next));
+			return next;
+		});
+	};
 	const reshuffle = () => {
 		queueResultsScroll();
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
@@ -996,6 +1008,9 @@ export function LibraryPage() {
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
+		  <IconButton title={librarySort === "recommend" ? "Recommendation badges are included in recommendation sorting" : recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"} disabled={librarySort === "recommend"} onClick={toggleRecommendBadges}>
+			<Sparkles className={`h-4 w-4 ${recommendBadgesEnabled && librarySort !== "recommend" ? "fill-current text-primary" : ""}`} />
+		  </IconButton>
 		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} onReshuffle={reshuffle} />
 		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
           <div ref={databaseMenuRef} className="relative">
@@ -1939,6 +1954,7 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void):
     progress: work.progress,
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
 		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+		recommended: recommendationBadgeVisible(work.recommendScore),
   };
 }
 
@@ -1960,6 +1976,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     date: cardDate(work.releaseDate, work.updatedAt || work.releaseDate),
     progress: null,
     userTags: [],
+		recommended: recommendationBadgeVisible(work.recommendScore),
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
       : [{ key: `source:remote:${source.id}:unavailable`, label: `${sourceLabel} unavailable`, variant: "warning" }],
@@ -4070,6 +4087,12 @@ function detailHeroModel(code: string, work: WorkDetail | null, preview: WorkPre
     voiceActors: work?.voiceActors ?? preview?.voiceActors ?? [],
     tags: work?.tags ?? preview?.tags ?? [],
   };
+}
+
+function recommendationBadgeVisible(score: number | undefined) {
+	if (window.localStorage.getItem("kikoto:recommend-badges") !== "true") return false;
+	const threshold = Number(window.localStorage.getItem("kikoto:recommend-threshold") ?? "50");
+	return Number.isFinite(score) && (score ?? 0) >= threshold;
 }
 
 function useCompactDetailLayout() {

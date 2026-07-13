@@ -38,6 +38,7 @@ export type WorkCardViewModel = {
   progress?: WorkProgressSummary | null;
   userTags?: WorkCardBadge[];
   sourceBadges: WorkCardBadge[];
+  recommended?: boolean;
 };
 
 export function WorkCardShell({
@@ -95,7 +96,7 @@ export function WorkCardShell({
   };
   const content = (
     <>
-      <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} />
+      <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} recommended={work.recommended} />
       <WorkCardBody work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} onSeriesOpen={seriesOpen} onTagOpen={onTagOpen} />
     </>
   );
@@ -133,11 +134,13 @@ export function WorkCardMedia({
   code,
   rating,
   selection,
+  recommended = false,
 }: {
   coverUrl?: string;
   code: string;
   rating: number | null;
   selection?: ReactNode;
+  recommended?: boolean;
 }) {
   const codeText = code || "Source";
   return (
@@ -149,6 +152,11 @@ export function WorkCardMedia({
         <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{codeText.slice(0, 2)}</div>
       )}
       <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
+      {recommended && (
+        <div className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground shadow-sm" title="Recommended for you" aria-label="Recommended for you">
+          <Star className="h-4 w-4 fill-current" />
+        </div>
+      )}
       <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
         <Star className="h-3.5 w-3.5 fill-current" />
         {rating === null ? "No rating" : rating.toFixed(2)}

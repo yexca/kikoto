@@ -24,6 +24,7 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  recommendScore: number;
 };
 
 export type SourcePresenceItem = {
@@ -299,6 +300,7 @@ export type LibrarySource = {
 export type RuntimeSettings = {
   cacheEnabled: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
+  recommendationThreshold: number;
 };
 
 export type AppSettings = {
@@ -313,6 +315,7 @@ export type AppSettings = {
   circleAutoRefreshDays: number;
   dlsiteMetadataLanguage: string;
   directoryRoutingRules: DirectoryRoutingRule[];
+  recommendationThreshold: number;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -359,6 +362,7 @@ export type RemoteWork = {
   workId: number | null;
   favorite: boolean;
   listeningStatus: ListeningStatus;
+  recommendScore: number;
 };
 
 export type RemoteTrack = {
@@ -1238,10 +1242,11 @@ export const api = {
     sort: LibrarySort = "recent",
     direction: SortDirection = "desc",
     seed = 1,
+    recommendBadges = false,
     signal?: AbortSignal,
   ) =>
     getJSON<WorksPage>(
-      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   listFavoriteWorksPage: (
@@ -1265,10 +1270,11 @@ export const api = {
     sort: LibrarySort = "recent",
     direction: SortDirection = "desc",
     seed = 1,
+    recommendBadges = false,
     signal?: AbortSignal,
   ) =>
     getJSON<RemoteWorksResponse>(
-      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
   getRemoteSourceWork: (id: number, code: string, signal?: AbortSignal) =>
@@ -1478,6 +1484,7 @@ export const api = {
     circleAutoRefreshDays?: number;
     dlsiteMetadataLanguage?: string;
     directoryRoutingRules?: DirectoryRoutingRule[];
+    recommendationThreshold?: number;
   }) => patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {
     displayName: string;
