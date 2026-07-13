@@ -8,6 +8,7 @@ import {
   Heart,
   ListChecks,
   ListMusic,
+  Mic2,
   Pencil,
   Pause,
   Play,
@@ -15,6 +16,7 @@ import {
   Search,
   Star,
   Trash2,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -436,10 +438,12 @@ export function FavoritesPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
-        <FavoriteEntityTab active={favoriteEntity === "circles"} icon={Heart} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
-        <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Heart} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+      <div className="border-b" role="tablist" aria-label="Favorite categories">
+        <div className="flex gap-6 overflow-x-auto">
+          <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
+          <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
+          <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+        </div>
       </div>
 
       {favoriteEntity !== "works" && (
@@ -456,7 +460,8 @@ export function FavoritesPage() {
 
       {favoriteEntity === "works" && (
       <>
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="space-y-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
         {isLoading ? <FavoriteListTabSkeletons /> : <button
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === "all" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
           onClick={() => {
@@ -512,23 +517,29 @@ export function FavoritesPage() {
             </Button>
           </>
         )}
-      </div>
+        </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {statusTabs.map((tab) => (
-          <button
-            key={tab.value}
-            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-medium ${statusFilter === tab.value ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-            onClick={() => {
-              setStatusFilter(tab.value);
-              setPage(1);
-            }}
-          >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
-            <span className="opacity-70">{tab.value === "all" ? shelfTotal : statusCounts[tab.value] ?? 0}</span>
-          </button>
-        ))}
+        <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
+          <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+            <Filter className="h-3 w-3" />
+            Status
+          </span>
+          {statusTabs.map((tab) => (
+            <button
+              key={tab.value}
+              className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${statusFilter === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              onClick={() => {
+                setStatusFilter(tab.value);
+                setPage(1);
+              }}
+              aria-pressed={statusFilter === tab.value}
+            >
+              <tab.icon className="h-3 w-3" />
+              {tab.label}
+              <span className="text-[11px] tabular-nums opacity-65">{tab.value === "all" ? shelfTotal : statusCounts[tab.value] ?? 0}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -669,12 +680,14 @@ export function FavoritesPage() {
 function FavoriteEntityTab({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Heart; label: string; count: number; onClick: () => void }) {
   return (
     <button
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+      className={`relative inline-flex h-11 shrink-0 items-center gap-2 px-1 text-sm font-medium transition-colors ${active ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary" : "text-muted-foreground hover:text-foreground"}`}
       onClick={onClick}
+      role="tab"
+      aria-selected={active}
     >
       <Icon className="h-4 w-4" />
       {label}
-      <span className="text-xs opacity-80">{count}</span>
+      <span className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{count}</span>
     </button>
   );
 }
