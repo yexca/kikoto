@@ -54,6 +54,10 @@ export type WorksPage = {
   total: number;
 };
 
+export type RecentlyPlayedWorksResponse = {
+  works: Work[];
+};
+
 export type FavoriteWorksPage = WorksPage & {
   shelfTotal: number;
   listCounts: Record<string, number>;
@@ -1239,7 +1243,7 @@ export const api = {
     query = "",
     scope = "all",
     status = "all",
-    sort: LibrarySort = "recent",
+    sort: LibrarySort = "recommend",
     direction: SortDirection = "desc",
     seed = 1,
     recommendBadges = false,
@@ -1261,6 +1265,8 @@ export const api = {
       `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
+  listRecentlyPlayedWorks: (limit = 10) =>
+    getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
   listRemoteSourceWorks: (
     id: number,

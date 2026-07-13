@@ -237,6 +237,7 @@ export function LibraryPage() {
   const toast = useToast();
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
   const [works, setWorks] = useState<Work[]>([]);
+  const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
@@ -434,6 +435,19 @@ export function LibraryPage() {
       window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
     }).catch(() => setSettings(null));
   }, []);
+
+  useEffect(() => {
+    if (selectedCode !== null) return;
+    let cancelled = false;
+    api.listRecentlyPlayedWorks(10)
+      .then((result) => {
+        if (!cancelled) setRecentWorks(result.works);
+      })
+      .catch(() => {
+        if (!cancelled) setRecentWorks([]);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCode]);
 
   useEffect(() => {
     if (activeTab.kind !== "source") {
@@ -971,6 +985,9 @@ export function LibraryPage() {
 
   return (
     <div className="space-y-5">
+      {recentWorks.length > 0 && (
+        <RecentlyPlayedStrip works={recentWorks} onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
+      )}
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" data-toast-avoid>
         <div className="flex min-h-10 flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:max-w-xl">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1706,6 +1723,81 @@ function RemoteSourcePanel({
       )}
     </section>
   );
+}
+
+function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
+  const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem("kikoto:recently-played-collapsed") === "true");
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("kikoto:recently-played-collapsed", String(next));
+      return next;
+    });
+  };
+
+  return (
+    <section className={collapsed ? "" : "space-y-2"} aria-labelledby="recently-played-heading">
+      <h2 id="recently-played-heading">
+        <button
+          type="button"
+          className="flex min-h-8 w-full items-center justify-between gap-2 rounded-md px-1 text-sm font-semibold transition-colors hover:bg-muted"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand recently played" : "Collapse recently played"}
+          aria-expanded={!collapsed}
+          aria-controls="recently-played-list"
+          title={collapsed ? "Expand recently played" : "Collapse recently played"}
+        >
+          <span className="flex items-center gap-2">
+            <Clock3 className="h-4 w-4 text-primary" />
+            Recently played
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+        </button>
+      </h2>
+      {!collapsed && (
+        <div id="recently-played-list" className="app-scroll flex snap-x gap-3 overflow-x-auto pb-2">
+          {works.map((work) => (
+            <button
+              key={work.id}
+              className="group flex h-[194px] w-[138px] shrink-0 snap-start flex-col text-left sm:h-[208px] sm:w-[154px] lg:h-[222px] lg:w-[168px]"
+              onClick={() => onOpen(work)}
+              aria-label={`Open ${work.title}`}
+            >
+              <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-md border bg-muted transition-colors group-hover:border-primary/50">
+                {work.coverUrl ? (
+                  <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" loading="lazy" />
+                ) : (
+                  <span className="grid h-full place-items-center text-xl font-bold text-muted-foreground">{work.primaryCode.slice(0, 2)}</span>
+                )}
+                <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold">
+                  {work.primaryCode}
+                </span>
+              </span>
+              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug">{work.title}</span>
+              <span className="mt-0.5 block h-4 w-full truncate text-[11px] text-muted-foreground">{work.circle || "Unknown circle"}</span>
+              <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
+                <span className="block h-full rounded-full bg-primary" style={{ width: `${progressPercent(work.progress)}%` }} />
+              </span>
+              <span className="mt-1 block w-full shrink-0 truncate text-[10px] text-muted-foreground" title={recentProgressLabel(work.progress)}>
+                {recentProgressLabel(work.progress)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function recentProgressLabel(progress: Work["progress"]) {
+  if (progress.completed) return `Finished · ${progress.title || "Track"}`;
+  const duration = progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
+  return `${progress.title || "Track"} · ${formatTime(progress.positionSeconds)}${duration}`;
+}
+
+function recentWorkSourceIntent(work: Work): DetailSourceIntent {
+  const hasLocal = (work.sourcePresence ?? []).some((item) => item.type === "local" && item.availability === "available");
+  return hasLocal ? "local" : "tracked";
 }
 
 function WorkCard({
@@ -4104,6 +4196,7 @@ function useCompactDetailLayout() {
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
   return compact;
 }
 

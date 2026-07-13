@@ -25,7 +25,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   page: 1,
   pageSize: 24,
   status: "all",
-  sort: "recent",
+  sort: "recommend",
   direction: "desc",
   randomSeed: 1,
   view: "grid",

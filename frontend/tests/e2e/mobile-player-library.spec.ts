@@ -51,6 +51,7 @@ const persistedTrack = {
 
 type MockApplicationFixture = {
   work?: typeof work;
+  recentWorks?: typeof work[];
   librarySources?: Record<string, unknown>[];
   sourceAvailability?: Record<string, unknown>;
   remoteDetail?: Record<string, unknown>;
@@ -110,6 +111,10 @@ async function mockApplication(
 	}
     if (url.pathname === "/api/runtime-settings") {
       await route.fulfill({ json: { cacheEnabled: false, directoryRoutingRules: [] } });
+      return;
+    }
+    if (url.pathname === "/api/recently-played-works") {
+      await route.fulfill({ json: { works: fixture.recentWorks ?? [] } });
       return;
     }
     if (url.pathname === "/api/works") {
@@ -513,11 +518,47 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
 
   await page.getByRole("button", { name: "All records" }).click();
-  await page.getByRole("button", { name: "Sort: Recently added" }).click();
-  const selectedSort = page.getByRole("button", { name: "Recently added", exact: true });
+  await page.getByRole("button", { name: "Sort: Recommended" }).click();
+  const selectedSort = page.getByRole("button", { name: "Recommended", exact: true });
   await expect(selectedSort).toHaveClass(/bg-primary\/10/);
 	await expect(selectedSort.locator("svg")).toHaveCount(0);
   expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
+});
+
+test("recently played cards stay aligned and remember their collapsed state", async ({ page }) => {
+  const recentWorks = [
+    {
+      ...work,
+      id: 21,
+      primaryCode: "RJ08888881",
+      title: "Short title",
+      progress: { ...work.progress, title: "Track one", positionSeconds: 42, durationSeconds: 120, lastPlayedAt: "2026-01-02T00:00:00Z" },
+    },
+    {
+      ...work,
+      id: 22,
+      primaryCode: "RJ08888882",
+      title: "A deliberately long title that occupies both reserved title lines",
+      circle: "A circle name that is deliberately too long for the compact card",
+      progress: { ...work.progress, title: "Track two", positionSeconds: 84, durationSeconds: 180, lastPlayedAt: "2026-01-01T00:00:00Z" },
+    },
+  ];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { recentWorks });
+
+  await page.goto("/library");
+  const shortCard = page.getByRole("button", { name: "Open Short title" });
+  const longCard = page.getByRole("button", { name: "Open A deliberately long title that occupies both reserved title lines" });
+  await expect(shortCard).toBeVisible();
+  await expect(longCard).toBeVisible();
+  expect((await shortCard.boundingBox())?.height).toBe((await longCard.boundingBox())?.height);
+
+  await page.getByRole("button", { name: "Collapse recently played" }).click();
+  await expect(shortCard).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Expand recently played" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Short title" })).toBeHidden();
+  await page.getByRole("button", { name: "Expand recently played" }).click();
+  await expect(page.getByRole("button", { name: "Open Short title" })).toBeVisible();
 });
 
 test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {
@@ -629,6 +670,7 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   await seedPlayer(page, { ...persistedTrack, lyricsLocationId: 9, lyricsTitle: "lyrics.lrc" });
   await page.goto("/");
   await page.getByText("Test track", { exact: true }).click();
+  await page.getByRole("button", { name: "Lyrics hidden. Show preview" }).click();
 
   const preview = page.getByRole("button", { name: "Open lyrics" });
   await expect(preview).toBeVisible();

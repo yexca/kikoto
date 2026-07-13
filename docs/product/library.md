@@ -19,6 +19,12 @@ The Library is the main browsing surface for works.
   Library, Favorites, circle work collections, and voice work collections.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
+- Defaults new Library views to personalized recommendation ordering while
+  preserving explicit URL and session-restored browse choices.
+- Shows a compact, horizontally scrollable recently-played strip above the
+  Library controls. It is ordered per user, deduplicated by work, and includes
+  the latest track position without replacing the full work-card grid. The
+  strip can be collapsed, and that preference is kept in the browser.
 - Provides database-oriented diagnostic scopes for works that do not currently
   appear in everyday source tabs.
 

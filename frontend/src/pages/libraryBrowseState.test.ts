@@ -8,6 +8,11 @@ import {
 } from "./libraryBrowseState";
 
 describe("library browse state", () => {
+  it("defaults new library views to recommendation ordering", () => {
+    expect(defaultLibraryBrowseState.sort).toBe("recommend");
+    expect(defaultLibraryBrowseState.direction).toBe("desc");
+  });
+
   it("round-trips shareable URL fields without including scroll position", () => {
     const state = {
       ...defaultLibraryBrowseState,

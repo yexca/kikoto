@@ -60,6 +60,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/users", s.createUser)
 	mux.HandleFunc("PATCH /api/users/{id}", s.updateUser)
 	mux.HandleFunc("DELETE /api/users/{id}", s.deleteUser)
+	mux.HandleFunc("GET /api/recently-played-works", s.listRecentlyPlayedWorks)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
