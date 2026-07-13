@@ -50,7 +50,7 @@ type RawWork struct {
 }
 
 func (s *Store) ListAll(ctx context.Context, userID int64) ([]RawWork, error) {
-	rows, err := s.db.QueryContext(ctx, listBaseSelectSQL("1 = 1", false)+" ORDER BY work.created_at DESC", userID)
+	rows, err := s.db.QueryContext(ctx, listBaseSelectSQL("1 = 1", false, false)+" ORDER BY work.created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +71,9 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		return RawPage{}, err
 	}
 	queryArgs := append([]any{options.UserID}, args...)
+	if strings.EqualFold(strings.TrimSpace(options.Sort), "recommend") {
+		queryArgs = append([]any{options.UserID, options.UserID, options.UserID, options.UserID}, queryArgs[1:]...)
+	}
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
 	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed)+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
@@ -140,6 +143,8 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 func listOrderBy(sortKey string, direction string, randomSeed int64) (string, bool) {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
+	case "recommend":
+		return "recommend_score " + direction + ", created_at DESC, id DESC", true
 	case "random":
 		seed := randomSeed % 2147483647
 		if seed < 0 {
@@ -184,7 +189,7 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 		sortKey, direction = "sales", "DESC"
 	}
 	switch sortKey {
-	case "recent", "release", "code", "title", "rating", "sales", "random":
+	case "recent", "release", "code", "title", "rating", "sales", "random", "recommend":
 	default:
 		sortKey = "recent"
 	}
@@ -379,19 +384,45 @@ func latestSnapshotNumericClause(kind string, operator string, value float64) st
 }
 
 func listSelectSQL(where string, sortKey string, direction string, randomSeed int64) string {
+	normalizedSort, _ := normalizeSort(sortKey, direction)
 	orderBy, needsMetadataSort := listOrderBy(sortKey, direction, randomSeed)
-	if needsMetadataSort {
-		return `SELECT id, primary_code, title, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true) + `) AS library_rows ORDER BY ` + orderBy
+	if needsMetadataSort || normalizedSort == "recommend" {
+		return `SELECT id, primary_code, title, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true, normalizedSort == "recommend") + `) AS library_rows ORDER BY ` + orderBy
 	}
-	return listBaseSelectSQL(where, false) + " ORDER BY " + orderBy
+	return listBaseSelectSQL(where, false, false) + " ORDER BY " + orderBy
 }
 
-func listBaseSelectSQL(where string, includeMetadataSortColumns bool) string {
+func listBaseSelectSQL(where string, includeMetadataSortColumns bool, includeRecommendation bool) string {
 	metadataSortColumns := ""
 	if includeMetadataSortColumns {
 		metadataSortColumns = `,
 			(SELECT json_extract(snapshot_json, '$.product.rate_average_2dp') FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS latest_dlsite_rating,
 			(SELECT COALESCE(json_extract(snapshot_json, '$.dynamic.dl_count'), json_extract(snapshot_json, '$.product.dl_count'), json_extract(snapshot_json, '$.product.sales_count')) FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS latest_dlsite_sales`
+	}
+	recommendationSortColumn := ""
+	if includeRecommendation {
+		recommendationSortColumn = `,
+			(CASE COALESCE(user_work_state.listening_status, 'none') WHEN 'none' THEN 35 WHEN 'want_to_listen' THEN 12 WHEN 'listening' THEN 8 WHEN 'finished' THEN 4 WHEN 'relisten' THEN 6 WHEN 'paused' THEN -55 ELSE 0 END
+			+ CASE WHEN EXISTS (
+				SELECT 1 FROM work_tag candidate_tag
+				INNER JOIN work_tag liked_tag ON liked_tag.tag_id = candidate_tag.tag_id
+				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_tag.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
+				WHERE candidate_tag.work_id = work.id AND liked_state.listening_status IN ('finished', 'relisten')
+			) THEN 25 ELSE 0 END
+			+ CASE WHEN EXISTS (
+				SELECT 1 FROM work_credit candidate_credit
+				INNER JOIN work_credit liked_credit ON liked_credit.person_id = candidate_credit.person_id AND liked_credit.role = candidate_credit.role
+				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_credit.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
+				WHERE candidate_credit.work_id = work.id AND candidate_credit.role = 'voice_actor' AND liked_state.listening_status IN ('finished', 'relisten')
+			) THEN 20 ELSE 0 END
+			+ CASE WHEN EXISTS (
+				SELECT 1 FROM work_party candidate_party
+				INNER JOIN work_party liked_party ON liked_party.party_id = candidate_party.party_id AND liked_party.role = 'circle'
+				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_party.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
+				WHERE candidate_party.work_id = work.id AND candidate_party.role = 'circle' AND liked_state.listening_status IN ('finished', 'relisten')
+			) THEN 20 ELSE 0 END
+			+ CASE WHEN COALESCE(user_work_state.favorite, 0) = 1 THEN 10 ELSE 0 END
+			) AS recommend_score`
 	}
 	return `SELECT
 		work.id, work.primary_code, work.title, work.created_at,
@@ -402,7 +433,7 @@ func listBaseSelectSQL(where string, includeMetadataSortColumns bool) string {
 		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
 		(SELECT party.display_name || '|' || external.external_id FROM work_party AS relation INNER JOIN party ON party.id = relation.party_id LEFT JOIN party_external_id AS external ON external.party_id = party.id AND external.is_primary = 1 WHERE relation.work_id = work.id AND relation.role = 'circle' ORDER BY relation.updated_at DESC LIMIT 1) AS party_link,
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + metadataSortColumns + `
+		COALESCE(user_work_state.favorite, 0) AS favorite` + metadataSortColumns + recommendationSortColumn + `
 	FROM work
 	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 	WHERE ` + where

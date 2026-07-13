@@ -133,6 +133,50 @@ func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
 	}
 }
 
+func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "recommend.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('recommend-user', 'Recommend User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	workIDs := map[string]int64{}
+	for _, item := range []struct{ code, title string }{{"RJ09999101", "Liked"}, {"RJ09999102", "Candidate"}, {"RJ09999103", "Unrelated"}} {
+		result, insertErr := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", item.code, item.title)
+		if insertErr != nil {
+			t.Fatal(insertErr)
+		}
+		workIDs[item.code], _ = result.LastInsertId()
+	}
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, workIDs["RJ09999101"]); err != nil {
+		t.Fatal(err)
+	}
+	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'sleep', 'Sleep')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	for _, code := range []string{"RJ09999101", "RJ09999102"} {
+		if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'test')", workIDs[code], tagID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := NewStore(db).ListPage(context.Background(), ListOptions{UserID: userID, Page: 1, PageSize: 3, Sort: "recommend", Direction: "desc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Works) != 3 || page.Works[0].PrimaryCode != "RJ09999102" {
+		t.Fatalf("recommend order = %#v, want candidate first", page.Works)
+	}
+}
+
 func TestStoreListPageNormalizesPagination(t *testing.T) {
 	db, err := storage.Open(filepath.Join(t.TempDir(), "pagination.db"))
 	if err != nil {

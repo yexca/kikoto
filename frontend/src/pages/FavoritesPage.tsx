@@ -68,7 +68,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
   { value: "listening", label: "Listening" },
-  { value: "paused", label: "Paused" },
+  { value: "paused", label: "Shelved" },
   { value: "finished", label: "Finished" },
   { value: "relisten", label: "Relisten" },
 ];
@@ -77,7 +77,7 @@ const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof 
   { value: "all", label: "All", icon: Heart },
   { value: "want_to_listen", label: "Want", icon: Star },
   { value: "listening", label: "Listening", icon: Play },
-  { value: "paused", label: "Paused", icon: Pause },
+  { value: "paused", label: "Shelved", icon: Pause },
   { value: "finished", label: "Finished", icon: ListChecks },
   { value: "relisten", label: "Relisten", icon: Heart },
 ];

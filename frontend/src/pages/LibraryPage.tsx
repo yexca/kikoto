@@ -135,7 +135,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "listening", label: "Listening" },
   { value: "finished", label: "Finished" },
   { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Paused" },
+  { value: "paused", label: "Shelved" },
 ];
 const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "recent", label: "Recently added" },
@@ -145,6 +145,7 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "rating", label: "Rating" },
   { value: "sales", label: "Sales" },
   { value: "random", label: "Random" },
+  { value: "recommend", label: "Recommended" },
 ];
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {

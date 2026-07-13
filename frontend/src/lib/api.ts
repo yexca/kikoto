@@ -59,7 +59,7 @@ export type FavoriteWorksPage = WorksPage & {
   statusCounts: Record<string, number>;
 };
 
-export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random";
+export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random" | "recommend";
 export type SortDirection = "asc" | "desc";
 
 export type WorkDetail = {

@@ -70,7 +70,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "listening", label: "Listening" },
   { value: "finished", label: "Finished" },
   { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Paused" },
+  { value: "paused", label: "Shelved" },
 ];
 
 export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {

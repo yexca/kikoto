@@ -607,7 +607,7 @@ const quickMarkOptions: { value: ListeningStatus; label: string }[] = [
   { value: "listening", label: "Listening" },
   { value: "finished", label: "Finished" },
   { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Paused" },
+  { value: "paused", label: "Shelved" },
 ];
 
 function quickMarkMeta(value: ListeningStatus) {
@@ -621,7 +621,7 @@ function quickMarkMeta(value: ListeningStatus) {
     case "relisten":
       return { label: "Relisten", icon: Repeat2, active: true, className: "text-primary" };
     case "paused":
-      return { label: "Paused", icon: PauseCircle, active: true, className: "text-amber-600" };
+      return { label: "Shelved", icon: PauseCircle, active: true, className: "text-amber-600" };
     default:
       return { label: "Unmarked", icon: Circle, active: false, className: "" };
   }

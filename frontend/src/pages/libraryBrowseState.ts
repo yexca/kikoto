@@ -36,7 +36,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
 
 const storagePrefix = "kikoto:library-browse:";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
-const sorts = ["recent", "release", "code", "title", "rating", "sales", "random"] satisfies LibrarySort[];
+const sorts = ["recent", "release", "code", "title", "rating", "sales", "random", "recommend"] satisfies LibrarySort[];
 
 export function readLibraryBrowseState(key: string): LibraryBrowseState | null {
   try {
