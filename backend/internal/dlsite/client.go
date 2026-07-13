@@ -102,9 +102,15 @@ type Product struct {
 }
 
 type TranslationInfo struct {
-	OriginalWorkNo string `json:"original_workno"`
-	ParentWorkNo   string `json:"parent_workno"`
-	Lang           string `json:"lang"`
+	OriginalWorkNo            string                       `json:"original_workno"`
+	ParentWorkNo              string                       `json:"parent_workno"`
+	Lang                      string                       `json:"lang"`
+	StatusForTranslatorByLang map[string]TranslationStatus `json:"translation_status_for_translator"`
+}
+
+type TranslationStatus struct {
+	AppliedCount int  `json:"applied_count"`
+	OnSaleCount  *int `json:"on_sale_count"`
 }
 
 type LanguageEdition struct {

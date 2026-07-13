@@ -67,7 +67,7 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 			if r.URL.Query().Get("workno") != "RJ0123456" {
 				t.Fatalf("workno = %s", r.URL.Query().Get("workno"))
 			}
-			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult"}]`))
+			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult","translation_info":{"translation_status_for_translator":{"CHI_HANT":{"applied_count":1,"on_sale_count":0}}}}]`))
 		case "/maniax-touch/product/info/ajax":
 			if r.URL.Query().Get("product_id") != "RJ0123456" {
 				t.Fatalf("product_id = %s", r.URL.Query().Get("product_id"))
@@ -97,6 +97,10 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	}
 	if product.RateAverage2DP == nil || *product.RateAverage2DP != 4.89 {
 		t.Fatalf("RateAverage2DP = %v", product.RateAverage2DP)
+	}
+	status, ok := product.TranslationInfo.StatusForTranslatorByLang["CHI_HANT"]
+	if !ok || status.AppliedCount != 1 || status.OnSaleCount == nil || *status.OnSaleCount != 0 {
+		t.Fatalf("translation status = %+v, present = %t", status, ok)
 	}
 }
 

@@ -57,6 +57,7 @@ type DLsiteFamilySyncResult struct {
 	CanonicalCode string   `json:"canonicalCode"`
 	Codes         []string `json:"codes"`
 	SyncedCodes   []string `json:"syncedCodes"`
+	SkippedCodes  []string `json:"skippedCodes"`
 	Failures      []string `json:"failures"`
 }
 
@@ -234,20 +235,26 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 	if !dlsiteWorkNoPattern.MatchString(requestedCode) {
 		return DLsiteFamilySyncResult{}, fmt.Errorf("invalid DLsite work code %q", requestedCode)
 	}
-	result := DLsiteFamilySyncResult{RequestedCode: requestedCode, Codes: []string{}, SyncedCodes: []string{}, Failures: []string{}}
+	result := DLsiteFamilySyncResult{RequestedCode: requestedCode, Codes: []string{}, SyncedCodes: []string{}, SkippedCodes: []string{}, Failures: []string{}}
 	queue := []string{requestedCode}
 	seen := map[string]bool{}
+	skipped := map[string]bool{}
 	const maxFamilyEditions = 32
 	for len(queue) > 0 && len(seen) < maxFamilyEditions {
 		code := strings.ToUpper(strings.TrimSpace(queue[0]))
 		queue = queue[1:]
-		if seen[code] || !dlsiteWorkNoPattern.MatchString(code) {
+		if seen[code] || skipped[code] || !dlsiteWorkNoPattern.MatchString(code) {
 			continue
 		}
 		seen[code] = true
 		result.Codes = append(result.Codes, code)
 		product, err := s.fetchProduct(ctx, code)
 		if err != nil {
+			if !strings.EqualFold(code, requestedCode) && errors.Is(err, dlsite.ErrNoProduct) {
+				skipped[code] = true
+				result.SkippedCodes = append(result.SkippedCodes, code)
+				continue
+			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
 			continue
 		}
@@ -272,7 +279,16 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 			}
 		}
 		for _, edition := range product.LanguageEditions {
-			queue = append(queue, strings.ToUpper(strings.TrimSpace(edition.WorkNo)))
+			code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+			if !dlsiteWorkNoPattern.MatchString(code) || seen[code] || skipped[code] {
+				continue
+			}
+			if languageEditionExplicitlyUnavailable(product, edition) {
+				skipped[code] = true
+				result.SkippedCodes = append(result.SkippedCodes, code)
+				continue
+			}
+			queue = append(queue, code)
 		}
 	}
 	if result.CanonicalCode == "" {
@@ -285,6 +301,19 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 		return result, fmt.Errorf("DLsite family metadata could not be synchronized: %s", strings.Join(result.Failures, "; "))
 	}
 	return result, nil
+}
+
+func languageEditionExplicitlyUnavailable(product dlsite.Product, edition dlsite.LanguageEdition) bool {
+	language := strings.TrimSpace(edition.Lang)
+	if language == "" {
+		return false
+	}
+	for candidate, status := range product.TranslationInfo.StatusForTranslatorByLang {
+		if strings.EqualFold(strings.TrimSpace(candidate), language) && status.OnSaleCount != nil {
+			return *status.OnSaleCount == 0
+		}
+	}
+	return false
 }
 
 func (s *DLsiteSyncer) classifyFamilyEditions(ctx context.Context, canonicalCode string) error {

@@ -250,6 +250,52 @@ func TestSyncFamilyClassifiesMakerRelationships(t *testing.T) {
 	}
 }
 
+func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
+	db := openTestDB(t)
+	zero := 0
+	one := 1
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: "RJ0123501", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ0123502", DisplayOrder: 2, Label: "Traditional Chinese", Lang: "CHI_HANT"},
+		{WorkNo: "RJ0123503", DisplayOrder: 3, Label: "English", Lang: "ENG"},
+		{WorkNo: "RJ0123504", DisplayOrder: 4, Label: "Korean", Lang: "KO_KR"},
+		{WorkNo: "RJ0123505", DisplayOrder: 5, Label: "Indonesian", Lang: "IND"},
+	}
+	translationInfo := dlsite.TranslationInfo{StatusForTranslatorByLang: map[string]dlsite.TranslationStatus{
+		"CHI_HANT": {AppliedCount: 1, OnSaleCount: &zero},
+		"ENG":      {AppliedCount: 1, OnSaleCount: &one},
+	}}
+	calls := map[string]int{}
+	products := map[string]dlsite.Product{
+		"RJ0123501": {WorkNo: "RJ0123501", ProductName: "Origin", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123501"}`)},
+		"RJ0123503": {WorkNo: "RJ0123503", ProductName: "English", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123503"}`)},
+		"RJ0123504": {WorkNo: "RJ0123504", ProductName: "Korean", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123504"}`)},
+	}
+	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{
+		products: products,
+		errors: map[string]error{
+			"RJ0123502": dlsite.ErrNoProduct,
+			"RJ0123505": dlsite.ErrNoProduct,
+		},
+		calls: calls,
+	}).SyncFamily(context.Background(), "RJ0123501")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.SyncedCodes) != 3 || len(result.SkippedCodes) != 2 || result.SkippedCodes[0] != "RJ0123502" || result.SkippedCodes[1] != "RJ0123505" || len(result.Failures) != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	if calls["RJ0123502"] != 0 {
+		t.Fatalf("unavailable edition calls = %d, want 0", calls["RJ0123502"])
+	}
+	if calls["RJ0123503"] != 1 || calls["RJ0123504"] != 1 {
+		t.Fatalf("available and unknown-status calls = %+v", calls)
+	}
+	if calls["RJ0123505"] != 1 {
+		t.Fatalf("unknown-status unavailable edition calls = %d, want 1", calls["RJ0123505"])
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
