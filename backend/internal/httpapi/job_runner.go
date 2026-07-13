@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -63,6 +64,8 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		runErr = s.executeRemoteMediaCacheJob(jobCtx, job)
 	case "remote_popular_collection":
 		runErr = s.executeRemotePopularCollectionJob(jobCtx, job)
+	case "dlsite_popular_collection":
+		runErr = s.executeDLsitePopularCollectionJob(jobCtx, job)
 	case "media_cache_limit_cleanup":
 		runErr = s.executeMediaCacheLimitCleanupJob(jobCtx, job)
 	case "media_cache_cleanup":
@@ -200,7 +203,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 
 func isRetryableWorkflowError(runErr error) bool {
 	var downloadErr remoteDownloadError
-	return errors.As(runErr, &downloadErr) && downloadErr.Retryable
+	return (errors.As(runErr, &downloadErr) && downloadErr.Retryable) || dlsite.IsRetryableHTTPError(runErr)
 }
 
 func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {

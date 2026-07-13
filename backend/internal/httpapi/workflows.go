@@ -25,10 +25,12 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("select_media_items", "target", "Select media items", "Choose media items or file locations.", true, schemaObject("mediaItemIds", "locationIds", "locationType"), schemaObject(), schemaObject("mediaItemIds", "locationIds")),
 	nodeType("select_remote_works", "target", "Select remote works", "Choose multiple remote works for a bulk action.", false, schemaObject("sourceId", "codes", "action"), schemaObject(), schemaObject("sourceId", "codes")),
 	nodeType("select_party", "target", "Select circle", "Choose a circle or party catalog target.", false, schemaObject("externalId", "provider"), schemaObject(), schemaObject("partyId", "externalId")),
+	nodeType("select_ranking", "target", "Configure ranking", "Choose a provider ranking period and release scope.", false, schemaObject("period", "releaseWindow", "year"), schemaObject(), schemaObject("period", "releaseWindow", "year")),
 
 	nodeType("discover_local_files", "discover", "Discover local files", "Scan local folders and detect work files.", true, schemaObject("includeExisting", "markMissing"), schemaObject("sourceId", "path"), schemaObject("files", "detectedWorks")),
 	nodeType("discover_remote_works", "discover", "Discover remote works", "Find remote works or remote matches.", true, schemaObject("query", "pageSize"), schemaObject("sourceIds", "codes"), schemaObject("remoteWorks")),
 	nodeType("discover_remote_collection", "discover", "Discover remote collection", "Fetch a named source collection such as popular works.", true, schemaObject("collectionKind", "pageSize"), schemaObject("sourceId"), schemaObject("works", "pagination")),
+	nodeType("discover_provider_ranking", "discover", "Discover provider ranking", "Fetch an ordered provider ranking without creating file-source presence.", false, schemaObject("provider", "period", "releaseWindow", "year"), schemaObject(), schemaObject("codes")),
 	nodeType("fetch_remote_tree", "discover", "Fetch remote tree", "Fetch a remote work file tree.", true, schemaObject("sourceId", "code"), schemaObject("sourceId", "code"), schemaObject("tracks", "snapshotBytes")),
 	nodeType("refresh_circle_catalog", "discover", "Refresh circle catalog", "Fetch and update a circle catalog.", false, schemaObject("mode", "productMode"), schemaObject("partyId", "externalId"), schemaObject("catalogWorks", "pagesFetched")),
 
@@ -55,6 +57,7 @@ var workflowNodeTypeRegistry = []workflowNodeTypeRecord{
 	nodeType("sync_file_locations", "commit", "Sync file locations", "Persist local, remote, or cache file locations.", true, schemaObject("locationType", "markMissing"), schemaObject("workId", "locations"), schemaObject("syncedLocations")),
 	nodeType("sync_metadata", "commit", "Sync metadata", "Persist metadata snapshots and normalized work fields.", true, schemaObject("provider", "language", "forceRefresh"), schemaObject("workIds", "codes"), schemaObject("syncedWorks", "skippedWorks", "failedWorks")),
 	nodeType("sync_tracked_presence", "commit", "Sync tracked presence", "Persist selected remote works as tracked source presence.", true, schemaObject("presenceType"), schemaObject("works", "sourceId"), schemaObject("tracked")),
+	nodeType("assign_user_tags", "commit", "Assign user tags", "Append user-owned tags to synchronized works.", false, schemaObject("tagName"), schemaObject("workIds", "userId"), schemaObject("tagged")),
 }
 
 var allowedWorkflowNodeTypes = workflowNodeTypeMap(workflowNodeTypeRegistry)
@@ -232,6 +235,17 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 			{"id": "discover", "type": "discover_remote_collection", "displayName": "Discover popular works"},
 			{"id": "filter", "type": "filter_candidates", "displayName": "Filter collection candidates"},
 			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Track or fetch works"},
+		},
+	},
+	{
+		Code:        "dlsite_popular_collection",
+		Name:        "Collect DLsite popular voice works",
+		Description: "Discover a DLsite voice ranking, synchronize work metadata, and append a run tag for the current user.",
+		Nodes: []map[string]string{
+			{"id": "configure", "type": "select_ranking", "displayName": "Configure ranking"},
+			{"id": "discover", "type": "discover_provider_ranking", "displayName": "Discover ranking"},
+			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
+			{"id": "tag", "type": "assign_user_tags", "displayName": "Add user tag"},
 		},
 	},
 	{

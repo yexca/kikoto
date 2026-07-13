@@ -3,11 +3,61 @@ package dlsite
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/maniax/ranking/day" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("category") != "voice" || r.URL.Query().Get("date") != "30d" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		_, _ = io.WriteString(w, `<dl class="work_1col"><dt class="work_name"><span class="period_date">Date</span><div class="icon_wrap"></div><a href="/maniax/work/=/product_id/RJ01111111.html">One</a></dt></dl>
+			<a href="/maniax/work/=/product_id/RJ09999999.html">Outside ranking</a>
+			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ02222222.html">Two</a></dt></dl>
+			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ01111111.html">Duplicate</a></dt></dl>`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "day", ReleaseWindow: "30d"})
+	if err != nil {
+		t.Fatalf("FetchVoiceRanking() error = %v", err)
+	}
+	if got, want := strings.Join(result.WorkCodes, ","), "RJ01111111,RJ02222222"; got != want {
+		t.Fatalf("work codes = %s, want %s", got, want)
+	}
+}
+
+func TestFetchVoiceRankingAnnualUsesYearAndDropsReleaseWindow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/maniax/ranking/year" || r.URL.Query().Get("year") != "2025" {
+			t.Fatalf("request = %s", r.URL.String())
+		}
+		if r.URL.Query().Has("date") {
+			t.Fatalf("annual ranking kept date: %s", r.URL.RawQuery)
+		}
+		_, _ = io.WriteString(w, `<div class="work_1col"><a href="/maniax/work/=/product_id/RJ01111111.html">One</a></div>`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	client.baseURL = server.URL
+	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "year", ReleaseWindow: "30d", Year: 2025})
+	if err != nil {
+		t.Fatalf("FetchVoiceRanking() error = %v", err)
+	}
+	if result.ReleaseWindow != "" || result.Year != 2025 {
+		t.Fatalf("result = %+v", result)
+	}
+}
 
 func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

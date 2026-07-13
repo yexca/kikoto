@@ -107,6 +107,61 @@ func (s *Server) replaceWorkUserTags(ctx context.Context, userID int64, workID i
 	return s.loadWorkUserTags(ctx, userID, workID)
 }
 
+func (s *Server) addWorkUserTag(ctx context.Context, userID int64, workIDs []int64, rawTag string) (int, error) {
+	name := strings.TrimSpace(rawTag)
+	if userID <= 0 || name == "" {
+		return 0, nil
+	}
+	runes := []rune(name)
+	if len(runes) > 40 {
+		name = string(runes[:40])
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var tagID int64
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM user_tag
+		WHERE user_id = ? AND LOWER(name) = LOWER(?)
+		ORDER BY id ASC LIMIT 1
+	`, userID, name).Scan(&tagID)
+	if errors.Is(err, sql.ErrNoRows) {
+		result, insertErr := tx.ExecContext(ctx, "INSERT INTO user_tag (user_id, name) VALUES (?, ?)", userID, name)
+		if insertErr != nil {
+			return 0, insertErr
+		}
+		tagID, err = result.LastInsertId()
+	}
+	if err != nil {
+		return 0, err
+	}
+	added := 0
+	seen := map[int64]bool{}
+	for _, workID := range workIDs {
+		if workID <= 0 || seen[workID] {
+			continue
+		}
+		seen[workID] = true
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO user_work_tag (user_id, work_id, user_tag_id)
+			SELECT ?, id, ? FROM work WHERE id = ?
+			ON CONFLICT(user_id, work_id, user_tag_id) DO NOTHING
+		`, userID, tagID, workID)
+		if err != nil {
+			return 0, err
+		}
+		if rows, err := result.RowsAffected(); err == nil {
+			added += int(rows)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return added, nil
+}
+
 func (s *Server) loadWorkUserTags(ctx context.Context, userID int64, workID int64) ([]workUserTag, error) {
 	tagsByWork, err := s.loadWorkUserTagsBatch(ctx, userID, []int64{workID})
 	if err != nil {

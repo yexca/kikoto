@@ -781,6 +781,20 @@ export type RemoteCollectionRunResult = {
   returnedCount: number;
 };
 
+export type DLsitePopularRunResult = {
+  runId: number;
+  status: string;
+  period: "day" | "week" | "month" | "year";
+  releaseWindow: "30d" | "";
+  year: number;
+  tagName: string;
+  discovered: number;
+  synced: number;
+  tagged: number;
+  failed: number;
+  failures: string[];
+};
+
 export type CircleSourceStat = {
   key: string;
   sourceId?: number | null;
@@ -1549,6 +1563,8 @@ export const api = {
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
+  runDLsitePopularCollection: (payload: { period: "day" | "week" | "month" | "year"; releaseWindow: "30d" | ""; year: number; tagName: string }) =>
+    postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
   recordRemoteBulkRun: (payload: {
     action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";
     sourceId: number;

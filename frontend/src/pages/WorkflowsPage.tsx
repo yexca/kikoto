@@ -15,6 +15,7 @@ import {
   Plus,
   Save,
   Search,
+  Tag,
   Trash2,
   Workflow,
   X,
@@ -61,8 +62,11 @@ type WorkflowTemplate = {
 
 const fallbackNodeTypes: WorkflowNodeType[] = [
   { type: "select_works", phase: "target", displayName: "Select works", description: "Choose known works.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+  { type: "select_ranking", phase: "target", displayName: "Configure ranking", description: "Choose a ranking period.", userVisible: false, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+  { type: "discover_provider_ranking", phase: "discover", displayName: "Discover provider ranking", description: "Fetch an ordered provider ranking.", userVisible: false, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
   { type: "filter_candidates", phase: "filter", displayName: "Filter candidates", description: "Filter workflow candidates.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
   { type: "sync_metadata", phase: "commit", displayName: "Sync metadata", description: "Persist metadata.", userVisible: true, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
+  { type: "assign_user_tags", phase: "commit", displayName: "Assign user tags", description: "Append user-owned tags.", userVisible: false, configSchema: "{}", inputSchema: "{}", outputSchema: "{}" },
 ];
 
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
@@ -105,12 +109,22 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-type SystemRunKind = "local_scan" | "metadata_sync" | "popular_track" | "popular_fetch";
+type SystemRunKind = "local_scan" | "metadata_sync" | "popular_track" | "popular_fetch" | "dlsite_popular";
+
+type DLsitePopularPeriod = "day" | "week" | "month" | "year";
+
+type DLsitePopularRunOptions = {
+  period: DLsitePopularPeriod;
+  releaseWindow: "30d" | "";
+  year: number;
+  tagName: string;
+};
 
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
   local_library_scan: ["local_scan"],
   metadata_sync: ["metadata_sync"],
   remote_popular_collection: ["popular_track", "popular_fetch"],
+  dlsite_popular_collection: ["dlsite_popular"],
 };
 
 const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode: boolean) => {
@@ -131,10 +145,12 @@ export function WorkflowsPage({
   surface,
   canRun,
   canSyncMetadata,
+  canTagWorks,
 }: {
   surface: Surface;
   canRun: boolean;
   canSyncMetadata: boolean;
+  canTagWorks: boolean;
 }) {
   const toast = useToast();
   const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
@@ -216,11 +232,10 @@ export function WorkflowsPage({
 
   const definitionView: DefinitionView = workflowView === "system" ? "system" : "definitions";
   const visibleDefinitions = useMemo(() => {
-    const scope = definitionView === "system" ? "system" : "user";
-    return sortDefinitionsForSidebar(
-      definitions.filter((definition) => definition.scope === scope),
-      definitionView === "system",
-    );
+    if (definitionView === "system") {
+      return sortDefinitionsForSidebar(definitions.filter((definition) => definition.scope === "system"), true);
+    }
+    return definitions.filter((definition) => definition.scope === "user" || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
   }, [definitionView, definitions]);
   const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
   const visibleRuns = runs;
@@ -233,11 +248,8 @@ export function WorkflowsPage({
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
-  const selectedSystemRunKinds =
-    workflowView === "system" && selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
-  const definitionEmptyText = workflowView === "system"
-    ? "No system workflows are registered."
-    : "No user workflows exist yet. Create one to define a reusable pipeline.";
+  const selectedSystemRunKinds = selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
+  const definitionEmptyText = "No runnable or custom workflow definitions exist yet.";
 
   useEffect(() => {
     if (isWorkflowMetaLoading || workflowView === "scheduled") return;
@@ -352,11 +364,28 @@ export function WorkflowsPage({
     }
   };
 
+  const runDLsitePopularCollection = async (options: DLsitePopularRunOptions) => {
+    setRunningSystemAction("dlsite_popular");
+    try {
+      const result = await api.runDLsitePopularCollection(options);
+      toast.success(`DLsite popular run #${result.runId} queued with tag ${result.tagName}.`);
+      refresh();
+      setActivityView("running");
+      setRunPage(1);
+      refreshRuns(1, "running", runQuery);
+    } catch (error) {
+      toast.notify(toastFromError(error, "DLsite popular collection could not be queued."));
+    } finally {
+      setRunningSystemAction(null);
+    }
+  };
+
   const runSystemAction = async (kind: SystemRunKind) => {
     if (kind === "local_scan") return runLocalScan();
     if (kind === "metadata_sync") return runMetadataSync();
     if (kind === "popular_track") return runPopularCollection("track");
     if (kind === "popular_fetch") return runPopularCollection("fetch");
+    if (kind === "dlsite_popular") return;
   };
 
   const systemActionBusy = (kind: SystemRunKind) => {
@@ -367,6 +396,7 @@ export function WorkflowsPage({
 
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (kind === "metadata_sync") return canSyncMetadata;
+    if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     return canRun;
   };
 
@@ -413,7 +443,7 @@ export function WorkflowsPage({
         <div>
           <h2 className="text-lg font-semibold">{surface === "activity" ? "Activity" : "Workflows"}</h2>
           <p className="text-sm text-muted-foreground">
-            {surface === "activity" ? "Inspect runs by node state and failure point." : "Build workflows on the left; inspect and edit their node pipeline on the right."}
+            {surface === "activity" ? "Inspect runs by node state and failure point." : "Run built-in operations or manage custom definition drafts."}
           </p>
         </div>
       </div>
@@ -426,9 +456,6 @@ export function WorkflowsPage({
             </ViewButton>
             <ViewButton active={workflowView === "scheduled"} onClick={() => selectWorkflowView("scheduled")} icon={<CalendarClock className="h-4 w-4" />}>
               Scheduled
-            </ViewButton>
-            <ViewButton active={workflowView === "system"} onClick={() => selectWorkflowView("system")} icon={<Database className="h-4 w-4" />}>
-              System
             </ViewButton>
           </SegmentedNav>
 
@@ -463,7 +490,6 @@ export function WorkflowsPage({
                   definitions={visibleDefinitions}
                   selectedId={selectedDefinition?.id ?? null}
                   canCreate={workflowView === "definitions"}
-                  systemMode={workflowView === "system"}
                   loading={isWorkflowMetaLoading}
                   emptyText={definitionEmptyText}
                   onSelect={selectDefinition}
@@ -474,11 +500,12 @@ export function WorkflowsPage({
                 <WorkflowDetail
                   definition={selectedDefinition}
                   nodeTypes={nodeTypes}
-                  readonly={workflowView === "system" || !selectedDefinition?.editable}
+                  readonly={!selectedDefinition?.editable}
                   systemRunKinds={selectedSystemRunKinds}
                   isSystemActionRunning={systemActionBusy}
                   canRunSystemAction={systemActionAllowed}
                   onRunSystemAction={runSystemAction}
+                  onRunDLsitePopular={runDLsitePopularCollection}
                   emptyText={definitionEmptyText}
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
@@ -622,7 +649,6 @@ function DefinitionSidebar({
   definitions,
   selectedId,
   canCreate,
-  systemMode = false,
   loading,
   emptyText,
   onSelect,
@@ -631,21 +657,26 @@ function DefinitionSidebar({
   definitions: WorkflowDefinition[];
   selectedId: number | null;
   canCreate: boolean;
-  systemMode?: boolean;
   loading?: boolean;
   emptyText: string;
   onSelect: (definition: WorkflowDefinition) => void;
   onCreate: () => void;
 }) {
-  const sortedDefinitions = sortDefinitionsForSidebar(definitions, systemMode);
+  const readyDefinitions = sortDefinitionsForSidebar(
+    definitions.filter((definition) => definition.scope === "system" && Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length)),
+    true,
+  );
+  const customDefinitions = definitions
+    .filter((definition) => definition.scope === "user")
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
 
   return (
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between gap-2 px-1">
           <div>
-            <div className="text-sm font-semibold">{systemMode ? "System workflow catalog" : "Workflow list"}</div>
-            {systemMode && <div className="text-xs text-muted-foreground">Built-in workflows are read-only.</div>}
+            <div className="text-sm font-semibold">Definitions</div>
+            <div className="text-xs text-muted-foreground">Runnable presets and custom drafts.</div>
           </div>
           {canCreate && (
             <Button size="sm" onClick={onCreate}>
@@ -654,46 +685,62 @@ function DefinitionSidebar({
             </Button>
           )}
         </div>
-        <div className="space-y-2">
+        <div className="space-y-4">
           {loading ? (
             <SidebarSkeletonRows count={6} />
-          ) : sortedDefinitions.map((definition) => {
-            const systemRunKinds = manuallyRunnableSystemWorkflows[definition.code] ?? [];
-            const hasManualAction = systemRunKinds.length > 0;
-            return (
-              <button
-                key={definition.id}
-                className={`w-full rounded-md border p-3 text-left transition-colors ${
-                  selectedId === definition.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
-                }`}
-                onClick={() => onSelect(definition)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold">{definition.displayName}</div>
-                    <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                    <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
-                    {definition.scope === "system" && (
-                      <Badge variant={hasManualAction ? "default" : "secondary"}>{hasManualAction ? "Manual" : "Read only"}</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span>{parseNodes(definition.definitionJson).length} nodes</span>
-                  <span>{definition.triggerCount} triggers</span>
-                  {definition.scope === "system" && (
-                    <span>{hasManualAction ? "manual action available" : "triggered by app actions"}</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+          ) : (
+            <>
+              {readyDefinitions.length > 0 && (
+                <DefinitionGroup label="Ready to run">
+                  {readyDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
+                </DefinitionGroup>
+              )}
+              <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
+                {customDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
+              </DefinitionGroup>
+            </>
+          )}
           {!loading && definitions.length === 0 && <EmptyPanel text={emptyText} />}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function DefinitionGroup({ label, action, children }: { label: string; action?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
+        {action && <span className="font-normal">{action}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DefinitionListItem({ definition, selected, onSelect }: { definition: WorkflowDefinition; selected: boolean; onSelect: (definition: WorkflowDefinition) => void }) {
+  const hasManualAction = Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length);
+  return (
+    <button
+      className={`w-full rounded-md border p-3 text-left transition-colors ${selected ? "border-primary bg-secondary" : "bg-card hover:bg-muted"}`}
+      onClick={() => onSelect(definition)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{definition.displayName}</div>
+          <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+          <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope === "system" ? "Built-in" : "Custom"}</Badge>
+          {hasManualAction && <Badge>Manual</Badge>}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <span>{parseNodes(definition.definitionJson).length} nodes</span>
+        <span>{definition.triggerCount} triggers</span>
+      </div>
+    </button>
   );
 }
 
@@ -917,6 +964,7 @@ function WorkflowDetail({
   isSystemActionRunning,
   canRunSystemAction,
   onRunSystemAction,
+  onRunDLsitePopular,
   emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
   onEditTrigger,
@@ -930,6 +978,7 @@ function WorkflowDetail({
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind) => Promise<void>;
+  onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   emptyText?: string;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
@@ -969,7 +1018,7 @@ function WorkflowDetail({
                 Edit workflow
               </Button>
             )}
-            {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.map((kind) => {
+            {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.filter((kind) => kind !== "dlsite_popular").map((kind) => {
               const running = isSystemActionRunning?.(kind) ?? false;
               const allowed = canRunSystemAction?.(kind) ?? false;
               return (
@@ -981,6 +1030,14 @@ function WorkflowDetail({
             })}
           </div>
         </div>
+
+        {systemRunKinds?.includes("dlsite_popular") && onRunDLsitePopular && (
+          <DLsitePopularRunPanel
+            running={isSystemActionRunning?.("dlsite_popular") ?? false}
+            allowed={canRunSystemAction?.("dlsite_popular") ?? false}
+            onRun={onRunDLsitePopular}
+          />
+        )}
 
         {definition.scope === "system" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -1006,7 +1063,87 @@ function systemRunKindLabel(kind: SystemRunKind) {
       return "Track popular";
     case "popular_fetch":
       return "Fetch popular";
+    case "dlsite_popular":
+      return "Collect DLsite popular";
   }
+}
+
+function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; allowed: boolean; onRun: (options: DLsitePopularRunOptions) => Promise<void> }) {
+  const [period, setPeriod] = useState<DLsitePopularPeriod>("day");
+  const [recentOnly, setRecentOnly] = useState(true);
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const releaseWindow: "30d" | "" = period === "year" ? "" : recentOnly ? "30d" : "";
+  const tagName = dlsitePopularTagName(period, releaseWindow, year, new Date());
+  const years = Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index);
+  const periodOptions: { value: DLsitePopularPeriod; label: string }[] = [
+    { value: "day", label: "24h" },
+    { value: "week", label: "7d" },
+    { value: "month", label: "30d" },
+    { value: "year", label: "Year" },
+  ];
+
+  return (
+    <div className="rounded-md border bg-background p-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.7fr)]">
+        <div className="space-y-4">
+          <div>
+            <div className="text-sm font-medium">Ranking period</div>
+            <div className="mt-2 inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1" aria-label="DLsite ranking period">
+              {periodOptions.map((option) => (
+                <button
+                  key={option.value}
+                  className={`h-8 shrink-0 rounded px-3 text-sm font-medium transition-colors ${period === option.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  aria-pressed={period === option.value}
+                  onClick={() => setPeriod(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {period === "year" ? (
+            <label className="grid max-w-56 gap-2 text-sm font-medium">
+              Ranking year
+              <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={year} onChange={(event) => setYear(Number(event.target.value))}>
+                {years.map((item) => <option key={item} value={item}>{item}{item === currentYear ? " (current)" : ""}</option>)}
+              </select>
+            </label>
+          ) : (
+            <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2.5">
+              <div>
+                <div className="text-sm font-medium">Recent releases only</div>
+                <div className="text-xs text-muted-foreground">Limit the ranking to works released within 30 days.</div>
+              </div>
+              <Switch checked={recentOnly} onCheckedChange={setRecentOnly} aria-label="Only works released within 30 days" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-col justify-between gap-4 border-t pt-4 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Tag className="h-3.5 w-3.5" />
+              Tag preview
+            </div>
+            <code className="mt-2 block break-all rounded-md bg-muted px-3 py-2 text-xs">{tagName}</code>
+          </div>
+          <Button disabled={running || !allowed} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName })}>
+            <Play className="h-4 w-4" />
+            {running ? "Queueing" : "Run collection"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function dlsitePopularTagName(period: DLsitePopularPeriod, releaseWindow: "30d" | "", year: number, now: Date) {
+  const date = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  if (period === "year") return `${date}-DL-year-${year}-popular`;
+  const periodLabel = period === "day" ? "24h" : period === "week" ? "7d" : "30d";
+  return `${date}-DL-${periodLabel}-${releaseWindow === "30d" ? "r30d" : "all"}-popular`;
 }
 
 function RunDetail({
@@ -2274,7 +2411,7 @@ function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
 
 function storedWorkflowView(): WorkflowView {
   const value = readSessionValue(workflowViewStorageKey);
-  return value === "definitions" || value === "scheduled" || value === "system" ? value : "definitions";
+  return value === "scheduled" ? value : "definitions";
 }
 
 function storedPositiveInt(key: string) {

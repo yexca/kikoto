@@ -78,3 +78,30 @@ func TestSetWorkUserTagsReturnsUserTags(t *testing.T) {
 		t.Fatalf("set work tags response = %#v", payload)
 	}
 }
+
+func TestAddWorkUserTagPreservesExistingTagsAndIsIdempotent(t *testing.T) {
+	db := openMigratedTestDB(t)
+	userResult, _ := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('tag-add', 'Tag Add', 'user')")
+	userID, _ := userResult.LastInsertId()
+	workResult, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999003', 'Add tag work')")
+	workID, _ := workResult.LastInsertId()
+	server := NewServer(db, config.Config{})
+	if _, err := server.replaceWorkUserTags(context.Background(), userID, workID, []string{"Existing"}); err != nil {
+		t.Fatal(err)
+	}
+	added, err := server.addWorkUserTag(context.Background(), userID, []int64{workID, workID}, " Popular ")
+	if err != nil || added != 1 {
+		t.Fatalf("first add = %d, %v", added, err)
+	}
+	added, err = server.addWorkUserTag(context.Background(), userID, []int64{workID}, "popular")
+	if err != nil || added != 0 {
+		t.Fatalf("second add = %d, %v", added, err)
+	}
+	tags, err := server.loadWorkUserTags(context.Background(), userID, workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 || tags[0].Name != "Existing" || tags[1].Name != "Popular" {
+		t.Fatalf("tags = %#v", tags)
+	}
+}

@@ -23,9 +23,22 @@ workflow_definition
 - Media cache.
 - Remote work fetch.
 - Remote bulk action.
+- Remote popular collection.
+- DLsite popular voice collection.
 - Cache cleanup.
 - Local location cleanup.
 - Circle metadata refresh.
+
+## Popular Collections
+
+Remote popular collection reads the configured compatible file source's own
+recommendations and may track or fetch those remote works.
+
+DLsite popular voice collection reads the provider ranking for 24 hours, 7
+days, 30 days, or a selected year. Non-annual runs may be limited to works
+released within 30 days. The recoverable worker synchronizes metadata and
+appends a run-specific tag owned by the user who started the run. It does not
+create remote file-source presence or fetch media.
 
 ## Source Availability
 

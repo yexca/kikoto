@@ -189,6 +189,19 @@ type MakerCatalogOptions struct {
 	Languages      []string
 }
 
+type RankingOptions struct {
+	Period        string
+	ReleaseWindow string
+	Year          int
+}
+
+type RankingResult struct {
+	Period        string   `json:"period"`
+	ReleaseWindow string   `json:"releaseWindow"`
+	Year          int      `json:"year"`
+	WorkCodes     []string `json:"workCodes"`
+}
+
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
@@ -230,6 +243,62 @@ func (c *Client) FetchProductWithOptions(ctx context.Context, workno string, opt
 
 func (c *Client) FetchMakerProfile(ctx context.Context, makerID string) (MakerProfile, error) {
 	return c.FetchMakerCatalog(ctx, makerID, MakerCatalogOptions{Mode: "incremental"})
+}
+
+func (c *Client) FetchVoiceRanking(ctx context.Context, options RankingOptions) (RankingResult, error) {
+	period := strings.ToLower(strings.TrimSpace(options.Period))
+	switch period {
+	case "day", "week", "month", "year":
+	default:
+		return RankingResult{}, fmt.Errorf("unsupported DLsite ranking period %q", options.Period)
+	}
+	releaseWindow := strings.ToLower(strings.TrimSpace(options.ReleaseWindow))
+	if period == "year" {
+		releaseWindow = ""
+	} else if releaseWindow != "" && releaseWindow != "30d" {
+		return RankingResult{}, fmt.Errorf("unsupported DLsite ranking release window %q", options.ReleaseWindow)
+	}
+	if period == "year" {
+		currentYear := time.Now().UTC().Year()
+		if options.Year < 2000 || options.Year > currentYear {
+			return RankingResult{}, fmt.Errorf("DLsite ranking year must be between 2000 and %d", currentYear)
+		}
+	} else if options.Year != 0 {
+		return RankingResult{}, fmt.Errorf("DLsite ranking year is only valid for annual rankings")
+	}
+
+	params := url.Values{"category": []string{"voice"}}
+	if releaseWindow != "" {
+		params.Set("date", releaseWindow)
+	}
+	if period == "year" {
+		params.Set("year", strconv.Itoa(options.Year))
+	}
+	endpoint := fmt.Sprintf("%s/maniax/ranking/%s?%s", strings.TrimRight(c.baseURL, "/"), period, params.Encode())
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return RankingResult{}, err
+	}
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("Accept-Language", "ja,en;q=0.8")
+	request.Header.Set("User-Agent", c.userAgent)
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return RankingResult{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return RankingResult{}, HTTPStatusError{Operation: "dlsite ranking", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024))
+	if err != nil {
+		return RankingResult{}, err
+	}
+	codes := parseRankingWorkCodes(string(body))
+	if len(codes) == 0 {
+		return RankingResult{}, fmt.Errorf("DLsite ranking returned no voice works")
+	}
+	return RankingResult{Period: period, ReleaseWindow: releaseWindow, Year: options.Year, WorkCodes: codes}, nil
 }
 
 func (c *Client) FetchMakerCatalog(ctx context.Context, makerID string, options MakerCatalogOptions) (MakerProfile, error) {
@@ -658,12 +727,30 @@ func candidateMakerSites(makerID string) []string {
 var (
 	titlePattern          = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	workLinkPattern       = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	rankingWorkPattern    = regexp.MustCompile(`(?is)<(?:dl|li|div)\b[^>]*\bclass=["'][^"']*\bwork_1col\b[^"']*["'][^>]*>.*?<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["']`)
 	seriesLinkPattern     = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["']([^"']*/fsr/=/title_id/(SRI[0-9]+)/[^"']*)["'][^>]*>(.*?)</a>`)
 	pageTotalPattern      = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
 	numberTextPattern     = regexp.MustCompile(`[0-9][0-9,]*`)
 	pagePathPattern       = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
 	defaultMakerLanguages = []string{"JPN", "ENG", "CHI_HANS", "CHI_HANT", "KO_KR", "SPA", "GER", "FRE", "IND", "ITA", "POR", "SWE", "THA", "VIE", "OTL", "NM"}
 )
+
+func parseRankingWorkCodes(rawHTML string) []string {
+	codes := make([]string, 0, 100)
+	seen := map[string]bool{}
+	for _, match := range rankingWorkPattern.FindAllStringSubmatch(rawHTML, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		code := strings.ToUpper(strings.TrimSpace(match[1]))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	return codes
+}
 
 func parseMakerName(rawHTML string) string {
 	match := titlePattern.FindStringSubmatch(rawHTML)

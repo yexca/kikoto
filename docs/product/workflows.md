@@ -4,7 +4,8 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- Workflows: definitions, scheduled triggers, and system definitions.
+- Workflows: runnable built-in definitions, custom definition drafts, and
+  scheduled triggers.
 - Activity: running, review, failed, completed, and log views.
 
 ## Current Behavior
@@ -15,6 +16,12 @@ Workflows make backend actions inspectable.
 - Candidates expose reviewable outcomes.
 - Informational review runs can be acknowledged separately from candidate
   decisions.
+- Definitions puts manually runnable built-ins ahead of custom drafts. Internal
+  system definitions that have no manual action are omitted from this surface.
+- DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
+  rankings. Recent periods can be limited to works released within 30 days;
+  annual runs select an explicit year. Runs synchronize metadata and append the
+  displayed user tag without replacing existing user tags.
 
 ## Later Work
 
