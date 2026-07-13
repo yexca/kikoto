@@ -142,6 +142,7 @@ type voiceKnownWork struct {
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
 	Tags             []string            `json:"tags"`
+	UserTags         []workUserTag       `json:"userTags"`
 	VoiceActors      []string            `json:"voiceActors"`
 	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Series           string              `json:"series"`
@@ -872,7 +873,24 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 		seen[key] = len(works)
 		works = append(works, item)
 	}
-	return works, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	workIDs := make([]int64, 0, len(works))
+	for _, work := range works {
+		workIDs = append(workIDs, work.WorkID)
+	}
+	tagsByWork, err := s.loadWorkUserTagsBatch(ctx, userID, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range works {
+		works[index].UserTags = tagsByWork[works[index].WorkID]
+	}
+	return works, nil
 }
 
 func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
@@ -900,6 +918,9 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	}
 	if len(target.Tags) == 0 {
 		target.Tags = item.Tags
+	}
+	if len(target.UserTags) == 0 {
+		target.UserTags = item.UserTags
 	}
 	if target.Series == "" {
 		target.Series = item.Series

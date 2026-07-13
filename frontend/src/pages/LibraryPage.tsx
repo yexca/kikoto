@@ -52,6 +52,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
@@ -111,6 +112,7 @@ import {
   WorkCardShell,
   cardDate,
   dlsiteTagBadges,
+  userTagBadges,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
@@ -196,6 +198,8 @@ type SearchClauseKind =
   | "voice_actor"
   | "tag"
   | "exclude_tag"
+  | "user_tag"
+  | "exclude_user_tag"
   | "rating_min"
   | "sales_min"
   | "duration_min"
@@ -211,6 +215,8 @@ const editableSearchClauseKinds: { value: SearchClauseKind; label: string }[] = 
   { value: "voice_actor", label: "Voice actor" },
   { value: "tag", label: "Tag" },
   { value: "exclude_tag", label: "Not tag" },
+  { value: "user_tag", label: "My tag" },
+  { value: "exclude_user_tag", label: "Not my tag" },
   { value: "rating_min", label: "Rating >=" },
   { value: "sales_min", label: "Sales >=" },
   { value: "duration_min", label: "Duration >=" },
@@ -807,11 +813,11 @@ export function LibraryPage() {
     setSearchQuery(clauses.map(formatSearchClause).join(" "));
   };
 
-  const addTagSearchClause = (tag: string) => {
+  const addNamedTagSearchClause = (kind: "tag" | "user_tag", tag: string) => {
     const value = tag.trim();
     if (!value) return;
-    const next = searchClauses.filter((clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()));
-    const nextClauses = [...next, { kind: "tag" as const, value }];
+    const next = searchClauses.filter((clause) => !(clause.kind === kind && clause.value.toLowerCase() === value.toLowerCase()));
+    const nextClauses = [...next, { kind, value }];
     const nextQuery = nextClauses.map(formatSearchClause).join(" ");
     const nextLibraryQuery = compileLibrarySearchQuery(nextClauses);
     const nextRemoteQuery = formatRemoteSearchQuery(nextClauses);
@@ -830,6 +836,8 @@ export function LibraryPage() {
     skipNextLibraryEffect.current = true;
     loadLibraryWorksNow(nextLibraryQuery, 1);
   };
+  const addTagSearchClause = (tag: string) => addNamedTagSearchClause("tag", tag);
+  const addUserTagSearchClause = (tag: string) => addNamedTagSearchClause("user_tag", tag);
 
   const removeSearchClause = (index: number) => {
     updateSearchClauses(searchClauses.filter((_clause, clauseIndex) => clauseIndex !== index));
@@ -1133,6 +1141,7 @@ export function LibraryPage() {
                       setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                     }}
                     onTagOpen={addTagSearchClause}
+                    onUserTagOpen={addUserTagSearchClause}
                     onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                     onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
                     isFetchBusy={isTrackedFetching}
@@ -1153,6 +1162,7 @@ export function LibraryPage() {
                     setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
                   }}
                   onTagOpen={addTagSearchClause}
+                  onUserTagOpen={addUserTagSearchClause}
                   onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                   onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
                   isFetchBusy={isTrackedFetching}
@@ -1688,6 +1698,7 @@ function WorkCard({
   onStatusChange,
   onFavoriteSaved,
   onTagOpen,
+  onUserTagOpen,
   onUntrack,
   onFetch,
   isFetchBusy,
@@ -1697,11 +1708,12 @@ function WorkCard({
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteSaved: (workID: number, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
+  onUserTagOpen: (tag: string) => void;
   onUntrack?: (source: SourcePresenceItem) => void;
   onFetch?: (source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
-  const view = libraryWorkCardView(work);
+  const view = libraryWorkCardView(work, onUserTagOpen);
   const trackedSource = trackedSourceForWork(work);
 
   return (
@@ -1910,7 +1922,7 @@ function UntrackConfirmModal({
   );
 }
 
-function libraryWorkCardView(work: Work): WorkCardViewModel {
+function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
@@ -1924,7 +1936,7 @@ function libraryWorkCardView(work: Work): WorkCardViewModel {
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
     progress: work.progress,
-    userTags: [],
+    userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
 		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
   };
 }
@@ -2843,6 +2855,18 @@ function WorkDetailView({
   const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;
   const canTrackRemote = Boolean(selectedRemoteSource?.detail?.primaryCode && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote);
 
+  const saveWorkUserTags = async (tags: string[]) => {
+    if (!work) return;
+    try {
+      await api.setWorkUserTags(work.id, tags);
+      await Promise.all([onWorkReload(work.id), onWorksChanged()]);
+      toast.success("My tags updated.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "My tags could not be updated."));
+      throw error;
+    }
+  };
+
   useEffect(() => {
     if (mediaLoading && (localDirectoryWork?.mediaItems.length ?? 0) === 0 && !selectedRemoteDetail) {
       setIsDirectoryLoading(true);
@@ -3335,6 +3359,15 @@ function WorkDetailView({
   }
 
   const hero = detailHeroModel(code, work, workPreview);
+  const personalTags = work ? (
+    <div className="space-y-2 rounded-lg border bg-card p-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Tags className="h-4 w-4" />
+        My tags
+      </div>
+      <UserTagRow tags={work.userTags ?? []} onSave={saveWorkUserTags} />
+    </div>
+  ) : undefined;
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
   const detailActions = work ? <DetailActionBar
     canPlay={allTracks.length > 0}
@@ -3483,6 +3516,7 @@ function WorkDetailView({
           voiceActors={hero.voiceActors}
           voiceCredits={work?.voiceCredits ?? []}
           tags={hero.tags}
+          personalTags={personalTags}
           loading={isDetailLoading}
           activeTab={mobileDetailTab}
           onActiveTabChange={setMobileDetailTab}
@@ -3517,6 +3551,7 @@ function WorkDetailView({
             voiceActors={hero.voiceActors}
             voiceCredits={work?.voiceCredits ?? []}
             tags={hero.tags}
+            personalTags={personalTags}
             loading={isDetailLoading}
             actions={detailActions}
           />
@@ -3600,6 +3635,7 @@ function DetailHero({
   voiceActors,
   voiceCredits,
   tags,
+  personalTags,
   loading = false,
   actions,
 }: {
@@ -3628,6 +3664,7 @@ function DetailHero({
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   tags: string[];
+  personalTags?: ReactNode;
   loading?: boolean;
   actions?: ReactNode;
 }) {
@@ -3679,6 +3716,7 @@ function DetailHero({
           entityResolver={entityResolver}
         />
 
+        {personalTags}
         {actions && <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
       </div>
     </section>
@@ -3711,6 +3749,7 @@ function MobileWorkDetailLayout({
   voiceActors,
   voiceCredits,
   tags,
+  personalTags,
   loading,
   activeTab,
   onActiveTabChange,
@@ -3742,6 +3781,7 @@ function MobileWorkDetailLayout({
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   tags: string[];
+  personalTags?: ReactNode;
   loading?: boolean;
   activeTab: "info" | "directory";
   onActiveTabChange: (tab: "info" | "directory") => void;
@@ -3813,6 +3853,7 @@ function MobileWorkDetailLayout({
             code={code}
             entityResolver={entityResolver}
           />
+          {personalTags}
         </div>
       ) : (
         directory
@@ -7635,7 +7676,7 @@ function listeningStatusLabel(status: ListeningStatus) {
 function parseSearchClauses(query: string): SearchClause[] {
   const clauses: SearchClause[] = [];
   let rest = query;
-  const wrappedPattern = /\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$/gi;
+  const wrappedPattern = /\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$/gi;
   rest = rest.replace(wrappedPattern, (_match, key: string, value: string) => {
     const clause = searchClauseFromKeyValue(key, value);
     if (clause) clauses.push(clause);
@@ -7646,7 +7687,7 @@ function parseSearchClauses(query: string): SearchClause[] {
     const rawPart = parts[index];
     const part = rawPart.trim();
     if (!part) continue;
-    const pendingPrefix = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):$/i);
+    const pendingPrefix = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):$/i);
     if (pendingPrefix && index + 1 < parts.length) {
       const clause = searchClauseFromKeyValue(pendingPrefix[1], parts[index + 1]);
       if (clause) {
@@ -7655,7 +7696,7 @@ function parseSearchClauses(query: string): SearchClause[] {
         continue;
       }
     }
-    const prefixed = part.match(/^(-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
+    const prefixed = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
     if (prefixed) {
       const clause = searchClauseFromKeyValue(prefixed[1], prefixed[2]);
       if (clause) {
@@ -7730,6 +7771,10 @@ function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause |
     case "-tag":
     case "-tagw":
       return { kind: "exclude_tag", value };
+    case "mytag":
+      return { kind: "user_tag", value };
+    case "-mytag":
+      return { kind: "exclude_user_tag", value };
     case "rate":
     case "rating":
       return { kind: "rating_min", value };
@@ -7773,6 +7818,10 @@ function compileLibrarySearchQuery(clauses: SearchClause[]) {
         return `$tag:${clause.value}$`;
       case "exclude_tag":
         return `$-tag:${clause.value}$`;
+      case "user_tag":
+        return `$mytag:${clause.value}$`;
+      case "exclude_user_tag":
+        return `$-mytag:${clause.value}$`;
       case "rating_min":
         return `rating:${clause.value}`;
       case "sales_min":
@@ -7788,7 +7837,10 @@ function compileLibrarySearchQuery(clauses: SearchClause[]) {
 }
 
 function formatRemoteSearchQuery(clauses: SearchClause[]) {
-  return clauses.map(formatRemoteSearchClause).join(" ");
+  return clauses
+    .filter((clause) => clause.kind !== "user_tag" && clause.kind !== "exclude_user_tag")
+    .map(formatRemoteSearchClause)
+    .join(" ");
 }
 
 function formatRemoteSearchClause(clause: SearchClause) {
@@ -7837,6 +7889,10 @@ function workMatchesClause(work: Work, clause: SearchClause) {
       return work.tags.some((tag) => tag.toLowerCase().includes(value));
     case "exclude_tag":
       return !work.tags.some((tag) => tag.toLowerCase().includes(value));
+    case "user_tag":
+      return (work.userTags ?? []).some((tag) => tag.name.toLowerCase().includes(value));
+    case "exclude_user_tag":
+      return !(work.userTags ?? []).some((tag) => tag.name.toLowerCase().includes(value));
     case "rating_min":
       return work.rating !== null && work.rating >= numericClauseValue(value);
     case "sales_min":
@@ -7851,7 +7907,7 @@ function workMatchesClause(work: Work, clause: SearchClause) {
     case "text":
     default:
       return workMatchesText(
-        [work.primaryCode, work.title, work.circle, work.circleExternalId, work.releaseDate ?? "", ...work.tags, ...work.voiceActors],
+        [work.primaryCode, work.title, work.circle, work.circleExternalId, work.releaseDate ?? "", ...work.tags, ...(work.userTags ?? []).map((tag) => tag.name), ...work.voiceActors],
         value,
       );
   }
@@ -7883,6 +7939,8 @@ function remoteWorkMatchesClause(work: RemoteWork, clause: SearchClause) {
     case "sales_min":
       return work.sales !== null && work.sales >= numericClauseValue(value);
     case "voice_actor":
+    case "user_tag":
+    case "exclude_user_tag":
     case "age":
     case "language":
     case "duration_min":
@@ -7911,6 +7969,10 @@ function searchClauseLabel(clause: SearchClause) {
       return `Tag: ${clause.value}`;
     case "exclude_tag":
       return `Exclude tag: ${clause.value}`;
+    case "user_tag":
+      return `My tag: ${clause.value}`;
+    case "exclude_user_tag":
+      return `Exclude my tag: ${clause.value}`;
     case "rating_min":
       return `Rating >= ${clause.value}`;
     case "sales_min":
@@ -7947,6 +8009,10 @@ function formatSearchClause(clause: SearchClause) {
       return `tag:${value}`;
     case "exclude_tag":
       return `-tag:${value}`;
+    case "user_tag":
+      return `mytag:${value}`;
+    case "exclude_user_tag":
+      return `-mytag:${value}`;
     case "rating_min":
       return `rating:${clause.value}`;
     case "sales_min":

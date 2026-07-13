@@ -46,3 +46,5 @@ remote source management, and playback.
   content has rendered. Retry only deep history restoration, and cancel pending
   retries as soon as the user expresses scroll intent. Page-level cleanup must
   not overwrite another entry's saved position.
+- For collection-to-detail navigation, persist shareable filters in the URL and
+  keep ephemeral selection/focus anchors in the originating history entry.

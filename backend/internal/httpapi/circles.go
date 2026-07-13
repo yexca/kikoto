@@ -87,6 +87,7 @@ type circleCatalogWork struct {
 	Circle           string              `json:"circle"`
 	CircleExternalID string              `json:"circleExternalId"`
 	Tags             []string            `json:"tags"`
+	UserTags         []workUserTag       `json:"userTags"`
 	VoiceActors      []string            `json:"voiceActors"`
 	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Rating           *float64            `json:"rating"`
@@ -1230,7 +1231,30 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		seen[key] = len(works)
 		works = append(works, item)
 	}
-	return works, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	workIDs := make([]int64, 0, len(works))
+	for _, work := range works {
+		if work.WorkID != nil {
+			workIDs = append(workIDs, *work.WorkID)
+		}
+	}
+	tagsByWork, err := s.loadWorkUserTagsBatch(ctx, userID, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range works {
+		if works[index].WorkID != nil {
+			works[index].UserTags = tagsByWork[*works[index].WorkID]
+		} else {
+			works[index].UserTags = []workUserTag{}
+		}
+	}
+	return works, nil
 }
 
 func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
@@ -1255,6 +1279,9 @@ func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
 	}
 	if len(target.Tags) == 0 {
 		target.Tags = item.Tags
+	}
+	if len(target.UserTags) == 0 {
+		target.UserTags = item.UserTags
 	}
 	if target.Rating == nil {
 		target.Rating = item.Rating

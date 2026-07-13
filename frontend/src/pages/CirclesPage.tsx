@@ -31,6 +31,7 @@ import {
   WorkCardShell,
   cardDate,
   dlsiteTagBadges,
+  userTagBadges,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
@@ -1180,7 +1181,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(work.releaseDate, work.updatedAt),
     progress: work.progress ?? null,
-    userTags: [],
+    userTags: userTagBadges(work.userTags ?? []),
     sourceBadges: statusBadges,
   };
 }

@@ -25,6 +25,16 @@ func TestParseSearchClausesSupportsWrappedLegacySyntax(t *testing.T) {
 	}
 }
 
+func TestParseSearchClausesSupportsPersonalTags(t *testing.T) {
+	want := []SearchClause{
+		{Kind: "user_tag", Value: "Sleep aid"},
+		{Kind: "exclude_user_tag", Value: "Archived"},
+	}
+	if got := ParseSearchClauses(`mytag:"Sleep aid" -mytag:Archived`); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+}
+
 func TestNumericClauseValueIgnoresUnits(t *testing.T) {
 	if got := NumericClauseValue("4.75 stars"); got != 4.75 {
 		t.Fatalf("NumericClauseValue() = %v, want 4.75", got)

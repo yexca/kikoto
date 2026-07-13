@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, assetURL, type FavoriteList, type ListeningStatus, type VoiceCredit, type WorkEntityLink, type WorkProgressSummary } from "@/lib/api";
+import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink, type WorkProgressSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export type WorkCardBadge = {
@@ -236,11 +236,25 @@ function WorkCardBody({
       {work.progress?.mediaItemId && <WorkProgressLine progress={work.progress} />}
       {work.userTags && work.userTags.length > 0 && (
         <div className="flex min-h-6 flex-wrap gap-1.5">
-          {work.userTags.map((tag) => (
-            <Badge key={tag.key ?? tag.label} variant={tag.variant ?? "secondary"} title={tag.title} className="border-primary/30 bg-primary/10 text-primary">
-              {tag.label}
-            </Badge>
-          ))}
+          {work.userTags.map((tag) => {
+            const badge = (
+              <Badge variant={tag.variant ?? "secondary"} title={tag.title} className="border-primary/30 bg-primary/10 text-primary">
+                {tag.label}
+              </Badge>
+            );
+            return tag.onClick ? (
+              <button
+                key={tag.key ?? tag.label}
+                className="rounded-full hover:brightness-95"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  tag.onClick?.();
+                }}
+              >
+                {badge}
+              </button>
+            ) : <span key={tag.key ?? tag.label}>{badge}</span>;
+          })}
         </div>
       )}
       <div className="mt-auto">
@@ -575,6 +589,16 @@ export function WorkCardSelection({
 
 export function dlsiteTagBadges(tags: string[]): WorkCardBadge[] {
   return tags.map((tag) => ({ key: `dlsite:${tag}`, label: tag, variant: "outline" }));
+}
+
+export function userTagBadges(tags: UserTag[], onOpen?: (tag: string) => void): WorkCardBadge[] {
+  return tags.map((tag) => ({
+    key: `user:${tag.id}`,
+    label: tag.name,
+    title: `My tag: ${tag.name}`,
+    variant: "secondary",
+    onClick: onOpen ? () => onOpen(tag.name) : undefined,
+  }));
 }
 
 const quickMarkOptions: { value: ListeningStatus; label: string }[] = [

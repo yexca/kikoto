@@ -233,7 +233,7 @@ func favoriteWorksWhere(status string, availability string, queryText string, us
 	case "missing":
 		clauses = append(clauses, favoriteAvailabilityExists("'local','cache','remote_stream','remote_download'", true))
 	}
-	searchWhere, searchArgs := librarySearchWhere(queryText)
+	searchWhere, searchArgs := librarySearchWhere(queryText, userID)
 	if searchWhere != "" {
 		clauses = append(clauses, searchWhere)
 		args = append(args, searchArgs...)

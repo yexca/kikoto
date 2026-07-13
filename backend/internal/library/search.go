@@ -11,7 +11,7 @@ type SearchClause struct {
 	Value string
 }
 
-var wrappedSearchPattern = regexp.MustCompile(`(?i)\$(-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
+var wrappedSearchPattern = regexp.MustCompile(`(?i)\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
 var splitSearchPattern = regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)`)
 var workCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`)
 var numericSearchPattern = regexp.MustCompile(`[^0-9.]`)
@@ -99,6 +99,10 @@ func searchClauseFromKey(key string, value string) (SearchClause, bool) {
 		return SearchClause{Kind: "tag", Value: value}, true
 	case "-tag", "-tagw":
 		return SearchClause{Kind: "exclude_tag", Value: value}, true
+	case "mytag":
+		return SearchClause{Kind: "user_tag", Value: value}, true
+	case "-mytag":
+		return SearchClause{Kind: "exclude_user_tag", Value: value}, true
 	case "rate", "rating":
 		return SearchClause{Kind: "rating_min", Value: value}, true
 	case "sell", "sales":

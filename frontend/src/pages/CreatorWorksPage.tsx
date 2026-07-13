@@ -40,6 +40,7 @@ import {
   WorkCardShell,
   cardDate,
   dlsiteTagBadges,
+  userTagBadges,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
@@ -400,7 +401,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const filteredWorks = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return mergedWorks.filter((work) => {
-      const matchesQuery = !needle || [work.primaryCode, work.title, work.circle, ...work.tags].some((value) => value.toLowerCase().includes(needle));
+      const userTagNames = "userTags" in work ? work.userTags.map((tag) => tag.name) : [];
+      const matchesQuery = !needle || [work.primaryCode, work.title, work.circle, ...work.tags, ...userTagNames].some((value) => value.toLowerCase().includes(needle));
       if (!matchesQuery) return false;
       const local = "local" in work ? work.local : work.hasLocal;
       const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
@@ -1196,7 +1198,7 @@ function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardView
     dlsiteTags: dlsiteTagBadges(work.tags),
     date: cardDate(voiceWorkReleaseDate(work), voiceWorkUpdatedAt(work)),
     progress: "progress" in work ? work.progress : null,
-    userTags: [],
+    userTags: isKnown ? userTagBadges(work.userTags ?? []) : [],
     sourceBadges,
   };
 }

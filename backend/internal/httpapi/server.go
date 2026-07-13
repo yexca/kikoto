@@ -79,6 +79,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
+	mux.HandleFunc("PUT /api/works/{id}/tags", s.setWorkUserTags)
 	mux.HandleFunc("GET /api/favorite-works", s.listFavoriteWorks)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
 	mux.HandleFunc("POST /api/favorite-lists", s.createFavoriteList)
@@ -368,6 +369,17 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 	if err := s.enrichLibraryWorkSummaries(ctx, userID, works); err != nil {
 		return nil, err
 	}
+	workIDs := make([]int64, 0, len(works))
+	for _, work := range works {
+		workIDs = append(workIDs, work.ID)
+	}
+	tagsByWork, err := s.loadWorkUserTagsBatch(ctx, userID, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range works {
+		works[index].UserTags = tagsByWork[works[index].ID]
+	}
 	return works, nil
 }
 
@@ -396,7 +408,10 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 	})
 }
 
-func librarySearchWhere(queryText string) (string, []any) {
+func librarySearchWhere(queryText string, userID ...int64) (string, []any) {
+	if len(userID) > 0 {
+		return library.SearchWhereForUser(queryText, userID[0])
+	}
 	return library.SearchWhere(queryText)
 }
 
@@ -433,6 +448,7 @@ type libraryWorkSummary struct {
 	Rating                 *float64             `json:"rating"`
 	Sales                  *int64               `json:"sales"`
 	Tags                   []string             `json:"tags"`
+	UserTags               []workUserTag        `json:"userTags"`
 	VoiceActors            []string             `json:"voiceActors"`
 	VoiceCredits           []voiceCredit        `json:"voiceCredits"`
 	Series                 string               `json:"series"`
@@ -486,6 +502,7 @@ type workDetail struct {
 	SeriesCircleID   string               `json:"seriesCircleExternalId"`
 	DLsiteFetchedAt  string               `json:"dlsiteFetchedAt"`
 	Tags             []string             `json:"tags"`
+	UserTags         []workUserTag        `json:"userTags"`
 	VoiceActors      []string             `json:"voiceActors"`
 	VoiceCredits     []voiceCredit        `json:"voiceCredits"`
 	ListeningStatus  string               `json:"listeningStatus"`
@@ -2715,6 +2732,11 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
 	work.MediaItems = []mediaItemDetail{}
+	userTags, err := s.loadWorkUserTags(ctx, userID, id)
+	if err != nil {
+		return workDetail{}, err
+	}
+	work.UserTags = userTags
 
 	var snapshot sql.NullString
 	var snapshotFetchedAt sql.NullString

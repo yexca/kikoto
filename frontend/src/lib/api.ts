@@ -12,6 +12,7 @@ export type Work = {
   rating: number | null;
   sales: number | null;
   tags: string[];
+  userTags: UserTag[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   series: string;
@@ -87,6 +88,7 @@ export type WorkDetail = {
   seriesCircleExternalId: string;
   dlsiteFetchedAt: string;
   tags: string[];
+  userTags: UserTag[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   listeningStatus: ListeningStatus;
@@ -823,6 +825,7 @@ export type CircleCatalogWork = {
   circle: string;
   circleExternalId: string;
   tags: string[];
+  userTags: UserTag[];
   voiceActors: string[];
   voiceRefs: RemoteEntityRef[];
   voiceCredits: VoiceCredit[];
@@ -880,11 +883,13 @@ export type VoiceSummary = {
   sourceSummaries: CircleSourceStat[];
 };
 
-export type VoiceUserTag = {
+export type UserTag = {
   id: number;
   name: string;
   color: string;
 };
+
+export type VoiceUserTag = UserTag;
 
 export type VoiceAlias = {
   id: number;
@@ -927,6 +932,7 @@ export type VoiceKnownWork = {
   rating: number | null;
   sales: number | null;
   tags: string[];
+  userTags: UserTag[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
   series: string;
@@ -1349,6 +1355,8 @@ export const api = {
     putJSONBody<{ workId: number; favorite: boolean; lists: FavoriteList[] }>(`/api/works/${id}/favorite-lists`, {
       listIds,
     }),
+  setWorkUserTags: (id: number, tags: string[]) =>
+    putJSONBody<{ workId: number; userTags: UserTag[] }>(`/api/works/${id}/tags`, { tags }),
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
   setMediaLyricsPreference: (audioMediaItemId: number, lyricsMediaItemId: number) =>
     putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number }>(

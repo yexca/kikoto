@@ -8,6 +8,9 @@ The Library is the main browsing surface for works.
 - Uses server-side pagination for large result sets.
 - Shows cover, title, code, circle, rating, tags, voice metadata, local
   availability, source tags, and quick listening marks when available.
+- Shows the signed-in user's work tags separately from metadata tags on unified
+  work cards and detail. `mytag:` filters personal tags without changing the
+  provider `tag:` search meaning.
 - Keeps source availability visually separate from metadata tags.
 - Offers the same grid or masonry presentation for work collections across the
   Library, Favorites, circle detail, and voice detail surfaces. Responsive
@@ -23,6 +26,10 @@ Work cards use the same summary model on every collection surface, including
 voice credits when they are known. Compact cards show at most two voice names
 and summarize additional credits without allowing metadata to grow the card
 unboundedly.
+
+Favorites keeps its shelf filters and pagination in the URL. Returning from a
+work detail restores the current-page selection and the originating work
+anchor after that shelf page has rendered.
 
 ## Identity
 

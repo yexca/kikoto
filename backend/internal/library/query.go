@@ -64,7 +64,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if options.PageSize < 1 || options.PageSize > 100 {
 		options.PageSize = 24
 	}
-	where, args := listWhere(options.Scope, options.Status, options.Query)
+	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID)
 	countArgs := append([]any{options.UserID}, args...)
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE "+where, countArgs...).Scan(&total); err != nil {
@@ -194,7 +194,7 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 	return sortKey, direction
 }
 
-func listWhere(scope string, status string, queryText string) (string, []any) {
+func listWhere(scope string, status string, queryText string, userID int64) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := []any{}
 	switch scope {
@@ -229,7 +229,7 @@ func listWhere(scope string, status string, queryText string) (string, []any) {
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
 		args = append(args, status)
 	}
-	if searchWhere, searchArgs := SearchWhere(queryText); searchWhere != "" {
+	if searchWhere, searchArgs := SearchWhereForUser(queryText, userID); searchWhere != "" {
 		clauses = append(clauses, searchWhere)
 		args = append(args, searchArgs...)
 	}
@@ -269,6 +269,10 @@ func noSourceWhereClause() string {
 }
 
 func SearchWhere(queryText string) (string, []any) {
+	return SearchWhereForUser(queryText, 0)
+}
+
+func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 	clauses := []string{}
 	args := []any{}
 	for _, clause := range ParseSearchClauses(queryText) {
@@ -303,13 +307,26 @@ func SearchWhere(queryText string) (string, []any) {
 		case "exclude_tag":
 			clauses = append(clauses, normalizedTagLikeClause(true))
 			args = append(args, like)
+		case "user_tag":
+			clauses = append(clauses, userTagLikeClause(false))
+			args = append(args, userID, like)
+		case "exclude_user_tag":
+			clauses = append(clauses, userTagLikeClause(true))
+			args = append(args, userID, like)
 		case "rating_min":
 			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", NumericClauseValue(needle)))
 		case "sales_min":
 			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", NumericClauseValue(needle)))
 		default:
-			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+normalizedTagLikeClause(false)+` OR `+latestSnapshotLikeClause()+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+`)`)
+			personalTag := ""
+			if userID > 0 {
+				personalTag = " OR " + userTagLikeClause(false)
+			}
+			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+normalizedTagLikeClause(false)+` OR `+latestSnapshotLikeClause()+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
 			args = append(args, like, like, like, like, like)
+			if userID > 0 {
+				args = append(args, userID, like)
+			}
 		}
 	}
 	if len(clauses) == 0 {
@@ -328,6 +345,14 @@ func normalizedTagLikeClause(negated bool) string {
 		prefix = "NOT EXISTS"
 	}
 	return prefix + ` (SELECT 1 FROM work_tag AS search_work_tag INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id WHERE search_work_tag.work_id = work.id AND search_tag.namespace = 'dlsite' AND LOWER(search_tag.display_name) LIKE ?)`
+}
+
+func userTagLikeClause(negated bool) string {
+	prefix := "EXISTS"
+	if negated {
+		prefix = "NOT EXISTS"
+	}
+	return prefix + ` (SELECT 1 FROM user_work_tag AS search_user_work_tag INNER JOIN user_tag AS search_user_tag ON search_user_tag.id = search_user_work_tag.user_tag_id WHERE search_user_work_tag.work_id = work.id AND search_user_work_tag.user_id = ? AND LOWER(search_user_tag.name) LIKE ?)`
 }
 
 func manualOverrideAnyLikeClause(fields ...string) string {

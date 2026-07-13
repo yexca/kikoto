@@ -49,6 +49,45 @@ func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 	}
 }
 
+func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "user-tags.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('search-user', 'Search User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999003', 'Ordinary title')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	tagResult, err := db.Exec("INSERT INTO user_tag (user_id, name) VALUES (?, 'Sleep aid')", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO user_work_tag (user_id, work_id, user_tag_id) VALUES (?, ?, ?)", userID, workID, tagID); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(db)
+	for _, query := range []string{`mytag:"Sleep aid"`, "Sleep aid"} {
+		page, err := store.ListPage(context.Background(), ListOptions{UserID: userID, Page: 1, PageSize: 24, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 1 || len(page.Works) != 1 || page.Works[0].ID != workID {
+			t.Fatalf("ListPage(%q) = total %d, works %#v", query, page.Total, page.Works)
+		}
+	}
+}
+
 func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
 	db, err := storage.Open(filepath.Join(t.TempDir(), "random.db"))
 	if err != nil {

@@ -23,6 +23,7 @@ playback actions for one work.
 - Play local files.
 - Update quick listening status.
 - Manage favorite-list membership.
+- Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.
 - Edit manual overrides when available.

@@ -36,6 +36,7 @@ import {
   WorkCardShell,
   cardDate,
   dlsiteTagBadges,
+  userTagBadges,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
@@ -52,6 +53,14 @@ import { api, assetURL, type CircleSummary, type FavoriteList, type ListeningSta
 import { openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openCircleRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
+import {
+  favoritesBrowseSearch,
+  favoritesBrowseStateFromSearch,
+  favoritesLocation,
+  personalTagSearch,
+  type FavoriteAvailability,
+  type FavoriteEntity,
+} from "@/pages/favoritesBrowseState";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -81,31 +90,38 @@ const availabilityFilters = [
 
 const pageSizeOptions = [24, 48] as const;
 type PageSize = (typeof pageSizeOptions)[number];
-type AvailabilityFilter = (typeof availabilityFilters)[number]["value"];
-type FavoriteEntity = "works" | "circles" | "voices";
+type AvailabilityFilter = FavoriteAvailability;
+
+type FavoritesEntryState = {
+  favoritesSelection?: { active: boolean; workIDs: number[] };
+  favoritesAnchor?: { workID: number; viewportOffset: number };
+};
 
 export function FavoritesPage() {
   const toast = useToast();
   const auth = useAuth();
+  const initialBrowseState = useRef(favoritesBrowseStateFromSearch(window.location.search)).current;
+  const initialEntryState = useRef(readFavoritesEntryState()).current;
+  const pendingAnchor = useRef(initialEntryState.favoritesAnchor ?? null);
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
-  const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>("works");
+  const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isEntitiesLoading, setIsEntitiesLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">("all");
-  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
-  const [activeList, setActiveList] = useState<"all" | number>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<PageSize>(24);
+  const [query, setQuery] = useState(initialBrowseState.query);
+  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
+  const [activeList, setActiveList] = useState<"all" | number>(initialBrowseState.list);
+  const [page, setPage] = useState(initialBrowseState.page);
+  const [pageSize, setPageSize] = useState<PageSize>(initialBrowseState.pageSize);
   const [totalWorks, setTotalWorks] = useState(0);
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
+  const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(() => new Set(initialEntryState.favoritesSelection?.workIDs ?? []));
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -190,12 +206,40 @@ export function FavoritesPage() {
   }, [activeList, availabilityFilter, auth.user, page, pageSize, query, statusFilter]);
 
   useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter, availabilityFilter, activeList, pageSize]);
+    if (isLoading) return;
+    setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => works.some((work) => work.id === id))));
+  }, [isLoading, works]);
 
   useEffect(() => {
-    setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => works.some((work) => work.id === id))));
-  }, [works]);
+    if (window.location.pathname !== "/favorites") return;
+    const search = favoritesBrowseSearch({
+      entity: favoriteEntity,
+      query,
+      status: statusFilter,
+      availability: availabilityFilter,
+      list: activeList,
+      page,
+      pageSize,
+    });
+    const state = {
+      ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
+    };
+    window.history.replaceState(state, "", `/favorites${search}`);
+  }, [activeList, availabilityFilter, favoriteEntity, page, pageSize, query, selectedWorkIDs, selectionMode, statusFilter]);
+
+  useEffect(() => {
+    const anchor = pendingAnchor.current;
+    if (isLoading || favoriteEntity !== "works" || !anchor) return;
+    const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${anchor.workID}"]`);
+    pendingAnchor.current = null;
+    if (!target) return;
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const top = window.scrollY + target.getBoundingClientRect().top - anchor.viewportOffset;
+      window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+      target.focus({ preventScroll: true });
+    }));
+  }, [favoriteEntity, isLoading, works]);
 
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -218,7 +262,24 @@ export function FavoritesPage() {
   }
 
   const openWork = (work: Work) => {
-    window.history.pushState({ returnTo: "/favorites", returnLabel: "Back to favorites", workPreview: work }, "", `/${work.primaryCode}`);
+    const browseState = {
+      entity: favoriteEntity,
+      query,
+      status: statusFilter,
+      availability: availabilityFilter,
+      list: activeList,
+      page,
+      pageSize,
+    };
+    const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${work.id}"]`);
+    const anchor = { workID: work.id, viewportOffset: target?.getBoundingClientRect().top ?? 0 };
+    const returnTo = favoritesLocation(browseState);
+    window.history.replaceState({
+      ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
+      favoritesAnchor: anchor,
+    }, "", returnTo);
+    window.history.pushState({ returnTo, returnLabel: "Back to favorites", workPreview: work }, "", `/${work.primaryCode}`);
     window.dispatchEvent(new Event("kikoto:navigation"));
   };
 
@@ -232,6 +293,12 @@ export function FavoritesPage() {
     setStatusFilter("all");
     setAvailabilityFilter("all");
     setActiveList("all");
+    setPage(1);
+  };
+
+  const filterByUserTag = (tag: string) => {
+    setQuery(personalTagSearch(tag));
+    setPage(1);
   };
 
   const reloadFavoriteLists = async () => {
@@ -337,7 +404,10 @@ export function FavoritesPage() {
             <input
               className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
               placeholder="Search title, code, circle, tag"
             />
           </label>
@@ -345,7 +415,10 @@ export function FavoritesPage() {
             {favoriteEntity === "works" && <select
               className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={availabilityFilter}
-              onChange={(event) => setAvailabilityFilter(event.target.value as AvailabilityFilter)}
+              onChange={(event) => {
+                setAvailabilityFilter(event.target.value as AvailabilityFilter);
+                setPage(1);
+              }}
               aria-label="Availability filter"
             >
               {availabilityFilters.map((filter) => (
@@ -383,21 +456,13 @@ export function FavoritesPage() {
 
       {favoriteEntity === "works" && (
       <>
-      <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 xl:grid-cols-6">
-        {isLoading ? <FavoriteMetricSkeletons /> : (
-          <>
-            <MetricCard label="Shelf Works" value={shelfTotal} icon={Heart} />
-            {statusTabs.slice(1).map((tab) => (
-              <MetricCard key={tab.value} label={tab.label} value={statusCounts[tab.value] ?? 0} icon={tab.icon} />
-            ))}
-          </>
-        )}
-      </div>
-
       <div className="flex gap-2 overflow-x-auto pb-1">
         {isLoading ? <FavoriteListTabSkeletons /> : <button
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === "all" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-          onClick={() => setActiveList("all")}
+          onClick={() => {
+            setActiveList("all");
+            setPage(1);
+          }}
         >
           <ListMusic className="h-4 w-4" />
           All Shelf
@@ -407,7 +472,10 @@ export function FavoritesPage() {
           <button
             key={list.id}
             className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === list.id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-            onClick={() => setActiveList(list.id)}
+            onClick={() => {
+              setActiveList(list.id);
+              setPage(1);
+            }}
             title={list.description || list.name}
           >
             <ListMusic className="h-4 w-4" />
@@ -451,10 +519,14 @@ export function FavoritesPage() {
           <button
             key={tab.value}
             className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-medium ${statusFilter === tab.value ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-            onClick={() => setStatusFilter(tab.value)}
+            onClick={() => {
+              setStatusFilter(tab.value);
+              setPage(1);
+            }}
           >
             <tab.icon className="h-3.5 w-3.5" />
             {tab.label}
+            <span className="opacity-70">{tab.value === "all" ? shelfTotal : statusCounts[tab.value] ?? 0}</span>
           </button>
         ))}
       </div>
@@ -485,7 +557,10 @@ export function FavoritesPage() {
           <select
             className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
             value={pageSize}
-            onChange={(event) => setPageSize(Number(event.target.value) as PageSize)}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value) as PageSize);
+              setPage(1);
+            }}
           >
             {pageSizeOptions.map((option) => (
               <option key={option} value={option}>
@@ -540,7 +615,7 @@ export function FavoritesPage() {
         <>
           <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
             {works.map((work) => (
-              <div key={work.id} className={workCollectionItemClassName(viewMode)}>
+              <div key={work.id} data-favorite-work-id={work.id} tabIndex={-1} className={`${workCollectionItemClassName(viewMode)} outline-none`}>
                 <FavoriteWorkCard
                   work={work}
                   selected={selectedWorkIDs.has(work.id)}
@@ -553,6 +628,7 @@ export function FavoritesPage() {
                     toast.success(`Updated list membership for ${work.primaryCode}.`);
                   }}
                   onOpen={() => openWork(work)}
+                  onUserTagOpen={filterByUserTag}
                   onStatusChange={updateWorkStatus}
                 />
               </div>
@@ -751,35 +827,8 @@ function FavoriteEntitySkeletonGrid() {
   );
 }
 
-function MetricCard({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Heart }) {
-  return (
-    <Card className="min-w-32 md:min-w-0">
-      <CardContent className="flex items-center justify-between gap-3 p-3 md:p-4">
-        <div>
-          <div className="text-xl font-semibold md:text-2xl">{value}</div>
-          <div className="whitespace-nowrap text-xs text-muted-foreground md:text-sm">{label}</div>
-        </div>
-        <Icon className="h-5 w-5 text-primary" />
-      </CardContent>
-    </Card>
-  );
-}
-
 function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function FavoriteMetricSkeletons() {
-  return (
-    <>
-      {Array.from({ length: 6 }, (_, index) => (
-        <div key={index} className="rounded-lg border bg-card p-3">
-          <FavoriteSkeletonLine className="h-4 w-20" />
-          <FavoriteSkeletonLine className="mt-3 h-7 w-12" />
-        </div>
-      ))}
-    </>
-  );
 }
 
 function FavoriteListTabSkeletons() {
@@ -821,6 +870,7 @@ function FavoriteWorkCard({
   isListSaving,
   onListsChanged,
   onOpen,
+  onUserTagOpen,
   onStatusChange,
 }: {
   work: Work;
@@ -831,9 +881,10 @@ function FavoriteWorkCard({
   isListSaving: boolean;
   onListsChanged: () => Promise<void>;
   onOpen: () => void;
+  onUserTagOpen: (tag: string) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
 }) {
-  const view = favoriteWorkCardView(work);
+  const view = favoriteWorkCardView(work, onUserTagOpen);
 
   return (
     <WorkCardShell
@@ -877,7 +928,7 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
   );
 }
 
-function favoriteWorkCardView(work: Work): WorkCardViewModel {
+function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
@@ -894,7 +945,7 @@ function favoriteWorkCardView(work: Work): WorkCardViewModel {
     ],
     date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
     progress: work.progress,
-    userTags: [],
+    userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
   };
 }
@@ -1163,4 +1214,20 @@ function formatTime(seconds: number) {
 function progressPercent(progress: Work["progress"]) {
   if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
+}
+
+function readFavoritesEntryState(): FavoritesEntryState {
+  const value = window.history.state;
+  if (!value || typeof value !== "object") return {};
+  const state = value as FavoritesEntryState;
+  const selection = state.favoritesSelection;
+  const anchor = state.favoritesAnchor;
+  return {
+    favoritesSelection: selection && Array.isArray(selection.workIDs)
+      ? { active: Boolean(selection.active), workIDs: selection.workIDs.filter((id) => Number.isInteger(id) && id > 0) }
+      : undefined,
+    favoritesAnchor: anchor && Number.isInteger(anchor.workID) && anchor.workID > 0 && Number.isFinite(anchor.viewportOffset)
+      ? { workID: anchor.workID, viewportOffset: anchor.viewportOffset }
+      : undefined,
+  };
 }
