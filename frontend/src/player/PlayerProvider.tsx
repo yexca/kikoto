@@ -39,6 +39,7 @@ import {
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
+type LyricsDisplayMode = "hidden" | "preview" | "full";
 const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
 export type PlayerTrack = {
@@ -893,7 +894,8 @@ export function PlayerDock() {
   const [dockMode, setDockMode] = useState<DockMode>(() =>
     window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact",
   );
-  const [panel, setPanel] = useState<"queue" | "lyrics" | null>(null);
+  const [panel, setPanel] = useState<"queue" | null>(null);
+  const [lyricsDisplayMode, setLyricsDisplayMode] = useState<LyricsDisplayMode>("hidden");
   const [lyricsText, setLyricsText] = useState<string | null>(null);
   const [lyricsError, setLyricsError] = useState("");
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
@@ -921,6 +923,12 @@ export function PlayerDock() {
     [parsedLyrics.lines, player.currentTime],
   );
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
+
+  const cycleLyricsDisplayMode = () => {
+    if (!activeLyricsLocationId) return;
+    setPanel(null);
+    setLyricsDisplayMode((mode) => mode === "hidden" ? "preview" : mode === "preview" ? "full" : "hidden");
+  };
 
   useEffect(() => {
     if (!track) {
@@ -979,6 +987,12 @@ export function PlayerDock() {
       .then((result) => setLyricsText(result.content))
       .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
   }, [activeLyricsLocationId]);
+
+  useEffect(() => {
+    if (lyricsDisplayMode === "preview" && (lyricsError || (lyricsText !== null && !parsedLyrics.timed))) {
+      setLyricsDisplayMode("full");
+    }
+  }, [lyricsDisplayMode, lyricsError, lyricsText, parsedLyrics.timed]);
 
   useEffect(() => {
     if (!isSleepOpen) return;
@@ -1087,6 +1101,11 @@ export function PlayerDock() {
         event.preventDefault();
         return;
       }
+      if (lyricsDisplayMode === "full") {
+        setLyricsDisplayMode("hidden");
+        event.preventDefault();
+        return;
+      }
       if (panel) {
         setPanel(null);
         event.preventDefault();
@@ -1104,10 +1123,10 @@ export function PlayerDock() {
     };
     window.addEventListener(ANDROID_BACK_EVENT, handleBack);
     return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
-  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, miniActionsOpen, panel]);
+  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, lyricsDisplayMode, miniActionsOpen, panel]);
 
   useEffect(() => {
-    if (dockMode !== "full" || panel) return;
+    if (dockMode !== "full" || panel || lyricsDisplayMode !== "preview") return;
     setLyricsPreviewRows((rows) => Math.max(rows, 3));
     const container = fullMainRef.current;
     if (!container) return;
@@ -1143,7 +1162,7 @@ export function PlayerDock() {
       observer.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, [desktopFullHeight, dockMode, panel, track?.locationId, track?.title, track?.workTitle]);
+  }, [desktopFullHeight, dockMode, lyricsDisplayMode, panel, track?.locationId, track?.title, track?.workTitle]);
 
   if (!track) return null;
 
@@ -1152,7 +1171,7 @@ export function PlayerDock() {
   const availableLocations = orderedTrackLocations(track);
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
-  const hasPanel = panel !== null;
+  const hasPanel = panel !== null || lyricsDisplayMode === "full";
   const openWorkDetail = () => {
     if (!track.workCode) return;
     if (isMobile) setDockMode("compact");
@@ -1427,7 +1446,7 @@ export function PlayerDock() {
                 </div>
               </div>
               <div className="app-scroll min-h-0 flex-1 overflow-auto rounded-2xl border border-white/30 bg-background/55 p-2 shadow-inner dark:border-white/10 dark:bg-background/40">
-                {panel === "lyrics" ? (
+                {lyricsDisplayMode === "full" ? (
                   activeLyricsLocationId ? (
                     lyricsError ? (
                       <div className="p-3 text-sm text-muted-foreground">{lyricsError}</div>
@@ -1513,7 +1532,7 @@ export function PlayerDock() {
               <button
                 data-player-cover-shell
                 data-player-measure
-                className="mx-auto w-full max-w-[min(86vw,340px)] touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-transform duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 lg:max-w-[282px]"
+                className={`mx-auto w-full touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
                 title="Double-click to open work detail"
@@ -1528,19 +1547,12 @@ export function PlayerDock() {
                 <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
                 <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
               </div>
-              {parsedLyrics.timed && activeLyricIndex >= 0 ? (
+              {lyricsDisplayMode === "preview" && parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
                 <InlineLyricsPreview
                   parsed={parsedLyrics}
-                  activeIndex={activeLyricIndex}
+                  activeIndex={Math.max(0, activeLyricIndex)}
                   rows={lyricsPreviewRows}
-                  onOpen={() => setPanel("lyrics")}
-                />
-              ) : (
-                <LyricsPreviewState
-                  hasLyrics={Boolean(activeLyricsLocationId)}
-                  loading={Boolean(activeLyricsLocationId && lyricsText === null && !lyricsError)}
-                  error={lyricsError}
-                  onOpen={() => setPanel("lyrics")}
+                  onOpen={() => setLyricsDisplayMode("full")}
                 />
               )}
             </div>
@@ -1666,7 +1678,10 @@ export function PlayerDock() {
               className="rounded-full border-primary/15"
               variant={panel === "queue" ? "secondary" : "outline"}
               size="sm"
-              onClick={() => setPanel((value) => (value === "queue" ? null : "queue"))}
+              onClick={() => {
+                setLyricsDisplayMode("hidden");
+                setPanel((value) => (value === "queue" ? null : "queue"));
+              }}
               aria-label="Playback queue"
               title="Playback queue"
             >
@@ -1674,14 +1689,14 @@ export function PlayerDock() {
             </Button>
             <Button
               className="rounded-full border-primary/15"
-              variant={panel === "lyrics" ? "secondary" : "outline"}
+              variant={lyricsDisplayMode === "hidden" ? "outline" : "secondary"}
               size="sm"
-              onClick={() => setPanel((value) => (value === "lyrics" ? null : "lyrics"))}
-              disabled={!track.lyricsLocationId}
-              aria-label="Lyrics"
-              title={track.lyricsLocationId ? "Lyrics" : "No matched lyrics"}
+              onClick={cycleLyricsDisplayMode}
+              disabled={!activeLyricsLocationId}
+              aria-label={lyricsDisplayMode === "hidden" ? "Lyrics hidden. Show preview" : lyricsDisplayMode === "preview" ? "Lyrics preview. View lyrics" : "Viewing lyrics. Hide lyrics"}
+              title={!activeLyricsLocationId ? "No matched lyrics" : lyricsDisplayMode === "hidden" ? "Show lyrics preview" : lyricsDisplayMode === "preview" ? "View lyrics" : "Hide lyrics"}
             >
-              <Captions className="h-4 w-4" />
+              {lyricsDisplayMode === "hidden" ? <Captions className="h-4 w-4" /> : lyricsDisplayMode === "preview" ? <PanelBottom className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
             <Button
               className="rounded-full border-primary/15"
@@ -2050,43 +2065,6 @@ function InlineLyricsPreview({
           );
         })}
       </div>
-    </button>
-  );
-}
-
-function LyricsPreviewState({
-  hasLyrics,
-  loading,
-  error,
-  onOpen,
-}: {
-  hasLyrics: boolean;
-  loading: boolean;
-  error: string;
-  onOpen: () => void;
-}) {
-  const label = loading
-    ? "Loading lyrics"
-    : error
-      ? "Lyrics unavailable"
-      : hasLyrics
-        ? "Lyrics available"
-        : "No synced lyrics";
-  const detail = hasLyrics ? "Open lyrics" : "No match for this track";
-
-  return (
-    <button
-      className="mx-auto flex h-14 w-full max-w-[min(86vw,340px)] items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/20 bg-background/30 px-4 text-center text-muted-foreground transition-colors hover:border-muted-foreground/35 hover:bg-muted/40 disabled:hover:border-muted-foreground/20 disabled:hover:bg-background/30 lg:max-w-[282px]"
-      onClick={onOpen}
-      disabled={!hasLyrics}
-      data-player-no-drag
-      aria-label={label}
-    >
-      <Captions className="h-4 w-4 shrink-0 opacity-70" />
-      <span className="min-w-0 text-left">
-        <span className="block truncate text-xs font-medium text-foreground/70">{label}</span>
-        <span className="block truncate text-[11px]">{detail}</span>
-      </span>
     </button>
   );
 }
