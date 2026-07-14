@@ -125,8 +125,7 @@ import {
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { type PlayerTrack, type PlayerTrackLocation, useLibraryPlayer } from "@/player/PlayerProvider";
-import { findLyricsMatches } from "@/player/lyricsMatching";
+import { useLibraryPlayer } from "@/player/PlayerProvider";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
   availableForkSources,
@@ -142,6 +141,35 @@ import {
 } from "@/features/work-detail/source/sourceContextModel";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
+import {
+  buildRemoteTree,
+  buildTree,
+  countTreeFiles,
+  emptyTree,
+  flattenTracks,
+  formatBytes,
+  formatDuration,
+  formatTreeStats,
+  latestResumeTrack,
+  playableFiles,
+  remoteSelectablePaths,
+  toPlayerTrack,
+  toRemotePreviewPlayerTrack,
+  treeStats,
+  type TreeNode,
+  type TreeStats,
+  type TreeTrack,
+} from "@/features/work-detail/media/mediaTreeModel";
+import {
+  useMediaCleanupWorkflow,
+  type MediaDeleteTarget,
+} from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
+import { useWorkFetchWorkspace } from "@/features/work-detail/workflows/useWorkFetchWorkspace";
+import {
+  MediaContextActionBar,
+  WorkIdentityActionBar,
+  type DetailActionMode,
+} from "@/features/work-detail/WorkDetailActionBars";
 
 type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors">;
 
@@ -2868,200 +2896,6 @@ function RemoteWorkDetailView({
   );
 }
 
-type WorkFetchDraft = {
-  detail: RemoteWorkDetail;
-  selectedPaths: Set<string>;
-  selectedLocalPaths: Set<string>;
-  targetRoot: string;
-  plan: RemoteWorkSavePlan | null;
-  decisions: RemoteFetchDecisions;
-  planDirty: boolean;
-  message: string;
-};
-
-function useWorkFetchWorkspace({
-  remote,
-  remoteFilePaths,
-  onWorksChanged,
-}: {
-  remote: RemoteSourceAvailability | undefined;
-  remoteFilePaths: string[];
-  onWorksChanged: () => Promise<void>;
-}) {
-  const toast = useToast();
-  const [draft, setDraft] = useState<WorkFetchDraft | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
-  const tree = useMemo(() => draft ? buildRemoteTree(draft.detail.tracks) : emptyTree(), [draft?.detail]);
-  const selectedPaths = useMemo(() => Array.from(draft?.selectedPaths ?? []).sort((a, b) => naturalCompare(a, b)), [draft?.selectedPaths]);
-  const selectedLocalPaths = useMemo(() => Array.from(draft?.selectedLocalPaths ?? []).sort((a, b) => naturalCompare(a, b)), [draft?.selectedLocalPaths]);
-
-  useEffect(() => {
-    if (draft && remote?.source.id !== draft.detail.sourceId) setDraft(null);
-  }, [draft, remote?.source.id]);
-
-  const open = async () => {
-    if (!remote?.detail || remoteFilePaths.length === 0) return;
-    setIsBusy(true);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const plan = await api.planRemoteSourceWorkFetch(remote.source.id, remoteDetailActionCode(remote.detail), remoteFilePaths);
-      setDraft({
-        detail: remote.detail,
-        selectedPaths: new Set(remoteFilePaths),
-        selectedLocalPaths: new Set(),
-        targetRoot: "",
-        plan,
-        decisions: {},
-        planDirty: false,
-        message: formatRemoteFetchPreparation(plan),
-      });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch preparation failed."));
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const selectEdition = async (editionCode: string) => {
-    if (!remote) return false;
-    setIsBusy(true);
-    try {
-      const detail = await api.getRemoteSourceWork(remote.source.id, editionCode);
-      setDraft((current) => current ? {
-        ...current,
-        detail,
-        selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))),
-        selectedLocalPaths: new Set(),
-        targetRoot: "",
-        plan: null,
-        decisions: {},
-        planDirty: false,
-        message: "",
-      } : current);
-      return true;
-    } catch (error) {
-      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${remote.source.displayName}.`));
-      return false;
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const save = async () => {
-    if (!remote || !draft || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
-    setIsBusy(true);
-    try {
-      if (!draft.plan || draft.planDirty) {
-        const plan = await api.planRemoteSourceWorkFetch(remote.source.id, remoteDetailActionCode(draft.detail), selectedPaths, selectedLocalPaths, draft.targetRoot, remoteFetchDecisionList(draft.decisions));
-        setDraft((current) => current ? { ...current, plan, planDirty: false, message: formatRemoteFetchPreparation(plan) } : current);
-        return;
-      }
-      if (hasRemoteFetchConflicts(draft.plan)) {
-        setDraft((current) => current ? { ...current, message: formatRemoteFetchPlanConflict(draft.plan!) } : current);
-        return;
-      }
-      const result = await api.fetchRemoteSourceWork(remote.source.id, remoteDetailActionCode(draft.detail), selectedPaths, selectedLocalPaths, "", draft.targetRoot || draft.plan.saveRoot, remoteFetchDecisionList(draft.decisions));
-      notifyFetchQueued(toast, result);
-      setDraft(null);
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Save failed."));
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const selectionModal = draft ? (
-    <RemoteSaveSelectionPanel
-      root={tree}
-      selectedPaths={draft.selectedPaths}
-      selectedLocalPaths={draft.selectedLocalPaths}
-      plan={draft.plan}
-      decisions={draft.decisions}
-      planDirty={draft.planDirty}
-      message={draft.message}
-      sourceId={remote?.source.id}
-      activeEditionCode={remoteDetailActionCode(draft.detail)}
-      onEditionChange={selectEdition}
-      targetRoot={draft.targetRoot}
-      onTargetRootChange={(targetRoot) => setDraft((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
-      onChange={(paths) => setDraft((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
-      onLocalChange={(paths) => setDraft((current) => current ? { ...current, selectedLocalPaths: paths, plan: null, message: "" } : current)}
-      onDecisionChange={(decision) => setDraft((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
-      disabled={isBusy}
-      onClose={() => setDraft(null)}
-      onSave={() => void save()}
-    />
-  ) : null;
-
-  return { isBusy, open, selectionModal };
-}
-
-function useMediaCleanupWorkflow({
-  onAccepted,
-  onCompleted,
-}: {
-  onAccepted: () => void;
-  onCompleted: () => Promise<void>;
-}) {
-  const toast = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeRunId, setActiveRunId] = useState<number | null>(null);
-  const watchedRun = useWorkflowRunWatcher(activeRunId);
-
-  useEffect(() => {
-    const run = watchedRun.run;
-    if (!run || !activeRunId || isActiveWorkflowStatus(run.status)) return;
-    setActiveRunId(null);
-    if (run.status === "succeeded") {
-      toast.success(`Delete workflow #${run.id} completed.`);
-      void (async () => {
-        try {
-          await onCompleted();
-        } catch (error) {
-          toast.notify(toastFromError(error, "Deleted files, but work detail could not be refreshed."));
-        }
-      })();
-      return;
-    }
-    toast.notify({
-      kind: "error",
-      message: `Delete workflow #${run.id} ${run.status}.`,
-      actionLabel: "Activity",
-      onAction: () => openActivityRun(run.id),
-    });
-  }, [activeRunId, onCompleted, toast, watchedRun.run]);
-
-  const submit = async (targets: MediaDeleteTarget[]) => {
-    if (targets.length === 0) return;
-    setIsSubmitting(true);
-    try {
-      const orderedTargets = [...targets.filter((target) => target.kind !== "local_root"), ...targets.filter((target) => target.kind === "local_root")];
-      const result = await api.cleanupMediaLocations(orderedTargets.map(({ kind, locationId }) => ({ kind, locationId })));
-      setActiveRunId(result.runId);
-      onAccepted();
-      toast.notify({
-        kind: "success",
-        message: `Delete queued for ${targets.length} ${targets.length === 1 ? "item" : "items"} as workflow run #${result.runId}.`,
-        actionLabel: "Activity",
-        onAction: () => openActivityRun(result.runId),
-      });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Delete submission failed."));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return {
-    activeRunId,
-    isBusy: isSubmitting || Boolean(activeRunId),
-    isSubmitting,
-    runStatus: watchedRun.run?.status ?? "queued",
-    submit,
-  };
-}
-
 function WorkDetailView({
   code,
   work,
@@ -3468,6 +3302,28 @@ function WorkDetailView({
       <UserTagRow tags={work.userTags ?? []} onSave={saveWorkUserTags} />
     </div>
   ) : undefined;
+  const fetchSelectionModal = fetchWorkspace.draft ? (
+    <RemoteSaveSelectionPanel
+      root={fetchWorkspace.tree}
+      selectedPaths={fetchWorkspace.draft.selectedPaths}
+      selectedLocalPaths={fetchWorkspace.draft.selectedLocalPaths}
+      plan={fetchWorkspace.draft.plan}
+      decisions={fetchWorkspace.draft.decisions}
+      planDirty={fetchWorkspace.draft.planDirty}
+      message={fetchWorkspace.draft.message}
+      sourceId={selectedRemoteSource?.source.id}
+      activeEditionCode={remoteDetailActionCode(fetchWorkspace.draft.detail)}
+      onEditionChange={fetchWorkspace.selectEdition}
+      targetRoot={fetchWorkspace.draft.targetRoot}
+      onTargetRootChange={fetchWorkspace.setTargetRoot}
+      onChange={fetchWorkspace.setSelectedPaths}
+      onLocalChange={fetchWorkspace.setSelectedLocalPaths}
+      onDecisionChange={fetchWorkspace.setDecision}
+      disabled={fetchWorkspace.isBusy}
+      onClose={fetchWorkspace.close}
+      onSave={() => void fetchWorkspace.save()}
+    />
+  ) : null;
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
   const identityActions = work ? <WorkIdentityActionBar
     busy={isSyncingDetail || Boolean(activeMetadataRunId) || fetchWorkspace.isBusy || isRefreshingLocalFiles}
@@ -3522,7 +3378,7 @@ function WorkDetailView({
           onOpen={() => openActivityRun(mediaCleanup.activeRunId!)}
         />
       ) : message ? <DirectoryMessage message={message} /> : undefined}
-      selectionModal={fetchWorkspace.selectionModal}
+      selectionModal={fetchSelectionModal}
       emptyState={!work ? <DirectorySkeleton /> : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
         <LocalSourceStatePanel
           status={selectedSource.status}
@@ -4499,208 +4355,6 @@ function SourceDirectoryToolbar({
   );
 }
 
-function WorkIdentityActionBar({
-  busy,
-  listeningStatus,
-  favorite,
-  listWorkId,
-  onEnsureListWork,
-  onListSaved,
-  onMark,
-  onSync,
-  onEditMetadata,
-  dlsiteUrl,
-  syncLabel,
-}: {
-  busy: boolean;
-  listeningStatus: ListeningStatus;
-  favorite: boolean;
-  listWorkId: number | null;
-  onEnsureListWork?: () => Promise<number | null>;
-  onListSaved?: (favorite: boolean, workID: number) => void;
-  onMark: (status: ListeningStatus) => void;
-  onSync?: () => void;
-  onEditMetadata?: () => void;
-  dlsiteUrl: string;
-  syncLabel: string;
-}) {
-  return (
-    <>
-      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel onChange={onMark} />
-      <WorkCardListButton
-        workId={listWorkId}
-        active={favorite}
-        disabled={busy}
-        showLabel
-        ensureWorkId={onEnsureListWork}
-        onSaved={onListSaved}
-      />
-      {onSync && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onSync}>
-          <RefreshCw className="h-4 w-4" />
-          {syncLabel}
-        </Button>
-      )}
-      {onEditMetadata && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onEditMetadata}>
-          <Edit3 className="h-4 w-4" />
-          Edit metadata
-        </Button>
-      )}
-      {dlsiteUrl && (
-        <Button variant="outline" size="sm" className="h-8" asChild>
-          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
-            <ExternalLink className="h-4 w-4" />
-            DLsite
-          </a>
-        </Button>
-      )}
-    </>
-  );
-}
-
-function MediaContextActionBar({
-  canPlay,
-  busy,
-  mode,
-  onPlay,
-  onResume,
-  onTrack,
-  trackDisabled,
-  forkSources = [],
-  currentForkSource,
-  onFork,
-  onFetch,
-  onManage,
-  onRefreshLocalFiles,
-}: {
-  canPlay: boolean;
-  busy: boolean;
-  mode: DetailActionMode;
-  onPlay: () => void;
-  onResume?: () => void;
-  onTrack?: () => void;
-  trackDisabled?: boolean;
-  forkSources?: RemoteSourceAvailability[];
-  currentForkSource?: RemoteSourceAvailability | null;
-  onFork?: (remote: RemoteSourceAvailability) => void;
-  onFetch?: () => void;
-  onManage?: () => void;
-  onRefreshLocalFiles?: () => void;
-}) {
-  const [forkMenuOpen, setForkMenuOpen] = useState(false);
-  const [manageMenuOpen, setManageMenuOpen] = useState(false);
-  const forkMenuRef = useRef<HTMLDivElement | null>(null);
-  const manageMenuRef = useRef<HTMLDivElement | null>(null);
-
-  return (
-    <>
-      {mode !== "tracked_unforked" && (
-        <>
-          <Button size="sm" className="h-8" disabled={!canPlay || busy} onClick={onPlay}>
-            <Play className="h-4 w-4" />
-            Play
-          </Button>
-          {onResume && (
-            <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onResume}>
-              <Clock3 className="h-4 w-4" />
-              Resume
-            </Button>
-          )}
-        </>
-      )}
-      {mode === "remote_source" && onTrack && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          disabled={busy || trackDisabled}
-          onClick={onTrack}
-          title={trackDisabled ? "Already tracked" : "Track remote work"}
-        >
-          <GitBranchPlus className="h-4 w-4" />
-          Track
-        </Button>
-      )}
-      {(mode === "tracked_forked" || mode === "remote_source") && onFork && (
-        <div className="relative" ref={forkMenuRef}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="relative h-8 pr-7"
-            disabled={busy || forkSources.length === 0}
-            onClick={() => setForkMenuOpen((open) => !open)}
-            title={mode === "tracked_forked" ? "Switch fork source" : "Fork remote source"}
-          >
-            <GitBranchPlus className="h-4 w-4" />
-            {mode === "tracked_forked" ? "Switch fork" : "Fork"}
-            {forkSources.length > 0 && <ChevronDown className="absolute right-2 h-3 w-3" />}
-          </Button>
-		  <AnchoredPopover open={forkMenuOpen} anchorRef={forkMenuRef} onOpenChange={setForkMenuOpen} className="w-60 p-1 text-sm">
-              {forkSources.map((remote) => {
-                const active = currentForkSource?.source.id === remote.source.id;
-                return (
-                  <button
-                    key={remote.source.id}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                    onClick={() => {
-                      setForkMenuOpen(false);
-                      onFork(remote);
-                    }}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{remote.source.displayName}</span>
-                    {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                  </button>
-                );
-              })}
-		  </AnchoredPopover>
-        </div>
-      )}
-      {onFetch && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onFetch}>
-          <HardDriveDownload className="h-4 w-4" />
-          Fetch
-        </Button>
-      )}
-      {(onManage || onRefreshLocalFiles) && (
-        <div className="relative" ref={manageMenuRef}>
-          <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
-            <MoreHorizontal className="h-4 w-4" />
-            Manage
-            <ChevronDown className="absolute right-2 h-3 w-3" />
-          </Button>
-		  <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-48 p-1 text-sm" bottomCollisionPadding={96} zIndex={70}>
-              {onManage && (
-                <button
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    onManage();
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span>Manage files</span>
-                </button>
-              )}
-              {onRefreshLocalFiles && (
-                <button
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    onRefreshLocalFiles();
-                  }}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  <span>Refresh local files</span>
-                </button>
-              )}
-		  </AnchoredPopover>
-        </div>
-      )}
-    </>
-  );
-}
-
 function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const manual = work.manualOverrides ?? {};
@@ -5256,226 +4910,9 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
   );
 }
 
-type TreeNode = {
-  name: string;
-  path: string;
-  children: Map<string, TreeNode>;
-  files: TreeTrack[];
-};
-
-type TreeTrack = {
-  mediaItemId: number;
-  locationId: number;
-  title: string;
-  baseName: string;
-  sourcePath: string;
-  kind: string;
-  folderPath: string;
-  locationType: string;
-  streamUrl: string;
-  downloadUrl: string;
-  assetUrl: string;
-  sizeBytes: number | null;
-  durationSeconds: number | null;
-  availability: string;
-  cacheLocationId: number | null;
-  cachePath: string;
-  cacheAvailable: boolean;
-  cacheStreamUrl: string;
-  localLocationId: number | null;
-  localPath: string;
-  localAvailable: boolean;
-  progress: MediaItem["progress"];
-  locations: PlayerTrackLocation[];
-};
-
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
   | { kind: "text"; title: string; locationId: number };
-
-type MediaDeleteTarget = { kind: "cache" | "local" | "local_root"; locationId: number; title: string; path: string; sizeBytes: number | null };
-
-type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" | "remote_source";
-
-function emptyTree(): TreeNode {
-  return { name: "", path: "", children: new Map(), files: [] };
-}
-
-function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
-  const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
-  for (const item of items) {
-    const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
-    const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? sourceLocations[0];
-    if (!location) continue;
-    const cacheLocation = sourceLocations.find((candidate) => candidate.locationType === "cache" && candidate.availability === "available");
-    const localLocation = sourceLocations.find((candidate) => candidate.locationType === "local" && candidate.availability === "available");
-    const parts = displayPathParts(location.path, location.locationType, workCode);
-    const fileName = parts.pop() ?? item.title;
-    let cursor = root;
-    for (const part of parts) {
-      if (!cursor.children.has(part)) {
-        const childPath = cursor.path ? `${cursor.path}/${part}` : part;
-        cursor.children.set(part, { name: part, path: childPath, children: new Map(), files: [] });
-      }
-      cursor = cursor.children.get(part)!;
-    }
-    cursor.files.push({
-      mediaItemId: item.id,
-      locationId: location.id,
-      title: fileName,
-      baseName: baseNameWithoutExtension(fileName),
-      sourcePath: parts.length > 0 ? `${parts.join("/")}/${fileName}` : fileName,
-      kind: item.kind,
-      folderPath: cursor.path,
-      locationType: location.locationType,
-      streamUrl: location.streamUrl,
-      downloadUrl: location.downloadUrl,
-      assetUrl: location.locationType === "local" ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes) : location.downloadUrl,
-      sizeBytes: location.sizeBytes,
-      durationSeconds: location.durationSeconds ?? item.durationSeconds,
-      availability: location.availability,
-      cacheLocationId: cacheLocation?.id ?? null,
-      cachePath: cacheLocation?.path ?? "",
-      cacheAvailable: Boolean(cacheLocation),
-      cacheStreamUrl: cacheLocation ? `/api/media/${cacheLocation.id}/stream` : "",
-      localLocationId: localLocation?.id ?? null,
-      localPath: localLocation?.path ?? "",
-      localAvailable: Boolean(localLocation),
-      progress: item.progress,
-      locations: item.locations
-        .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
-        .map((candidate) => ({
-          locationId: candidate.id,
-          locationType: candidate.locationType,
-          streamUrl: candidate.streamUrl,
-          sourceId: candidate.fileSourceId,
-          sourceName: candidate.fileSourceName,
-          availability: candidate.availability,
-        })),
-    });
-  }
-  return normalizeDisplayTree(root);
-}
-
-function displayPathParts(path: string, locationType: string, workCode: string) {
-  const parts = path.split("/").filter(Boolean);
-  if (locationType !== "local" || !workCode) return parts;
-  const code = workCode.toUpperCase();
-  const workRootIndex = parts.findIndex((part) => {
-    const normalized = part.toUpperCase();
-    return normalized.includes(code) || /\b(RJ|BJ|VJ)[0-9]{5,8}\b/i.test(part);
-  });
-  if (workRootIndex < 0 || workRootIndex >= parts.length - 1) return parts;
-  return parts.slice(workRootIndex + 1);
-}
-
-function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
-  let nextID = -1;
-  const root: TreeNode = { name: "", path: "", children: new Map(), files: [] };
-  const walk = (nodes: RemoteTrack[], cursor: TreeNode) => {
-    nodes.forEach((node, index) => {
-      const title = (node.title ?? "").trim() || `Track ${index + 1}`;
-      const children = node.children ?? [];
-      if (children.length > 0 || node.type === "folder") {
-        const childPath = cursor.path ? `${cursor.path}/${title}` : title;
-        const child = cursor.children.get(title) ?? { name: title, path: childPath, children: new Map(), files: [] };
-        cursor.children.set(title, child);
-        walk(children, child);
-        return;
-      }
-      const hasCache = node.cacheAvailable && node.cacheLocationId !== null;
-      cursor.files.push({
-        mediaItemId: nextID,
-        locationId: hasCache ? node.cacheLocationId! : nextID,
-        title,
-        baseName: baseNameWithoutExtension(title),
-        sourcePath: cursor.path ? `${cursor.path}/${title}` : title,
-        kind: node.type || "file",
-        folderPath: cursor.path,
-        locationType: hasCache ? "cache" : "remote_stream",
-        streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : node.streamUrl,
-        downloadUrl: node.downloadUrl,
-        assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
-        sizeBytes: node.sizeBytes,
-        durationSeconds: node.durationSeconds,
-        availability: hasCache ? "available" : node.streamUrl || node.downloadUrl ? "remote" : "metadata",
-        cacheLocationId: node.cacheLocationId,
-        cachePath: node.cachePath,
-        cacheAvailable: node.cacheAvailable,
-        cacheStreamUrl: node.cacheAvailable && node.cacheLocationId !== null ? `/api/media/${node.cacheLocationId}/stream` : "",
-        localLocationId: node.localLocationId,
-        localPath: node.localPath,
-        localAvailable: node.localAvailable,
-        progress: null,
-        locations: [
-          ...(node.localAvailable && node.localLocationId ? [{
-            locationId: node.localLocationId,
-            locationType: "local",
-            streamUrl: `/api/media/${node.localLocationId}/stream`,
-            sourceId: 0,
-            sourceName: "Local",
-            availability: "available",
-          }] : []),
-          ...(node.cacheAvailable && node.cacheLocationId ? [{
-            locationId: node.cacheLocationId,
-            locationType: "cache",
-            streamUrl: `/api/media/${node.cacheLocationId}/stream`,
-            sourceId: 0,
-            sourceName: "Cache",
-            availability: "available",
-          }] : []),
-          ...(node.streamUrl ? [{
-            locationId: nextID,
-            locationType: "remote_stream",
-            streamUrl: node.streamUrl,
-            sourceId: 0,
-            sourceName: "Remote",
-            availability: "remote",
-          }] : []),
-        ],
-      });
-      nextID -= 1;
-    });
-  };
-  walk(tracks, root);
-  return normalizeDisplayTree(root);
-}
-
-function normalizeDisplayTree(root: TreeNode): TreeNode {
-  let displayRoot = cloneTree(root, "");
-  while (displayRoot.files.length === 0 && displayRoot.children.size === 1) {
-    const onlyChild = Array.from(displayRoot.children.values())[0];
-    if (onlyChild.files.length > 0 || onlyChild.children.size !== 1) break;
-    displayRoot = cloneTree(onlyChild, "");
-  }
-  return collapseSingleChildFolders(displayRoot, true);
-}
-
-function cloneTree(node: TreeNode, path: string): TreeNode {
-  const clone: TreeNode = { name: node.name, path, children: new Map(), files: [...node.files] };
-  for (const child of node.children.values()) {
-    const childPath = path ? `${path}/${child.name}` : child.name;
-    clone.children.set(child.name, cloneTree(child, childPath));
-  }
-  return clone;
-}
-
-function collapseSingleChildFolders(node: TreeNode, isRoot = false): TreeNode {
-  const collapsed: TreeNode = { ...node, children: new Map(), files: [...node.files] };
-  for (const child of node.children.values()) {
-    let next = collapseSingleChildFolders(child);
-    while (!isRoot && next.files.length === 0 && next.children.size === 1) {
-      const grandChild = Array.from(next.children.values())[0];
-      next = collapseSingleChildFolders({
-        ...grandChild,
-        name: `${next.name}/${grandChild.name}`,
-        path: next.path,
-      });
-    }
-    collapsed.children.set(next.name, next);
-  }
-  return collapsed;
-}
 
 function DirectoryTree({
   root,
@@ -7045,20 +6482,6 @@ function directoryTextMatches(text: string, alias: string) {
   return normalized !== "" && text.includes(normalized);
 }
 
-function remoteSelectableFiles(root: TreeNode) {
-  const files: TreeTrack[] = [];
-  const visit = (node: TreeNode) => {
-    files.push(...node.files.filter((file) => file.downloadUrl || file.streamUrl));
-    for (const child of node.children.values()) visit(child);
-  };
-  visit(root);
-  return files;
-}
-
-function remoteSelectablePaths(root: TreeNode) {
-  return remoteSelectableFiles(root).map((file) => file.sourcePath);
-}
-
 function remoteFetchLocalItems(plan?: RemoteWorkSavePlan | null) {
   return (plan?.items ?? [])
     .filter((item) => item.targetExists || item.localPaths.length > 0)
@@ -7217,10 +6640,6 @@ function flattenVisibleTreeRows(root: TreeNode, expandedPaths: Set<string>) {
   return rows;
 }
 
-function playableFiles(files: TreeTrack[]) {
-  return files.filter((file) => file.kind === "audio" && ["available", "remote"].includes(file.availability) && file.streamUrl);
-}
-
 function nodeAtPath(root: TreeNode, path: string[]) {
   let cursor: TreeNode | undefined = root;
   for (const part of path) {
@@ -7233,45 +6652,6 @@ function nodeAtPath(root: TreeNode, path: string[]) {
 function folderSummary(node: TreeNode) {
   const stats = treeStats(node);
   return formatFolderStats(stats, playableFiles(node.files).length);
-}
-
-type TreeStats = {
-  files: number;
-  audio: number;
-  sizeBytes: number;
-  knownSizeFiles: number;
-  durationSeconds: number;
-  knownDurationAudio: number;
-};
-
-function treeStats(node: TreeNode): TreeStats {
-  const stats: TreeStats = { files: 0, audio: 0, sizeBytes: 0, knownSizeFiles: 0, durationSeconds: 0, knownDurationAudio: 0 };
-  const visit = (cursor: TreeNode) => {
-    for (const file of cursor.files) {
-      stats.files += 1;
-      if (file.kind === "audio") stats.audio += 1;
-      if (file.sizeBytes !== null && file.sizeBytes >= 0) {
-        stats.sizeBytes += file.sizeBytes;
-        stats.knownSizeFiles += 1;
-      }
-      if (file.kind === "audio" && file.durationSeconds !== null && file.durationSeconds > 0) {
-        stats.durationSeconds += file.durationSeconds;
-        stats.knownDurationAudio += 1;
-      }
-    }
-    for (const child of cursor.children.values()) visit(child);
-  };
-  visit(node);
-  return stats;
-}
-
-function formatTreeStats(stats: TreeStats) {
-  const parts = [
-    stats.audio > 0 ? `${stats.audio} audio` : stats.files > 0 ? `${stats.files} files` : "",
-    stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "",
-    stats.knownDurationAudio > 0 ? formatDuration(stats.durationSeconds) : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "";
 }
 
 function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
@@ -7378,107 +6758,9 @@ function TextPreviewSkeleton() {
   );
 }
 
-function flattenTracks(root: TreeNode) {
-  const tracks: TreeTrack[] = [];
-  const visit = (node: TreeNode) => {
-    tracks.push(...playableFiles(node.files));
-    for (const child of node.children.values()) {
-      visit(child);
-    }
-  };
-  visit(root);
-  return tracks;
-}
-
-function latestResumeTrack(tracks: TreeTrack[]) {
-  return tracks
-    .filter((track) => track.progress && !track.progress.completed && track.progress.positionSeconds > 0)
-    .sort((left, right) => {
-      const leftTime = left.progress?.lastPlayedAt ? Date.parse(left.progress.lastPlayedAt) : 0;
-      const rightTime = right.progress?.lastPlayedAt ? Date.parse(right.progress.lastPlayedAt) : 0;
-      return rightTime - leftTime;
-    })[0] ?? null;
-}
-
-function countTreeFiles(root: TreeNode) {
-  let count = root.files.length;
-  for (const child of root.children.values()) {
-    count += countTreeFiles(child);
-  }
-  return count;
-}
-
-function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
-  const lyricsChoices = findLyricsForTrack(track, work.mediaItems);
-  const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
-  const automaticLyrics = lyricsChoices[0] ?? null;
-  const lyrics = lyricsChoices.find((choice) => choice.mediaItemId === audioItem?.preferredLyricsMediaItemId) ?? automaticLyrics;
-  return {
-    ...track,
-    workId: work.id,
-    workCode: work.primaryCode,
-    workTitle: work.title,
-    coverUrl: work.coverUrl,
-    circle: work.circle,
-    progress: track.progress,
-    progressRecordable: true,
-    lyricsLocationId: lyrics?.locationId ?? null,
-    lyricsTitle: lyrics?.title ?? "",
-    lyricsChoices,
-    autoLyricsLocationId: automaticLyrics?.locationId ?? null,
-    preferredLyricsMediaItemId: audioItem?.preferredLyricsMediaItemId ?? null,
-  };
-}
-
-function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
-  return {
-    ...track,
-    workId: detail.workId ?? 0,
-    workCode: detail.primaryCode || detail.remoteId,
-    workTitle: detail.title,
-    coverUrl: detail.coverUrl,
-    circle: detail.circle,
-    progress: null,
-    progressRecordable: false,
-    lyricsLocationId: null,
-    lyricsTitle: "",
-    lyricsChoices: [],
-    autoLyricsLocationId: null,
-    preferredLyricsMediaItemId: null,
-    remoteSourceId: detail.sourceId,
-    remoteWorkCode: detail.primaryCode || detail.remoteId,
-    remotePath: track.sourcePath,
-  };
-}
-
-function findLyricsForTrack(track: TreeTrack, items: MediaItem[]) {
-  return findLyricsMatches(track.sourcePath || track.title, items);
-}
-
 function fileNameFromPath(path: string) {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
-}
-
-function baseNameWithoutExtension(name: string) {
-  const index = name.lastIndexOf(".");
-  return index > 0 ? name.slice(0, index) : name;
-}
-
-function formatBytes(value: number | null) {
-  if (value === null) return "unknown";
-  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
-  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${value} B`;
-}
-
-function formatDuration(value: number | null) {
-  if (!value || value <= 0) return "Unknown";
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.floor((value % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-  return `${minutes}m`;
 }
 
 function formatDateTime(value: string) {
@@ -7663,11 +6945,6 @@ function splitSearchParts(value: string) {
     }
   }
   return parts;
-}
-
-function versionedMediaAssetURL(locationId: number, fingerprint: string, sizeBytes: number | null) {
-  const revision = `${fingerprint}:${sizeBytes ?? "unknown"}`;
-  return `/api/media/${locationId}/asset?v=${encodeURIComponent(revision)}`;
 }
 
 function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
