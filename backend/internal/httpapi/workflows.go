@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -617,7 +618,15 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	events, err := s.workflowStore.ListEvents(r.Context(), id)
+	afterID := int64(0)
+	if value := strings.TrimSpace(r.URL.Query().Get("afterId")); value != "" {
+		afterID, err = strconv.ParseInt(value, 10, 64)
+		if err != nil || afterID < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow event cursor"})
+			return
+		}
+	}
+	events, err := s.workflowStore.ListEventsAfter(r.Context(), id, afterID)
 	if err != nil {
 		writeError(w, err)
 		return

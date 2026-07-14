@@ -13,6 +13,7 @@ export function AnchoredPopover({
   gap = 8,
   collisionPadding = 12,
 	bottomCollisionPadding = collisionPadding,
+	zIndex,
 	onOpenChange,
 }: {
   open: boolean;
@@ -22,6 +23,7 @@ export function AnchoredPopover({
   gap?: number;
   collisionPadding?: number;
 	bottomCollisionPadding?: number;
+	zIndex?: number;
 	onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -87,7 +89,7 @@ export function AnchoredPopover({
     <div
       ref={contentRef}
 		className={cn("app-scroll fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl", className)}
-      style={{ left: position.left, top: position.top, visibility: position.visible ? "visible" : "hidden" }}
+      style={{ left: position.left, top: position.top, visibility: position.visible ? "visible" : "hidden", zIndex }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}

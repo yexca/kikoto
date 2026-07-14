@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
   type LibrarySource,
@@ -188,9 +189,6 @@ export function WorkflowsPage({
   }));
   const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(() => storedPositiveInt(workflowTriggerStorageKey));
   const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
-  const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
-  const [selectedRunEvents, setSelectedRunEvents] = useState<WorkflowEvent[]>([]);
-  const [selectedRunCandidates, setSelectedRunCandidates] = useState<WorkflowCandidate[]>([]);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [isRunningScan, setIsRunningScan] = useState(false);
@@ -198,7 +196,6 @@ export function WorkflowsPage({
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [isRunsLoading, setIsRunsLoading] = useState(true);
-  const [isRunDetailLoading, setIsRunDetailLoading] = useState(false);
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
 
   const refresh = () => {
@@ -277,7 +274,10 @@ export function WorkflowsPage({
 
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
-  const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0] ?? null;
+  const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId)
+    ?? (selectedRunId === null ? visibleRuns[0] ?? null : null);
+  const selectedActivityRunID = selectedRunId ?? selectedRunSummary?.id ?? null;
+  const activityRun = useWorkflowRunWatcher(surface === "activity" ? selectedActivityRunID : null);
   const selectedSystemRunKinds = selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
   const definitionEmptyText = "No runnable or custom workflow definitions exist yet.";
 
@@ -315,41 +315,21 @@ export function WorkflowsPage({
     storePositiveInt(workflowTriggerStorageKey, trigger.id);
   };
 
-  useEffect(() => {
-    if (!selectedRunSummary) {
-      setSelectedRun(null);
-      setSelectedRunEvents([]);
-      setSelectedRunCandidates([]);
-      setIsRunDetailLoading(false);
-      return;
-    }
-    setSelectedRunID(selectedRunSummary.id);
-    setIsRunDetailLoading(true);
-    setSelectedRun(null);
-    setSelectedRunEvents([]);
-    setSelectedRunCandidates([]);
-    Promise.all([
-      api.getWorkflowRun(selectedRunSummary.id).then(setSelectedRun).catch(() => setSelectedRun(null)),
-      api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents).catch(() => setSelectedRunEvents([])),
-      api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates).catch(() => setSelectedRunCandidates([])),
-    ]).finally(() => setIsRunDetailLoading(false));
-  }, [selectedRunSummary?.id]);
 
-	useEffect(() => {
-	  if (!selectedRunSummary || !["queued", "running"].includes(selectedRunSummary.status)) return;
-	  const refreshRunningDetail = () => {
-		void Promise.all([
-		  api.getWorkflowRun(selectedRunSummary.id).then((next) => {
-			setSelectedRun(next);
-			setRuns((items) => items.map((item) => item.id === next.id ? { ...item, ...next } : item));
-		  }),
-		  api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents),
-		  api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates),
-		]).catch(() => undefined);
-	  };
-	  const timer = window.setInterval(refreshRunningDetail, 1500);
-	  return () => window.clearInterval(timer);
-	}, [selectedRunSummary?.id, selectedRunSummary?.status]);
+  useEffect(() => {
+    if (!activityRun.run) return;
+    setRuns((items) => items.map((item) => item.id === activityRun.run?.id ? { ...item, ...activityRun.run } : item));
+  }, [activityRun.run]);
+
+  useEffect(() => {
+    const linkedRunID = activityRunIDFromLocation();
+    if (surface !== "activity" || !activityRun.run || linkedRunID !== activityRun.run.id || new URLSearchParams(window.location.search).has("view")) return;
+    const nextView = activityViewForRun(activityRun.run);
+    setActivityView(nextView);
+    setRunPage(1);
+    const search = new URLSearchParams({ view: nextView, run: String(activityRun.run.id) });
+    window.history.replaceState(window.history.state, "", `/activity?${search}`);
+  }, [activityRun.run, surface]);
 
   const runLocalScan = async () => {
     setIsRunningScan(true);
@@ -430,24 +410,16 @@ export function WorkflowsPage({
   };
 
   const refreshSelectedRunReview = async () => {
-    if (!selectedRunSummary) return;
-    const [nextRun, nextCandidates, nextEvents] = await Promise.all([
-      api.getWorkflowRun(selectedRunSummary.id).catch(() => selectedRun),
-      api.listWorkflowRunCandidates(selectedRunSummary.id).catch(() => []),
-      api.listWorkflowRunEvents(selectedRunSummary.id).catch(() => []),
-    ]);
-    setSelectedRun(nextRun);
-    setSelectedRunCandidates(nextCandidates);
-    setSelectedRunEvents(nextEvents);
+    if (!selectedActivityRunID) return;
+    await activityRun.refresh(true);
     refreshRuns(runPage, activityView, runQuery);
   };
 
   const reviewSelectedRun = async () => {
-    const run = selectedRun ?? selectedRunSummary;
+    const run = activityRun.run ?? selectedRunSummary;
     if (!run) return;
     try {
       const next = await api.reviewWorkflowRun(run.id);
-      setSelectedRun((current) => current && current.id === next.id ? { ...current, ...next } : current);
       setRuns((items) => items.map((item) => (item.id === next.id ? { ...item, ...next } : item)));
       toast.success(`Run #${next.id} marked reviewed.`);
       await refreshSelectedRunReview();
@@ -580,7 +552,7 @@ export function WorkflowsPage({
             left={
               <RunSidebar
                 runs={visibleRuns}
-                selectedId={selectedRunSummary?.id ?? null}
+                selectedId={selectedActivityRunID}
                 page={runsPage.page}
                 pageSize={runsPage.pageSize}
                 total={runsPage.total}
@@ -596,7 +568,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} loading={isRunDetailLoading && !selectedRun} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
+            right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
           />
         </>
       )}
@@ -2757,16 +2729,20 @@ function activityRunIDFromLocation() {
 }
 
 function openActivityRun(run: WorkflowRun) {
-  const view: ActivityView = ["queued", "running"].includes(run.status)
+  const view = activityViewForRun(run);
+  const search = new URLSearchParams({ view, run: String(run.id) });
+  window.history.pushState({}, "", `/activity?${search}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function activityViewForRun(run: WorkflowRun): ActivityView {
+  return ["queued", "running"].includes(run.status)
     ? "running"
     : run.status === "failed"
       ? "failed"
       : run.pendingCandidates > 0 || run.status === "partial" || run.status === "skipped"
         ? "review"
         : "completed";
-  const search = new URLSearchParams({ view, run: String(run.id) });
-  window.history.pushState({}, "", `/activity?${search}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function selectActivityRun(run: WorkflowRun, view: ActivityView, setSelectedRunID: (id: number | null) => void) {

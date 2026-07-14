@@ -53,6 +53,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { isActiveWorkflowStatus, useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { UserTagRow } from "@/components/UserTagRow";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
@@ -171,6 +172,11 @@ function openActivity() {
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
+function openActivityRun(runId: number) {
+  window.history.pushState({}, "", `/activity?run=${runId}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
 function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWorkSaveResult) {
   toast.notify({
     kind: "success",
@@ -178,7 +184,7 @@ function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWor
       ? `Fetch was already queued as workflow run #${result.runId}.`
       : `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`,
     actionLabel: "Activity",
-    onAction: openActivity,
+    onAction: () => openActivityRun(result.runId),
   });
 }
 
@@ -2575,13 +2581,6 @@ function RemoteWorkDetailView({
     return () => controller.abort();
   }, [source.id, code]);
 
-  useEffect(() => {
-    setSelectedSavePaths(new Set(remoteFilePaths));
-    setSelectedLocalSavePaths(new Set());
-    setSavePlan(null);
-    setSavePlanMessage("");
-  }, [remoteFilePaths]);
-
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
     setIsFetching(true);
@@ -2763,10 +2762,8 @@ function RemoteWorkDetailView({
         voiceCredits={[]}
         tags={detail.tags}
         actions={
-          <DetailActionBar
-            canPlay={remotePlayableTracks.length > 0}
+          <WorkIdentityActionBar
             busy={isFetching || isSaving}
-            mode="remote_source"
             listeningStatus="none"
             favorite={false}
             listWorkId={detail.workId}
@@ -2774,16 +2771,9 @@ function RemoteWorkDetailView({
             onListSaved={async () => {
               await onWorksChanged();
             }}
-            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
             onMark={(status) => void updateRemoteMark(status)}
-            onSync={() => void fetchWork("manual_track")}
-            onTrack={() => void fetchWork("manual_track")}
-            onFetch={() => void openSaveWorkspace()}
-            onManage={() => setIsManageOpen(true)}
             dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
             syncLabel="Track"
-            showSync={false}
-            showFetch
           />
         }
       />
@@ -2797,6 +2787,16 @@ function RemoteWorkDetailView({
         onActiveKeyChange={() => undefined}
         directoryMode={directoryMode}
         onDirectoryModeChange={setDirectoryMode}
+        actions={
+          <MediaContextActionBar
+            canPlay={remotePlayableTracks.length > 0}
+            busy={isFetching || isSaving}
+            mode="remote_source"
+            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
+            onTrack={() => void fetchWork("manual_track")}
+            onFetch={() => void openSaveWorkspace()}
+          />
+        }
         root={tree}
         directoryRoutingRules={directoryRoutingRules}
         currentLocationId={player.currentLocationId}
@@ -2854,6 +2854,200 @@ function RemoteWorkDetailView({
   );
 }
 
+type WorkFetchDraft = {
+  detail: RemoteWorkDetail;
+  selectedPaths: Set<string>;
+  selectedLocalPaths: Set<string>;
+  targetRoot: string;
+  plan: RemoteWorkSavePlan | null;
+  decisions: RemoteFetchDecisions;
+  planDirty: boolean;
+  message: string;
+};
+
+function useWorkFetchWorkspace({
+  remote,
+  remoteFilePaths,
+  onWorksChanged,
+}: {
+  remote: RemoteSourceAvailability | undefined;
+  remoteFilePaths: string[];
+  onWorksChanged: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const [draft, setDraft] = useState<WorkFetchDraft | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+  const tree = useMemo(() => draft ? buildRemoteTree(draft.detail.tracks) : emptyTree(), [draft?.detail]);
+  const selectedPaths = useMemo(() => Array.from(draft?.selectedPaths ?? []).sort((a, b) => naturalCompare(a, b)), [draft?.selectedPaths]);
+  const selectedLocalPaths = useMemo(() => Array.from(draft?.selectedLocalPaths ?? []).sort((a, b) => naturalCompare(a, b)), [draft?.selectedLocalPaths]);
+
+  useEffect(() => {
+    if (draft && remote?.source.id !== draft.detail.sourceId) setDraft(null);
+  }, [draft, remote?.source.id]);
+
+  const open = async () => {
+    if (!remote?.detail || remoteFilePaths.length === 0) return;
+    setIsBusy(true);
+    toast.info("Preparing language editions, source files, and the final Fetch tree…");
+    try {
+      const plan = await api.planRemoteSourceWorkFetch(remote.source.id, remoteDetailActionCode(remote.detail), remoteFilePaths);
+      setDraft({
+        detail: remote.detail,
+        selectedPaths: new Set(remoteFilePaths),
+        selectedLocalPaths: new Set(),
+        targetRoot: "",
+        plan,
+        decisions: {},
+        planDirty: false,
+        message: formatRemoteFetchPreparation(plan),
+      });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Fetch preparation failed."));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const selectEdition = async (editionCode: string) => {
+    if (!remote) return false;
+    setIsBusy(true);
+    try {
+      const detail = await api.getRemoteSourceWork(remote.source.id, editionCode);
+      setDraft((current) => current ? {
+        ...current,
+        detail,
+        selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))),
+        selectedLocalPaths: new Set(),
+        targetRoot: "",
+        plan: null,
+        decisions: {},
+        planDirty: false,
+        message: "",
+      } : current);
+      return true;
+    } catch (error) {
+      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${remote.source.displayName}.`));
+      return false;
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const save = async () => {
+    if (!remote || !draft || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
+    setIsBusy(true);
+    try {
+      if (!draft.plan || draft.planDirty) {
+        const plan = await api.planRemoteSourceWorkFetch(remote.source.id, remoteDetailActionCode(draft.detail), selectedPaths, selectedLocalPaths, draft.targetRoot, remoteFetchDecisionList(draft.decisions));
+        setDraft((current) => current ? { ...current, plan, planDirty: false, message: formatRemoteFetchPreparation(plan) } : current);
+        return;
+      }
+      if (hasRemoteFetchConflicts(draft.plan)) {
+        setDraft((current) => current ? { ...current, message: formatRemoteFetchPlanConflict(draft.plan!) } : current);
+        return;
+      }
+      const result = await api.fetchRemoteSourceWork(remote.source.id, remoteDetailActionCode(draft.detail), selectedPaths, selectedLocalPaths, "", draft.targetRoot || draft.plan.saveRoot, remoteFetchDecisionList(draft.decisions));
+      notifyFetchQueued(toast, result);
+      setDraft(null);
+      await onWorksChanged();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Save failed."));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const selectionModal = draft ? (
+    <RemoteSaveSelectionPanel
+      root={tree}
+      selectedPaths={draft.selectedPaths}
+      selectedLocalPaths={draft.selectedLocalPaths}
+      plan={draft.plan}
+      decisions={draft.decisions}
+      planDirty={draft.planDirty}
+      message={draft.message}
+      sourceId={remote?.source.id}
+      activeEditionCode={remoteDetailActionCode(draft.detail)}
+      onEditionChange={selectEdition}
+      targetRoot={draft.targetRoot}
+      onTargetRootChange={(targetRoot) => setDraft((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
+      onChange={(paths) => setDraft((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
+      onLocalChange={(paths) => setDraft((current) => current ? { ...current, selectedLocalPaths: paths, plan: null, message: "" } : current)}
+      onDecisionChange={(decision) => setDraft((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
+      disabled={isBusy}
+      onClose={() => setDraft(null)}
+      onSave={() => void save()}
+    />
+  ) : null;
+
+  return { isBusy, open, selectionModal };
+}
+
+function useMediaCleanupWorkflow({
+  onAccepted,
+  onCompleted,
+}: {
+  onAccepted: () => void;
+  onCompleted: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const watchedRun = useWorkflowRunWatcher(activeRunId);
+
+  useEffect(() => {
+    const run = watchedRun.run;
+    if (!run || !activeRunId || isActiveWorkflowStatus(run.status)) return;
+    setActiveRunId(null);
+    if (run.status === "succeeded") {
+      toast.success(`Delete workflow #${run.id} completed.`);
+      void (async () => {
+        try {
+          await onCompleted();
+        } catch (error) {
+          toast.notify(toastFromError(error, "Deleted files, but work detail could not be refreshed."));
+        }
+      })();
+      return;
+    }
+    toast.notify({
+      kind: "error",
+      message: `Delete workflow #${run.id} ${run.status}.`,
+      actionLabel: "Activity",
+      onAction: () => openActivityRun(run.id),
+    });
+  }, [activeRunId, onCompleted, toast, watchedRun.run]);
+
+  const submit = async (targets: MediaDeleteTarget[]) => {
+    if (targets.length === 0) return;
+    setIsSubmitting(true);
+    try {
+      const orderedTargets = [...targets.filter((target) => target.kind !== "local_root"), ...targets.filter((target) => target.kind === "local_root")];
+      const result = await api.cleanupMediaLocations(orderedTargets.map(({ kind, locationId }) => ({ kind, locationId })));
+      setActiveRunId(result.runId);
+      onAccepted();
+      toast.notify({
+        kind: "success",
+        message: `Delete queued for ${targets.length} ${targets.length === 1 ? "item" : "items"} as workflow run #${result.runId}.`,
+        actionLabel: "Activity",
+        onAction: () => openActivityRun(result.runId),
+      });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Delete submission failed."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return {
+    activeRunId,
+    isBusy: isSubmitting || Boolean(activeRunId),
+    isSubmitting,
+    runStatus: watchedRun.run?.status ?? "queued",
+    submit,
+  };
+}
+
 function WorkDetailView({
   code,
   work,
@@ -2890,19 +3084,9 @@ function WorkDetailView({
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
   const [message, setMessage] = useState("");
-  const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
-  const [selectedLocalSavePaths, setSelectedLocalSavePaths] = useState<Set<string>>(new Set());
-  const [selectedTargetRoot, setSelectedTargetRoot] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
   const [isSyncingDetail, setIsSyncingDetail] = useState(false);
-  const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
-  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
-  const [saveDecisions, setSaveDecisions] = useState<RemoteFetchDecisions>({});
-  const [savePlanDirty, setSavePlanDirty] = useState(false);
-  const [savePlanMessage, setSavePlanMessage] = useState("");
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
@@ -2929,9 +3113,19 @@ function WorkDetailView({
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
   const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
-  const selectedPaths = useMemo(() => Array.from(selectedSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedSavePaths]);
-  const selectedLocalPaths = useMemo(() => Array.from(selectedLocalSavePaths).sort((a, b) => naturalCompare(a, b)), [selectedLocalSavePaths]);
   const player = useLibraryPlayer();
+  const fetchWorkspace = useWorkFetchWorkspace({ remote: selectedRemoteSource, remoteFilePaths, onWorksChanged });
+  const mediaCleanup = useMediaCleanupWorkflow({
+    onAccepted: () => setIsManageOpen(false),
+    onCompleted: async () => {
+      if (activeEdition) {
+        setActiveEdition(await api.getWork(activeEdition.id));
+      } else if (work) {
+        await onWorkReload(work.id, true);
+      }
+      await onWorksChanged();
+    },
+  });
   const directoryTitle = "Directory";
   const workHasNoLinkedSource = Boolean(work && workHasNoSource(work));
   const showNoSourceDirectory = workHasNoLinkedSource && !selectedRemoteSource && !selectedTrackedPresence;
@@ -3061,13 +3255,6 @@ function WorkDetailView({
   }, [selectedRemoteSourceID, selectedRemoteWorkCode]);
 
   useEffect(() => {
-    setSelectedSavePaths(new Set(remoteFilePaths));
-    setSelectedLocalSavePaths(new Set());
-    setSavePlan(null);
-    setSavePlanMessage("");
-  }, [remoteFilePaths]);
-
-  useEffect(() => {
     setActiveEdition(null);
     setActiveEditionCode("");
 	setActiveSourceKey(initialSourceIntent);
@@ -3114,8 +3301,8 @@ function WorkDetailView({
   }, []);
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
-    if (!work || tracks.length === 0) return;
-    player.playQueue(tracks.map((track) => toPlayerTrack(track, work)), locationId);
+    if (!localDirectoryWork || tracks.length === 0) return;
+    player.playQueue(tracks.map((track) => toPlayerTrack(track, localDirectoryWork)), locationId);
   };
 
   const playAll = () => {
@@ -3141,72 +3328,13 @@ function WorkDetailView({
   const queueTrack = (track: TreeTrack, next: boolean) => {
     const queuedTrack = selectedRemoteDetail
       ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail)
-      : work
-        ? toPlayerTrack(track, work)
+      : localDirectoryWork
+        ? toPlayerTrack(track, localDirectoryWork)
         : null;
     if (!queuedTrack) return;
     if (next) player.playNext(queuedTrack);
     else player.appendQueue([queuedTrack]);
     toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
-  };
-
-  const deleteMediaTargets = async (targets: MediaDeleteTarget[]) => {
-    if (targets.length === 0) return;
-    setIsDeleting(true);
-    setMessage("");
-    try {
-      const orderedTargets = [...targets.filter((target) => target.kind !== "local_root"), ...targets.filter((target) => target.kind === "local_root")];
-      const batches = Array.from({ length: Math.ceil(orderedTargets.length / 500) }, (_, index) => orderedTargets.slice(index * 500, (index + 1) * 500));
-      const results = [];
-      for (const batch of batches) {
-        const result = await api.cleanupMediaLocations(batch.map(({ kind, locationId }) => ({ kind, locationId })));
-        results.push(result);
-        let completed = false;
-        for (let attempt = 0; attempt < 60; attempt += 1) {
-          const run = await api.getWorkflowRun(result.runId);
-          if (run.status === "succeeded") {
-            completed = true;
-            break;
-          }
-          if (["failed", "cancelled"].includes(run.status)) throw new Error(`Delete workflow #${result.runId} ${run.status}.`);
-          await new Promise((resolve) => window.setTimeout(resolve, 500));
-        }
-        if (!completed) throw new Error(`Delete workflow #${result.runId} did not finish in time.`);
-      }
-      toast.success(`Deleted ${targets.length} ${targets.length === 1 ? "item" : "items"} in ${results.length} workflow ${results.length === 1 ? "run" : "runs"}.`);
-      if (activeEdition) {
-        setActiveEdition(await api.getWork(activeEdition.id));
-      } else if (work) {
-        await onWorkReload(work.id, true);
-      }
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Delete submission failed."));
-      await onWorksChanged();
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const openWorkSaveWorkspace = async () => {
-    if (!selectedRemoteSource?.detail || remoteFilePaths.length === 0) return;
-    setIsSaving(true);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const plan = await api.planRemoteSourceWorkFetch(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), remoteFilePaths);
-      setSelectedSavePaths(new Set(remoteFilePaths));
-      setSelectedLocalSavePaths(new Set());
-      setSelectedTargetRoot("");
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlan(plan);
-      setSavePlanMessage(formatRemoteFetchPreparation(plan));
-      setIsSaveSelectionOpen(true);
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch preparation failed."));
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const refreshLocalFiles = async () => {
@@ -3232,75 +3360,14 @@ function WorkDetailView({
     }
   };
 
-  const planRemoteSave = async () => {
-    if (!selectedRemoteSource?.detail || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
-    setIsSaving(true);
-    setMessage("");
-    setSavePlanMessage("");
-    try {
-      if (!savePlan || savePlanDirty) {
-        const plan = await api.planRemoteSourceWorkFetch(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), selectedPaths, selectedLocalPaths, selectedTargetRoot, remoteFetchDecisionList(saveDecisions));
-        setSavePlan(plan);
-        setSavePlanDirty(false);
-        setSavePlanMessage(formatRemoteFetchPreparation(plan));
-        return;
-      }
-      if (hasRemoteFetchConflicts(savePlan)) {
-        setSavePlanMessage(formatRemoteFetchPlanConflict(savePlan));
-        return;
-      }
-      const result = await api.fetchRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), selectedPaths, selectedLocalPaths, "", selectedTargetRoot || savePlan.saveRoot, remoteFetchDecisionList(saveDecisions));
-      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
-      setIsSaveSelectionOpen(false);
-      setSavePlan(null);
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlanMessage("");
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Save failed."));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const selectPreparedWorkEdition = async (editionCode: string) => {
-    if (!selectedRemoteSource) return false;
-    setIsSaving(true);
-    try {
-      const detail = await api.getRemoteSourceWork(selectedRemoteSource.source.id, editionCode);
-      setRemoteSources((current) => current.map((entry) => entry.source.id === selectedRemoteSource.source.id ? { ...entry, detail } : entry));
-      setSelectedSavePaths(new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))));
-      setSelectedLocalSavePaths(new Set());
-      setSelectedTargetRoot("");
-      setSavePlan(null);
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlanMessage("");
-      return true;
-    } catch (error) {
-      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${selectedRemoteSource.source.displayName}.`));
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const syncDetailMetadata = async () => {
     if (!work?.primaryCode) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      if (selectedRemoteSource?.detail?.primaryCode) {
-        const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), "manual_track");
-        toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-        await onWorksChanged();
-        openRemoteLocal(result.workId);
-      } else {
-        const result = await api.runDLsiteSync();
-        toast.success(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
-        await onWorksChanged();
-      }
+      const result = await api.runDLsiteSync();
+      toast.success(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
+      await onWorksChanged();
     } catch (error) {
       toast.notify(toastFromError(error, "Sync failed."));
     } finally {
@@ -3324,51 +3391,14 @@ function WorkDetailView({
     }
   };
 
-  const ensureSelectedRemoteSourceWork = async (reason: string) => {
-    if (!work || !selectedRemoteSource?.detail?.primaryCode) return null;
-    if (selectedRemoteSource.summary.workId) return selectedRemoteSource.summary.workId;
-    if (selectedRemoteSource.summary.hasRemote) return work.id;
-    setIsSyncingDetail(true);
-    setMessage("");
-    try {
-      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), reason);
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      setRemoteSources((items) => items.map((item) => item.source.id === selectedRemoteSource.source.id
-        ? { ...item, summary: { ...item.summary, workId: result.workId, hasRemote: true } }
-        : item));
-      await onWorkReload(result.workId, true);
-      await onWorksChanged();
-      return result.workId;
-    } catch (error) {
-      toast.notify(toastFromError(error, "Track failed."));
-      return null;
-    } finally {
-      setIsSyncingDetail(false);
-    }
-  };
-
   const markDetailWork = async (status: ListeningStatus) => {
     if (!work) return;
-    if (!selectedRemoteSource) {
-      await onStatusChange(work.id, status);
-      return;
-    }
-    const workID = await ensureSelectedRemoteSourceWork("detail_mark_interest");
-    if (!workID) return;
-    try {
-      const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-      toast.success(`Marked ${selectedRemoteSource.detail?.primaryCode ?? work.primaryCode} as ${listeningStatusLabel(result.listeningStatus)}.`);
-      if (workID === work.id) await onWorkReload(work.id);
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
-    }
+    await onStatusChange(work.id, status);
   };
 
   const ensureDetailListWork = async () => {
     if (!work) return null;
-    if (!selectedRemoteSource) return work.id;
-    return ensureSelectedRemoteSourceWork("detail_list_remote");
+    return work.id;
   };
 
   const favoriteSaved = async (_favorite: boolean, savedWorkID: number) => {
@@ -3443,14 +3473,13 @@ function WorkDetailView({
     setActiveSourceKey("local");
   };
 
-  const openRemoteLocal = (workID: number) => {
-    if (!work || work.id === workID) {
-      setActiveSourceKey(sourceTabs.find((source) => source.kind === "local")?.key ?? "local");
-    }
-  };
-
   const changeSourceKey = (key: string) => {
     setActiveSourceKey(key);
+    const nextSource = sourceTabs.find((source) => source.key === key);
+    if (nextSource?.kind !== "local") {
+      setActiveEdition(null);
+      setActiveEditionCode(work?.primaryCode ?? "");
+    }
     if (!key.startsWith("remote-source:")) return;
     setRemoteSources((items) =>
       items.map((item) => (remoteSourceTabKey(item.source.id) === key && item.error ? { ...item, error: "" } : item)),
@@ -3482,33 +3511,34 @@ function WorkDetailView({
     </div>
   ) : undefined;
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
-  const detailActions = work ? <DetailActionBar
-    canPlay={allTracks.length > 0}
-    busy={isSyncingDetail || isSaving || isRefreshingLocalFiles}
-    mode={actionMode}
+  const identityActions = work ? <WorkIdentityActionBar
+    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles}
     listeningStatus={work.listeningStatus}
     favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
-    listWorkId={selectedRemoteSource && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote ? null : work.id}
+    listWorkId={work.id}
     onEnsureListWork={ensureDetailListWork}
     onListSaved={favoriteSaved}
-    onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
-    onResume={resumeTrack ? resumePlayback : undefined}
     onMark={(status) => void markDetailWork(status)}
     onSync={() => void syncDetailMetadata()}
+    onEditMetadata={() => setIsMetadataEditorOpen(true)}
+    dlsiteUrl={work.dlsiteUrl}
+    syncLabel="Sync all metadata"
+  /> : <DetailSkeletonActions />;
+  const mediaActions = work ? <MediaContextActionBar
+    canPlay={allTracks.length > 0}
+    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
+    mode={actionMode}
+    onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
+    onResume={!selectedRemoteDetail && resumeTrack ? resumePlayback : undefined}
     onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
     trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
     forkSources={forkSources}
     currentForkSource={currentForkSource}
     onFork={(remote) => requestForkSource(remote)}
-    onFetch={selectedRemoteDetail ? () => void openWorkSaveWorkspace() : undefined}
-    onEditMetadata={() => setIsMetadataEditorOpen(true)}
-    onManage={() => setIsManageOpen(true)}
+    onFetch={selectedRemoteDetail ? () => void fetchWorkspace.open() : undefined}
+    onManage={!selectedRemoteSource || selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
     onRefreshLocalFiles={actionMode === "local" && selectedSource?.kind === "local" ? () => void refreshLocalFiles() : undefined}
-    dlsiteUrl={work.dlsiteUrl}
-    syncLabel="Sync"
-    showSync
-    showFetch={Boolean(selectedRemoteDetail)}
-  /> : <DetailSkeletonActions />;
+  /> : undefined;
   const directoryPanel = (
     <SourceDirectoryPanel
       title={directoryTitle}
@@ -3522,48 +3552,19 @@ function WorkDetailView({
       onCheckSources={() => void refreshSourceAvailability()}
       directoryMode={directoryMode}
       onDirectoryModeChange={setDirectoryMode}
+      actions={mediaActions}
       root={tree}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
-      toolbar={message ? <DirectoryMessage message={message} /> : undefined}
-      selectionModal={isSaveSelectionOpen && selectedRemoteDetail ? (
-        <RemoteSaveSelectionPanel
-          root={tree}
-          selectedPaths={selectedSavePaths}
-          selectedLocalPaths={selectedLocalSavePaths}
-          plan={savePlan}
-          decisions={saveDecisions}
-          planDirty={savePlanDirty}
-          message={savePlanMessage}
-          sourceId={selectedRemoteSource?.source.id}
-          activeEditionCode={remoteDetailActionCode(selectedRemoteDetail)}
-          onEditionChange={selectPreparedWorkEdition}
-          targetRoot={selectedTargetRoot}
-          onTargetRootChange={(targetRoot) => {
-            setSelectedTargetRoot(targetRoot);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onChange={(paths) => {
-            setSelectedSavePaths(paths);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onLocalChange={(paths) => {
-            setSelectedLocalSavePaths(paths);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onDecisionChange={(decision) => {
-            setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
-            setSavePlanDirty(true);
-          }}
-          disabled={isSaving}
-          onClose={() => setIsSaveSelectionOpen(false)}
-          onSave={() => void planRemoteSave()}
+      toolbar={mediaCleanup.activeRunId ? (
+        <DirectoryOperationBanner
+          runId={mediaCleanup.activeRunId}
+          status={mediaCleanup.runStatus}
+          onOpen={() => openActivityRun(mediaCleanup.activeRunId!)}
         />
-      ) : null}
+      ) : message ? <DirectoryMessage message={message} /> : undefined}
+      selectionModal={fetchWorkspace.selectionModal}
       emptyState={!work ? <DirectorySkeleton /> : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
         <LocalSourceStatePanel
           status={selectedSource.status}
@@ -3633,7 +3634,7 @@ function WorkDetailView({
           loading={isDetailLoading}
           activeTab={mobileDetailTab}
           onActiveTabChange={setMobileDetailTab}
-          actions={detailActions}
+          actions={identityActions}
           directory={directoryPanel}
         />
       ) : (
@@ -3666,7 +3667,7 @@ function WorkDetailView({
             tags={hero.tags}
             personalTags={personalTags}
             loading={isDetailLoading}
-            actions={detailActions}
+            actions={identityActions}
           />
           {directoryPanel}
         </>
@@ -3690,8 +3691,8 @@ function WorkDetailView({
           root={tree}
           emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
           onClose={() => setIsManageOpen(false)}
-          deleting={isDeleting}
-          onDeleteTargets={deleteMediaTargets}
+          deleting={mediaCleanup.isSubmitting}
+          onDeleteTargets={mediaCleanup.submit}
           allowCacheDelete={!selectedRemoteSource}
           allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
           localRootPath={work?.sourcePresence?.find((presence) => presence.type === "local" && presence.availability === "available" && presence.fileSourceId === selectedSource?.fileSourceId)?.sourceUrl ?? ""}
@@ -4321,6 +4322,7 @@ function SourceDirectoryPanel({
   onCheckSources,
   directoryMode,
   onDirectoryModeChange,
+  actions,
   root,
   directoryRoutingRules,
   currentLocationId,
@@ -4346,6 +4348,7 @@ function SourceDirectoryPanel({
   onCheckSources?: () => void;
   directoryMode: DirectoryMode;
   onDirectoryModeChange: (mode: DirectoryMode) => void;
+  actions?: ReactNode;
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
@@ -4423,6 +4426,7 @@ function SourceDirectoryPanel({
               </IconButton>
             )}
           </div>
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
         {routeSummary && <DirectoryRouteSummary summary={routeSummary} />}
       </div>
@@ -4537,58 +4541,94 @@ function SourceDirectoryToolbar({
   );
 }
 
-function DetailActionBar({
-  canPlay,
+function WorkIdentityActionBar({
   busy,
-  mode,
   listeningStatus,
   favorite,
   listWorkId,
   onEnsureListWork,
   onListSaved,
-  onPlay,
-  onResume,
   onMark,
   onSync,
+  onEditMetadata,
+  dlsiteUrl,
+  syncLabel,
+}: {
+  busy: boolean;
+  listeningStatus: ListeningStatus;
+  favorite: boolean;
+  listWorkId: number | null;
+  onEnsureListWork?: () => Promise<number | null>;
+  onListSaved?: (favorite: boolean, workID: number) => void;
+  onMark: (status: ListeningStatus) => void;
+  onSync?: () => void;
+  onEditMetadata?: () => void;
+  dlsiteUrl: string;
+  syncLabel: string;
+}) {
+  return (
+    <>
+      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel onChange={onMark} />
+      <WorkCardListButton
+        workId={listWorkId}
+        active={favorite}
+        disabled={busy}
+        showLabel
+        ensureWorkId={onEnsureListWork}
+        onSaved={onListSaved}
+      />
+      {onSync && (
+        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onSync}>
+          <RefreshCw className="h-4 w-4" />
+          {syncLabel}
+        </Button>
+      )}
+      {onEditMetadata && (
+        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onEditMetadata}>
+          <Edit3 className="h-4 w-4" />
+          Edit metadata
+        </Button>
+      )}
+      {dlsiteUrl && (
+        <Button variant="outline" size="sm" className="h-8" asChild>
+          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
+            <ExternalLink className="h-4 w-4" />
+            DLsite
+          </a>
+        </Button>
+      )}
+    </>
+  );
+}
+
+function MediaContextActionBar({
+  canPlay,
+  busy,
+  mode,
+  onPlay,
+  onResume,
   onTrack,
   trackDisabled,
   forkSources = [],
   currentForkSource,
   onFork,
   onFetch,
-  onEditMetadata,
   onManage,
   onRefreshLocalFiles,
-  dlsiteUrl,
-  syncLabel,
-  showSync,
-  showFetch,
 }: {
   canPlay: boolean;
   busy: boolean;
   mode: DetailActionMode;
-  listeningStatus: ListeningStatus;
-  favorite: boolean;
-  listWorkId: number | null;
-  onEnsureListWork?: () => Promise<number | null>;
-  onListSaved?: (favorite: boolean, workID: number) => void;
   onPlay: () => void;
   onResume?: () => void;
-  onMark: (status: ListeningStatus) => void;
-  onSync?: () => void;
   onTrack?: () => void;
   trackDisabled?: boolean;
   forkSources?: RemoteSourceAvailability[];
   currentForkSource?: RemoteSourceAvailability | null;
   onFork?: (remote: RemoteSourceAvailability) => void;
   onFetch?: () => void;
-  onEditMetadata?: () => void;
   onManage?: () => void;
   onRefreshLocalFiles?: () => void;
-  dlsiteUrl: string;
-  syncLabel: string;
-  showSync?: boolean;
-  showFetch?: boolean;
 }) {
   const [forkMenuOpen, setForkMenuOpen] = useState(false);
   const [manageMenuOpen, setManageMenuOpen] = useState(false);
@@ -4609,22 +4649,7 @@ function DetailActionBar({
               Resume
             </Button>
           )}
-          <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel onChange={onMark} />
-          <WorkCardListButton
-            workId={listWorkId}
-            active={favorite}
-            disabled={busy}
-            showLabel
-            ensureWorkId={onEnsureListWork}
-            onSaved={onListSaved}
-          />
         </>
-      )}
-      {mode === "local" && showSync && onSync && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onSync}>
-          <RefreshCw className="h-4 w-4" />
-          {syncLabel}
-        </Button>
       )}
       {mode === "remote_source" && onTrack && (
         <Button
@@ -4673,32 +4698,20 @@ function DetailActionBar({
 		  </AnchoredPopover>
         </div>
       )}
-      {showFetch && onFetch && (
+      {onFetch && (
         <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onFetch}>
           <HardDriveDownload className="h-4 w-4" />
           Fetch
         </Button>
       )}
-      {(onManage || onEditMetadata || onRefreshLocalFiles) && (
+      {(onManage || onRefreshLocalFiles) && (
         <div className="relative" ref={manageMenuRef}>
           <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
             <MoreHorizontal className="h-4 w-4" />
             Manage
             <ChevronDown className="absolute right-2 h-3 w-3" />
           </Button>
-		  <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-48 p-1 text-sm">
-              {onEditMetadata && (
-                <button
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                  onClick={() => {
-                    setManageMenuOpen(false);
-                    onEditMetadata();
-                  }}
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  <span>Edit metadata</span>
-                </button>
-              )}
+		  <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-48 p-1 text-sm" bottomCollisionPadding={96} zIndex={70}>
               {onManage && (
                 <button
                   className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
@@ -4725,14 +4738,6 @@ function DetailActionBar({
               )}
 		  </AnchoredPopover>
         </div>
-      )}
-      {dlsiteUrl && (
-        <Button variant="outline" size="sm" className="h-8" asChild>
-          <a href={dlsiteUrl} target="_blank" rel="noreferrer">
-            <ExternalLink className="h-4 w-4" />
-            DLsite
-          </a>
-        </Button>
       )}
     </>
   );
@@ -5115,6 +5120,18 @@ function nullableSeries(name: string, titleId: string, circleExternalId: string)
 
 function DirectoryMessage({ message }: { message: string }) {
   return <div className="mb-4 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">{message}</div>;
+}
+
+function DirectoryOperationBanner({ runId, status, onOpen }: { runId: number; status: string; onOpen: () => void }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
+      <div>
+        <div className="font-medium">File operation in progress</div>
+        <div className="text-xs text-muted-foreground">Workflow #{runId} · {status}</div>
+      </div>
+      <Button size="sm" variant="outline" onClick={onOpen}>View Activity</Button>
+    </div>
+  );
 }
 
 function WorkVersionSelector({

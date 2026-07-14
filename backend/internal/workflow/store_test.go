@@ -62,6 +62,10 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 	if err != nil || len(events) != 3 || events[len(events)-1].EventType != "test.created" {
 		t.Fatalf("ListEvents() = %#v, %v", events, err)
 	}
+	incrementalEvents, err := store.ListEventsAfter(ctx, runID, events[len(events)-2].ID)
+	if err != nil || len(incrementalEvents) != 1 || incrementalEvents[0].ID != events[len(events)-1].ID {
+		t.Fatalf("ListEventsAfter() = %#v, %v", incrementalEvents, err)
+	}
 	candidates, err := store.ListCandidates(ctx, runID)
 	if err != nil || len(candidates) != 1 || candidates[0].ExternalKey != "candidate" {
 		t.Fatalf("ListCandidates() = %#v, %v", candidates, err)

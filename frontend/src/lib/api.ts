@@ -1602,7 +1602,8 @@ export const api = {
       `/api/workflow-runs?page=${page}&pageSize=${pageSize}&view=${encodeURIComponent(view)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}${workflowCode.trim() ? `&workflowCode=${encodeURIComponent(workflowCode.trim())}` : ""}`,
     ),
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
-  listWorkflowRunEvents: (id: number) => getJSON<WorkflowEvent[]>(`/api/workflow-runs/${id}/events`),
+  listWorkflowRunEvents: (id: number, afterId = 0) =>
+    getJSON<WorkflowEvent[]>(`/api/workflow-runs/${id}/events${afterId > 0 ? `?afterId=${afterId}` : ""}`),
   listWorkflowRunCandidates: (id: number) => getJSON<WorkflowCandidate[]>(`/api/workflow-runs/${id}/candidates`),
   updateWorkflowCandidate: (
     id: number,

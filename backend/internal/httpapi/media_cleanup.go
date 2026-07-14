@@ -15,7 +15,10 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const maxMediaCleanupTargets = 500
+// A cleanup request is one durable user intent and must produce one workflow
+// run. Keep the request bounded, but large enough for the complete session-cached
+// work tree so the browser never has to orchestrate sequential child runs.
+const maxMediaCleanupTargets = 20000
 
 type mediaCleanupTargetRequest struct {
 	Kind       string `json:"kind"`
@@ -40,8 +43,9 @@ type mediaCleanupJobPayload struct {
 }
 
 type mediaCleanupCheckpoint struct {
-	CompletedKeys []string `json:"completedKeys"`
-	Deleted       int      `json:"deleted"`
+	CompletedKeys  []string `json:"completedKeys"`
+	CompletedCount int      `json:"completedCount"`
+	Deleted        int      `json:"deleted"`
 }
 
 type mediaCleanupResult struct {
@@ -232,7 +236,10 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 	}
 	for index, target := range payload.Targets {
 		key := mediaCleanupTargetKey(target)
-		if completed[key] {
+		if index < checkpoint.CompletedCount || completed[key] {
+			if checkpoint.CompletedCount < index+1 {
+				checkpoint.CompletedCount = index + 1
+			}
 			continue
 		}
 		var didDelete bool
@@ -252,7 +259,7 @@ func (s *Server) executeMediaLocationCleanupJob(ctx context.Context, job workflo
 			checkpoint.Deleted++
 		}
 		completed[key] = true
-		checkpoint.CompletedKeys = append(checkpoint.CompletedKeys, key)
+		checkpoint.CompletedCount = index + 1
 		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "cleanup", checkpoint, index+1, len(payload.Targets))
 	}
 	output := mustJSON(map[string]any{"locations": len(payload.Targets), "deleted": checkpoint.Deleted})

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,46 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 )
+
+func TestMediaLocationCleanupKeepsLargeSelectionInOneRun(t *testing.T) {
+	dataRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
+	localID := insertTestLocalMediaLocation(t, db, filepath.ToSlash(filepath.Join("RJTEST001", "seed.mp3")))
+	var mediaItemID, sourceID int64
+	if err := db.QueryRow("SELECT media_item_id, file_source_id FROM media_file_location WHERE id = ?", localID).Scan(&mediaItemID, &sourceID); err != nil {
+		t.Fatal(err)
+	}
+	targets := make([]mediaCleanupTargetRequest, 0, 501)
+	for index := 0; index < 501; index++ {
+		result, err := db.Exec(`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+			VALUES (?, ?, 'cache', ?, 'available')`, mediaItemID, sourceID, fmt.Sprintf("large/%03d.mp3", index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		locationID, _ := result.LastInsertId()
+		targets = append(targets, mediaCleanupTargetRequest{Kind: "cache", LocationID: locationID})
+	}
+
+	queued, err := server.enqueueMediaLocationCleanup(context.Background(), targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Queued != len(targets) {
+		t.Fatalf("queued = %d, want %d", queued.Queued, len(targets))
+	}
+	var runs, jobs int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE id = ?", queued.RunID).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_job WHERE workflow_run_id = ?", queued.RunID).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || jobs != 1 {
+		t.Fatalf("large cleanup created %d runs and %d jobs, want one durable run and job", runs, jobs)
+	}
+}
 
 func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	dataRoot := t.TempDir()

@@ -189,7 +189,11 @@ func (s *Store) LoadRunDetail(ctx context.Context, id int64) (RunDetail, error) 
 }
 
 func (s *Store) ListEvents(ctx context.Context, runID int64) ([]EventRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, workflow_run_id, workflow_node_run_id, workflow_job_id, level, event_type, message, detail_json, created_at FROM workflow_event WHERE workflow_run_id = ? ORDER BY created_at ASC, id ASC`, runID)
+	return s.ListEventsAfter(ctx, runID, 0)
+}
+
+func (s *Store) ListEventsAfter(ctx context.Context, runID int64, afterID int64) ([]EventRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, workflow_run_id, workflow_node_run_id, workflow_job_id, level, event_type, message, detail_json, created_at FROM workflow_event WHERE workflow_run_id = ? AND id > ? ORDER BY id ASC`, runID, afterID)
 	if err != nil {
 		return nil, err
 	}

@@ -216,6 +216,25 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
   await expect(page.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
 });
 
+test("activity deep links load a run outside the visible list page", async ({ page }) => {
+  await mockWorkflows(page);
+  const detachedRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };
+  await page.route("**/api/workflow-runs/99**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.fulfill({ json: { ...detachedRun, nodeRuns: [] } });
+  });
+
+  await page.goto("/activity?run=99");
+
+  await expect(page).toHaveURL(/\/activity\?view=completed&run=99/);
+  await expect(page.getByText("Detached cleanup run", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Collect DLsite popular voice works/ })).toBeVisible();
+});
+
 test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {
   const payloads: unknown[] = [];
   await mockWorkflows(page, (payload) => payloads.push(payload));
