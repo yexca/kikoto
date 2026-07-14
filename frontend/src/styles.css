@@ -193,26 +193,34 @@
     background: transparent;
   }
 
-  .app-scroll {
+  .app-scroll,
+  .app-scrollbar {
     scrollbar-width: thin;
-    scrollbar-gutter: stable;
     scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
   }
 
-  .app-scroll:hover {
+  .app-scroll {
+    scrollbar-gutter: stable;
+  }
+
+  .app-scroll:hover,
+  .app-scrollbar:hover {
     scrollbar-color: hsl(var(--muted-foreground) / 0.42) transparent;
   }
 
-  .app-scroll::-webkit-scrollbar {
+  .app-scroll::-webkit-scrollbar,
+  .app-scrollbar::-webkit-scrollbar {
     width: 0.625rem;
   }
 
-  .app-scroll::-webkit-scrollbar-track {
+  .app-scroll::-webkit-scrollbar-track,
+  .app-scrollbar::-webkit-scrollbar-track {
     margin-block: 0.75rem;
     background: transparent;
   }
 
-  .app-scroll::-webkit-scrollbar-thumb {
+  .app-scroll::-webkit-scrollbar-thumb,
+  .app-scrollbar::-webkit-scrollbar-thumb {
     min-height: 2.5rem;
     border: 0.1875rem solid transparent;
     border-radius: 9999px;
@@ -220,12 +228,14 @@
     background-clip: content-box;
   }
 
-  .app-scroll:hover::-webkit-scrollbar-thumb {
+  .app-scroll:hover::-webkit-scrollbar-thumb,
+  .app-scrollbar:hover::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.4);
     background-clip: content-box;
   }
 
-  .app-scroll::-webkit-scrollbar-thumb:active {
+  .app-scroll::-webkit-scrollbar-thumb:active,
+  .app-scrollbar::-webkit-scrollbar-thumb:active {
     background: hsl(var(--primary) / 0.58);
     background-clip: content-box;
   }
