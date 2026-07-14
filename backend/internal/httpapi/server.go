@@ -3609,14 +3609,31 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createRemotePopularCollectionRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	var payload remoteCollectionRunRequest
-	_ = json.NewDecoder(r.Body).Decode(&payload)
-	result, err := s.runRemotePopularWorkflow(context.WithoutCancel(r.Context()), payload)
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	payload.Action = normalizeRemoteCollectionAction(payload.Action)
+	if payload.Action == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be track or fetch"})
+		return
+	}
+	if _, ok := s.requirePermission(w, r, "tags:write"); !ok {
+		return
+	}
+	if payload.Action == "fetch" {
+		if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+			return
+		}
+	}
+	result, err := s.runRemotePopularWorkflow(r.Context(), actor.ID, payload)
 	if err != nil {
-		writeError(w, err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)

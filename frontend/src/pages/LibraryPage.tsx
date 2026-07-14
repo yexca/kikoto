@@ -985,15 +985,19 @@ export function LibraryPage() {
 		setWorkPage(1);
 		setStatusFilter(status);
 	};
-  const localPagination = (
+  const localPaginationProps = {
+      page: currentWorkPage,
+      pageSize: workPageSize,
+      totalItems: workTotal,
+      totalPages: totalWorkPages,
+      pageSizeOptions: localWorkPageSizeOptions,
+      onPageChange: changeWorkPage,
+      onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
+  };
+  const localTopPagination = (
     <WorkPagination
-      page={currentWorkPage}
-      pageSize={workPageSize}
-      totalItems={workTotal}
-      totalPages={totalWorkPages}
-	  pageSizeOptions={localWorkPageSizeOptions}
-	  onPageChange={changeWorkPage}
-	  onPageSizeChange={(value) => changeWorkPageSize(value as LocalWorkPageSize)}
+      {...localPaginationProps}
+      placement="top"
     />
   );
 
@@ -1160,7 +1164,7 @@ export function LibraryPage() {
       ) : (
         <div className="space-y-3">
 		  {isLibraryLoading && works.length > 0 && <div className="text-xs text-muted-foreground">Refreshing results…</div>}
-          {!libraryLoadError && localPagination}
+          {!libraryLoadError && localTopPagination}
           {libraryLoadError ? (
             <LibraryLoadErrorCard
               message={libraryLoadError}
@@ -1217,11 +1221,7 @@ export function LibraryPage() {
               ))}
             </section>
           )}
-          {!libraryLoadError && (viewMode === "masonry" ? (
-			<CompactWorkPagination page={currentWorkPage} totalPages={totalWorkPages} onPageChange={changeWorkPage} />
-          ) : (
-            localPagination
-          ))}
+          {!libraryLoadError && <WorkPagination {...localPaginationProps} placement="bottom" />}
         </div>
       )}
       {untrackTarget && (
@@ -1436,15 +1436,19 @@ function RemoteSourcePanel({
   const totalItems = result?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const remotePagination = (
+  const remotePaginationProps = {
+    page: currentPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    pageSizeOptions: [12, 24, 48, 96] as const,
+    onPageChange,
+    onPageSizeChange,
+  };
+  const remoteTopPagination = (
     <WorkPagination
-      page={currentPage}
-      pageSize={pageSize}
-      totalItems={totalItems}
-      totalPages={totalPages}
-      pageSizeOptions={[12, 24, 48, 96]}
-      onPageChange={onPageChange}
-      onPageSizeChange={onPageSizeChange}
+      {...remotePaginationProps}
+      placement="top"
     />
   );
 
@@ -1642,7 +1646,7 @@ function RemoteSourcePanel({
           {result?.status === "ok" && !result.sortApplied && <Badge variant="warning">source order fallback</Badge>}
         </div>
       </div>
-      {remotePagination}
+      {remoteTopPagination}
       {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
         <div className="text-muted-foreground">{selectedWorks.length} selected</div>
         <div className="flex flex-wrap gap-2">
@@ -1703,9 +1707,7 @@ function RemoteSourcePanel({
           </section>
         </div>
       )}
-      {viewMode === "masonry"
-        ? <CompactWorkPagination page={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
-        : remotePagination}
+      <WorkPagination {...remotePaginationProps} placement="bottom" />
       {saveConfirm && (
         <SaveConfirmModal
           count={saveConfirm.codes.length}
@@ -2296,6 +2298,7 @@ function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibra
 }
 
 function WorkPagination({
+  placement,
   page,
   pageSize,
   totalItems,
@@ -2304,6 +2307,7 @@ function WorkPagination({
   onPageChange,
   onPageSizeChange,
 }: {
+  placement: "top" | "bottom";
   page: number;
   pageSize: number;
   totalItems: number;
@@ -2324,12 +2328,9 @@ function WorkPagination({
     setJumpPage(String(next));
   };
 
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-      <div className="text-xs text-muted-foreground">
-        Page {page} / {totalPages} · {totalItems} works
-      </div>
-      <div className="flex flex-wrap items-center justify-center gap-2">
+  const controls = (
+    <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+      {placement === "top" && (
         <select
           className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           value={pageSize}
@@ -2342,81 +2343,52 @@ function WorkPagination({
             </option>
           ))}
         </select>
-        <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
-          <ChevronLeft className="h-4 w-4" />
-        </IconButton>
-        <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
-          <ChevronRight className="h-4 w-4" />
-        </IconButton>
-        <input
-          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-          type="number"
-          min={1}
-          max={totalPages}
-          value={jumpPage}
-          onChange={(event) => setJumpPage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") goToJumpPage();
-          }}
-          aria-label="Jump to page"
-        />
-        <Button variant="outline" size="sm" onClick={goToJumpPage}>
-          Go
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function CompactWorkPagination({
-  page,
-  totalPages,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}) {
-  const [jumpPage, setJumpPage] = useState(String(page));
-
-  useEffect(() => {
-    setJumpPage(String(page));
-  }, [page]);
-
-  const goToJumpPage = () => {
-    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
-    onPageChange(next);
-    setJumpPage(String(next));
-  };
-
-  return (
-    <div className="flex justify-center">
-      <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-2 text-sm">
-        <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
-          <ChevronLeft className="h-4 w-4" />
-        </IconButton>
+      )}
+      <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
+        <ChevronLeft className="h-4 w-4" />
+      </IconButton>
+      {placement === "bottom" && (
         <div className="min-w-20 text-center text-xs text-muted-foreground">
           {page} / {totalPages}
         </div>
-        <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
-          <ChevronRight className="h-4 w-4" />
-        </IconButton>
-        <input
-          className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-          type="number"
-          min={1}
-          max={totalPages}
-          value={jumpPage}
-          onChange={(event) => setJumpPage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") goToJumpPage();
-          }}
-          aria-label="Jump to page"
-        />
-        <Button variant="outline" size="sm" onClick={goToJumpPage}>
-          Go
-        </Button>
+      )}
+      <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
+        <ChevronRight className="h-4 w-4" />
+      </IconButton>
+      <input
+        className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+        type="number"
+        min={1}
+        max={totalPages}
+        value={jumpPage}
+        onChange={(event) => setJumpPage(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") goToJumpPage();
+        }}
+        aria-label="Jump to page"
+      />
+      <Button variant="outline" size="sm" onClick={goToJumpPage}>
+        Go
+      </Button>
+    </div>
+  );
+
+  if (placement === "bottom") {
+    return (
+      <div className="flex justify-center">
+        <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-2 text-sm">
+          {controls}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-xs text-muted-foreground">
+        Page {page} / {totalPages} · {totalItems} works
+      </div>
+      {controls}
     </div>
   );
 }

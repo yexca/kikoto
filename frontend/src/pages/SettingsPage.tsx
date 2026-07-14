@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
@@ -1091,6 +1092,10 @@ function CacheFetchSettings({
   const [isCleaning, setIsCleaning] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
   const [cleanupStatus, setCleanupStatus] = useState("");
+  const [cleanupMode, setCleanupMode] = useState<"orphans" | "works">("orphans");
+  const [selectedCleanupKeys, setSelectedCleanupKeys] = useState<Set<string>>(new Set());
+  const cleanupRows = useMemo(() => cacheCleanupRows(overview, cleanupMode), [cleanupMode, overview]);
+  const selectedCleanupRows = cleanupRows.filter((row) => selectedCleanupKeys.has(row.key));
 
   const scanCache = async () => {
     setIsScanning(true);
@@ -1114,8 +1119,11 @@ function CacheFetchSettings({
     }
     setIsCleaning(true);
     try {
-      const result = await api.cleanupOrphanCache();
+      const result = cleanupMode === "orphans"
+        ? await api.cleanupCache({ mode: "orphans", groupKeys: selectedCleanupRows.map((row) => row.key) })
+        : await api.cleanupCache({ mode: "works", workIds: selectedCleanupRows.map((row) => row.workId) });
       setConfirmCleanup(false);
+      setSelectedCleanupKeys(new Set());
       setCleanupStatus(
         result.status === "succeeded"
           ? "No eligible orphan files remain."
@@ -1157,23 +1165,71 @@ function CacheFetchSettings({
             </div>
           )}
 
-          {overview && overview.works.length > 0 && (
+          <div className="inline-flex rounded-md border bg-muted/40 p-1" aria-label="Cache cleanup mode">
+            <button
+              className={`h-8 rounded px-3 text-sm font-medium ${cleanupMode === "orphans" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              aria-pressed={cleanupMode === "orphans"}
+              onClick={() => {
+                setCleanupMode("orphans");
+                setSelectedCleanupKeys(new Set());
+                setConfirmCleanup(false);
+              }}
+            >
+              Orphan cache
+            </button>
+            <button
+              className={`h-8 rounded px-3 text-sm font-medium ${cleanupMode === "works" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              aria-pressed={cleanupMode === "works"}
+              onClick={() => {
+                setCleanupMode("works");
+                setSelectedCleanupKeys(new Set());
+                setConfirmCleanup(false);
+              }}
+            >
+              Work cache
+            </button>
+          </div>
+
+          {cleanupRows.length > 0 && (
             <div className="overflow-hidden rounded-md border">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                <Checkbox
+                  checked={selectedCleanupKeys.size === cleanupRows.length}
+                  indeterminate={selectedCleanupKeys.size > 0 && selectedCleanupKeys.size < cleanupRows.length}
+                  onCheckedChange={(checked) => setSelectedCleanupKeys(checked ? new Set(cleanupRows.map((row) => row.key)) : new Set())}
+                  aria-label={`Select all ${cleanupMode === "orphans" ? "orphan cache groups" : "work caches"}`}
+                />
                 <span>Work / source</span>
-                <span>Cached</span>
-                <span>Cleanup</span>
+                <span>Files</span>
+                <span>Selected size</span>
               </div>
-              {overview.works.slice(0, 8).map((row) => (
-                <div key={`${row.sourceId}:${row.sourceName}:${row.workCode}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
+              <div className="app-scroll max-h-80 overflow-y-auto">
+              {cleanupRows.map((row) => (
+                <div key={row.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
+                  <Checkbox
+                    checked={selectedCleanupKeys.has(row.key)}
+                    onCheckedChange={(checked) => setSelectedCleanupKeys((current) => {
+                      const next = new Set(current);
+                      if (checked) next.add(row.key); else next.delete(row.key);
+                      return next;
+                    })}
+                    aria-label={`Select cache for ${row.workCode}`}
+                  />
                   <div className="min-w-0">
                     <div className="truncate font-medium">{row.workCode}</div>
-                    <div className="truncate text-xs text-muted-foreground">{row.sourceName}</div>
+                    <div className="truncate text-xs text-muted-foreground">{row.sourceLabel}</div>
                   </div>
-                  <span className="whitespace-nowrap text-xs text-muted-foreground">{formatByteSize(row.bytes)}</span>
-                  <span className={row.orphanBytes > 0 ? "whitespace-nowrap text-xs font-medium text-destructive" : "whitespace-nowrap text-xs text-muted-foreground"}>{formatByteSize(row.orphanBytes)}</span>
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">{row.files}</span>
+                  <span className={cleanupMode === "orphans" ? "whitespace-nowrap text-xs font-medium text-destructive" : "whitespace-nowrap text-xs font-medium"}>{formatByteSize(row.bytes)}</span>
                 </div>
               ))}
+              </div>
+            </div>
+          )}
+
+          {overview && cleanupRows.length === 0 && (
+            <div className="rounded-md border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
+              {cleanupMode === "orphans" ? "No eligible orphan cache groups." : "No referenced work cache is available."}
             </div>
           )}
 
@@ -1183,10 +1239,14 @@ function CacheFetchSettings({
               className={confirmCleanup ? "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground" : ""}
               size="sm"
               onClick={() => void cleanupCache()}
-              disabled={isCleaning || isScanning || !overview || (overview.orphanFiles === 0 && overview.emptyDirectories === 0)}
+              disabled={isCleaning || isScanning || selectedCleanupRows.length === 0}
             >
               <Trash2 className="h-4 w-4" />
-              {isCleaning ? "Queueing cleanup..." : confirmCleanup ? `Confirm cleanup (${overview?.orphanFiles ?? 0} files)` : "Clean orphan cache"}
+              {isCleaning
+                ? "Queueing cleanup..."
+                : confirmCleanup
+                  ? `Confirm cleanup (${selectedCleanupRows.reduce((total, row) => total + row.files, 0)} files)`
+                  : `Clean selected ${cleanupMode === "orphans" ? "orphans" : "works"}`}
             </Button>
             {confirmCleanup && (
               <Button variant="ghost" size="sm" onClick={() => setConfirmCleanup(false)}>
@@ -1306,6 +1366,53 @@ function CacheFetchSettings({
       </Card>
     </div>
   );
+}
+
+type CacheCleanupRow = {
+  key: string;
+  workId: number;
+  workCode: string;
+  sourceLabel: string;
+  files: number;
+  bytes: number;
+};
+
+function cacheCleanupRows(overview: CacheOverview | null, mode: "orphans" | "works"): CacheCleanupRow[] {
+  if (!overview) return [];
+  if (mode === "orphans") {
+    return overview.works
+      .filter((row) => row.orphanFiles > 0 || row.emptyDirectories > 0)
+      .map((row) => ({
+        key: row.groupKey,
+        workId: row.workId,
+        workCode: row.workCode,
+        sourceLabel: row.sourceName,
+        files: row.orphanFiles,
+        bytes: row.orphanBytes,
+      }));
+  }
+
+  const works = new Map<number, CacheCleanupRow & { sources: Set<string> }>();
+  for (const row of overview.works) {
+    if (row.workId <= 0 || row.referencedFiles <= 0) continue;
+    const current = works.get(row.workId) ?? {
+      key: String(row.workId),
+      workId: row.workId,
+      workCode: row.workCode,
+      sourceLabel: row.sourceName,
+      files: 0,
+      bytes: 0,
+      sources: new Set<string>(),
+    };
+    current.files += row.referencedFiles;
+    current.bytes += row.referencedBytes;
+    if (row.sourceName.trim()) current.sources.add(row.sourceName.trim());
+    current.sourceLabel = current.sources.size > 1 ? `${current.sources.size} sources` : Array.from(current.sources)[0] ?? "Unknown source";
+    works.set(row.workId, current);
+  }
+  return Array.from(works.values())
+    .sort((left, right) => left.workCode.localeCompare(right.workCode))
+    .map(({ sources: _sources, ...row }) => row);
 }
 
 function CacheMetric({

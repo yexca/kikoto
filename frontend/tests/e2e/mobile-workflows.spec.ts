@@ -42,6 +42,19 @@ const systemDefinitions = [
   },
   {
     id: 4,
+    code: "remote_popular_collection",
+    displayName: "Collect popular remote works",
+    description: "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
+    definitionJson: '{"nodes":[{"id":"configure","type":"select_remote_source","displayName":"Configure remote collection"},{"id":"discover","type":"discover_remote_collection","displayName":"Discover popular works"},{"id":"filter","type":"filter_candidates","displayName":"Filter collection candidates"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch accepted works"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
+    scope: "system",
+    editable: false,
+    ownerUserId: null,
+    triggerCount: 0,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
+  {
+    id: 5,
     code: "custom_draft",
     displayName: "Custom draft",
     description: "Test custom definition.",
@@ -55,7 +68,7 @@ const systemDefinitions = [
   },
 ];
 
-async function mockWorkflows(page: Page) {
+async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) => void) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -89,6 +102,18 @@ async function mockWorkflows(page: Page) {
     if (url.pathname === "/api/workflow-runs/dlsite-popular") {
       const payload = route.request().postDataJSON() as { period: string; releaseWindow: string; year: number; tagName: string };
       await route.fulfill({ json: { runId: 31, status: "queued", ...payload, discovered: 0, synced: 0, tagged: 0, failed: 0, failures: [] } });
+      return;
+    }
+    if (url.pathname === "/api/library-sources") {
+      await route.fulfill({
+        json: [{ id: 8, code: "remote-test", displayName: "Remote Test", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true }],
+      });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/remote-popular") {
+      const payload = route.request().postDataJSON() as { sourceId: number; action: "track" | "fetch"; limit: number; tagName: string };
+      onRemotePopular?.(payload);
+      await route.fulfill({ json: { runId: 41, status: "queued", collectionKind: "popular", discovered: 0, accepted: 0, skipped: 0, tracked: 0, fetched: 0, tagged: 0, failed: 0, childRuns: [], failures: [], expectedMaximum: payload.limit, returnedCount: 0, ...payload } });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
@@ -125,6 +150,23 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.goto("/about");
   await page.goto("/workflows");
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
+});
+
+test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {
+  const payloads: unknown[] = [];
+  await mockWorkflows(page, (payload) => payloads.push(payload));
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: /Collect popular remote works/ }).click();
+
+  await expect(page.getByLabel("Remote source")).toHaveValue("8");
+  await page.getByRole("button", { name: "fetch", exact: true }).click();
+  await page.getByLabel("Work limit").selectOption("50");
+  await page.getByLabel("User tag").fill("weekly-remote-picks");
+  await page.getByRole("button", { name: "Run collection" }).click();
+
+  await expect.poll(() => payloads).toHaveLength(1);
+  expect(payloads[0]).toEqual({ sourceId: 8, action: "fetch", limit: 50, tagName: "weekly-remote-picks" });
+  await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 
 test("mobile header keeps actions in bounds and exposes theme and activity", async ({ page }) => {

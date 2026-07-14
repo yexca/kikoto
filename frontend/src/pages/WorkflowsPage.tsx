@@ -29,6 +29,7 @@ import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   api,
+  type LibrarySource,
   type WorkflowCandidate,
   type WorkflowEvent,
   type WorkflowDefinition,
@@ -109,7 +110,7 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-type SystemRunKind = "local_scan" | "metadata_sync" | "popular_track" | "popular_fetch" | "dlsite_popular";
+type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
 
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 
@@ -120,10 +121,17 @@ type DLsitePopularRunOptions = {
   tagName: string;
 };
 
+type RemotePopularRunOptions = {
+  sourceId: number;
+  action: "track" | "fetch";
+  limit: number;
+  tagName: string;
+};
+
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
   local_library_scan: ["local_scan"],
   metadata_sync: ["metadata_sync"],
-  remote_popular_collection: ["popular_track", "popular_fetch"],
+  remote_popular_collection: ["remote_popular"],
   dlsite_popular_collection: ["dlsite_popular"],
 };
 
@@ -146,11 +154,13 @@ export function WorkflowsPage({
   canRun,
   canSyncMetadata,
   canTagWorks,
+  canManageDownloads,
 }: {
   surface: Surface;
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
+  canManageDownloads: boolean;
 }) {
   const toast = useToast();
   const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
@@ -346,19 +356,17 @@ export function WorkflowsPage({
     }
   };
 
-  const runPopularCollection = async (action: "track" | "fetch") => {
-    const kind: SystemRunKind = action === "track" ? "popular_track" : "popular_fetch";
-    setRunningSystemAction(kind);
+  const runPopularCollection = async (options: RemotePopularRunOptions) => {
+    setRunningSystemAction("remote_popular");
     try {
-      const result = await api.runRemotePopularCollection({ action });
-      const message = `Popular ${action} run #${result.runId}: accepted ${result.accepted}, ${action === "track" ? `tracked ${result.tracked}` : `queued ${result.fetched} Fetch jobs`}, failed ${result.failed}.`;
-      if (result.failed > 0) toast.warning(message); else toast.success(message);
+      const result = await api.runRemotePopularCollection(options);
+      toast.success(`Remote popular run #${result.runId} queued with tag ${result.tagName}.`);
       refresh();
-      setActivityView("completed");
+      setActivityView("running");
       setRunPage(1);
-      refreshRuns(1, "completed", runQuery);
+      refreshRuns(1, "running", runQuery);
     } catch (error) {
-      toast.notify(toastFromError(error, `Popular ${action} failed.`));
+      toast.notify(toastFromError(error, "Remote popular collection could not be queued."));
     } finally {
       setRunningSystemAction(null);
     }
@@ -383,8 +391,7 @@ export function WorkflowsPage({
   const runSystemAction = async (kind: SystemRunKind) => {
     if (kind === "local_scan") return runLocalScan();
     if (kind === "metadata_sync") return runMetadataSync();
-    if (kind === "popular_track") return runPopularCollection("track");
-    if (kind === "popular_fetch") return runPopularCollection("fetch");
+    if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
   };
 
@@ -397,6 +404,7 @@ export function WorkflowsPage({
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (kind === "metadata_sync") return canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
+    if (kind === "remote_popular") return canRun && canTagWorks;
     return canRun;
   };
 
@@ -505,6 +513,8 @@ export function WorkflowsPage({
                   isSystemActionRunning={systemActionBusy}
                   canRunSystemAction={systemActionAllowed}
                   onRunSystemAction={runSystemAction}
+                  onRunRemotePopular={runPopularCollection}
+                  canFetchRemotePopular={canManageDownloads}
                   onRunDLsitePopular={runDLsitePopularCollection}
                   emptyText={definitionEmptyText}
                   onEditDefinition={() => setModalMode("edit-workflow")}
@@ -964,6 +974,8 @@ function WorkflowDetail({
   isSystemActionRunning,
   canRunSystemAction,
   onRunSystemAction,
+  onRunRemotePopular,
+  canFetchRemotePopular = false,
   onRunDLsitePopular,
   emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
@@ -978,6 +990,8 @@ function WorkflowDetail({
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind) => Promise<void>;
+  onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
+  canFetchRemotePopular?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   emptyText?: string;
   onEditDefinition: () => void;
@@ -1018,7 +1032,7 @@ function WorkflowDetail({
                 Edit workflow
               </Button>
             )}
-            {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.filter((kind) => kind !== "dlsite_popular").map((kind) => {
+            {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.filter((kind) => kind !== "dlsite_popular" && kind !== "remote_popular").map((kind) => {
               const running = isSystemActionRunning?.(kind) ?? false;
               const allowed = canRunSystemAction?.(kind) ?? false;
               return (
@@ -1036,6 +1050,15 @@ function WorkflowDetail({
             running={isSystemActionRunning?.("dlsite_popular") ?? false}
             allowed={canRunSystemAction?.("dlsite_popular") ?? false}
             onRun={onRunDLsitePopular}
+          />
+        )}
+
+        {systemRunKinds?.includes("remote_popular") && onRunRemotePopular && (
+          <RemotePopularRunPanel
+            running={isSystemActionRunning?.("remote_popular") ?? false}
+            allowed={canRunSystemAction?.("remote_popular") ?? false}
+            canFetch={canFetchRemotePopular}
+            onRun={onRunRemotePopular}
           />
         )}
 
@@ -1059,13 +1082,134 @@ function systemRunKindLabel(kind: SystemRunKind) {
       return "Run local scan";
     case "metadata_sync":
       return "Sync metadata";
-    case "popular_track":
-      return "Track popular";
-    case "popular_fetch":
-      return "Fetch popular";
+    case "remote_popular":
+      return "Collect remote popular";
     case "dlsite_popular":
       return "Collect DLsite popular";
   }
+}
+
+function RemotePopularRunPanel({
+  running,
+  allowed,
+  canFetch,
+  onRun,
+}: {
+  running: boolean;
+  allowed: boolean;
+  canFetch: boolean;
+  onRun: (options: RemotePopularRunOptions) => Promise<void>;
+}) {
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [sourceId, setSourceId] = useState(0);
+  const [action, setAction] = useState<"track" | "fetch">("track");
+  const [limit, setLimit] = useState(25);
+  const [tagName, setTagName] = useState("");
+  const [tagCustomized, setTagCustomized] = useState(false);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const compatibleSources = useMemo(
+    () => sources.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compilable_number178"].includes(source.sourceType)),
+    [sources],
+  );
+  const selectedSource = compatibleSources.find((source) => source.id === sourceId) ?? null;
+  const generatedTag = remotePopularTagName(selectedSource?.code ?? "remote", action, new Date());
+
+  useEffect(() => {
+    let active = true;
+    api.listLibrarySources()
+      .then((items) => {
+        if (!active) return;
+        setSources(items);
+        const first = items.find((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compilable_number178"].includes(source.sourceType));
+        setSourceId((current) => current || first?.id || 0);
+      })
+      .catch(() => {
+        if (active) setSources([]);
+      })
+      .finally(() => {
+        if (active) setLoadingSources(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!tagCustomized) setTagName(generatedTag);
+  }, [generatedTag, tagCustomized]);
+
+  const canSubmit = allowed && sourceId > 0 && tagName.trim().length > 0 && (action !== "fetch" || canFetch);
+  return (
+    <div className="rounded-md border bg-background p-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.7fr)]">
+        <div className="space-y-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Remote source
+            <select
+              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={sourceId}
+              disabled={loadingSources || compatibleSources.length === 0}
+              onChange={(event) => setSourceId(Number(event.target.value))}
+            >
+              {compatibleSources.length === 0 && <option value={0}>{loadingSources ? "Loading sources" : "No compatible source"}</option>}
+              {compatibleSources.map((source) => <option key={source.id} value={source.id}>{source.displayName}</option>)}
+            </select>
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <div className="text-sm font-medium">Action</div>
+              <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-1" aria-label="Remote popular action">
+                {(["track", "fetch"] as const).map((item) => (
+                  <button
+                    key={item}
+                    className={`h-8 rounded px-3 text-sm font-medium capitalize transition-colors ${action === item ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                    aria-pressed={action === item}
+                    onClick={() => setAction(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              {action === "fetch" && !canFetch && <div className="mt-1 text-xs text-destructive">Fetch requires download management permission.</div>}
+            </div>
+            <label className="grid content-start gap-2 text-sm font-medium">
+              Work limit
+              <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+                {[10, 25, 50, 100].map((item) => <option key={item} value={item}>{item} works</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col justify-between gap-4 border-t pt-4 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+          <label className="grid gap-2 text-sm font-medium">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Tag className="h-3.5 w-3.5" />
+              User tag
+            </span>
+            <input
+              className="h-9 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={tagName}
+              maxLength={40}
+              onChange={(event) => {
+                setTagCustomized(true);
+                setTagName(event.target.value);
+              }}
+            />
+          </label>
+          <Button disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagName: tagName.trim() })}>
+            <Play className="h-4 w-4" />
+            {running ? "Queueing" : "Run collection"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function remotePopularTagName(sourceCode: string, action: "track" | "fetch", now: Date) {
+  const date = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const source = sourceCode.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 12) || "remote";
+  return `${date}-${source}-${action}-popular`.slice(0, 40);
 }
 
 function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; allowed: boolean; onRun: (options: DLsitePopularRunOptions) => Promise<void> }) {

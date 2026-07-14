@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function mockCacheSettings(page: Page, onCleanup: () => void) {
+async function mockCacheSettings(page: Page, onCleanup: (payload: unknown) => void) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -59,14 +59,30 @@ async function mockCacheSettings(page: Page, onCleanup: () => void) {
           missingReferences: 2,
           emptyDirectories: 1,
           works: [
-            { workCode: "RJ09990001", sourceId: 1, sourceName: "Example Remote", files: 8, bytes: 104857600, orphanFiles: 2, orphanBytes: 20971520, tracked: false, local: false },
+            {
+              groupKey: "1:remote-a:RJ09990001",
+              workId: 1,
+              workCode: "RJ09990001",
+              sourceId: 1,
+              sourceCode: "remote-a",
+              sourceName: "Example Remote",
+              files: 8,
+              bytes: 104857600,
+              referencedFiles: 6,
+              referencedBytes: 83886080,
+              orphanFiles: 2,
+              orphanBytes: 20971520,
+              emptyDirectories: 1,
+              tracked: false,
+              local: false,
+            },
           ],
         },
       });
       return;
     }
     if (url.pathname === "/api/cache/cleanup" && route.request().method() === "POST") {
-      onCleanup();
+      onCleanup(route.request().postDataJSON());
       await route.fulfill({ status: 202, json: { runId: 52, jobId: 53, status: "queued", queued: 4 } });
       return;
     }
@@ -76,8 +92,8 @@ async function mockCacheSettings(page: Page, onCleanup: () => void) {
 
 test("cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  let cleanupRequests = 0;
-  await mockCacheSettings(page, () => { cleanupRequests += 1; });
+  const cleanupRequests: unknown[] = [];
+  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
   await page.goto("/settings");
   await page.getByRole("button", { name: "Cache & Fetch", exact: true }).click();
 
@@ -86,10 +102,25 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("RJ09990001", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Clean orphan cache" }).click();
-  expect(cleanupRequests).toBe(0);
-  await expect(page.getByRole("button", { name: "Confirm cleanup (3 files)" })).toBeVisible();
-  await page.getByRole("button", { name: "Confirm cleanup (3 files)" }).click();
-  await expect.poll(() => cleanupRequests).toBe(1);
+  await page.getByRole("checkbox", { name: "Select cache for RJ09990001" }).click();
+  await page.getByRole("button", { name: "Clean selected orphans" }).click();
+  expect(cleanupRequests).toHaveLength(0);
+  await expect(page.getByRole("button", { name: "Confirm cleanup (2 files)" })).toBeVisible();
+  await page.getByRole("button", { name: "Confirm cleanup (2 files)" }).click();
+  await expect.poll(() => cleanupRequests).toHaveLength(1);
+  expect(cleanupRequests[0]).toEqual({ mode: "orphans", groupKeys: ["1:remote-a:RJ09990001"] });
   await expect(page.getByText("Cleanup queued in workflow run #52 (4 items).", { exact: true })).toBeVisible();
+});
+
+test("cache settings can clear referenced cache for selected works", async ({ page }) => {
+  const cleanupRequests: unknown[] = [];
+  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Cache & Fetch", exact: true }).click();
+  await page.getByRole("button", { name: "Work cache", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Select cache for RJ09990001" }).click();
+  await page.getByRole("button", { name: "Clean selected works" }).click();
+  await page.getByRole("button", { name: "Confirm cleanup (6 files)" }).click();
+  await expect.poll(() => cleanupRequests).toHaveLength(1);
+  expect(cleanupRequests[0]).toEqual({ mode: "works", workIds: [1] });
 });

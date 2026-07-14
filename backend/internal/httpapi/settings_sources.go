@@ -298,6 +298,7 @@ type remoteCollectionRunRequest struct {
 	SourceID int64  `json:"sourceId"`
 	Action   string `json:"action"`
 	Limit    int    `json:"limit"`
+	TagName  string `json:"tagName"`
 }
 
 type remoteCollectionRunResult struct {
@@ -311,22 +312,27 @@ type remoteCollectionRunResult struct {
 	Skipped         int      `json:"skipped"`
 	Tracked         int      `json:"tracked"`
 	Fetched         int      `json:"fetched"`
+	Tagged          int      `json:"tagged"`
 	Failed          int      `json:"failed"`
 	ChildRuns       []int64  `json:"childRuns"`
 	Failures        []string `json:"failures"`
 	ExpectedMaximum int      `json:"expectedMaximum"`
 	ReturnedCount   int      `json:"returnedCount"`
+	TagName         string   `json:"tagName"`
 }
 
 type remoteCollectionJobCheckpoint struct {
 	CompletedCodes []string                  `json:"completedCodes"`
+	Candidates     []kikoeru.Work            `json:"candidates"`
 	Result         remoteCollectionRunResult `json:"result"`
 }
 
 type remoteCollectionJobPayload struct {
+	UserID   int64  `json:"user_id"`
 	SourceID int64  `json:"source_id"`
 	Action   string `json:"action"`
 	Limit    int    `json:"limit"`
+	TagName  string `json:"tag_name"`
 }
 
 type remoteWorkSaveRequest struct {
@@ -2347,44 +2353,33 @@ func (s *Server) cacheLocationsForWorkSource(ctx context.Context, workID int64, 
 	return locations, rows.Err()
 }
 
-func (s *Server) runRemotePopularWorkflow(ctx context.Context, payload remoteCollectionRunRequest) (remoteCollectionRunResult, error) {
+func (s *Server) runRemotePopularWorkflow(ctx context.Context, userID int64, payload remoteCollectionRunRequest) (remoteCollectionRunResult, error) {
 	action := normalizeRemoteCollectionAction(payload.Action)
 	if action == "" {
 		return remoteCollectionRunResult{}, fmt.Errorf("action must be track or fetch")
+	}
+	if payload.SourceID <= 0 {
+		return remoteCollectionRunResult{}, fmt.Errorf("sourceId is required")
+	}
+	if payload.Limit <= 0 || payload.Limit > 100 {
+		return remoteCollectionRunResult{}, fmt.Errorf("limit must be between 1 and 100")
+	}
+	payload.TagName = strings.TrimSpace(payload.TagName)
+	if payload.TagName == "" {
+		return remoteCollectionRunResult{}, fmt.Errorf("tagName is required")
+	}
+	if runes := []rune(payload.TagName); len(runes) > 40 {
+		payload.TagName = string(runes[:40])
 	}
 	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
 	if err != nil {
 		return remoteCollectionRunResult{}, err
 	}
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return remoteCollectionRunResult{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+		return remoteCollectionRunResult{}, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return remoteCollectionRunResult{}, fmt.Errorf("source has no API endpoint")
-	}
-	limit := payload.Limit
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
-	page, err := kikoeruClientForSource(source).PopularWorks(ctx, 1, limit)
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
-		return remoteCollectionRunResult{}, err
-	}
-	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	candidates := uniqueRemoteCollectionWorks(page.Works, limit)
-	expectedMaximum := 100
-	result := remoteCollectionRunResult{
-		SourceID:        source.ID,
-		CollectionKind:  "popular",
-		Action:          action,
-		Status:          "succeeded",
-		Discovered:      len(page.Works),
-		Accepted:        len(candidates),
-		ExpectedMaximum: expectedMaximum,
-		ReturnedCount:   len(page.Works),
-		ChildRuns:       []int64{},
-		Failures:        []string{},
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -2392,102 +2387,62 @@ func (s *Server) runRemotePopularWorkflow(ctx context.Context, payload remoteCol
 		return remoteCollectionRunResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_popular_collection", "Run popular remote collection", "Discover popular works from a configured compatible source, then track or fetch accepted works.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_remote_source"},
-			{"id": "discover", "type": "discover_remote_collection"},
-			{"id": "filter", "type": "filter_candidates"},
-			{"id": "dispatch", "type": "dispatch_child_workflows"},
-		},
-	})
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_popular_collection", "Collect popular remote works", "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.", remotePopularCollectionDefinition())
 	if err != nil {
 		return remoteCollectionRunResult{}, err
 	}
-	input := map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "limit": limit}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_popular_collection", "Run popular remote collection", "running", "manual", action, input, map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "expected_maximum": expectedMaximum})
+	input := map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "limit": payload.Limit, "tag_name": payload.TagName, "user_id": userID}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_popular_collection", "Collect popular remote works", "queued", "manual", action, input, map[string]any{"source_id": source.ID, "action": action, "limit": payload.Limit, "tag_name": payload.TagName})
 	if err != nil {
-		return remoteCollectionRunResult{}, err
-	}
-	result.RunID = runID
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "select", NodeType: "select_remote_source", DisplayName: "Select remote source", Position: 1, Status: "succeeded",
-		Input: input, Output: map[string]any{"source_id": source.ID, "source_code": source.Code},
-	}); err != nil {
 		return remoteCollectionRunResult{}, err
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "discover", NodeType: "discover_remote_collection", DisplayName: "Discover popular works", Position: 2, Status: "succeeded",
-		Input: map[string]any{"collection_kind": "popular", "page": 1, "page_size": limit}, Output: map[string]any{"returned": len(page.Works), "accepted": len(candidates), "pagination": page.Pagination},
+		NodeID: "configure", NodeType: "select_remote_source", DisplayName: "Configure remote collection", Position: 1, Status: "succeeded",
+		Input: input, Output: map[string]any{"source_id": source.ID, "source_code": source.Code, "action": action, "limit": payload.Limit, "tag_name": payload.TagName},
 	}); err != nil {
 		return remoteCollectionRunResult{}, err
 	}
-	dispatchNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch accepted works", Position: 4, Status: "running",
-		Input: map[string]any{"action": action, "works": len(candidates)}, Output: nil,
+	discoverNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "discover", NodeType: "discover_remote_collection", DisplayName: "Discover popular works", Position: 2, Status: "queued",
+		Input: map[string]any{"source_id": source.ID, "collection_kind": "popular", "page": 1, "page_size": payload.Limit},
 	})
 	if err != nil {
 		return remoteCollectionRunResult{}, err
 	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: dispatchNodeID, WorkerType: "remote_popular_collection", Status: "running", Payload: input,
-		Checkpoint: remoteCollectionJobCheckpoint{CompletedCodes: []string{}, Result: result}, Recoverable: true, MaxRetries: 3,
-		ProgressCurrent: 0, ProgressTotal: len(candidates),
-	})
-	if err != nil {
+	for _, node := range []workflow.NodeRunSpec{
+		{NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter collection candidates", Position: 3, Status: "queued", Input: map[string]any{"limit": payload.Limit}},
+		{NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch accepted works", Position: 4, Status: "queued", Input: map[string]any{"action": action}},
+		{NodeID: "tag", NodeType: "assign_user_tags", DisplayName: "Add user tag", Position: 5, Status: "queued", Input: map[string]any{"tag_name": payload.TagName, "user_id": userID}},
+	} {
+		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
+			return remoteCollectionRunResult{}, err
+		}
+	}
+	result := remoteCollectionRunResult{
+		RunID: runID, SourceID: source.ID, CollectionKind: "popular", Action: action, Status: "queued",
+		ChildRuns: []int64{}, Failures: []string{}, ExpectedMaximum: payload.Limit, TagName: payload.TagName,
+	}
+	jobPayload := remoteCollectionJobPayload{UserID: userID, SourceID: source.ID, Action: action, Limit: payload.Limit, TagName: payload.TagName}
+	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
+		NodeRunID: discoverNodeID, WorkerType: "remote_popular_collection", Status: "queued", Payload: jobPayload,
+		Checkpoint: remoteCollectionJobCheckpoint{CompletedCodes: []string{}, Candidates: nil, Result: result}, Recoverable: true, MaxRetries: 3,
+	}); err != nil {
 		return remoteCollectionRunResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return remoteCollectionRunResult{}, err
 	}
-	jobCtx, stopHeartbeat, err := s.leaseInlineWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID, NodeRunID: dispatchNodeID})
-	if err != nil {
-		return remoteCollectionRunResult{}, err
-	}
-	defer stopHeartbeat()
-
-	for index, work := range candidates {
-		code := normalizedRemoteWorkCode(work)
-		if code == "" {
-			result.Skipped++
-			result.Failures = append(result.Failures, "remote work missing stable code")
-			_ = updateWorkflowJobProgress(jobCtx, s.db, jobID, index+1, len(candidates))
-			continue
-		}
-		if action == "track" {
-			workID, err := s.trackRemoteCollectionWork(jobCtx, source, work, "popular", runID)
-			if err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-			} else if workID > 0 {
-				result.Tracked++
-			}
-		} else {
-			fetchResult, err := s.enqueueRemoteWorkSave(jobCtx, source.ID, code, []string{}, nil, "", "", nil)
-			if err != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
-			} else {
-				result.Fetched++
-				result.ChildRuns = append(result.ChildRuns, fetchResult.RunID)
-			}
-		}
-		_ = updateWorkflowJobProgress(jobCtx, s.db, jobID, index+1, len(candidates))
-		checkpoint := remoteCollectionJobCheckpoint{CompletedCodes: make([]string, 0, index+1), Result: result}
-		for _, completed := range candidates[:index+1] {
-			if completedCode := normalizedRemoteWorkCode(completed); completedCode != "" {
-				checkpoint.CompletedCodes = append(checkpoint.CompletedCodes, completedCode)
-			}
-		}
-		_ = s.updateWorkflowJobCheckpoint(jobCtx, jobID, "dispatch", checkpoint, index+1, len(candidates))
-	}
-	result.Status = "succeeded"
-	if result.Failed > 0 {
-		result.Status = "partial"
-	}
-	if err := s.finishRemoteCollectionWorkflow(jobCtx, runID, dispatchNodeID, jobID, result); err != nil {
-		return remoteCollectionRunResult{}, err
-	}
 	return result, nil
+}
+
+func remotePopularCollectionDefinition() map[string]any {
+	return map[string]any{"nodes": []map[string]string{
+		{"id": "configure", "type": "select_remote_source", "displayName": "Configure remote collection"},
+		{"id": "discover", "type": "discover_remote_collection", "displayName": "Discover popular works"},
+		{"id": "filter", "type": "filter_candidates", "displayName": "Filter collection candidates"},
+		{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch accepted works"},
+		{"id": "tag", "type": "assign_user_tags", "displayName": "Add user tag"},
+	}}
 }
 
 func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job workflowJobRecord) error {
@@ -2496,97 +2451,170 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
-	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	limit := payload.Limit
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
-	page, err := kikoeruClientForSource(source).PopularWorks(ctx, 1, limit)
-	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
-		return err
-	}
-	candidates := uniqueRemoteCollectionWorks(page.Works, limit)
 	checkpoint := remoteCollectionJobCheckpoint{}
 	if err := decodeWorkflowJobCheckpointDetail(job.CheckpointJSON, &checkpoint); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result := checkpoint.Result
-	if result.RunID == 0 {
-		result = remoteCollectionRunResult{
-			RunID: job.RunID, SourceID: source.ID, CollectionKind: "popular", Action: normalizeRemoteCollectionAction(payload.Action),
-			Status: "succeeded", Discovered: len(page.Works), Accepted: len(candidates), ExpectedMaximum: 100,
-			ReturnedCount: len(page.Works), ChildRuns: []int64{}, Failures: []string{},
-		}
+	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
 	}
+	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
+	if err != nil {
+		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
+		return err
+	}
+	result := checkpoint.Result
 	result.RunID = job.RunID
+	result.SourceID = source.ID
+	result.Action = normalizeRemoteCollectionAction(payload.Action)
+	result.CollectionKind = "popular"
+	result.TagName = payload.TagName
+	result.ExpectedMaximum = payload.Limit
+	result.Status = "running"
+	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", job.RunID)
+
+	if checkpoint.Candidates == nil {
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
+		page, discoverErr := kikoeruClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
+		if discoverErr != nil {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			_ = s.failClaimedWorkflowJob(ctx, job, discoverErr.Error())
+			return discoverErr
+		}
+		_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+		checkpoint.Candidates = uniqueRemoteCollectionWorks(page.Works, payload.Limit)
+		result.Discovered = len(page.Works)
+		result.ReturnedCount = len(page.Works)
+		result.Accepted = len(checkpoint.Candidates)
+		result.Skipped = max(0, len(page.Works)-len(checkpoint.Candidates))
+		checkpoint.Result = result
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"returned": len(page.Works), "pagination": page.Pagination}), nodeIDs["discover"]); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped}), nodeIDs["filter"]); err != nil {
+			return err
+		}
+		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "discovered", checkpoint, len(checkpoint.CompletedCodes), len(checkpoint.Candidates))
+	} else {
+		result.Accepted = len(checkpoint.Candidates)
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"returned": result.ReturnedCount, "resumed": true}), nodeIDs["discover"])
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP) WHERE id = ?", mustJSON(map[string]any{"accepted": result.Accepted, "skipped": result.Skipped, "resumed": true}), nodeIDs["filter"])
+	}
+
+	_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id IN (?, ?)", nodeIDs["dispatch"], nodeIDs["tag"])
 	completed := map[string]bool{}
 	for _, code := range checkpoint.CompletedCodes {
 		completed[strings.ToUpper(strings.TrimSpace(code))] = true
 	}
-	for index, work := range candidates {
+	for index, work := range checkpoint.Candidates {
+		if err := s.ensureWorkflowRunActive(ctx, job.RunID); err != nil {
+			return err
+		}
 		code := normalizedRemoteWorkCode(work)
-		if code == "" || completed[code] {
+		if code == "" {
+			result.Skipped++
+			result.Failures = append(result.Failures, "remote work missing stable code")
 			continue
 		}
+		if completed[code] {
+			continue
+		}
+		var workID int64
 		if result.Action == "track" {
-			workID, runErr := s.trackRemoteCollectionWork(ctx, source, work, "popular", job.RunID)
-			if runErr != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, runErr.Error()))
-			} else if workID > 0 {
+			workID, err = s.trackRemoteCollectionWork(ctx, source, work, "popular", job.RunID)
+			if err == nil && workID > 0 {
 				result.Tracked++
 			}
 		} else {
-			fetchResult, runErr := s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil)
-			if runErr != nil {
-				result.Failed++
-				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, runErr.Error()))
-			} else {
+			var fetchResult remoteWorkSaveResult
+			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil)
+			if err == nil {
+				workID = fetchResult.WorkID
 				result.Fetched++
 				result.ChildRuns = append(result.ChildRuns, fetchResult.RunID)
+				_, _ = s.db.ExecContext(ctx, `
+					INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+					VALUES (?, 'remote_work', ?, 'accepted', ?)
+				`, job.RunID, code, mustJSON(map[string]any{"collection_kind": "popular", "remote_work_id": work.ID, "child_run_id": fetchResult.RunID}))
 			}
 		}
+		if err != nil {
+			result.Failed++
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+		} else if workID <= 0 {
+			result.Failed++
+			result.Failures = append(result.Failures, fmt.Sprintf("%s: work was not persisted", code))
+		} else if _, tagErr := s.addWorkUserTag(ctx, payload.UserID, []int64{workID}, payload.TagName); tagErr != nil {
+			result.Failed++
+			result.Failures = append(result.Failures, fmt.Sprintf("%s tag: %s", code, tagErr.Error()))
+		} else {
+			result.Tagged++
+		}
 		completed[code] = true
-		checkpoint.Result = result
 		checkpoint.CompletedCodes = sortedStringKeys(completed)
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "dispatch", checkpoint, index+1, len(candidates))
+		checkpoint.Result = result
+		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "dispatch", checkpoint, index+1, len(checkpoint.Candidates))
 	}
 	result.Status = "succeeded"
-	if result.Failed > 0 {
+	succeeded := result.Tracked + result.Fetched
+	if result.Failed > 0 && succeeded == 0 {
+		result.Status = "failed"
+	} else if result.Failed > 0 {
 		result.Status = "partial"
 	}
-	return s.finishRemoteCollectionWorkflow(ctx, job.RunID, job.NodeRunID, job.ID, result)
+	return s.finishRemotePopularCollectionJob(ctx, job, nodeIDs, result)
+}
+
+func (s *Server) finishRemotePopularCollectionJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result remoteCollectionRunResult) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(map[string]any{"action": result.Action, "tracked": result.Tracked, "fetched": result.Fetched, "child_runs": result.ChildRuns, "failed": result.Failed}), strings.Join(result.Failures, "\n"), nodeIDs["dispatch"]); err != nil {
+		return err
+	}
+	tagStatus := "succeeded"
+	succeeded := result.Tracked + result.Fetched
+	if result.Tagged < succeeded {
+		tagStatus = "partial"
+	}
+	if result.Tagged == 0 && succeeded > 0 {
+		tagStatus = "failed"
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", tagStatus, mustJSON(map[string]any{"tag_name": result.TagName, "tagged": result.Tagged}), nodeIDs["tag"]); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, result.Status, result.Accepted, result.Accepted, strings.Join(result.Failures, "\n"), job.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(result), job.RunID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) remoteCollectionSource(ctx context.Context, sourceID int64) (remoteSourceForUse, error) {
-	if sourceID > 0 {
-		source, err := s.loadRemoteSourceForUse(ctx, sourceID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return remoteSourceForUse{}, fmt.Errorf("source not found")
-		}
-		return source, err
+	if sourceID <= 0 {
+		return remoteSourceForUse{}, fmt.Errorf("sourceId is required")
 	}
-	sources, err := s.loadRemoteSourcesForAvailability(ctx)
-	if err != nil {
-		return remoteSourceForUse{}, err
+	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteSourceForUse{}, fmt.Errorf("source not found")
 	}
-	for _, source := range sources {
-		if isKikoeruSourceType(source.SourceType) && source.Enabled && strings.TrimSpace(source.Endpoint.APIURL) != "" {
-			return source, nil
-		}
-	}
-	return remoteSourceForUse{}, fmt.Errorf("no enabled kikoeru-compatible source is configured")
+	return source, err
 }
 
 func normalizeRemoteCollectionAction(action string) string {
 	switch strings.TrimSpace(action) {
-	case "", "track", "tracked":
+	case "track", "tracked":
 		return "track"
 	case "fetch", "local":
 		return "fetch"
@@ -2646,35 +2674,6 @@ func (s *Server) trackRemoteCollectionWork(ctx context.Context, source remoteSou
 		return 0, err
 	}
 	return workID, tx.Commit()
-}
-
-func (s *Server) finishRemoteCollectionWorkflow(ctx context.Context, runID int64, dispatchNodeID int64, jobID int64, result remoteCollectionRunResult) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(result), dispatchNodeID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_job
-		SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
-			locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, result.Accepted, result.Accepted, strings.Join(result.Failures, "\n"), jobID); err != nil {
-		return err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "filter", NodeType: "filter_candidates", DisplayName: "Filter collection candidates", Position: 3, Status: "succeeded",
-		Input: map[string]any{"discovered": result.Discovered}, Output: map[string]any{"accepted": result.Accepted, "skipped": result.Skipped},
-	}); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(result), runID); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {

@@ -784,11 +784,13 @@ export type RemoteCollectionRunResult = {
   skipped: number;
   tracked: number;
   fetched: number;
+  tagged: number;
   failed: number;
   childRuns: number[];
   failures: string[];
   expectedMaximum: number;
   returnedCount: number;
+  tagName: string;
 };
 
 export type DLsitePopularRunResult = {
@@ -1046,13 +1048,19 @@ export type MediaCacheResult = {
 };
 
 export type CacheWorkOverview = {
+  groupKey: string;
+  workId: number;
   workCode: string;
   sourceId: number;
+  sourceCode: string;
   sourceName: string;
   files: number;
   bytes: number;
+  referencedFiles: number;
+  referencedBytes: number;
   orphanFiles: number;
   orphanBytes: number;
+  emptyDirectories: number;
   tracked: boolean;
   local: boolean;
 };
@@ -1435,7 +1443,8 @@ export const api = {
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
   getCacheOverview: () => getJSON<CacheOverview>("/api/cache/overview"),
-  cleanupOrphanCache: () => postJSON<CacheMaintenanceResult>("/api/cache/cleanup"),
+  cleanupCache: (payload: { mode: "orphans"; groupKeys: string[] } | { mode: "works"; workIds: number[] }) =>
+    postJSONBody<CacheMaintenanceResult>("/api/cache/cleanup", payload),
   deleteMediaCacheLocation: (locationId: number) =>
     deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
   deleteMediaLocalLocation: (locationId: number) =>
@@ -1614,7 +1623,7 @@ export const api = {
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
-  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId?: number; limit?: number }) =>
+  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId: number; limit: number; tagName: string }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
   runDLsitePopularCollection: (payload: { period: "day" | "week" | "month" | "year"; releaseWindow: "30d" | ""; year: number; tagName: string }) =>
     postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),

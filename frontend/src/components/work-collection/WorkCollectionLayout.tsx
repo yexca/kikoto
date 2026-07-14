@@ -16,7 +16,7 @@ type StoredWorkCollectionLayout = {
   desktopColumns: WorkCollectionColumnCount;
 };
 
-export function useWorkCollectionLayout(initial: StoredWorkCollectionLayout = { viewMode: "grid", mobileColumns: 2, desktopColumns: 6 }) {
+export function useWorkCollectionLayout(initial: StoredWorkCollectionLayout = { viewMode: "grid", mobileColumns: 2, desktopColumns: 5 }) {
   const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
   useEffect(() => {
     const sync = () => setLayout(readStoredLayout(initial));
@@ -140,8 +140,8 @@ export function WorkCollectionLayoutPicker({
 
 export function workCollectionClassName(viewMode: WorkCollectionViewMode) {
   return viewMode === "masonry"
-    ? "[column-count:var(--mobile-columns)] [column-gap:1rem] sm:[column-count:var(--desktop-columns)]"
-    : "grid gap-4 [grid-template-columns:repeat(var(--mobile-columns),minmax(0,1fr))] sm:[grid-template-columns:repeat(var(--desktop-columns),minmax(0,1fr))]";
+    ? "[column-count:var(--mobile-columns)] [column-gap:1rem] lg:[column-count:var(--desktop-columns)]"
+    : "grid gap-4 [grid-template-columns:repeat(var(--mobile-columns),minmax(0,1fr))] lg:[grid-template-columns:repeat(var(--desktop-columns),minmax(0,1fr))]";
 }
 
 export function workCollectionStyle(mobileColumns: WorkCollectionColumnCount, desktopColumns: WorkCollectionColumnCount) {
@@ -174,9 +174,9 @@ function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>
 }
 
 function useIsWideLayout() {
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 640px)").matches);
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 640px)");
+    const media = window.matchMedia("(min-width: 1024px)");
     const update = () => setWide(media.matches);
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);

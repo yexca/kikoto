@@ -309,7 +309,7 @@ test("remote source reuses library layout, source sorting, localized tags, and b
 
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "退廃/背徳/インモラル", exact: true })).toBeVisible();
-  await expect(page.getByText("Page 1 / 2 · 30 works", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Page 1 / 2 · 30 works", { exact: true })).toHaveCount(1);
   await expect(page.getByTitle("Mark filters are unavailable for source browsing")).toBeDisabled();
 
   await page.getByRole("button", { name: "Sort: Recently added" }).click();

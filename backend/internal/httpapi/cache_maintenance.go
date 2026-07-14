@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,23 +22,31 @@ const cacheOrphanGracePeriod = 24 * time.Hour
 
 type cacheReference struct {
 	Available  bool
+	WorkID     int64
 	WorkCode   string
 	SourceID   int64
+	SourceCode string
 	SourceName string
 	Tracked    bool
 	Local      bool
 }
 
 type cacheWorkOverview struct {
-	WorkCode    string `json:"workCode"`
-	SourceID    int64  `json:"sourceId"`
-	SourceName  string `json:"sourceName"`
-	Files       int    `json:"files"`
-	Bytes       int64  `json:"bytes"`
-	OrphanFiles int    `json:"orphanFiles"`
-	OrphanBytes int64  `json:"orphanBytes"`
-	Tracked     bool   `json:"tracked"`
-	Local       bool   `json:"local"`
+	GroupKey         string `json:"groupKey"`
+	WorkID           int64  `json:"workId"`
+	WorkCode         string `json:"workCode"`
+	SourceID         int64  `json:"sourceId"`
+	SourceCode       string `json:"sourceCode"`
+	SourceName       string `json:"sourceName"`
+	Files            int    `json:"files"`
+	Bytes            int64  `json:"bytes"`
+	ReferencedFiles  int    `json:"referencedFiles"`
+	ReferencedBytes  int64  `json:"referencedBytes"`
+	OrphanFiles      int    `json:"orphanFiles"`
+	OrphanBytes      int64  `json:"orphanBytes"`
+	EmptyDirectories int    `json:"emptyDirectories"`
+	Tracked          bool   `json:"tracked"`
+	Local            bool   `json:"local"`
 }
 
 type cacheOverview struct {
@@ -54,9 +64,17 @@ type cacheOverview struct {
 }
 
 type cacheMaintenanceScan struct {
-	Overview    cacheOverview
-	OrphanPaths []string
-	EmptyPaths  []string
+	Overview         cacheOverview
+	OrphanPaths      []string
+	EmptyPaths       []string
+	OrphanPathGroups map[string]string
+	EmptyPathGroups  map[string]string
+}
+
+type cacheCleanupRequest struct {
+	Mode      string   `json:"mode"`
+	GroupKeys []string `json:"groupKeys"`
+	WorkIDs   []int64  `json:"workIds"`
 }
 
 type cacheOrphanCleanupPayload struct {
@@ -93,7 +111,26 @@ func (s *Server) cleanupOrphanCache(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
-	result, err := s.enqueueOrphanCacheCleanup(r.Context())
+	var request cacheCleanupRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	request.Mode = strings.ToLower(strings.TrimSpace(request.Mode))
+	if request.Mode == "" {
+		request.Mode = "orphans"
+	}
+	var result cacheMaintenanceResult
+	var err error
+	switch request.Mode {
+	case "orphans":
+		result, err = s.enqueueOrphanCacheCleanup(r.Context(), request.GroupKeys)
+	case "works":
+		result, err = s.enqueueWorkCacheCleanup(r.Context(), request.WorkIDs)
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be orphans or works"})
+		return
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -115,7 +152,10 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 		return cacheMaintenanceScan{}, err
 	}
 	mediaRoot := filepath.Join(cacheRoot, "media")
-	result := cacheMaintenanceScan{Overview: cacheOverview{ScannedAt: time.Now().UTC().Format(time.RFC3339), Works: []cacheWorkOverview{}}, OrphanPaths: []string{}, EmptyPaths: []string{}}
+	result := cacheMaintenanceScan{
+		Overview:    cacheOverview{ScannedAt: time.Now().UTC().Format(time.RFC3339), Works: []cacheWorkOverview{}},
+		OrphanPaths: []string{}, EmptyPaths: []string{}, OrphanPathGroups: map[string]string{}, EmptyPathGroups: map[string]string{},
+	}
 	seenReferences := map[string]bool{}
 	workRows := map[string]*cacheWorkOverview{}
 	if _, statErr := os.Stat(mediaRoot); errors.Is(statErr, os.ErrNotExist) {
@@ -151,6 +191,10 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 			if len(children) == 0 {
 				result.Overview.EmptyDirectories++
 				result.EmptyPaths = append(result.EmptyPaths, rel)
+				workCode, sourceCode := cachePathIdentity(rel)
+				row := ensureCacheWorkOverview(workRows, cacheReference{}, workCode, sourceCode)
+				row.EmptyDirectories++
+				result.EmptyPathGroups[rel] = row.GroupKey
 			}
 			return nil
 		}
@@ -164,24 +208,21 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 		if referenced {
 			seenReferences[rel] = true
 		}
-		workCode, sourceName := cachePathIdentity(rel)
+		workCode, sourceCode := cachePathIdentity(rel)
 		if reference.WorkCode != "" {
 			workCode = reference.WorkCode
 		}
-		if reference.SourceName != "" {
-			sourceName = reference.SourceName
+		if reference.SourceCode != "" {
+			sourceCode = reference.SourceCode
 		}
-		key := fmt.Sprintf("%d:%s:%s", reference.SourceID, sourceName, workCode)
-		row := workRows[key]
-		if row == nil {
-			row = &cacheWorkOverview{WorkCode: workCode, SourceID: reference.SourceID, SourceName: sourceName, Tracked: reference.Tracked, Local: reference.Local}
-			workRows[key] = row
-		}
+		row := ensureCacheWorkOverview(workRows, reference, workCode, sourceCode)
 		row.Files++
 		row.Bytes += info.Size()
 		if referenced && reference.Available {
 			result.Overview.ReferencedFiles++
 			result.Overview.ReferencedBytes += info.Size()
+			row.ReferencedFiles++
+			row.ReferencedBytes += info.Size()
 			return nil
 		}
 		if now.Sub(info.ModTime()) < cacheOrphanGracePeriod {
@@ -193,6 +234,7 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 		row.OrphanFiles++
 		row.OrphanBytes += info.Size()
 		result.OrphanPaths = append(result.OrphanPaths, rel)
+		result.OrphanPathGroups[rel] = row.GroupKey
 		return nil
 	})
 	if err != nil {
@@ -219,7 +261,7 @@ func (s *Server) scanManagedMediaCache(ctx context.Context) (cacheMaintenanceSca
 
 func (s *Server) loadCacheReferences(ctx context.Context) (map[string]cacheReference, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT location.path, location.availability, work.primary_code, source.id, source.display_name,
+		SELECT location.path, location.availability, work.id, work.primary_code, source.id, source.code, source.display_name,
 			EXISTS (SELECT 1 FROM work_source_presence tracked WHERE tracked.work_id = work.id AND tracked.file_source_id = source.id AND tracked.presence_type = 'tracked' AND tracked.availability = 'available'),
 			EXISTS (SELECT 1 FROM work_source_presence local_presence INNER JOIN file_source local_source ON local_source.id = local_presence.file_source_id WHERE local_presence.work_id = work.id AND local_presence.presence_type = 'local' AND local_presence.availability = 'available' AND local_source.source_type = 'local_folder')
 		FROM media_file_location location
@@ -236,7 +278,7 @@ func (s *Server) loadCacheReferences(ctx context.Context) (map[string]cacheRefer
 	for rows.Next() {
 		var path, availability string
 		var reference cacheReference
-		if err := rows.Scan(&path, &availability, &reference.WorkCode, &reference.SourceID, &reference.SourceName, &reference.Tracked, &reference.Local); err != nil {
+		if err := rows.Scan(&path, &availability, &reference.WorkID, &reference.WorkCode, &reference.SourceID, &reference.SourceCode, &reference.SourceName, &reference.Tracked, &reference.Local); err != nil {
 			return nil, err
 		}
 		path = filepath.ToSlash(strings.TrimSpace(path))
@@ -273,12 +315,50 @@ func cachePathIdentity(relPath string) (string, string) {
 	return "Unknown work", sourceName
 }
 
-func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context) (cacheMaintenanceResult, error) {
+func cacheGroupKey(workID int64, sourceCode string, workCode string) string {
+	return fmt.Sprintf("%d:%s:%s", workID, strings.ToLower(strings.TrimSpace(sourceCode)), strings.ToUpper(strings.TrimSpace(workCode)))
+}
+
+func ensureCacheWorkOverview(rows map[string]*cacheWorkOverview, reference cacheReference, workCode string, sourceCode string) *cacheWorkOverview {
+	groupKey := cacheGroupKey(reference.WorkID, sourceCode, workCode)
+	if row := rows[groupKey]; row != nil {
+		return row
+	}
+	sourceName := reference.SourceName
+	if sourceName == "" {
+		sourceName = sourceCode
+	}
+	row := &cacheWorkOverview{
+		GroupKey: groupKey, WorkID: reference.WorkID, WorkCode: workCode,
+		SourceID: reference.SourceID, SourceCode: sourceCode, SourceName: sourceName,
+		Tracked: reference.Tracked, Local: reference.Local,
+	}
+	rows[groupKey] = row
+	return row
+}
+
+func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []string) (cacheMaintenanceResult, error) {
 	scan, err := s.scanManagedMediaCache(ctx)
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
-	payload := cacheOrphanCleanupPayload{Files: scan.OrphanPaths, Directories: scan.EmptyPaths}
+	selected := map[string]bool{}
+	for _, key := range groupKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			selected[key] = true
+		}
+	}
+	payload := cacheOrphanCleanupPayload{Files: []string{}, Directories: []string{}}
+	for _, path := range scan.OrphanPaths {
+		if len(selected) == 0 || selected[scan.OrphanPathGroups[path]] {
+			payload.Files = append(payload.Files, path)
+		}
+	}
+	for _, path := range scan.EmptyPaths {
+		if len(selected) == 0 || selected[scan.EmptyPathGroups[path]] {
+			payload.Directories = append(payload.Directories, path)
+		}
+	}
 	total := len(payload.Files) + len(payload.Directories)
 	if total == 0 {
 		return cacheMaintenanceResult{Status: "succeeded"}, nil
@@ -311,6 +391,56 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context) (cacheMaintenanc
 		return cacheMaintenanceResult{}, err
 	}
 	return cacheMaintenanceResult{RunID: runID, JobID: jobID, Status: "queued", Queued: total}, nil
+}
+
+func (s *Server) enqueueWorkCacheCleanup(ctx context.Context, workIDs []int64) (cacheMaintenanceResult, error) {
+	unique := map[int64]bool{}
+	for _, workID := range workIDs {
+		if workID > 0 {
+			unique[workID] = true
+		}
+	}
+	if len(unique) == 0 {
+		return cacheMaintenanceResult{}, fmt.Errorf("at least one work is required")
+	}
+	if len(unique) > 100 {
+		return cacheMaintenanceResult{}, fmt.Errorf("at most 100 works can be cleaned at once")
+	}
+	targets := []mediaCleanupTargetRequest{}
+	for workID := range unique {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT location.id
+			FROM media_file_location AS location
+			INNER JOIN media_item AS item ON item.id = location.media_item_id
+			WHERE item.work_id = ? AND location.location_type = 'cache' AND location.availability = 'available'
+			ORDER BY location.id
+		`, workID)
+		if err != nil {
+			return cacheMaintenanceResult{}, err
+		}
+		for rows.Next() {
+			var locationID int64
+			if err := rows.Scan(&locationID); err != nil {
+				_ = rows.Close()
+				return cacheMaintenanceResult{}, err
+			}
+			targets = append(targets, mediaCleanupTargetRequest{Kind: "cache", LocationID: locationID})
+		}
+		if err := rows.Close(); err != nil {
+			return cacheMaintenanceResult{}, err
+		}
+	}
+	if len(targets) == 0 {
+		return cacheMaintenanceResult{Status: "succeeded"}, nil
+	}
+	if len(targets) > maxMediaCleanupTargets {
+		return cacheMaintenanceResult{}, fmt.Errorf("selected works contain more than %d cache locations", maxMediaCleanupTargets)
+	}
+	result, err := s.enqueueMediaLocationCleanup(ctx, targets)
+	if err != nil {
+		return cacheMaintenanceResult{}, err
+	}
+	return cacheMaintenanceResult{RunID: result.RunID, JobID: result.JobID, Status: result.Status, Queued: result.Queued}, nil
 }
 
 func (s *Server) executeCacheOrphanCleanupJob(ctx context.Context, job workflowJobRecord) error {

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,7 @@ func TestCacheMaintenanceScansAndExecutesRecoverableCleanup(t *testing.T) {
 		t.Fatalf("orphan paths = %#v", scan.OrphanPaths)
 	}
 
-	queued, err := server.enqueueOrphanCacheCleanup(context.Background())
+	queued, err := server.enqueueOrphanCacheCleanup(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +124,80 @@ func TestCacheCleanupRechecksDatabaseReferenceBeforeDelete(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("referenced file missing: %v", err)
+	}
+}
+
+func TestCacheMaintenanceQueuesOnlySelectedOrphanGroup(t *testing.T) {
+	cacheRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	firstRel := "media/remote_a/RJ/RJ09990201/first.mp3"
+	secondRel := "media/remote_a/RJ/RJ09990202/second.mp3"
+	writeCacheTestFile(t, cacheRoot, firstRel, "first", 48*time.Hour)
+	writeCacheTestFile(t, cacheRoot, secondRel, "second", 48*time.Hour)
+
+	result, err := server.enqueueOrphanCacheCleanup(context.Background(), []string{cacheGroupKey(0, "remote_a", "RJ09990201")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Queued != 1 {
+		t.Fatalf("queued = %d, want 1", result.Queued)
+	}
+	job := loadCacheMaintenanceJob(t, server, result.JobID)
+	var payload cacheOrphanCleanupPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Files) != 1 || payload.Files[0] != firstRel {
+		t.Fatalf("files = %#v, want only %q", payload.Files, firstRel)
+	}
+}
+
+func TestCacheMaintenanceQueuesOnlySelectedWorkCache(t *testing.T) {
+	cacheRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote_a', 'Remote A', 'kikoeru_compatible')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ09990301', 'First'), (2, 'RJ09990302', 'Second')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'first.mp3'), (2, 2, 'audio', 'second.mp3')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (11, 1, 1, 'cache', 'media/remote_a/RJ/RJ09990301/first.mp3', 'available'), (12, 2, 1, 'cache', 'media/remote_a/RJ/RJ09990302/second.mp3', 'available')`); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := server.enqueueWorkCacheCleanup(context.Background(), []int64{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Queued != 1 {
+		t.Fatalf("queued = %d, want 1", result.Queued)
+	}
+	job := loadCacheMaintenanceJob(t, server, result.JobID)
+	var payload mediaCleanupJobPayload
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Targets) != 1 || payload.Targets[0].WorkID != 2 || payload.Targets[0].LocationID != 12 {
+		t.Fatalf("targets = %#v, want only work 2 location 12", payload.Targets)
+	}
+}
+
+func TestCacheMaintenanceRejectsInvalidCleanupRequest(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	for _, body := range []string{`{"mode":"unknown"}`, `{invalid`} {
+		request := httptest.NewRequest(http.MethodPost, "/api/cache/cleanup", strings.NewReader(body))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"downloads:manage"}}))
+		response := httptest.NewRecorder()
+		server.cleanupOrphanCache(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("body %q status = %d, want %d", body, response.Code, http.StatusBadRequest)
+		}
 	}
 }
 

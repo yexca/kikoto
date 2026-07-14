@@ -241,8 +241,8 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
               {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
               {canAccessCurrentPage && page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
-              {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} />}
-              {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} />}
+              {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
+              {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
               {canAccessCurrentPage && page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
               {canAccessCurrentPage && page === "about" && <AboutPage />}
               {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users", "about"].includes(page) && (

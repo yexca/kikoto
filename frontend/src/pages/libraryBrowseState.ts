@@ -30,7 +30,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   randomSeed: 1,
   view: "grid",
   mobileColumns: 1,
-  desktopColumns: 6,
+  desktopColumns: 5,
   scrollY: 0,
 };
 

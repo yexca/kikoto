@@ -228,13 +228,14 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 	},
 	{
 		Code:        "remote_popular_collection",
-		Name:        "Run popular remote collection",
-		Description: "Discover popular works from a configured compatible source, then track or fetch accepted works.",
+		Name:        "Collect popular remote works",
+		Description: "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
 		Nodes: []map[string]string{
-			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
+			{"id": "configure", "type": "select_remote_source", "displayName": "Configure remote collection"},
 			{"id": "discover", "type": "discover_remote_collection", "displayName": "Discover popular works"},
 			{"id": "filter", "type": "filter_candidates", "displayName": "Filter collection candidates"},
-			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Track or fetch works"},
+			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch accepted works"},
+			{"id": "tag", "type": "assign_user_tags", "displayName": "Add user tag"},
 		},
 	},
 	{
