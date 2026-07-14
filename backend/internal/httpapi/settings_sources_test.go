@@ -156,6 +156,7 @@ func TestRemoteSourceSortMapping(t *testing.T) {
 		order string
 	}{
 		{input: "recent", name: "recent", order: "create_date"},
+		{input: "code", name: "code", order: "id"},
 		{input: "release", name: "release", order: "release"},
 		{input: "rating", name: "rating", order: "rate_average_2dp"},
 		{input: "sales", name: "sales", order: "dl_count"},

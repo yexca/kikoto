@@ -1045,6 +1045,39 @@ export type MediaCacheResult = {
   alreadyDone: boolean;
 };
 
+export type CacheWorkOverview = {
+  workCode: string;
+  sourceId: number;
+  sourceName: string;
+  files: number;
+  bytes: number;
+  orphanFiles: number;
+  orphanBytes: number;
+  tracked: boolean;
+  local: boolean;
+};
+
+export type CacheOverview = {
+  scannedAt: string;
+  mediaFiles: number;
+  mediaBytes: number;
+  referencedFiles: number;
+  referencedBytes: number;
+  orphanFiles: number;
+  orphanBytes: number;
+  protectedFiles: number;
+  missingReferences: number;
+  emptyDirectories: number;
+  works: CacheWorkOverview[];
+};
+
+export type CacheMaintenanceResult = {
+  runId: number;
+  jobId: number;
+  status: "queued" | "running" | "succeeded" | "failed";
+  queued: number;
+};
+
 export type MediaCleanupTarget = {
   kind: "cache" | "local" | "local_root";
   locationId: number;
@@ -1401,6 +1434,8 @@ export const api = {
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),
+  getCacheOverview: () => getJSON<CacheOverview>("/api/cache/overview"),
+  cleanupOrphanCache: () => postJSON<CacheMaintenanceResult>("/api/cache/cleanup"),
   deleteMediaCacheLocation: (locationId: number) =>
     deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
   deleteMediaLocalLocation: (locationId: number) =>

@@ -60,10 +60,12 @@ type MockApplicationFixture = {
   remoteDetail?: Record<string, unknown>;
   onSourceCheck?: () => void;
   onLocalRefresh?: () => void;
+  onMediaRequest?: () => void;
+  authenticated?: boolean;
 };
 
-function silentWav() {
-  const sampleCount = 800;
+function silentWav(durationSeconds = 0.1) {
+  const sampleCount = Math.round(8000 * durationSeconds);
   const body = Buffer.alloc(44 + sampleCount, 128);
   body.write("RIFF", 0);
   body.writeUInt32LE(36 + sampleCount, 4);
@@ -93,11 +95,19 @@ async function mockApplication(
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: false } });
+      await route.fulfill({
+        json: fixture.authenticated
+          ? { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "playback:use", "favorites:write"], devMode: true } }
+          : { authenticated: false },
+      });
       return;
     }
     if (url.pathname === "/api/works/1/user-state" && route.request().method() === "PATCH") {
-      await route.fulfill({ status: 401, json: { error: "login required" } });
+      await route.fulfill(
+        fixture.authenticated
+          ? { json: { workId: 1, listeningStatus: "want_to_listen", favorite: false } }
+          : { status: 401, json: { error: "login required" } },
+      );
       return;
     }
     if (url.pathname === "/api/library-sources") {
@@ -155,6 +165,7 @@ async function mockApplication(
     }
     const mediaMatch = url.pathname.match(/^\/api\/works\/(\d+)\/media$/);
     if (mediaMatch) {
+      fixture.onMediaRequest?.();
       if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
       await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems } });
       return;
@@ -302,6 +313,10 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await expect(page.getByTitle("Mark filters are unavailable for source browsing")).toBeDisabled();
 
   await page.getByRole("button", { name: "Sort: Recently added" }).click();
+  await page.getByRole("button", { name: "Code", exact: true }).click();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
+
+  await page.getByRole("button", { name: "Sort: Code" }).click();
   await page.getByRole("button", { name: "Sales", exact: true }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "sales")).toBe(true);
 
@@ -647,6 +662,30 @@ test("anonymous quick marks show an actionable toast above protected mobile cont
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
+test("detail quick marks preserve the cached directory tree", async ({ page }) => {
+  let mediaRequests = 0;
+  const mediaItems = [{
+    id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12,
+    locations: [{ id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: "RJ09999999/track.mp3", streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+  }];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true, onMediaRequest: () => { mediaRequests += 1; } });
+  await page.goto("/");
+
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect.poll(() => mediaRequests).toBe(1);
+  await page.getByRole("button", { name: "Mark: Unmarked" }).click();
+  await page.getByRole("button", { name: "Want", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Mark: Want" })).toBeVisible();
+  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
+  expect(mediaRequests).toBe(1);
+
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
+  expect(mediaRequests).toBe(1);
+});
+
 test("library request failures are not presented as an empty collection", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/works?**", (route) => route.fulfill({ status: 500, json: { error: "database temporarily unavailable" } }));
@@ -727,6 +766,39 @@ test("desktop player uses playback speed without volume or colored play glow", a
   await expect(page.getByRole("button", { name: "Playback speed 1 times" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Volume" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
+});
+
+test("compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayer(page);
+  await page.route("**/api/media/1/stream", (route) => route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(100) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Collapse player" }).click();
+
+  const audio = page.locator("audio");
+  await expect.poll(() => audio.evaluate((element) => element.duration)).toBeGreaterThan(99);
+  await audio.evaluate((element) => {
+    Object.defineProperty(element, "currentTime", { configurable: true, writable: true, value: 40 });
+    element.dispatchEvent(new Event("timeupdate"));
+  });
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
+  const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
+  const box = await compact.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.75, box!.y + box!.height * 0.5, { steps: 4 });
+  await expect(page.getByText(/0:40\.00 \(0:43\.7\d\) \+3\.7\ds/)).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(43.6);
+  await expect(page.locator("section.fixed.inset-0")).toBeHidden();
+
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(53.6);
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
 });
 
 test("desktop mini player delays hiding hover actions", async ({ page }) => {

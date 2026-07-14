@@ -115,6 +115,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)
 	mux.HandleFunc("POST /api/media/cleanup", s.cleanupMediaLocations)
+	mux.HandleFunc("GET /api/cache/overview", s.getCacheOverview)
+	mux.HandleFunc("POST /api/cache/cleanup", s.cleanupOrphanCache)
 	mux.HandleFunc("GET /api/media/{id}/asset", s.serveMediaAsset)
 	mux.HandleFunc("GET /api/media/{id}/text", s.serveMediaText)
 	mux.HandleFunc("GET /api/media/{id}/download", s.downloadMedia)
@@ -1180,6 +1182,11 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return
 	}
+	if locationType == "cache" {
+		if _, statErr := os.Stat(path); statErr == nil {
+			_, _ = s.db.ExecContext(r.Context(), `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
+		}
+	}
 	http.ServeFile(w, r, path)
 }
 
@@ -2026,6 +2033,9 @@ func (s *Server) clearCacheLocation(ctx context.Context, cacheLocationID int64, 
 		}
 	} else {
 		deleted = true
+	}
+	if err := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); err != nil {
+		return bytes, deleted, err
 	}
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE media_file_location

@@ -973,6 +973,8 @@ func firstPositiveInt(values ...int) int {
 
 func remoteSourceSort(value string) (string, string) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "code":
+		return "code", "id"
 	case "random":
 		return "random", "random"
 	case "release":
@@ -2266,6 +2268,9 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 			continue
 		}
 		deletedFiles++
+		if err := pruneEmptyCacheParents(s.cfg.CacheRoot, filepath.Dir(targetPath)); err != nil {
+			return workSourceUntrackResult{}, err
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

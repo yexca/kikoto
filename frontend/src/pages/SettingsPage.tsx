@@ -27,7 +27,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type AppSettings, type DirectoryRoutingRule, type FileSource } from "@/lib/api";
+import {
+  api,
+  type AppSettings,
+  type CacheOverview,
+  type DirectoryRoutingRule,
+  type FileSource,
+} from "@/lib/api";
 
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
@@ -1079,8 +1085,119 @@ function CacheFetchSettings({
   onSaveSuffixChange: (value: string) => void;
   onSave: () => Promise<void>;
 }) {
+  const toast = useToast();
+  const [overview, setOverview] = useState<CacheOverview | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [cleanupStatus, setCleanupStatus] = useState("");
+
+  const scanCache = async () => {
+    setIsScanning(true);
+    try {
+      setOverview(await api.getCacheOverview());
+    } catch (error) {
+      toast.notify(toastFromError(error, "Cache scan failed."));
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    void scanCache();
+  }, []);
+
+  const cleanupCache = async () => {
+    if (!confirmCleanup) {
+      setConfirmCleanup(true);
+      return;
+    }
+    setIsCleaning(true);
+    try {
+      const result = await api.cleanupOrphanCache();
+      setConfirmCleanup(false);
+      setCleanupStatus(
+        result.status === "succeeded"
+          ? "No eligible orphan files remain."
+          : `Cleanup queued in workflow run #${result.runId} (${result.queued} items).`,
+      );
+      toast.success(result.status === "succeeded" ? "Cache is already clean." : "Cache cleanup queued.");
+      await scanCache();
+    } catch (error) {
+      toast.notify(toastFromError(error, "Cache cleanup failed."));
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <HardDrive className="h-4 w-4" />
+            Managed media cache
+          </CardTitle>
+          <Button variant="outline" size="icon" onClick={() => void scanCache()} disabled={isScanning} aria-label="Refresh cache overview" title="Refresh cache overview">
+            <RefreshCw className={`h-4 w-4 ${isScanning ? "animate-spin" : ""}`} />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <CacheMetric label="On disk" value={overview ? formatByteSize(overview.mediaBytes) : "--"} detail={overview ? `${overview.mediaFiles} files` : "Scanning"} />
+            <CacheMetric label="Referenced" value={overview ? formatByteSize(overview.referencedBytes) : "--"} detail={overview ? `${overview.referencedFiles} files` : "Scanning"} />
+            <CacheMetric label="Eligible cleanup" value={overview ? formatByteSize(overview.orphanBytes) : "--"} detail={overview ? `${overview.orphanFiles} files` : "Scanning"} tone={overview?.orphanFiles ? "warning" : "default"} />
+            <CacheMetric label="Protected" value={overview ? String(overview.protectedFiles) : "--"} detail="Files newer than 24 hours" />
+          </div>
+
+          {overview && (overview.missingReferences > 0 || overview.emptyDirectories > 0) && (
+            <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <span>{overview.missingReferences} missing file references</span>
+              <span>{overview.emptyDirectories} empty directories</span>
+            </div>
+          )}
+
+          {overview && overview.works.length > 0 && (
+            <div className="overflow-hidden rounded-md border">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                <span>Work / source</span>
+                <span>Cached</span>
+                <span>Cleanup</span>
+              </div>
+              {overview.works.slice(0, 8).map((row) => (
+                <div key={`${row.sourceId}:${row.sourceName}:${row.workCode}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{row.workCode}</div>
+                    <div className="truncate text-xs text-muted-foreground">{row.sourceName}</div>
+                  </div>
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">{formatByteSize(row.bytes)}</span>
+                  <span className={row.orphanBytes > 0 ? "whitespace-nowrap text-xs font-medium text-destructive" : "whitespace-nowrap text-xs text-muted-foreground"}>{formatByteSize(row.orphanBytes)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className={confirmCleanup ? "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground" : ""}
+              size="sm"
+              onClick={() => void cleanupCache()}
+              disabled={isCleaning || isScanning || !overview || (overview.orphanFiles === 0 && overview.emptyDirectories === 0)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {isCleaning ? "Queueing cleanup..." : confirmCleanup ? `Confirm cleanup (${overview?.orphanFiles ?? 0} files)` : "Clean orphan cache"}
+            </Button>
+            {confirmCleanup && (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmCleanup(false)}>
+                Cancel
+              </Button>
+            )}
+            {cleanupStatus && <span className="text-xs text-muted-foreground">{cleanupStatus}</span>}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1189,6 +1306,34 @@ function CacheFetchSettings({
       </Card>
     </div>
   );
+}
+
+function CacheMetric({
+  label,
+  value,
+  detail,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <div className="min-w-0 rounded-md border bg-card px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`mt-1 truncate text-lg font-semibold ${tone === "warning" ? "text-destructive" : ""}`}>{value}</div>
+      <div className="truncate text-xs text-muted-foreground">{detail}</div>
+    </div>
+  );
+}
+
+function formatByteSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
 function SourceModal({

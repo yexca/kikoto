@@ -126,6 +126,7 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { type PlayerTrack, type PlayerTrackLocation, useLibraryPlayer } from "@/player/PlayerProvider";
 import { findLyricsMatches } from "@/player/lyricsMatching";
+import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 
 type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors">;
 
@@ -151,7 +152,7 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
 ];
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
-  return value === "release" || value === "rating" || value === "sales" || value === "random" ? value : "recent";
+  return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random" ? value : "recent";
 }
 
 function createRandomSortSeed() {
@@ -238,6 +239,8 @@ export function LibraryPage() {
   const toast = useToast();
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
   const [works, setWorks] = useState<Work[]>([]);
+  const worksRef = useRef<Work[]>([]);
+  worksRef.current = works;
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
@@ -496,7 +499,7 @@ export function LibraryPage() {
       return;
     }
     const controller = new AbortController();
-    const work = works.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
+    const work = worksRef.current.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
     if (work) {
       setSelectedWorkPreview(work);
       setIsSelectedMediaLoading(true);
@@ -504,8 +507,11 @@ export function LibraryPage() {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
           return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, controller.signal);
         }
-        setSelectedWork(detail);
+        const cachedMedia = getCachedWorkMedia(detail.id);
+        setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
+        if (cachedMedia) return;
         return api.getWorkMedia(detail.id, controller.signal).then((media) => {
+          setCachedWorkMedia(detail.id, media.mediaItems);
           setSelectedWork((current) => current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current);
         });
       }).catch((error) => {
@@ -518,7 +524,7 @@ export function LibraryPage() {
     setSelectedWorkPreview(workPreviewFromHistory(selectedCode));
     void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, controller.signal);
     return () => controller.abort();
-  }, [selectedCode, works]);
+  }, [selectedCode, works.length]);
 
   useEffect(() => {
     const syncFromPath = () => {
@@ -918,9 +924,16 @@ export function LibraryPage() {
         initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
-        onWorkReload={async (workID) => {
-          const detail = await api.getWork(workID);
-          setSelectedWork(detail);
+        onWorkReload={async (workID, includeMedia = false) => {
+          const detail = await api.getWorkSummary(workID);
+          let mediaItems = getCachedWorkMedia(workID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
+          if (includeMedia) {
+            invalidateCachedWorkMedia(workID);
+            const media = await api.getWorkMedia(workID);
+            mediaItems = media.mediaItems;
+            setCachedWorkMedia(workID, mediaItems);
+          }
+          setSelectedWork({ ...detail, mediaItems });
         }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
@@ -2121,7 +2134,7 @@ function SortPicker({
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const options = activeTab.kind === "source"
-	? librarySortOptions.filter((option) => ["recent", "release", "rating", "sales", "random"].includes(option.value))
+	? librarySortOptions.filter((option) => ["recent", "release", "code", "rating", "sales", "random"].includes(option.value))
 	: librarySortOptions;
   const label = options.find((option) => option.value === value)?.label ?? "Sort";
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
@@ -2312,11 +2325,11 @@ function WorkPagination({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
       <div className="text-xs text-muted-foreground">
         Page {page} / {totalPages} · {totalItems} works
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <select
           className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
           value={pageSize}
@@ -2377,7 +2390,7 @@ function CompactWorkPagination({
   };
 
   return (
-    <div className="flex justify-center sm:justify-end">
+    <div className="flex justify-center">
       <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-2 text-sm">
         <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
           <ChevronLeft className="h-4 w-4" />
@@ -2889,14 +2902,17 @@ function WorkDetailView({
   initialSourceIntent: DetailSourceIntent;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-  onWorkReload: (workID: number) => Promise<void>;
+  onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
-  const sourceTabs = useMemo(() => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []), [work, remoteSources]);
+  const sourceTabs = useMemo(
+    () => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []),
+    [work?.mediaItems, work?.sourcePresence, remoteSources],
+  );
   const [activeSourceKey, setActiveSourceKey] = useState<string>(initialSourceIntent);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -3009,7 +3025,19 @@ function WorkDetailView({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [localDirectoryWork, mediaLoading, work?.primaryCode, selectedSource, selectedRemoteDetail, selectedRemoteSource, selectedTrackedPresence, selectedTrackedForked, selectedTrackedSourceID]);
+  }, [
+    localDirectoryWork?.mediaItems,
+    localDirectoryWork?.primaryCode,
+    mediaLoading,
+    work?.primaryCode,
+    selectedSource?.fileSourceId,
+    selectedSource?.key,
+    selectedRemoteDetail,
+    selectedRemoteSourceID,
+    selectedTrackedPresence,
+    selectedTrackedForked,
+    selectedTrackedSourceID,
+  ]);
 
   useEffect(() => {
     if (!work || sourceTabs.length === 0 || sourceTabs.some((source) => source.key === activeSourceKey)) return;
@@ -3177,7 +3205,7 @@ function WorkDetailView({
       if (activeEdition) {
         setActiveEdition(await api.getWork(activeEdition.id));
       } else if (work) {
-        await onWorkReload(work.id);
+        await onWorkReload(work.id, true);
       }
       await onWorksChanged();
     } catch (error) {
@@ -3221,7 +3249,7 @@ function WorkDetailView({
         setActiveEdition(refreshed);
         setActiveEditionCode(refreshed.primaryCode);
       } else {
-        await onWorkReload(result.workId);
+        await onWorkReload(result.workId, true);
       }
       await onWorksChanged();
       toast.success(`Refreshed ${result.indexedFiles} local files.`);
@@ -3315,7 +3343,7 @@ function WorkDetailView({
     try {
       const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), "manual_track");
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onWorkReload(result.workId);
+      await onWorkReload(result.workId, true);
       await onWorksChanged();
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
@@ -3336,7 +3364,7 @@ function WorkDetailView({
       setRemoteSources((items) => items.map((item) => item.source.id === selectedRemoteSource.source.id
         ? { ...item, summary: { ...item.summary, workId: result.workId, hasRemote: true } }
         : item));
-      await onWorkReload(result.workId);
+      await onWorkReload(result.workId, true);
       await onWorksChanged();
       return result.workId;
     } catch (error) {
@@ -3412,7 +3440,7 @@ function WorkDetailView({
     try {
       const result = await api.trackRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
       toast.success(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
-      await onWorkReload(result.workId);
+      await onWorkReload(result.workId, true);
       await onWorksChanged();
       setActiveSourceKey("tracked");
     } catch (error) {
@@ -7715,9 +7743,15 @@ async function resolveAndOpenWork(
     const resolved = await api.resolveWorkCode(code, signal);
     setSelectedWorkPreview(workPreviewFromResolve(resolved));
     const work = await api.getWorkSummary(resolved.workId, signal);
-    setSelectedWork(work);
-    const media = await api.getWorkMedia(resolved.workId, signal);
-    setSelectedWork({ ...work, mediaItems: media.mediaItems });
+    const cachedMedia = getCachedWorkMedia(resolved.workId);
+    if (cachedMedia) {
+      setSelectedWork({ ...work, mediaItems: cachedMedia });
+    } else {
+      setSelectedWork(work);
+      const media = await api.getWorkMedia(resolved.workId, signal);
+      setCachedWorkMedia(resolved.workId, media.mediaItems);
+      setSelectedWork({ ...work, mediaItems: media.mediaItems });
+    }
     if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
       window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}`);
       setSelectedCode(resolved.resolvedCode);

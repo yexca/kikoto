@@ -40,6 +40,14 @@ import {
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
 type LyricsDisplayMode = "hidden" | "preview" | "full";
+type CompactScrubState = {
+  pointerId: number;
+  startX: number;
+  originTime: number;
+  previewTime: number;
+  width: number;
+  dragging: boolean;
+};
 const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
 export type PlayerTrack = {
@@ -767,6 +775,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isPlaying, currentTime, duration, playbackRate]);
 
+  useEffect(() => {
+    const handlePlayerShortcut = (event: KeyboardEvent) => {
+      if (!currentTrack || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isPlayerShortcutTarget(event.target)) return;
+      if (event.code === "Space") {
+        if (event.repeat) return;
+        event.preventDefault();
+        setIsPlaying((value) => !value);
+        return;
+      }
+      const offset = event.key === "ArrowLeft" ? -5 : event.key === "ArrowRight" ? 10 : 0;
+      if (offset === 0) return;
+      event.preventDefault();
+      const audio = audioRef.current;
+      if (!audio) return;
+      const nextTime = audio.currentTime + offset;
+      audio.currentTime = Math.max(0, Math.min(nextTime, audio.duration || nextTime));
+    };
+    window.addEventListener("keydown", handlePlayerShortcut);
+    return () => window.removeEventListener("keydown", handlePlayerShortcut);
+  }, [currentTrack?.locationId]);
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       queue,
@@ -908,7 +938,10 @@ export function PlayerDock() {
   const [customSleepMinutes, setCustomSleepMinutes] = useState("90");
   const [finishCurrentTrack, setFinishCurrentTrack] = useState(false);
   const [isSourceOpen, setIsSourceOpen] = useState(false);
+  const [compactScrub, setCompactScrub] = useState<CompactScrubState | null>(null);
   const miniDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const compactScrubRef = useRef<CompactScrubState | null>(null);
+  const suppressCompactClickRef = useRef(false);
   const miniActionsTimerRef = useRef<number | null>(null);
   const coverTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [fullDragOffset, setFullDragOffset] = useState(0);
@@ -1075,6 +1108,27 @@ export function PlayerDock() {
   }, [track, dockMode]);
 
   useEffect(() => {
+    compactScrubRef.current = null;
+    setCompactScrub(null);
+    suppressCompactClickRef.current = false;
+  }, [dockMode, track?.locationId]);
+
+  useEffect(() => {
+    if (!compactScrub?.dragging) return;
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      compactScrubRef.current = null;
+      setCompactScrub(null);
+      suppressCompactClickRef.current = true;
+      window.setTimeout(() => {
+        suppressCompactClickRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("keydown", cancel, true);
+    return () => window.removeEventListener("keydown", cancel, true);
+  }, [compactScrub?.dragging]);
+
+  useEffect(() => {
     if (!isMobile || dockMode !== "full") return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1201,6 +1255,52 @@ export function PlayerDock() {
     }
   };
   const miniActions = miniActionLayout(miniPosition);
+  const beginCompactScrub = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (player.duration <= 0 || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-compact-control]")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const state: CompactScrubState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      originTime: player.currentTime,
+      previewTime: player.currentTime,
+      width: Math.max(1, rect.width),
+      dragging: false,
+    };
+    compactScrubRef.current = state;
+    setCompactScrub(state);
+  };
+  const moveCompactScrub = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = compactScrubRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - state.startX;
+    if (!state.dragging && Math.abs(deltaX) < 7) return;
+    event.preventDefault();
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const maximumDelta = Math.min(120, Math.max(15, player.duration * 0.05));
+    const previewTime = Math.max(0, Math.min(player.duration, state.originTime + (deltaX / state.width) * maximumDelta));
+    const next = { ...state, previewTime, dragging: true };
+    compactScrubRef.current = next;
+    suppressCompactClickRef.current = true;
+    setCompactScrub(next);
+  };
+  const finishCompactScrub = (event: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const state = compactScrubRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    compactScrubRef.current = null;
+    setCompactScrub(null);
+    if (state.dragging) {
+      suppressCompactClickRef.current = true;
+      window.setTimeout(() => {
+        suppressCompactClickRef.current = false;
+      }, 0);
+      if (commit) player.seekTo(state.previewTime);
+    }
+  };
 
   if (dockMode === "mini") {
     return (
@@ -1321,15 +1421,53 @@ export function PlayerDock() {
   }
 
   if (dockMode === "compact") {
+    const activeScrub = compactScrub?.dragging ? compactScrub : null;
+    const originProgress = activeScrub && player.duration > 0 ? (activeScrub.originTime / player.duration) * 100 : progress;
+    const previewProgress = activeScrub && player.duration > 0 ? (activeScrub.previewTime / player.duration) * 100 : progress;
+    const stableProgress = activeScrub ? Math.min(originProgress, previewProgress) : progress;
+    const changedLeft = Math.min(originProgress, previewProgress);
+    const changedWidth = Math.abs(previewProgress - originProgress);
+    const scrubDelta = activeScrub ? activeScrub.previewTime - activeScrub.originTime : 0;
+    const labelPosition = Math.max(22, Math.min(78, originProgress));
     return (
       <div className="fixed inset-x-3 bottom-[calc(76px+env(safe-area-inset-bottom))] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
-        <div className="relative animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70">
+        {activeScrub && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-full h-12" aria-live="polite">
+            <div className="absolute bottom-0 h-7 w-px bg-primary/60" style={{ left: `${originProgress}%` }} />
+            <div
+              className="absolute top-0 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-lg"
+              style={{ left: `${labelPosition}%` }}
+            >
+              {formatScrubTime(activeScrub.originTime)} ({formatScrubTime(activeScrub.previewTime)}) <span className={scrubDelta >= 0 ? "text-primary" : "text-destructive"}>{formatSignedSeconds(scrubDelta)}</span>
+            </div>
+          </div>
+        )}
+        <div
+          className="relative touch-pan-y select-none animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70"
+          onPointerDown={beginCompactScrub}
+          onPointerMove={moveCompactScrub}
+          onPointerUp={(event) => finishCompactScrub(event, true)}
+          onPointerCancel={(event) => finishCompactScrub(event, false)}
+        >
           <div
-            className="absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-300"
-            style={{ width: `${progress}%` }}
+            className={`absolute inset-y-0 left-0 bg-primary/20 ${activeScrub ? "" : "transition-[width] duration-300"}`}
+            style={{ width: `${stableProgress}%` }}
           />
+          {activeScrub && changedWidth > 0 && (
+            <div className="absolute inset-y-0 bg-primary/10" style={{ left: `${changedLeft}%`, width: `${changedWidth}%` }} />
+          )}
+          {activeScrub && <div className="absolute inset-y-0 z-[1] w-px bg-primary/70" style={{ left: `${previewProgress}%` }} />}
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
-            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setDockMode("full")}>
+            <button
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              onClick={() => {
+                if (suppressCompactClickRef.current) {
+                  suppressCompactClickRef.current = false;
+                  return;
+                }
+                setDockMode("full");
+              }}
+            >
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{track.title}</div>
@@ -1337,6 +1475,7 @@ export function PlayerDock() {
               </div>
             </button>
             <Button
+              data-compact-control
               className="h-9 w-9 rounded-full border-primary/15 bg-card/80"
               size="icon"
               variant="outline"
@@ -1346,6 +1485,7 @@ export function PlayerDock() {
               <CircleDot className="h-4 w-4" />
             </Button>
             <Button
+              data-compact-control
               className="h-11 w-11 rounded-full"
               size="icon"
               onClick={player.togglePlay}
@@ -1688,6 +1828,7 @@ export function PlayerDock() {
               <ListMusic className="h-4 w-4" />
             </Button>
             <Button
+              data-compact-control
               className="rounded-full border-primary/15"
               variant={lyricsDisplayMode === "hidden" ? "outline" : "secondary"}
               size="sm"
@@ -1699,6 +1840,7 @@ export function PlayerDock() {
               {lyricsDisplayMode === "hidden" ? <Captions className="h-4 w-4" /> : lyricsDisplayMode === "preview" ? <PanelBottom className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
             <Button
+              data-compact-control
               className="rounded-full border-primary/15"
               variant={player.playbackRate === 1 ? "outline" : "secondary"}
               size="sm"
@@ -2160,6 +2302,27 @@ function formatTime(value: number) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatScrubTime(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0:00.00";
+  const totalHundredths = Math.round(value * 100);
+  const hours = Math.floor(totalHundredths / 360000);
+  const minutes = Math.floor((totalHundredths % 360000) / 6000);
+  const seconds = Math.floor((totalHundredths % 6000) / 100);
+  const hundredths = totalHundredths % 100;
+  const secondText = `${seconds.toString().padStart(2, "0")}.${hundredths.toString().padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${minutes.toString().padStart(2, "0")}:${secondText}` : `${minutes}:${secondText}`;
+}
+
+function formatSignedSeconds(value: number) {
+  const normalized = Math.abs(value) < 0.005 ? 0 : value;
+  return `${normalized >= 0 ? "+" : "-"}${Math.abs(normalized).toFixed(2)}s`;
+}
+
+function isPlayerShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, button, a, [contenteditable='true'], [role='button'], [role='slider'], [role='dialog']"));
 }
 
 function LyricsSourceSelector({
