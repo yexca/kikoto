@@ -20,7 +20,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -278,6 +278,7 @@ export function WorkflowsPage({
     ?? (selectedRunId === null ? visibleRuns[0] ?? null : null);
   const selectedActivityRunID = selectedRunId ?? selectedRunSummary?.id ?? null;
   const activityRun = useWorkflowRunWatcher(surface === "activity" ? selectedActivityRunID : null);
+  const previousActivityRunView = useRef<ActivityView | null>(null);
   const selectedSystemRunKinds = selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
   const definitionEmptyText = "No runnable or custom workflow definitions exist yet.";
 
@@ -320,6 +321,22 @@ export function WorkflowsPage({
     if (!activityRun.run) return;
     setRuns((items) => items.map((item) => item.id === activityRun.run?.id ? { ...item, ...activityRun.run } : item));
   }, [activityRun.run]);
+
+  useEffect(() => {
+    if (surface !== "activity" || !activityRun.run) {
+      previousActivityRunView.current = null;
+      return;
+    }
+    const nextView = activityViewForRun(activityRun.run);
+    const previousView = previousActivityRunView.current;
+    previousActivityRunView.current = nextView;
+    if (!previousView || previousView === nextView) return;
+    setActivityView(nextView);
+    setRunPage(1);
+    refreshRuns(1, nextView, runQuery);
+    const search = new URLSearchParams({ view: nextView, run: String(activityRun.run.id) });
+    window.history.replaceState(window.history.state, "", `/activity?${search}`);
+  }, [activityRun.run, runQuery, surface]);
 
   useEffect(() => {
     const linkedRunID = activityRunIDFromLocation();

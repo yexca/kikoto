@@ -120,6 +120,11 @@ func (s *Server) hydrateWorkEntityLinksFromSnapshots(ctx context.Context, code s
 }
 
 func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error {
+	_, err := s.syncWorkMetadataFamily(ctx, code)
+	return err
+}
+
+func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
 	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
 	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
 		WithCacheRoot(s.cfg.CacheRoot).
@@ -131,30 +136,30 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 		)
 	family, err := syncer.SyncFamily(ctx, code)
 	if err != nil {
-		return err
+		return family, err
 	}
 	codes := append([]string{code, family.CanonicalCode}, family.SyncedCodes...)
 	seen := map[int64]bool{}
 	for _, candidate := range codes {
 		if err := s.syncPartyForWorkFromSnapshot(ctx, candidate); err != nil {
-			return err
+			return family, err
 		}
 		var workID int64
 		if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", candidate).Scan(&workID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
-			return err
+			return family, err
 		}
 		if seen[workID] {
 			continue
 		}
 		seen[workID] = true
 		if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID); err != nil {
-			return err
+			return family, err
 		}
 	}
-	return nil
+	return family, nil
 }
 
 func (s *Server) syncPartyForWorkFromSnapshot(ctx context.Context, code string) error {

@@ -39,6 +39,7 @@ type Server struct {
 	circleAutoRefreshing map[int64]bool
 	remoteWorkCacheMu    sync.Mutex
 	remoteWorkCache      map[string]remoteWorkTracksSnapshot
+	metadataSyncMu       sync.Mutex
 	jobRunnerMu          sync.Mutex
 }
 
@@ -65,6 +66,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
 	mux.HandleFunc("POST /api/works/{id}/local-files/refresh", s.refreshWorkLocalFiles)
+	mux.HandleFunc("POST /api/works/{id}/metadata-sync", s.createWorkMetadataSyncRun)
 	mux.HandleFunc("PUT /api/media/{id}/lyrics-preference", s.setMediaLyricsPreference)
 	mux.HandleFunc("DELETE /api/media/{id}/lyrics-preference", s.clearMediaLyricsPreference)
 	mux.HandleFunc("GET /api/works/{id}/manual-overrides", s.getWorkManualOverrides)

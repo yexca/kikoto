@@ -128,6 +128,20 @@ import {
 import { type PlayerTrack, type PlayerTrackLocation, useLibraryPlayer } from "@/player/PlayerProvider";
 import { findLyricsMatches } from "@/player/lyricsMatching";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
+import {
+  availableForkSources,
+  remoteAvailabilityRouteCode,
+  remoteSourceCanBrowse,
+  remoteSourceTabKey,
+  remoteSourceTabStatus,
+  sourceTabStatusClass,
+  type DetailSourceIntent,
+  type ReforkTarget,
+  type RemoteSourceAvailability,
+  type SourceTabInfo,
+} from "@/features/work-detail/source/sourceContextModel";
+import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
+import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
 
 type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors">;
 
@@ -3072,14 +3086,26 @@ function WorkDetailView({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
-  const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
-  const [isCheckingSources, setIsCheckingSources] = useState(false);
-  const [sourceCheckedAt, setSourceCheckedAt] = useState("");
-  const sourceTabs = useMemo(
-    () => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []),
-    [work?.mediaItems, work?.sourcePresence, remoteSources],
-  );
-  const [activeSourceKey, setActiveSourceKey] = useState<string>(initialSourceIntent);
+  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent });
+  const {
+    remoteSources,
+    sourceTabs,
+    activeSourceKey,
+    setActiveSourceKey,
+    selectSource,
+    selectedSource,
+    resolvedActiveSourceKey,
+    selectedRemoteSource,
+    selectedTrackedPresence,
+    selectedTrackedForked,
+    selectedTrackedSourceID,
+    selectedTrackedRemoteSource,
+    selectedRemoteDetail,
+    selectedRemoteSourceID,
+    isCheckingSources,
+    sourceCheckedAt,
+    refreshAvailability,
+  } = sourceContext;
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
@@ -3087,6 +3113,8 @@ function WorkDetailView({
   const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
   const [message, setMessage] = useState("");
   const [isSyncingDetail, setIsSyncingDetail] = useState(false);
+  const [activeMetadataRunId, setActiveMetadataRunId] = useState<number | null>(null);
+  const metadataRun = useWorkflowRunWatcher(activeMetadataRunId);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
@@ -3094,21 +3122,20 @@ function WorkDetailView({
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
-  const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey)
-    ?? sourceTabs.find((source) => source.kind === activeSourceKey)
-    ?? sourceTabs[0];
-  const resolvedActiveSourceKey = selectedSource?.key ?? activeSourceKey;
-  const selectedRemoteSource = selectedSource?.kind === "remote" ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id)) : undefined;
-  const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
-  const selectedTrackedForked = trackedPresenceForked(selectedTrackedPresence, work?.mediaItems ?? []);
-  const selectedTrackedSourceID = trackedPresenceSourceID(selectedTrackedPresence);
-  const selectedTrackedRemoteSource = remoteSourceForTrackedPresence(selectedTrackedPresence, remoteSources);
-  const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
-  const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
-  const selectedRemoteWorkCode = selectedRemoteSource ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code) : work?.primaryCode || code;
   const localDirectoryWork = activeEdition ?? work;
-  const [tree, setTree] = useState<TreeNode>(() => emptyTree());
-  const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
+  const { tree, isDirectoryLoading } = useMediaTree({
+    mediaLoading,
+    localItems: localDirectoryWork?.mediaItems ?? [],
+    localCode: localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
+    fileSourceId: selectedTrackedForked ? selectedTrackedSourceID : selectedSource?.fileSourceId ?? null,
+    selectionKey: `${selectedSource?.key ?? ""}:${selectedRemoteSourceID ?? 0}`,
+    remoteSelected: Boolean(selectedRemoteSource),
+    remoteDetail: selectedRemoteDetail,
+    trackedUnavailable: Boolean(selectedTrackedPresence && !selectedTrackedForked),
+    emptyTree,
+    buildLocalTree: buildTree,
+    buildRemoteTree,
+  });
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
@@ -3163,101 +3190,8 @@ function WorkDetailView({
   };
 
   useEffect(() => {
-    if (mediaLoading && (localDirectoryWork?.mediaItems.length ?? 0) === 0 && !selectedRemoteDetail) {
-      setIsDirectoryLoading(true);
-      return;
-    }
-    let cancelled = false;
-    setIsDirectoryLoading(true);
-    const timer = window.setTimeout(() => {
-      const nextTree =
-        selectedRemoteSource && !selectedRemoteDetail
-          ? emptyTree()
-          : selectedTrackedPresence && !selectedTrackedForked
-            ? emptyTree()
-            : selectedRemoteDetail
-              ? buildRemoteTree(selectedRemoteDetail.tracks)
-              : buildTree(
-                localDirectoryWork?.mediaItems ?? [],
-                selectedTrackedForked ? selectedTrackedSourceID : selectedSource?.fileSourceId ?? null,
-                localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
-              );
-      if (!cancelled) {
-        setTree(nextTree);
-        setIsDirectoryLoading(false);
-      }
-    }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    localDirectoryWork?.mediaItems,
-    localDirectoryWork?.primaryCode,
-    mediaLoading,
-    work?.primaryCode,
-    selectedSource?.fileSourceId,
-    selectedSource?.key,
-    selectedRemoteDetail,
-    selectedRemoteSourceID,
-    selectedTrackedPresence,
-    selectedTrackedForked,
-    selectedTrackedSourceID,
-  ]);
-
-  useEffect(() => {
-    if (!work || sourceTabs.length === 0 || sourceTabs.some((source) => source.key === activeSourceKey)) return;
-    const intendedSource = sourceTabs.find((source) => source.kind === activeSourceKey);
-    if (intendedSource) {
-      setActiveSourceKey(intendedSource.key);
-    } else {
-      setActiveSourceKey(sourceTabs[0].key);
-    }
-  }, [activeSourceKey, sourceTabs, work]);
-
-  useEffect(() => {
-    setRemoteSources([]);
-    setSourceCheckedAt("");
-    if (!work?.primaryCode || sources.length === 0) return;
-    let cancelled = false;
-    api.getSourceAvailability(work.primaryCode)
-      .then((result) => {
-        if (cancelled) return;
-        const knownSources = result.sources.flatMap((summary) => {
-          const source = sources.find((candidate) => candidate.id === summary.sourceId);
-          return source ? [{ source, summary }] : [];
-        });
-        setRemoteSources(knownSources);
-        setSourceCheckedAt(result.checkedAt);
-      })
-      .catch(() => {
-        if (!cancelled) setRemoteSources([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [work?.primaryCode, sources]);
-
-  useEffect(() => {
-    if (!selectedRemoteSource || !remoteSourceCanBrowse(selectedRemoteSource.summary) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
-    const controller = new AbortController();
-    const sourceID = selectedRemoteSource.source.id;
-    setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
-    api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode, controller.signal)
-      .then((detail) => {
-        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
-      });
-    return () => controller.abort();
-  }, [selectedRemoteSourceID, selectedRemoteWorkCode]);
-
-  useEffect(() => {
     setActiveEdition(null);
     setActiveEditionCode("");
-	setActiveSourceKey(initialSourceIntent);
   }, [initialSourceIntent, work?.id]);
 
   useEffect(() => {
@@ -3361,19 +3295,55 @@ function WorkDetailView({
   };
 
   const syncDetailMetadata = async () => {
-    if (!work?.primaryCode) return;
+    if (!work?.primaryCode || activeMetadataRunId) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.runDLsiteSync();
-      toast.success(`DLsite sync run #${result.runId}: ${result.syncedWorks}/${result.targetWorks} works synced.`);
-      await onWorksChanged();
+      const result = await api.syncWorkMetadata(work.id);
+      setActiveMetadataRunId(result.runId);
+      toast.notify({
+        kind: "success",
+        message: result.deduplicated
+          ? `Metadata refresh is already running as workflow #${result.runId}.`
+          : `Metadata refresh queued for ${result.primaryCode} as workflow #${result.runId}.`,
+        actionLabel: "Activity",
+        onAction: () => openActivityRun(result.runId),
+      });
     } catch (error) {
-      toast.notify(toastFromError(error, "Sync failed."));
+      toast.notify(toastFromError(error, "Metadata refresh could not be queued."));
     } finally {
       setIsSyncingDetail(false);
     }
   };
+
+  useEffect(() => {
+    const run = metadataRun.run;
+    if (!run || !activeMetadataRunId || isActiveWorkflowStatus(run.status)) return;
+    setActiveMetadataRunId(null);
+    if (run.status === "succeeded" || run.status === "partial") {
+      void (async () => {
+        try {
+          if (work) await onWorkReload(work.id, true);
+          await onWorksChanged();
+          toast.notify({
+            kind: run.status === "succeeded" ? "success" : "warning",
+            message: `Metadata workflow #${run.id} ${run.status}.`,
+            actionLabel: "Activity",
+            onAction: () => openActivityRun(run.id),
+          });
+        } catch (error) {
+          toast.notify(toastFromError(error, "Metadata refreshed, but work detail could not be reloaded."));
+        }
+      })();
+      return;
+    }
+    toast.notify({
+      kind: "error",
+      message: `Metadata workflow #${run.id} ${run.status}.`,
+      actionLabel: "Activity",
+      onAction: () => openActivityRun(run.id),
+    });
+  }, [activeMetadataRunId, metadataRun.run, onWorkReload, onWorksChanged, toast, work]);
 
   const trackSelectedRemoteSource = async () => {
     if (!selectedRemoteSource?.detail?.primaryCode) return;
@@ -3417,21 +3387,13 @@ function WorkDetailView({
 
   const refreshSourceAvailability = async () => {
     if (!work?.primaryCode) return;
-    setIsCheckingSources(true);
     setMessage("");
     try {
-      const result = await api.checkSourceAvailability(work.primaryCode);
-      const checkedSources = result.sources.flatMap((summary) => {
-        const source = sources.find((candidate) => candidate.id === summary.sourceId);
-        return source ? [{ source, summary }] : [];
-      });
-      setRemoteSources(checkedSources);
-      setSourceCheckedAt(result.checkedAt);
+      const result = await refreshAvailability();
+      if (!result) return;
       toast.success(`Checked source availability through workflow run #${result.runId}.`);
     } catch (error) {
       toast.notify(toastFromError(error, "Source check failed."));
-    } finally {
-      setIsCheckingSources(false);
     }
   };
 
@@ -3474,16 +3436,12 @@ function WorkDetailView({
   };
 
   const changeSourceKey = (key: string) => {
-    setActiveSourceKey(key);
+    selectSource(key);
     const nextSource = sourceTabs.find((source) => source.key === key);
     if (nextSource?.kind !== "local") {
       setActiveEdition(null);
       setActiveEditionCode(work?.primaryCode ?? "");
     }
-    if (!key.startsWith("remote-source:")) return;
-    setRemoteSources((items) =>
-      items.map((item) => (remoteSourceTabKey(item.source.id) === key && item.error ? { ...item, error: "" } : item)),
-    );
   };
 
   if (!work && !workPreview) {
@@ -3512,7 +3470,7 @@ function WorkDetailView({
   ) : undefined;
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
   const identityActions = work ? <WorkIdentityActionBar
-    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles}
+    busy={isSyncingDetail || Boolean(activeMetadataRunId) || fetchWorkspace.isBusy || isRefreshingLocalFiles}
     listeningStatus={work.listeningStatus}
     favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
     listWorkId={work.id}
@@ -3522,7 +3480,7 @@ function WorkDetailView({
     onSync={() => void syncDetailMetadata()}
     onEditMetadata={() => setIsMetadataEditorOpen(true)}
     dlsiteUrl={work.dlsiteUrl}
-    syncLabel="Sync all metadata"
+    syncLabel="Refresh metadata"
   /> : <DetailSkeletonActions />;
   const mediaActions = work ? <MediaContextActionBar
     canPlay={allTracks.length > 0}
@@ -5337,151 +5295,10 @@ type FilePreviewState =
 
 type MediaDeleteTarget = { kind: "cache" | "local" | "local_root"; locationId: number; title: string; path: string; sizeBytes: number | null };
 
-type DetailSourceIntent = "local" | "tracked";
-
-type SourceTabInfo = {
-  key: string;
-  label: string;
-  fileSourceId: number | null;
-  kind?: "local" | "remote" | "tracked" | "no_source";
-  presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
-  status: "green" | "yellow" | "red";
-  statusLabel: string;
-};
-
-type RemoteSourceAvailability = {
-  source: LibrarySource;
-  summary: SourceAvailabilitySource;
-  detail?: RemoteWorkDetail;
-  loading?: boolean;
-  error?: string;
-};
-
-function sourceTabStatusClass(status: SourceTabInfo["status"]) {
-  if (status === "green") return "bg-emerald-500";
-  if (status === "yellow") return "bg-amber-500";
-  return "bg-red-500";
-}
-
 type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" | "remote_source";
-
-type ReforkTarget = {
-  current: RemoteSourceAvailability | null;
-  next: RemoteSourceAvailability;
-};
 
 function emptyTree(): TreeNode {
   return { name: "", path: "", children: new Map(), files: [] };
-}
-
-function buildSourceTabs(
-  items: MediaItem[],
-  remoteSources: RemoteSourceAvailability[] = [],
-  sourcePresence: NonNullable<WorkDetail["sourcePresence"]> = [],
-): SourceTabInfo[] {
-  const sources = new Map<number, SourceTabInfo>();
-  for (const item of items) {
-    for (const location of item.locations) {
-      if (location.locationType !== "local" || location.availability !== "available") continue;
-      if (!sources.has(location.fileSourceId)) {
-        sources.set(location.fileSourceId, {
-          key: `${location.fileSourceId}:${location.locationType}`,
-          label: "Local",
-          fileSourceId: location.fileSourceId,
-          kind: "local",
-          status: "green",
-          statusLabel: "Local files available",
-        });
-      }
-    }
-  }
-  const availableRemotes = remoteSources.filter((remote) => remote.summary.status === "available");
-  const pendingRemotes = remoteSources.filter((remote) => ["unknown", "error"].includes(remote.summary.status));
-  const tabs = Array.from(sources.values());
-  if (tabs.length === 0) {
-    tabs.push({
-      key: "local",
-      label: "Local",
-      fileSourceId: -1,
-      kind: "local",
-      status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "yellow" : "red",
-      statusLabel: availableRemotes.length > 0 ? `Fetch available from ${availableRemotes[0].source.displayName}` : pendingRemotes.length > 0 || remoteSources.length === 0 ? "Remote sources need checking" : "No local or remote files available",
-    });
-  }
-  const baseTabs: SourceTabInfo[] = [...tabs];
-  for (const presence of sourcePresence) {
-    if (presence.type !== "tracked") continue;
-    const sourceID = trackedPresenceSourceID(presence);
-    const forked = trackedPresenceForked(presence, items);
-    const matchingRemote = remoteSources.find((remote) => remote.source.id === sourceID);
-    const canFork = matchingRemote?.summary.status === "available" || availableRemotes.length > 0;
-    const sourceName = presence.fileSourceName || presence.fileSourceCode || "Source";
-    baseTabs.push({
-	  key: trackedSourceTabKey(presence),
-	  label: `Tracked · ${sourceName}`,
-      fileSourceId: null,
-      kind: "tracked",
-      presence,
-      status: forked ? "green" : canFork ? "yellow" : "red",
-      statusLabel: forked ? "Tracked directory available" : canFork ? `Fork available from ${matchingRemote?.source.displayName ?? availableRemotes[0].source.displayName}` : "Tracked directory unavailable",
-    });
-  }
-  for (const remote of remoteSources) {
-    const status = remoteSourceTabStatus(remote.summary);
-    baseTabs.push({
-      key: remoteSourceTabKey(remote.source.id),
-      label: remote.source.displayName,
-      fileSourceId: null,
-      kind: "remote",
-      status: status.status,
-      statusLabel: status.statusLabel,
-    });
-  }
-  return baseTabs;
-}
-
-function remoteSourceTabStatus(summary: SourceAvailabilitySource): Pick<SourceTabInfo, "status" | "statusLabel"> {
-  if (summary.status === "available") return { status: "green", statusLabel: "Available" };
-  if (summary.status === "unknown" || summary.status === "error") return { status: "yellow", statusLabel: summary.status === "unknown" ? "Needs checking" : "Check failed" };
-  if (summary.status === "not_found") return { status: "red", statusLabel: "Not found" };
-  if (summary.status === "disabled") return { status: "red", statusLabel: "Disabled" };
-  return { status: "red", statusLabel: summary.error || "Unavailable" };
-}
-
-function trackedPresenceSourceID(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null) {
-  return presence?.fileSourceId ?? null;
-}
-
-function trackedPresenceForked(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, items: MediaItem[]) {
-  const sourceID = trackedPresenceSourceID(presence);
-  if (!sourceID) return false;
-  return items.some((item) => item.locations.some((location) =>
-    location.fileSourceId === sourceID
-    && location.locationType === "remote_stream"
-    && location.availability === "available",
-  ));
-}
-
-function availableForkSources(remoteSources: RemoteSourceAvailability[]) {
-  return remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
-}
-
-function remoteSourceForTrackedPresence(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, remoteSources: RemoteSourceAvailability[]) {
-  const sourceID = trackedPresenceSourceID(presence);
-  if (!sourceID) return null;
-  return remoteSources.find((remote) => remote.source.id === sourceID) ?? null;
-}
-
-function trackedSourceTabKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
-  return `tracked:${presence.fileSourceId ?? 0}:${presence.remoteId ?? ""}:${presence.sourceUrl ?? ""}`;
-}
-
-function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {
-  return summary.status === "available";
-}
-
-function remoteSourceTabKey(sourceID: number) {
-  return `remote-source:${sourceID}`;
 }
 
 function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
@@ -8278,10 +8095,6 @@ function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | undefin
 
 function sourcePresenceActionCode(presence: SourcePresenceItem, fallbackCode: string) {
   return presence.remoteCode || fallbackCode;
-}
-
-function remoteAvailabilityRouteCode(summary: SourceAvailabilitySource, fallbackCode: string) {
-  return fallbackCode || summary.primaryCode || summary.remoteId;
 }
 
 function safeDecodePathSegment(value: string) {

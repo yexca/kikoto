@@ -773,6 +773,15 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
+export type WorkMetadataSyncRunResult = {
+  runId: number;
+  jobId: number;
+  workId: number;
+  primaryCode: string;
+  status: string;
+  deduplicated: boolean;
+};
+
 export type RemoteCollectionRunResult = {
   runId: number;
   sourceId: number;
@@ -1646,6 +1655,7 @@ export const api = {
       childRuns: number[];
     }>("/api/workflow-runs/remote-bulk", payload),
   runDLsiteSync: () => postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
+  syncWorkMetadata: (workId: number) => postJSON<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`),
 };
 import {
   clearStoredSessionToken,

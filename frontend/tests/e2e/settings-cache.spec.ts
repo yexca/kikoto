@@ -130,7 +130,7 @@ test("cache settings can clear referenced cache for selected works", async ({ pa
 test("personal settings stay separate from administrator maintenance", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 2 })).toBeVisible();
   await expect(page.getByText("Account", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Theme preference")).toBeVisible();
   await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);

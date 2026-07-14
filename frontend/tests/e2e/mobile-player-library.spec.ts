@@ -821,6 +821,18 @@ test("desktop mini player delays hiding hover actions", async ({ page }) => {
   await expect.poll(() => compactAction.evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
 });
 
+test("desktop player restores the user's compact dock preference", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await seedPlayer(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
+});
+
 test("mini player reveals actions on tap, persists its snapped edge, and compact mode reserves page space", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page);
@@ -846,7 +858,7 @@ test("mini player reveals actions on tap, persists its snapped edge, and compact
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-mini-position:v1") ?? "null")?.side)).toBe("left");
 
   await page.reload();
-  await page.getByRole("button", { name: "Mini player" }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("mini");
   const restored = await page.locator(".mini-player").boundingBox();
   expect(restored).not.toBeNull();
   expect(restored!.x).toBeLessThanOrEqual(10);

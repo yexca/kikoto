@@ -138,6 +138,45 @@ type LibraryPlayerContextValue = {
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
 const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
+const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
+
+function isDockMode(value: unknown): value is DockMode {
+  return value === "full" || value === "compact" || value === "mini";
+}
+
+function defaultDockMode(isMobile: boolean): DockMode {
+  return isMobile ? "compact" : "full";
+}
+
+function restoreDockMode(isMobile: boolean): DockMode {
+  try {
+    const stored = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
+      desktop?: DockMode;
+      mobile?: DockMode;
+    } | null;
+    const mode = isMobile ? stored?.mobile : stored?.desktop;
+    return isDockMode(mode) ? mode : defaultDockMode(isMobile);
+  } catch {
+    return defaultDockMode(isMobile);
+  }
+}
+
+function persistDockMode(isMobile: boolean, mode: DockMode) {
+  const stored: { version: 1; desktop?: DockMode; mobile?: DockMode } = { version: 1 };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DOCK_MODE_STORAGE_KEY) ?? "null") as {
+      desktop?: DockMode;
+      mobile?: DockMode;
+    } | null;
+    if (isDockMode(parsed?.desktop)) stored.desktop = parsed.desktop;
+    if (isDockMode(parsed?.mobile)) stored.mobile = parsed.mobile;
+  } catch {
+    // Replace malformed local preferences with the next valid selection.
+  }
+  if (isMobile) stored.mobile = mode;
+  else stored.desktop = mode;
+  localStorage.setItem(DOCK_MODE_STORAGE_KEY, JSON.stringify(stored));
+}
 
 function loadPersistedQueue(): {
   queue: PlayerTrack[];
@@ -921,9 +960,8 @@ export function PlayerDock() {
   const sleepButtonRef = useRef<HTMLButtonElement | null>(null);
   const sleepPopoverRef = useRef<HTMLDivElement | null>(null);
   const fullMainRef = useRef<HTMLDivElement | null>(null);
-  const [dockMode, setDockMode] = useState<DockMode>(() =>
-    window.matchMedia("(min-width: 1024px)").matches ? "full" : "compact",
-  );
+  const [dockMode, setDockMode] = useState<DockMode>(() => restoreDockMode(isMobile));
+  const dockLayoutRef = useRef(isMobile);
   const [panel, setPanel] = useState<"queue" | null>(null);
   const [lyricsDisplayMode, setLyricsDisplayMode] = useState<LyricsDisplayMode>("hidden");
   const [lyricsText, setLyricsText] = useState<string | null>(null);
@@ -956,6 +994,16 @@ export function PlayerDock() {
     [parsedLyrics.lines, player.currentTime],
   );
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
+  const setPreferredDockMode = useCallback((mode: DockMode) => {
+    setDockMode(mode);
+    persistDockMode(isMobile, mode);
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (dockLayoutRef.current === isMobile) return;
+    dockLayoutRef.current = isMobile;
+    setDockMode(restoreDockMode(isMobile));
+  }, [isMobile]);
 
   const cycleLyricsDisplayMode = () => {
     if (!activeLyricsLocationId) return;
@@ -1171,13 +1219,13 @@ export function PlayerDock() {
         return;
       }
       if (dockMode === "full") {
-        setDockMode("compact");
+        setPreferredDockMode("compact");
         event.preventDefault();
       }
     };
     window.addEventListener(ANDROID_BACK_EVENT, handleBack);
     return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
-  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, lyricsDisplayMode, miniActionsOpen, panel]);
+  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, lyricsDisplayMode, miniActionsOpen, panel, setPreferredDockMode]);
 
   useEffect(() => {
     if (dockMode !== "full" || panel || lyricsDisplayMode !== "preview") return;
@@ -1392,7 +1440,7 @@ export function PlayerDock() {
             onPointerUp={(event) => event.stopPropagation()}
             onClick={() => {
               setMiniActionsOpen(false);
-              setDockMode("compact");
+              setPreferredDockMode("compact");
             }}
             aria-label="Open compact player"
             title="Compact"
@@ -1408,7 +1456,7 @@ export function PlayerDock() {
             onPointerUp={(event) => event.stopPropagation()}
             onClick={() => {
               setMiniActionsOpen(false);
-              setDockMode("full");
+              setPreferredDockMode("full");
             }}
             aria-label="Open full player"
             title="Full"
@@ -1465,7 +1513,7 @@ export function PlayerDock() {
                   suppressCompactClickRef.current = false;
                   return;
                 }
-                setDockMode("full");
+                setPreferredDockMode("full");
               }}
             >
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
@@ -1479,7 +1527,7 @@ export function PlayerDock() {
               className="h-9 w-9 rounded-full border-primary/15 bg-card/80"
               size="icon"
               variant="outline"
-              onClick={() => setDockMode("mini")}
+              onClick={() => setPreferredDockMode("mini")}
               aria-label="Mini player"
             >
               <CircleDot className="h-4 w-4" />
@@ -1548,7 +1596,7 @@ export function PlayerDock() {
           const elapsed = Math.max(1, performance.now() - drag.startedAt);
           const velocity = offset / elapsed;
           suppressCollapseClickRef.current = drag.moved;
-          if (offset >= 96 || velocity >= 0.55) setDockMode("compact");
+          if (offset >= 96 || velocity >= 0.55) setPreferredDockMode("compact");
           setFullDragOffset(0);
         }}
         onPointerCancel={() => {
@@ -1564,7 +1612,7 @@ export function PlayerDock() {
               suppressCollapseClickRef.current = false;
               return;
             }
-            setDockMode("compact");
+            setPreferredDockMode("compact");
           }}
           aria-label="Collapse player"
         >

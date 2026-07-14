@@ -167,7 +167,7 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 	}
 }
 
-func TestMigrateUpgradesV010DatabaseWithSingleV011Migration(t *testing.T) {
+func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
 	initialSQL, err := os.ReadFile(filepath.Join(migrationDir, "001_initial.sql"))
 	if err != nil {
@@ -204,7 +204,7 @@ func TestMigrateUpgradesV010DatabaseWithSingleV011Migration(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 4 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" {
+	if len(migrations) != 5 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var lyricsPreferenceTable int
@@ -250,6 +250,7 @@ func TestMigrateAddsQueryIndexes(t *testing.T) {
 		"work":              "idx_work_primary_code_upper",
 		"work_edition":      "idx_work_edition_primary_code_upper",
 		"party_series_work": "idx_party_series_work_code_upper",
+		"workflow_event":    "idx_workflow_event_run_id",
 	} {
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM pragma_index_list(?) WHERE name = ?", table, index).Scan(&count); err != nil {
