@@ -230,6 +230,36 @@
     background-clip: content-box;
   }
 
+  .workflow-canvas .react-flow__controls {
+    overflow: hidden;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    box-shadow: none;
+  }
+
+  .workflow-canvas .react-flow__controls-button {
+    border-color: hsl(var(--border));
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+  }
+
+  .workflow-canvas .react-flow__controls-button:hover {
+    background: hsl(var(--muted));
+  }
+
+  .workflow-canvas .react-flow__controls-button svg {
+    fill: currentColor;
+  }
+
+  .workflow-canvas .react-flow__edge-path {
+    stroke: hsl(var(--muted-foreground) / 0.55);
+  }
+
+  .workflow-canvas .react-flow__arrowhead polyline {
+    stroke: hsl(var(--muted-foreground));
+    fill: hsl(var(--muted-foreground));
+  }
+
   .animate-toast-progress {
     animation-name: toast-progress;
     animation-timing-function: linear;

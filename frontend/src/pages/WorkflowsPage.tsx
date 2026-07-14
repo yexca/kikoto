@@ -9,8 +9,8 @@ import {
   Database,
   Edit3,
   FileJson,
-  FileText,
   ListChecks,
+  Loader2,
   Play,
   Plus,
   Save,
@@ -21,6 +21,17 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,8 +55,7 @@ import {
 type Surface = "workflows" | "activity";
 type WorkflowView = "definitions" | "scheduled" | "system";
 type DefinitionView = Exclude<WorkflowView, "scheduled">;
-type ActivityView = "running" | "review" | "failed" | "completed" | "logs";
-type RunDetailView = "overview" | "steps" | "items" | "logs";
+type ActivityView = "running" | "review" | "failed" | "completed";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
 
 type WorkflowNode = {
@@ -73,7 +83,7 @@ const fallbackNodeTypes: WorkflowNodeType[] = [
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
-const activityViews: ActivityView[] = ["running", "review", "failed", "completed", "logs"];
+const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
 const workflowViewStorageKey = "kikoto.workflows.view";
 const workflowDefinitionStoragePrefix = "kikoto.workflows.definition.";
 const workflowTriggerStorageKey = "kikoto.workflows.trigger";
@@ -165,7 +175,6 @@ export function WorkflowsPage({
   const toast = useToast();
   const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
-  const [runDetailView, setRunDetailView] = useState<RunDetailView>("overview");
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
@@ -178,7 +187,7 @@ export function WorkflowsPage({
     system: storedPositiveInt(workflowDefinitionStoragePrefix + "system"),
   }));
   const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(() => storedPositiveInt(workflowTriggerStorageKey));
-  const [selectedRunId, setSelectedRunID] = useState<number | null>(null);
+  const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
   const [selectedRun, setSelectedRun] = useState<WorkflowRunDetail | null>(null);
   const [selectedRunEvents, setSelectedRunEvents] = useState<WorkflowEvent[]>([]);
   const [selectedRunCandidates, setSelectedRunCandidates] = useState<WorkflowCandidate[]>([]);
@@ -190,6 +199,7 @@ export function WorkflowsPage({
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [isRunsLoading, setIsRunsLoading] = useState(true);
   const [isRunDetailLoading, setIsRunDetailLoading] = useState(false);
+  const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
 
   const refresh = () => {
     setIsWorkflowMetaLoading(true);
@@ -229,9 +239,9 @@ export function WorkflowsPage({
       const next = activityViewFromLocation();
       setActivityView(next);
       setRunPage(1);
-      setSelectedRunID(null);
-      setRunDetailView(next === "logs" ? "logs" : next === "review" ? "items" : "overview");
+      setSelectedRunID(activityRunIDFromLocation());
     };
+    syncView();
     window.addEventListener("popstate", syncView);
     window.addEventListener("kikoto:navigation", syncView);
     return () => {
@@ -254,6 +264,16 @@ export function WorkflowsPage({
   const selectedDefinition = useMemo(() => {
     return visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? visibleDefinitions[0] ?? null;
   }, [selectedDefinitionId, visibleDefinitions]);
+
+  useEffect(() => {
+    if (surface !== "workflows" || !selectedDefinition) {
+      setRecentDefinitionRuns([]);
+      return;
+    }
+    api.listWorkflowRuns(1, 5, "", "", selectedDefinition.code)
+      .then((page) => setRecentDefinitionRuns(page.runs))
+      .catch(() => setRecentDefinitionRuns([]));
+  }, [selectedDefinition?.code, surface]);
 
   const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
   const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
@@ -324,6 +344,7 @@ export function WorkflowsPage({
 			setRuns((items) => items.map((item) => item.id === next.id ? { ...item, ...next } : item));
 		  }),
 		  api.listWorkflowRunEvents(selectedRunSummary.id).then(setSelectedRunEvents),
+		  api.listWorkflowRunCandidates(selectedRunSummary.id).then(setSelectedRunCandidates),
 		]).catch(() => undefined);
 	  };
 	  const timer = window.setInterval(refreshRunningDetail, 1500);
@@ -516,6 +537,8 @@ export function WorkflowsPage({
                   onRunRemotePopular={runPopularCollection}
                   canFetchRemotePopular={canManageDownloads}
                   onRunDLsitePopular={runDLsitePopularCollection}
+                  recentRuns={recentDefinitionRuns}
+                  onOpenRun={openActivityRun}
                   emptyText={definitionEmptyText}
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
@@ -530,20 +553,17 @@ export function WorkflowsPage({
       ) : (
         <>
           <SegmentedNav>
-            <ViewButton active={activityView === "running"} onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<Activity className="h-4 w-4" />}>
+            <ViewButton active={activityView === "running"} onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<Activity className="h-4 w-4" />}>
               Running
             </ViewButton>
-            <ViewButton active={activityView === "review"} onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileJson className="h-4 w-4" />}>
+            <ViewButton active={activityView === "review"} onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<FileJson className="h-4 w-4" />}>
               Review
             </ViewButton>
-            <ViewButton active={activityView === "failed"} onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<AlertCircle className="h-4 w-4" />}>
+            <ViewButton active={activityView === "failed"} onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<AlertCircle className="h-4 w-4" />}>
               Failed
             </ViewButton>
-            <ViewButton active={activityView === "completed"} onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<ListChecks className="h-4 w-4" />}>
+            <ViewButton active={activityView === "completed"} onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<ListChecks className="h-4 w-4" />}>
               Completed
-            </ViewButton>
-            <ViewButton active={activityView === "logs"} onClick={() => switchActivityView("logs", surface, setActivityView, setRunPage, setSelectedRunID, setRunDetailView)} icon={<FileText className="h-4 w-4" />}>
-              Logs
             </ViewButton>
           </SegmentedNav>
           <ActivityToolbar
@@ -565,7 +585,7 @@ export function WorkflowsPage({
                 pageSize={runsPage.pageSize}
                 total={runsPage.total}
                 loading={isRunsLoading}
-                onSelect={(run) => setSelectedRunID(run.id)}
+                onSelect={(run) => selectActivityRun(run, activityView, setSelectedRunID)}
                 onPrevious={() => {
                   setSelectedRunID(null);
                   setRunPage(Math.max(1, runPage - 1));
@@ -576,7 +596,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} view={runDetailView} loading={isRunDetailLoading && !selectedRun} onViewChange={setRunDetailView} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
+            right={<RunDetail run={selectedRun ?? selectedRunSummary} events={selectedRunEvents} candidates={selectedRunCandidates} nodeTypes={nodeTypes} loading={isRunDetailLoading && !selectedRun} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
           />
         </>
       )}
@@ -977,6 +997,8 @@ function WorkflowDetail({
   onRunRemotePopular,
   canFetchRemotePopular = false,
   onRunDLsitePopular,
+  recentRuns = [],
+  onOpenRun,
   emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
   onEditTrigger,
@@ -993,6 +1015,8 @@ function WorkflowDetail({
   onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
   canFetchRemotePopular?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
+  recentRuns?: WorkflowRun[];
+  onOpenRun?: (run: WorkflowRun) => void;
   emptyText?: string;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
@@ -1070,7 +1094,9 @@ function WorkflowDetail({
           </div>
         )}
         {trigger && <TriggerSummary trigger={trigger} />}
-        <NodePipeline nodes={nodes} nodeTypes={nodeTypes} readonly={readonly} onEditNode={onEditNode} />
+        <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly={readonly} onEditNode={onEditNode} />
+        {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
+        <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />
       </CardContent>
     </Card>
   );
@@ -1295,9 +1321,7 @@ function RunDetail({
   events,
   candidates,
   nodeTypes,
-  view,
   loading = false,
-  onViewChange,
   onCandidateUpdate,
   onRunAction,
   onReviewRun,
@@ -1306,15 +1330,13 @@ function RunDetail({
   events: WorkflowEvent[];
   candidates: WorkflowCandidate[];
   nodeTypes: WorkflowNodeType[];
-  view: RunDetailView;
   loading?: boolean;
-  onViewChange: (view: RunDetailView) => void;
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
   onReviewRun: () => Promise<void>;
 }) {
   if (!run) {
-    return loading ? <RunDetailSkeleton view={view} /> : <EmptyPanel text="Select a run to inspect execution by node." />;
+    return loading ? <RunDetailSkeleton /> : <EmptyPanel text="Select a run to inspect execution by node." />;
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
   return (
@@ -1336,35 +1358,25 @@ function RunDetail({
             <RunActions run={run} onRunAction={onRunAction} />
           </div>
         </div>
-        <SegmentedNav>
-          <ViewButton active={view === "overview"} onClick={() => onViewChange("overview")} icon={<Activity className="h-4 w-4" />}>
-            Overview
-          </ViewButton>
-          <ViewButton active={view === "steps"} onClick={() => onViewChange("steps")} icon={<Workflow className="h-4 w-4" />}>
-            Steps
-          </ViewButton>
-          <ViewButton active={view === "items"} onClick={() => onViewChange("items")} icon={<FileJson className="h-4 w-4" />}>
-            Items
-          </ViewButton>
-          <ViewButton active={view === "logs"} onClick={() => onViewChange("logs")} icon={<FileText className="h-4 w-4" />}>
-            Logs
-          </ViewButton>
-        </SegmentedNav>
-        {view === "overview" ? (
-          loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />
-        ) : view === "steps" ? (
-          loading ? <RunNodePipelineSkeleton /> : nodeRuns.length > 0 ? <RunNodePipeline nodes={nodeRuns} nodeTypes={nodeTypes} /> : <EmptyPanel text="This run has no node detail yet." />
-        ) : view === "items" ? (
-          loading ? <RunItemsSkeleton /> : <RunItems run={run} nodeRuns={nodeRuns} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />
-        ) : (
-          loading ? <RunLogsSkeleton /> : <RunLogs run={run} nodeRuns={nodeRuns} events={events} />
-        )}
+        {loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />}
+        <section className="space-y-2">
+          <div className="text-sm font-semibold">Execution</div>
+          {loading ? <RunNodePipelineSkeleton /> : nodeRuns.length > 0 ? (
+            <WorkflowNodeCanvas
+              compact
+              nodes={nodeRuns.map((node) => ({ id: String(node.id), title: node.displayName || node.nodeId, subtitle: nodeSubtitle(node.nodeType, nodeTypes), status: node.status, detail: node.errorMessage || summarizeJSON(node.outputJson) || node.nodeType }))}
+              onNodeClick={(nodeID) => document.getElementById(`workflow-node-${nodeID}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            />
+          ) : <EmptyPanel text="This run has no node detail yet." />}
+        </section>
+        {loading ? <RunItemsSkeleton /> : <RunItems run={run} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />}
+        {loading ? <RunLogsSkeleton /> : <ActivityNodeSections run={run} nodes={nodeRuns} events={events} />}
       </CardContent>
     </Card>
   );
 }
 
-function RunDetailSkeleton({ view }: { view: RunDetailView }) {
+function RunDetailSkeleton() {
   return (
     <Card>
       <CardContent className="space-y-5 p-5">
@@ -1381,10 +1393,10 @@ function RunDetailSkeleton({ view }: { view: RunDetailView }) {
             <SkeletonLine className="h-8 w-28" />
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
-          {Array.from({ length: 4 }, (_, index) => <SkeletonLine key={index} className="h-9 w-24 shrink-0" />)}
-        </div>
-        {view === "overview" ? <RunOverviewSkeleton /> : view === "steps" ? <RunNodePipelineSkeleton /> : view === "items" ? <RunItemsSkeleton /> : <RunLogsSkeleton />}
+        <RunOverviewSkeleton />
+        <RunNodePipelineSkeleton />
+        <RunItemsSkeleton />
+        <RunLogsSkeleton />
       </CardContent>
     </Card>
   );
@@ -1521,18 +1533,16 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
 
 function RunItems({
   run,
-  nodeRuns,
   candidates,
   onCandidateUpdate,
 }: {
   run: WorkflowRunDetail | WorkflowRun;
-  nodeRuns: WorkflowNodeRun[];
   candidates: WorkflowCandidate[];
   onCandidateUpdate: () => Promise<void>;
 }) {
-  const interestingNodes = nodeRuns.filter((node) => node.status !== "succeeded" || node.errorMessage || hasNonEmptyJSON(node.outputJson));
   return (
     <div className="space-y-3">
+      <div className="text-sm font-semibold">Items</div>
       <div className="grid gap-2 sm:grid-cols-3">
         <Metric icon={<FileJson className="h-3.5 w-3.5" />} label="pending review" value={`${reviewCount(run)}`} />
         <Metric icon={<AlertCircle className="h-3.5 w-3.5" />} label="failed items" value={`${run.failedNodeRuns + run.failedJobs}`} />
@@ -1548,22 +1558,78 @@ function RunItems({
           </div>
         </div>
       )}
+      {candidates.length === 0 && <div className="rounded-md border p-3 text-sm text-muted-foreground">No reviewable items recorded for this run.</div>}
+    </div>
+  );
+}
+
+function ActivityNodeSections({ run, nodes, events }: { run: WorkflowRunDetail | WorkflowRun; nodes: WorkflowNodeRun[]; events: WorkflowEvent[] }) {
+  const [openNodes, setOpenNodes] = useState<Set<number>>(() => new Set(nodes.filter((node) => ["running", "failed", "partial"].includes(node.status)).map((node) => node.id)));
+  useEffect(() => {
+    setOpenNodes((current) => {
+      const next = new Set(current);
+      nodes.filter((node) => ["running", "failed", "partial"].includes(node.status)).forEach((node) => next.add(node.id));
+      return next;
+    });
+  }, [nodes]);
+  const runEvents = events.filter((event) => event.nodeRunId === null);
+  return (
+    <section className="space-y-3">
+      <div className="text-sm font-semibold">Node logs</div>
       <div className="divide-y rounded-md border">
-        {interestingNodes.map((node) => (
-          <div key={node.id} className="grid gap-2 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">{node.displayName || node.nodeId}</div>
-                <div className="text-xs text-muted-foreground">{node.nodeType}</div>
-              </div>
-              <StatusBadge status={node.status} />
-            </div>
-            {node.errorMessage && <div className="text-sm text-destructive">{node.errorMessage}</div>}
-            <JsonPreview value={node.outputJson} empty="No output payload." compact />
-          </div>
-        ))}
-        {interestingNodes.length === 0 && <div className="p-3 text-sm text-muted-foreground">No reviewable items recorded for this run.</div>}
+        {nodes.map((node) => {
+          const open = openNodes.has(node.id);
+          const nodeEvents = events.filter((event) => event.nodeRunId === node.id);
+          return (
+            <section key={node.id} id={`workflow-node-${node.id}`} className="scroll-mt-24">
+              <button className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40" aria-expanded={open} onClick={() => setOpenNodes((current) => {
+                const next = new Set(current);
+                if (next.has(node.id)) next.delete(node.id); else next.add(node.id);
+                return next;
+              })}>
+                <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+                <StatusPoint status={node.status} />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{node.displayName || node.nodeId}</span>
+                <span className="text-xs text-muted-foreground">{nodeEvents.length} events</span>
+                <StatusBadge status={node.status} />
+              </button>
+              {open && (
+                <div className="space-y-3 border-t bg-muted/15 px-3 py-3">
+                  {node.errorMessage && <ErrorPanel error={node.errorMessage} />}
+                  {hasNonEmptyJSON(node.outputJson) && <JsonPreview value={node.outputJson} empty="No output payload." compact />}
+                  <WorkflowEventRows events={nodeEvents} empty="No events recorded for this node." />
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
+      {runEvents.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Run events</div>
+          <div className="rounded-md border"><WorkflowEventRows events={runEvents} empty="No run events." /></div>
+        </div>
+      )}
+      {nodes.length === 0 && <RunLogs run={run} nodeRuns={nodes} events={events} />}
+    </section>
+  );
+}
+
+function WorkflowEventRows({ events, empty }: { events: WorkflowEvent[]; empty: string }) {
+  if (events.length === 0) return <div className="p-3 text-sm text-muted-foreground">{empty}</div>;
+  return (
+    <div className="divide-y rounded-md border bg-background">
+      {events.map((event) => (
+        <div key={event.id} className="grid gap-1 p-3 text-sm md:grid-cols-[150px_70px_minmax(0,1fr)]">
+          <div className="text-xs text-muted-foreground">{event.createdAt}</div>
+          <div className={event.level === "error" ? "text-destructive" : event.level === "warn" ? "text-yellow-600" : "text-muted-foreground"}>{event.level}</div>
+          <div className="min-w-0">
+            <div className="font-medium">{event.message}</div>
+            <div className="text-xs text-muted-foreground">{event.eventType}</div>
+            {hasNonEmptyJSON(event.detailJson) && <div className="mt-1 break-words text-xs text-muted-foreground">{summarizeJSON(event.detailJson)}</div>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1750,90 +1816,134 @@ function RunLogs({ run, nodeRuns, events }: { run: WorkflowRunDetail | WorkflowR
   );
 }
 
-function NodePipeline({ nodes, nodeTypes, readonly, onEditNode }: { nodes: WorkflowNode[]; nodeTypes: WorkflowNodeType[]; readonly: boolean; onEditNode: (index: number) => void }) {
-  return (
-    <div className="grid gap-3">
-      <div className="overflow-x-auto pb-2">
-        <div className="flex min-w-max items-stretch gap-3">
-          {nodes.map((node, index) => (
-            <div key={`${node.id}-${index}`} className="flex items-center gap-3">
-              <NodeCard
-                title={node.displayName || node.id}
-                subtitle={nodeSubtitle(node.type, nodeTypes)}
-                status="idle"
-                readonly={readonly}
-                onEdit={() => onEditNode(index)}
-                onDoubleClick={() => !readonly && onEditNode(index)}
-              />
-              {index < nodes.length - 1 && <Connector />}
-            </div>
-          ))}
-        </div>
-      </div>
-      <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />
-    </div>
-  );
-}
-
-function RunNodePipeline({ nodes, nodeTypes }: { nodes: WorkflowNodeRun[]; nodeTypes: WorkflowNodeType[] }) {
-  return (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex min-w-max items-stretch gap-3">
-        {nodes.map((node, index) => (
-          <div key={node.id} className="flex items-center gap-3">
-            <NodeCard title={node.displayName || node.nodeId} subtitle={nodeSubtitle(node.nodeType, nodeTypes)} status={node.status} error={node.errorMessage} readonly />
-            {index < nodes.length - 1 && <Connector active={node.status === "succeeded"} />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function NodeCard({
-  title,
-  subtitle,
-  status,
-  error,
-  readonly,
-  onEdit,
-  onDoubleClick,
-}: {
+type WorkflowCanvasItem = {
+  id: string;
   title: string;
   subtitle: string;
   status: string;
-  error?: string;
-  readonly: boolean;
-  onEdit?: () => void;
-  onDoubleClick?: () => void;
-}) {
-  const tone = nodeTone(status);
+  detail: string;
+};
+
+function DefinitionNodeCanvas({ nodes, nodeTypes, readonly, onEditNode }: { nodes: WorkflowNode[]; nodeTypes: WorkflowNodeType[]; readonly: boolean; onEditNode: (index: number) => void }) {
+  const [selectedNodeID, setSelectedNodeID] = useState("");
+  const selectedIndex = nodes.findIndex((node, index) => `${node.id}-${index}` === selectedNodeID);
+  const selectedNode = selectedIndex >= 0 ? nodes[selectedIndex] : null;
+  const canvasNodes = nodes.map((node, index) => ({
+    id: `${node.id}-${index}`,
+    title: node.displayName || node.id,
+    subtitle: nodeSubtitle(node.type, nodeTypes),
+    status: "idle",
+    detail: summarizeJSON(JSON.stringify(node.config ?? {})) || node.type,
+  }));
   return (
-    <div className={`relative grid min-h-32 w-56 content-between rounded-md border p-3 ${tone.card}`} onDoubleClick={onDoubleClick}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{title}</div>
-          <div className="mt-1 break-all text-xs text-muted-foreground">{subtitle}</div>
+    <div className="space-y-2">
+      <WorkflowNodeCanvas
+        nodes={canvasNodes}
+        onNodeClick={setSelectedNodeID}
+        onNodeDoubleClick={readonly ? undefined : (nodeID) => {
+          const index = canvasNodes.findIndex((node) => node.id === nodeID);
+          if (index >= 0) onEditNode(index);
+        }}
+      />
+      {selectedNode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{selectedNode.displayName || selectedNode.id}</div>
+            <div className="text-xs text-muted-foreground">{nodeSubtitle(selectedNode.type, nodeTypes)}</div>
+          </div>
+          {!readonly && <Button size="sm" variant="outline" onClick={() => onEditNode(selectedIndex)}><Edit3 className="h-4 w-4" />Edit</Button>}
         </div>
-        {!readonly && (
-          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="Edit node" onClick={onEdit}>
-            <Edit3 className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-      <div className="space-y-2">
-        {error && <div className="line-clamp-2 text-xs text-destructive">{error}</div>}
-        <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${tone.badge}`}>
-          {tone.icon}
-          {status}
-        </div>
+      )}
+    </div>
+  );
+}
+
+type WorkflowCanvasData = WorkflowCanvasItem & Record<string, unknown>;
+type WorkflowCanvasNode = Node<WorkflowCanvasData, "workflow">;
+
+function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
+  return (
+    <div className="group relative flex h-11 min-w-40 max-w-52 items-center gap-2 rounded-md border bg-card px-3 shadow-sm">
+      <StatusPoint status={data.status} />
+      <span className="truncate text-sm font-medium">{data.title}</span>
+      <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-md border bg-popover p-3 text-left shadow-lg group-hover:block group-focus-within:block">
+        <div className="text-sm font-semibold">{data.title}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{data.subtitle}</div>
+        <div className="mt-2 break-words text-xs text-muted-foreground">{data.detail}</div>
       </div>
     </div>
   );
 }
 
-function Connector({ active = false }: { active?: boolean }) {
-  return <div className={`h-0.5 w-10 rounded-full ${active ? "bg-primary" : "bg-border"}`} />;
+const workflowCanvasNodeTypes = { workflow: WorkflowCanvasNodeView };
+
+function WorkflowNodeCanvas({ nodes, onNodeClick, onNodeDoubleClick, compact = false }: { nodes: WorkflowCanvasItem[]; onNodeClick?: (nodeID: string) => void; onNodeDoubleClick?: (nodeID: string) => void; compact?: boolean }) {
+  const flowNodes = useMemo<WorkflowCanvasNode[]>(() => nodes.map((node, index) => ({
+    id: node.id,
+    type: "workflow",
+    data: node,
+    position: { x: index * 210, y: 48 },
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    draggable: false,
+    selectable: true,
+  })), [nodes]);
+  const edges = useMemo<Edge[]>(() => nodes.slice(0, -1).map((node, index) => ({
+    id: `${node.id}->${nodes[index + 1].id}`,
+    source: node.id,
+    target: nodes[index + 1].id,
+    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+    style: { strokeWidth: 1.5 },
+    animated: nodes[index + 1].status === "running",
+  })), [nodes]);
+  return (
+    <div className={`workflow-canvas overflow-hidden rounded-md border bg-muted/20 ${compact ? "h-48" : "h-64"}`} aria-label="Workflow node canvas">
+      <ReactFlow
+        nodes={flowNodes}
+        edges={edges}
+        nodeTypes={workflowCanvasNodeTypes}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable
+        panOnDrag
+        zoomOnDoubleClick={false}
+        minZoom={0.45}
+        maxZoom={1.5}
+        fitView
+        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
+        onNodeClick={(_, node) => onNodeClick?.(node.id)}
+        onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background gap={20} size={1} />
+        <Controls showInteractive={false} position="bottom-right" />
+      </ReactFlow>
+    </div>
+  );
+}
+
+function StatusPoint({ status }: { status: string }) {
+  if (status === "running") return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-yellow-500" aria-label="Running" />;
+  const color = status === "succeeded" ? "bg-emerald-500" : status === "failed" ? "bg-destructive" : status === "partial" ? "bg-yellow-500" : "bg-muted-foreground/45";
+  return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} aria-label={status} />;
+}
+
+function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (run: WorkflowRun) => void }) {
+  return (
+    <section className="space-y-2">
+      <div className="text-sm font-semibold">Recent runs</div>
+      <div className="divide-y rounded-md border">
+        {runs.map((run) => (
+          <button key={run.id} className="grid w-full gap-1 px-3 py-2 text-left hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3" onClick={() => onOpen(run)}>
+            <span className="min-w-0 truncate text-sm font-medium">#{run.id} {run.triggerReason || run.displayName}</span>
+            <span className="text-xs text-muted-foreground">{formatRunTime(run)}</span>
+            <StatusBadge status={run.status} />
+          </button>
+        ))}
+        {runs.length === 0 && <div className="px-3 py-4 text-sm text-muted-foreground">No recent runs.</div>}
+      </div>
+    </section>
+  );
 }
 
 function TriggerSummary({ trigger }: { trigger: WorkflowTrigger }) {
@@ -2593,7 +2703,6 @@ function switchActivityView(
   setActivityView: (view: ActivityView) => void,
   setRunPage: (page: number) => void,
   setSelectedRunID: (id: number | null) => void,
-  setRunDetailView: (view: RunDetailView) => void,
 ) {
   if (surface === "activity") {
     const path = view === "running" ? "/activity" : `/activity?view=${encodeURIComponent(view)}`;
@@ -2602,7 +2711,6 @@ function switchActivityView(
   setActivityView(view);
   setRunPage(1);
   setSelectedRunID(null);
-  setRunDetailView(view === "logs" ? "logs" : view === "review" ? "items" : "overview");
 }
 
 function activityViewFromLocation(): ActivityView {
@@ -2641,6 +2749,32 @@ function localCleanupLocations(payload: Record<string, unknown>): LocalCleanupLo
     if (!locationId || !path) return [];
     return [{ locationId, path, sizeBytes: nullableNumberValue(record.size_bytes) }];
   });
+}
+
+function activityRunIDFromLocation() {
+  const value = Number(new URLSearchParams(window.location.search).get("run"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function openActivityRun(run: WorkflowRun) {
+  const view: ActivityView = ["queued", "running"].includes(run.status)
+    ? "running"
+    : run.status === "failed"
+      ? "failed"
+      : run.pendingCandidates > 0 || run.status === "partial" || run.status === "skipped"
+        ? "review"
+        : "completed";
+  const search = new URLSearchParams({ view, run: String(run.id) });
+  window.history.pushState({}, "", `/activity?${search}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function selectActivityRun(run: WorkflowRun, view: ActivityView, setSelectedRunID: (id: number | null) => void) {
+  setSelectedRunID(run.id);
+  const search = new URLSearchParams(window.location.search);
+  search.set("view", view);
+  search.set("run", String(run.id));
+  window.history.replaceState(window.history.state, "", `/activity?${search}`);
 }
 
 function localArchivedRoots(payload: Record<string, unknown>): LocalArchivedRoot[] {
@@ -2771,47 +2905,4 @@ function summarizeJSON(value: string) {
   } catch {
     return trimmed;
   }
-}
-
-function nodeTone(status: string) {
-  if (status === "failed") {
-    return {
-      card: "border-destructive/40 bg-destructive/5",
-      badge: "bg-destructive text-destructive-foreground",
-      icon: <AlertCircle className="h-3.5 w-3.5" />,
-    };
-  }
-  if (status === "partial") {
-    return {
-      card: "border-primary/40 bg-primary/5",
-      badge: "bg-primary text-primary-foreground",
-      icon: <AlertCircle className="h-3.5 w-3.5" />,
-    };
-  }
-  if (status === "skipped") {
-    return {
-      card: "border-muted bg-muted/30",
-      badge: "bg-muted text-muted-foreground",
-      icon: <FileJson className="h-3.5 w-3.5" />,
-    };
-  }
-  if (status === "running" || status === "queued") {
-    return {
-      card: "border-primary/40 bg-secondary",
-      badge: "bg-primary text-primary-foreground",
-      icon: <Clock3 className="h-3.5 w-3.5" />,
-    };
-  }
-  if (status === "succeeded") {
-    return {
-      card: "border-primary/30 bg-card",
-      badge: "bg-secondary text-secondary-foreground",
-      icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-    };
-  }
-  return {
-    card: "bg-card",
-    badge: "bg-muted text-muted-foreground",
-    icon: <FileJson className="h-3.5 w-3.5" />,
-  };
 }

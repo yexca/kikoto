@@ -11,7 +11,7 @@ import { api, type ManagedUser } from "@/lib/api";
 const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
 const USER_PAGE_SIZE = 8;
 
-export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: number; isSuperAdmin: boolean }) {
+export function UsersPage({ currentUserId, isSuperAdmin, embedded = false }: { currentUserId: number; isSuperAdmin: boolean; embedded?: boolean }) {
   const toast = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -103,7 +103,7 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border bg-card p-4">
+      {!embedded && <section className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Administration</p>
@@ -122,7 +122,7 @@ export function UsersPage({ currentUserId, isSuperAdmin }: { currentUserId: numb
             )}
           </div>
         </div>
-      </section>
+      </section>}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="space-y-4">

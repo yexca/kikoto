@@ -34,6 +34,7 @@ import {
   getStoredThemeMode,
   resolvedThemeMode,
   storeThemeMode,
+  THEME_CHANGE_EVENT,
   type ThemeMode,
   watchSystemTheme,
 } from "@/app/theme";
@@ -91,6 +92,12 @@ export function HeaderActions({
       if (getStoredThemeMode() === "system") applyThemeMode("system");
     });
   }, [themeMode]);
+
+  useEffect(() => {
+    const syncTheme = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
+    window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+  }, []);
 
   const refreshReviewRuns = () => {
     if (!canRunWorkflows) return;
@@ -176,8 +183,8 @@ export function HeaderActions({
                   <ActionItem icon={<ListChecks className="h-4 w-4" />} label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"} onClick={() => { setMobileMenuOpen(false); onOpenPath("/activity?view=review"); }} />
                 </>
               )}
-              <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setMobileMenuOpen(false); onOpenPage("settings"); }} />
-              {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setMobileMenuOpen(false); onOpenPage("users"); }} />}
+                  <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setMobileMenuOpen(false); onOpenPage("settings"); }} />
+                  {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setMobileMenuOpen(false); onOpenPath("/maintenance?tab=users"); }} />}
             </MenuList>
             <div className="border-t p-2">
               <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Theme</div>
@@ -503,7 +510,7 @@ export function HeaderActions({
                   label="Users"
                   onClick={() => {
                     setUserOpen(false);
-                    onOpenPage("users");
+                    onOpenPath("/maintenance?tab=users");
                   }}
                 />
               )}

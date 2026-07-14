@@ -18,8 +18,8 @@ import { isNativeApp } from "@/lib/serverConfig";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const MaintenancePage = lazy(() => import("@/pages/MaintenancePage").then((module) => ({ default: module.MaintenancePage })));
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
-const UsersPage = lazy(() => import("@/pages/UsersPage").then((module) => ({ default: module.UsersPage })));
 const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
 const CreatorWorksPage = lazy(() => import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })));
 const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
@@ -240,12 +240,12 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
               {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-              {canAccessCurrentPage && page === "settings" && <SettingsPage canManageSources={auth.hasPermission("sources:write")} />}
+              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} />}
+              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.hasPermission("sources:write")} canManageUsers={auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
               {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
               {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
-              {canAccessCurrentPage && page === "users" && auth.user && <UsersPage currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
               {canAccessCurrentPage && page === "about" && <AboutPage />}
-              {!["library", "favorites", "circles", "voice-actors", "settings", "workflows", "activity", "users", "about"].includes(page) && (
+              {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />
               )}
             </div>
@@ -362,6 +362,9 @@ function pageFromPath(path: string): PageID {
   }
   if (path === "/runs") {
     return "activity";
+  }
+  if (path === "/users") {
+    return "maintenance";
   }
   const item = navItems.find((navItem) => navItem.path === path);
   if (item) {

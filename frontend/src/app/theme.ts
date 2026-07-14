@@ -1,6 +1,7 @@
 export type ThemeMode = "light" | "dark" | "system";
 
 const THEME_STORAGE_KEY = "kikoto:theme";
+export const THEME_CHANGE_EVENT = "kikoto:theme-change";
 const darkModeQuery = "(prefers-color-scheme: dark)";
 
 export function getStoredThemeMode(): ThemeMode {
@@ -10,6 +11,7 @@ export function getStoredThemeMode(): ThemeMode {
 
 export function storeThemeMode(mode: ThemeMode) {
   localStorage.setItem(THEME_STORAGE_KEY, mode);
+  window.dispatchEvent(new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: mode }));
 }
 
 export function systemPrefersDark() {

@@ -27,8 +27,8 @@ export const navItems = [
   { id: "voice-actors", label: "Voice Actors", path: "/voices", icon: MicVocal, audience: "public", permission: undefined },
   { id: "workflows", label: "Workflows", path: "/workflows", icon: Workflow, audience: "admin", permission: "workflows:run" },
   { id: "activity", label: "Activity", path: "/activity", icon: Activity, audience: "admin", permission: "workflows:run" },
-  { id: "users", label: "Users", path: "/users", icon: ShieldCheck, audience: "admin", permission: "users:manage" },
   { id: "settings", label: "Settings", path: "/settings", icon: Settings, audience: "authenticated", permission: undefined },
+  { id: "maintenance", label: "Maintenance", path: "/maintenance", icon: ShieldCheck, audience: "admin", permission: "sources:write" },
   { id: "about", label: "About", path: "/about", icon: Info, audience: "public", permission: undefined },
 ] as const satisfies readonly NavItem[];
 

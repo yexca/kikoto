@@ -12,7 +12,7 @@ async function mockCacheSettings(page: Page, onCleanup: (payload: unknown) => vo
             username: "admin",
             displayName: "Admin",
             role: "admin",
-            permissions: ["library:read", "sources:write", "downloads:manage"],
+            permissions: ["library:read", "sources:write", "downloads:manage", "users:manage"],
             devMode: true,
           },
         },
@@ -43,6 +43,10 @@ async function mockCacheSettings(page: Page, onCleanup: (payload: unknown) => vo
           fileSources: [],
         },
       });
+      return;
+    }
+    if (url.pathname === "/api/users") {
+      await route.fulfill({ json: [{ id: 1, username: "admin", displayName: "Admin", role: "admin", enabled: true, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }] });
       return;
     }
     if (url.pathname === "/api/cache/overview") {
@@ -94,8 +98,7 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await page.setViewportSize({ width: 1280, height: 800 });
   const cleanupRequests: unknown[] = [];
   await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Cache & Fetch", exact: true }).click();
+  await page.goto("/maintenance?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
@@ -115,12 +118,25 @@ test("cache settings scan managed media and require cleanup confirmation", async
 test("cache settings can clear referenced cache for selected works", async ({ page }) => {
   const cleanupRequests: unknown[] = [];
   await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Cache & Fetch", exact: true }).click();
+  await page.goto("/maintenance?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select cache for RJ09990001" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
   await page.getByRole("button", { name: "Confirm cleanup (6 files)" }).click();
   await expect.poll(() => cleanupRequests).toHaveLength(1);
   expect(cleanupRequests[0]).toEqual({ mode: "works", workIds: [1] });
+});
+
+test("personal settings stay separate from administrator maintenance", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect(page.getByText("Account", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Theme preference")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cache & Fetch", exact: true })).toHaveCount(0);
+
+  await page.goto("/users");
+  await expect(page.getByRole("heading", { name: "Maintenance", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
 });

@@ -68,6 +68,40 @@ const systemDefinitions = [
   },
 ];
 
+const sampleRun = {
+  id: 51,
+  workflowCode: "dlsite_popular_collection",
+  displayName: "Collect DLsite popular voice works",
+  status: "succeeded",
+  triggerType: "manual",
+  triggerReason: "day",
+  createdAt: "2026-07-14T00:00:00Z",
+  startedAt: "2026-07-14T00:00:00Z",
+  finishedAt: "2026-07-14T00:01:00Z",
+  summaryJson: '{"synced":2,"tagged":2}',
+  nodeRunCount: 2,
+  completedNodeRuns: 2,
+  failedNodeRuns: 0,
+  skippedNodeRuns: 0,
+  jobCount: 1,
+  completedJobs: 1,
+  failedJobs: 0,
+  skippedJobs: 0,
+  candidateCount: 0,
+  pendingCandidates: 0,
+  acceptedCandidates: 0,
+  rejectedCandidates: 0,
+  reviewedAt: "",
+  reviewedByUserId: null,
+  definitionId: 3,
+  triggerId: null,
+};
+
+const sampleNodes = [
+  { id: 501, nodeId: "discover", nodeType: "discover_provider_ranking", displayName: "Discover ranking", position: 1, status: "succeeded", inputJson: "{}", outputJson: '{"count":2}', errorMessage: "", startedAt: "2026-07-14T00:00:00Z", finishedAt: "2026-07-14T00:00:05Z", createdAt: "2026-07-14T00:00:00Z" },
+  { id: 502, nodeId: "tag", nodeType: "assign_user_tags", displayName: "Add user tag", position: 2, status: "running", inputJson: "{}", outputJson: "{}", errorMessage: "", startedAt: "2026-07-14T00:00:05Z", finishedAt: "", createdAt: "2026-07-14T00:00:00Z" },
+];
+
 async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) => void) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -96,7 +130,19 @@ async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) =>
       return;
     }
     if (url.pathname === "/api/workflow-runs") {
-      await route.fulfill({ json: { runs: [], page: 1, pageSize: 10, total: 0 } });
+      await route.fulfill({ json: { runs: url.searchParams.get("workflowCode") === "metadata_sync" ? [] : [sampleRun], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: url.searchParams.get("workflowCode") === "metadata_sync" ? 0 : 1 } });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/51") {
+      await route.fulfill({ json: { ...sampleRun, nodeRuns: sampleNodes } });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/51/events") {
+      await route.fulfill({ json: [{ id: 701, runId: 51, nodeRunId: 502, jobId: 1, level: "info", eventType: "node.progress", message: "Tagging works", detailJson: '{"current":1,"total":2}', createdAt: "2026-07-14T00:00:10Z" }] });
+      return;
+    }
+    if (url.pathname === "/api/workflow-runs/51/candidates") {
+      await route.fulfill({ json: [] });
       return;
     }
     if (url.pathname === "/api/workflow-runs/dlsite-popular") {
@@ -139,6 +185,8 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page.getByText("Ranking period", { exact: true })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText(/-DL-24h-r30d-popular$/)).toBeVisible();
+  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Year", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
@@ -150,6 +198,22 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.goto("/about");
   await page.goto("/workflows");
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /#51 day/ }).click();
+  await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
+});
+
+test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/activity?view=completed&run=51");
+
+  await expect(page.getByText("Summary", { exact: true })).toBeVisible();
+  await expect(page.getByText("Execution", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByText("Node logs", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Tagging works", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
 });
 
 test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {
