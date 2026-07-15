@@ -99,3 +99,19 @@ func TestRemoteWorkTrackCacheReusesSnapshot(t *testing.T) {
 		t.Fatalf("cached snapshot = source %+v work %+v tracks %+v", source, work, tracks)
 	}
 }
+
+func TestInvalidateRemoteWorkCacheRemovesOnlySelectedSource(t *testing.T) {
+	server := NewServer(nil, config.Config{})
+	server.remoteWorkCache["7:RJ09999995"] = remoteWorkTracksSnapshot{}
+	server.remoteWorkCache["7:RJ09999996"] = remoteWorkTracksSnapshot{}
+	server.remoteWorkCache["8:RJ09999995"] = remoteWorkTracksSnapshot{}
+
+	server.invalidateRemoteWorkCache(7)
+
+	if len(server.remoteWorkCache) != 1 {
+		t.Fatalf("cache size = %d, want 1", len(server.remoteWorkCache))
+	}
+	if _, ok := server.remoteWorkCache["8:RJ09999995"]; !ok {
+		t.Fatal("cache entry for another source was removed")
+	}
+}

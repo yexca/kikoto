@@ -154,6 +154,7 @@ import {
   playableFiles,
   remoteSelectablePaths,
   toPlayerTrack,
+  toPreferredPlayerTrack,
   toRemotePreviewPlayerTrack,
   treeStats,
   type TreeNode,
@@ -663,8 +664,7 @@ export function LibraryPage() {
     if (!code) return;
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
     setSelectedRemoteTarget({ source, code });
-	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library" }, "", `/${encodeURIComponent(code)}?source=${source.id}`);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    openRemoteSourceWorkRoute(source.id, code, libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), "Back to library");
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
@@ -2779,7 +2779,7 @@ function RemoteWorkDetailView({
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
         <ChevronLeft className="h-4 w-4" />
-        Back to source
+        {detailReturnTarget("library").label}
       </Button>
 
       <DetailHero
@@ -2806,6 +2806,7 @@ function RemoteWorkDetailView({
         actions={
           <WorkIdentityActionBar
             busy={isFetching || isSaving}
+            canPlay={remotePlayableTracks.length > 0}
             listeningStatus="none"
             favorite={false}
             listWorkId={detail.workId}
@@ -2813,9 +2814,9 @@ function RemoteWorkDetailView({
             onListSaved={async () => {
               await onWorksChanged();
             }}
+            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
             onMark={(status) => void updateRemoteMark(status)}
             dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
-            syncLabel="Track"
           />
         }
       />
@@ -2831,12 +2832,12 @@ function RemoteWorkDetailView({
         onDirectoryModeChange={setDirectoryMode}
         actions={
           <MediaContextActionBar
-            canPlay={remotePlayableTracks.length > 0}
             busy={isFetching || isSaving}
             mode="remote_source"
-            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
             onTrack={() => void fetchWork("manual_track")}
             onFetch={() => void openSaveWorkspace()}
+            remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
+            remoteSourceName={detail.sourceName}
           />
         }
         root={tree}
@@ -2936,6 +2937,7 @@ function WorkDetailView({
     selectedTrackedRemoteSource,
     selectedRemoteDetail,
     selectedRemoteSourceID,
+    selectedRemoteWorkCode,
     isCheckingSources,
     sourceCheckedAt,
     refreshAvailability,
@@ -2972,10 +2974,40 @@ function WorkDetailView({
   });
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
-  const resumeTrack = useMemo(() => latestResumeTrack(allTracks), [allTracks]);
-  const remoteFilePaths = useMemo(() => selectedRemoteDetail ? remoteSelectablePaths(tree) : [], [selectedRemoteDetail, tree]);
+  const playbackTree = useMemo(
+    () => localDirectoryWork
+      ? buildTree(localDirectoryWork.mediaItems, null, localDirectoryWork.primaryCode)
+      : emptyTree(),
+    [localDirectoryWork],
+  );
+  const playbackTracks = useMemo(() => flattenTracks(playbackTree), [playbackTree]);
+  const resumeTrack = useMemo(() => latestResumeTrack(playbackTracks), [playbackTracks]);
+  const fetchRemote = selectedRemoteSource ?? selectedTrackedRemoteSource ?? undefined;
+  const fetchRemoteCode = selectedRemoteSource
+    ? selectedRemoteWorkCode
+    : selectedTrackedPresence
+      ? sourcePresenceActionCode(selectedTrackedPresence, work?.primaryCode ?? code)
+      : work?.primaryCode ?? code;
+  const fetchRemoteFilePaths = useMemo(() => {
+    if (selectedRemoteDetail) return remoteSelectablePaths(tree);
+    return fetchRemote?.detail ? remoteSelectablePaths(buildRemoteTree(fetchRemote.detail.tracks)) : [];
+  }, [fetchRemote?.detail, selectedRemoteDetail, tree]);
+  const trackedCacheAvailable = Boolean(
+    selectedTrackedSourceID
+    && localDirectoryWork?.mediaItems.some((item) => item.locations.some((location) =>
+      location.fileSourceId === selectedTrackedSourceID
+      && location.locationType === "cache"
+      && location.availability === "available"
+    )),
+  );
+  const managementTree = useMemo(
+    () => selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID
+      ? buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode)
+      : tree,
+    [localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
+  );
   const player = useLibraryPlayer();
-  const fetchWorkspace = useWorkFetchWorkspace({ remote: selectedRemoteSource, remoteFilePaths, onWorksChanged });
+  const fetchWorkspace = useWorkFetchWorkspace({ remote: fetchRemote, remoteCode: fetchRemoteCode, remoteFilePaths: fetchRemoteFilePaths, onWorksChanged });
   const mediaCleanup = useMediaCleanupWorkflow({
     onAccepted: () => setIsManageOpen(false),
     onCompleted: async () => {
@@ -3073,16 +3105,17 @@ function WorkDetailView({
     player.playQueue(tracks.map((track) => toPlayerTrack(track, localDirectoryWork)), locationId);
   };
 
-  const playAll = () => {
-    if (work && allTracks.length > 0) {
-      playTracks(allTracks, allTracks[0].locationId);
-    }
+  const playWork = (startMediaItemId?: number) => {
+    if (!localDirectoryWork || playbackTracks.length === 0) return;
+    const queue = playbackTracks.map((track) => toPreferredPlayerTrack(track, localDirectoryWork));
+    const start = startMediaItemId
+      ? queue.find((track) => track.mediaItemId === startMediaItemId) ?? queue[0]
+      : queue[0];
+    player.playQueue(queue, start.locationId);
   };
 
   const resumePlayback = () => {
-    if (resumeTrack) {
-      playTracks(allTracks, resumeTrack.locationId);
-    }
+    if (resumeTrack) playWork(resumeTrack.mediaItemId);
   };
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -3091,6 +3124,15 @@ function WorkDetailView({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
       locationId,
     );
+  };
+
+  const playCurrentContext = () => {
+    if (allTracks.length === 0) return;
+    if (selectedRemoteDetail) {
+      playRemoteTracks(allTracks, allTracks[0].locationId);
+      return;
+    }
+    playTracks(allTracks, allTracks[0].locationId);
   };
 
   const queueTrack = (track: TreeTrack, next: boolean) => {
@@ -3311,7 +3353,7 @@ function WorkDetailView({
       decisions={fetchWorkspace.draft.decisions}
       planDirty={fetchWorkspace.draft.planDirty}
       message={fetchWorkspace.draft.message}
-      sourceId={selectedRemoteSource?.source.id}
+      sourceId={fetchRemote?.source.id}
       activeEditionCode={remoteDetailActionCode(fetchWorkspace.draft.detail)}
       onEditionChange={fetchWorkspace.selectEdition}
       targetRoot={fetchWorkspace.draft.targetRoot}
@@ -3326,31 +3368,36 @@ function WorkDetailView({
   ) : null;
   const displayDurationSeconds = directoryStats.knownDurationAudio > 0 ? directoryStats.durationSeconds : hero.durationSeconds;
   const identityActions = work ? <WorkIdentityActionBar
-    busy={isSyncingDetail || Boolean(activeMetadataRunId) || fetchWorkspace.isBusy || isRefreshingLocalFiles}
+    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
+    canPlay={allTracks.length > 0}
     listeningStatus={work.listeningStatus}
     favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
     listWorkId={work.id}
     onEnsureListWork={ensureDetailListWork}
     onListSaved={favoriteSaved}
+    onPlay={playCurrentContext}
+    onResume={resumeTrack ? resumePlayback : undefined}
     onMark={(status) => void markDetailWork(status)}
     onSync={() => void syncDetailMetadata()}
     onEditMetadata={() => setIsMetadataEditorOpen(true)}
     dlsiteUrl={work.dlsiteUrl}
+    metadataSyncBusy={Boolean(activeMetadataRunId)}
     syncLabel="Refresh metadata"
   /> : <DetailSkeletonActions />;
   const mediaActions = work ? <MediaContextActionBar
-    canPlay={allTracks.length > 0}
     busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
     mode={actionMode}
-    onPlay={selectedRemoteDetail ? () => playRemoteTracks(allTracks, allTracks[0].locationId) : playAll}
-    onResume={!selectedRemoteDetail && resumeTrack ? resumePlayback : undefined}
     onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
     trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
     forkSources={forkSources}
     currentForkSource={currentForkSource}
     onFork={(remote) => requestForkSource(remote)}
-    onFetch={selectedRemoteDetail ? () => void fetchWorkspace.open() : undefined}
-    onManage={!selectedRemoteSource || selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
+    onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? () => void fetchWorkspace.open() : undefined}
+    remoteSourceWorkUrl={safeExternalHTTPURL(selectedRemoteDetail?.publicWorkUrl)}
+    remoteSourceName={selectedRemoteDetail?.sourceName}
+    onManageCache={selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
+    manageCacheDisabled={Boolean(selectedTrackedPresence) && !trackedCacheAvailable}
+    onManageFiles={actionMode === "local" ? () => setIsManageOpen(true) : undefined}
     onRefreshLocalFiles={actionMode === "local" && selectedSource?.kind === "local" ? () => void refreshLocalFiles() : undefined}
   /> : undefined;
   const directoryPanel = (
@@ -3502,8 +3549,10 @@ function WorkDetailView({
       />}
       {isManageOpen && (
         <DirectoryManagerModal
-          root={tree}
-          emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+          root={managementTree}
+          title={selectedTrackedPresence ? "Manage cache" : "Manage files"}
+          description={selectedTrackedPresence ? "Review cached files for this tracked source." : "Review file operations in the same folder structure as the directory tree."}
+          emptyLabel={selectedTrackedPresence ? "No cached files detected." : showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
           onClose={() => setIsManageOpen(false)}
           deleting={mediaCleanup.isSubmitting}
           onDeleteTargets={mediaCleanup.submit}
@@ -5890,6 +5939,8 @@ function TreeFile({
 
 function DirectoryManagerModal({
   root,
+  title = "Manage files",
+  description = "Review file operations in the same folder structure as the directory tree.",
   emptyLabel,
   onClose,
   deleting = false,
@@ -5900,6 +5951,8 @@ function DirectoryManagerModal({
   showCachedFilter = false,
 }: {
   root: TreeNode;
+  title?: string;
+  description?: string;
   emptyLabel: string;
   onClose: () => void;
   deleting?: boolean;
@@ -5971,8 +6024,8 @@ function DirectoryManagerModal({
       <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div>
-            <h3 className="text-base font-semibold">Manage files</h3>
-            <p className="text-xs text-muted-foreground">Review file operations in the same folder structure as the directory tree.</p>
+            <h3 className="text-base font-semibold">{title}</h3>
+            <p className="text-xs text-muted-foreground">{description}</p>
           </div>
           <IconButton title="Close" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -7359,6 +7412,23 @@ function remoteWorkActionCode(work: RemoteWork) {
 
 function remoteDetailActionCode(detail: RemoteWorkDetail) {
   return detail.remoteCode || detail.primaryCode || detail.remoteId;
+}
+
+function safeExternalHTTPURL(value: string | null | undefined) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: string, returnLabel: string) {
+  const cleanCode = code.trim();
+  if (!cleanCode || sourceID <= 0) return;
+  window.history.pushState({ returnTo, returnLabel }, "", `/${encodeURIComponent(cleanCode)}?source=${sourceID}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | undefined, activeEditionCode?: string) {

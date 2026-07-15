@@ -22,13 +22,14 @@ type Config struct {
 }
 
 type RemoteSourceSeed struct {
-	DisplayName string
-	APIURL      string
-	BaseURL     string
-	FallbackURL string
-	SourceType  string
-	Priority    int
-	Enabled     bool
+	DisplayName     string
+	APIURL          string
+	BaseURL         string
+	FallbackURL     string
+	WorkURLTemplate string
+	SourceType      string
+	Priority        int
+	Enabled         bool
 }
 
 func Load() Config {
@@ -166,6 +167,8 @@ func parseRemoteSourceSeedYAML(raw string) []RemoteSourceSeed {
 			current.BaseURL = value
 		case "fallback_url", "fallbackurl":
 			current.FallbackURL = value
+		case "work_url_template", "workurltemplate":
+			current.WorkURLTemplate = value
 		case "source_type", "sourcetype", "type":
 			current.SourceType = value
 		case "priority":

@@ -36,6 +36,7 @@ import {
   supportsNativeMedia,
   updateNativeMedia,
 } from "@/lib/nativeMedia";
+import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -228,48 +229,6 @@ function withQueueIdentity(track: PlayerTrack): PlayerTrack {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return { ...track, queueItemId: randomID };
-}
-
-function locationPriority(locationType: string) {
-  switch (locationType) {
-    case "local":
-      return 0;
-    case "cache":
-      return 1;
-    case "remote_stream":
-      return 2;
-    default:
-      return 3;
-  }
-}
-
-function orderedTrackLocations(track: PlayerTrack | null) {
-  if (!track) return [];
-  const locations = track.locations?.length
-    ? track.locations
-    : [
-        {
-          locationId: track.locationId,
-          locationType: track.locationType,
-          streamUrl: track.streamUrl,
-          sourceId: track.remoteSourceId ?? 0,
-          sourceName: track.locationType,
-          availability: track.availability,
-        },
-      ];
-  return [...locations].sort(
-    (left, right) => locationPriority(left.locationType) - locationPriority(right.locationType),
-  );
-}
-
-function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLocation): PlayerTrack {
-  return {
-    ...track,
-    locationId: location.locationId,
-    locationType: location.locationType,
-    streamUrl: location.streamUrl,
-    availability: location.availability,
-  };
 }
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {

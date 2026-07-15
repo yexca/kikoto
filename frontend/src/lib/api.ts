@@ -288,6 +288,7 @@ export type FileSource = {
     baseUrl: string;
     apiUrl: string;
     fallbackUrl: string;
+    workUrlTemplate: string;
   };
   healthStatus: string;
   lastCheckedAt: string | null;
@@ -398,6 +399,7 @@ export type RemoteWorkDetail = {
   title: string;
   coverUrl: string;
   sourceUrl: string;
+  publicWorkUrl: string;
   circle: string;
   circleRef?: RemoteEntityRef;
   rating: number | null;

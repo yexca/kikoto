@@ -14,6 +14,53 @@ import (
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
+func TestPublicRemoteWorkURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint fileSourceEndpoint
+		code     string
+		want     string
+	}{
+		{
+			name:     "default code route",
+			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example/"},
+			code:     "RJ0123",
+			want:     "https://remote.example/work/RJ0123",
+		},
+		{
+			name:     "configured lower-case route",
+			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "/{codeLower}"},
+			code:     "VJ0123",
+			want:     "https://remote.example/vj0123",
+		},
+		{
+			name:     "configured alternate route",
+			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "/library/{code}"},
+			code:     "RJ0123",
+			want:     "https://remote.example/library/RJ0123",
+		},
+		{
+			name:     "reject non-http base",
+			endpoint: fileSourceEndpoint{BaseURL: "javascript:alert(1)"},
+			code:     "RJ0123",
+			want:     "",
+		},
+		{
+			name:     "reject absolute template",
+			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "https://other.example/{code}"},
+			code:     "RJ0123",
+			want:     "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := publicRemoteWorkURL(test.endpoint, test.code); got != test.want {
+				t.Fatalf("publicRemoteWorkURL() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestUpdateSourceHealthOnlyWritesSameStatusAfterThrottleWindow(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {

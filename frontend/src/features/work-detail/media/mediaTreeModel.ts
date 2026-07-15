@@ -1,6 +1,7 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
 import { findLyricsMatches } from "../../../player/lyricsMatching";
+import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
 export type TreeNode = {
   name: string;
@@ -267,6 +268,12 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     autoLyricsLocationId: automaticLyrics?.locationId ?? null,
     preferredLyricsMediaItemId: audioItem?.preferredLyricsMediaItemId ?? null,
   };
+}
+
+export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
+  const playerTrack = toPlayerTrack(track, work);
+  const preferredLocation = preferredTrackLocation(playerTrack);
+  return preferredLocation ? applyTrackLocation(playerTrack, preferredLocation) : playerTrack;
 }
 
 export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {

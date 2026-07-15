@@ -27,6 +27,7 @@ const (
 	sourceTypeKikoeruCompatible    = "kikoeru_compatible"
 	sourceTypeKikoeruCompilable178 = "kikoeru_compilable_number178"
 	sourceTypeLocalFolder          = "local_folder"
+	defaultRemoteWorkURLTemplate   = "/work/{code}"
 )
 
 func isKikoeruSourceType(sourceType string) bool {
@@ -87,9 +88,9 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 			baseURL = apiURL
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url)
-			VALUES (?, ?, ?, ?)
-		`, sourceID, baseURL, apiURL, strings.TrimSpace(seed.FallbackURL)); err != nil {
+			INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
+			VALUES (?, ?, ?, ?, ?)
+		`, sourceID, baseURL, apiURL, strings.TrimSpace(seed.FallbackURL), remoteWorkURLTemplate(seed.WorkURLTemplate)); err != nil {
 			return err
 		}
 	}
@@ -144,9 +145,10 @@ type fileSourceConfig struct {
 }
 
 type fileSourceEndpoint struct {
-	BaseURL     string `json:"baseUrl"`
-	APIURL      string `json:"apiUrl"`
-	FallbackURL string `json:"fallbackUrl"`
+	BaseURL         string `json:"baseUrl"`
+	APIURL          string `json:"apiUrl"`
+	FallbackURL     string `json:"fallbackUrl"`
+	WorkURLTemplate string `json:"workUrlTemplate"`
 }
 
 type remoteWorksResponse struct {
@@ -204,6 +206,7 @@ type remoteWorkDetail struct {
 	Title           string              `json:"title"`
 	CoverURL        string              `json:"coverUrl"`
 	SourceURL       string              `json:"sourceUrl"`
+	PublicWorkURL   string              `json:"publicWorkUrl"`
 	Circle          string              `json:"circle"`
 	CircleRef       *remoteEntityRef    `json:"circleRef,omitempty"`
 	Rating          *float64            `json:"rating"`
@@ -697,9 +700,9 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url)
-		VALUES (?, ?, ?, ?)
-	`, sourceID, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL); err != nil {
+		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
+		VALUES (?, ?, ?, ?, ?)
+	`, sourceID, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -771,13 +774,14 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(file_source_id) DO UPDATE SET
 			base_url = excluded.base_url,
 			api_url = excluded.api_url,
-			fallback_url = excluded.fallback_url
-	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL); err != nil {
+			fallback_url = excluded.fallback_url,
+			work_url_template = excluded.work_url_template
+	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -785,6 +789,7 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.invalidateRemoteWorkCache(id)
 	source, err := s.loadFileSource(r, id)
 	if err != nil {
 		writeError(w, err)
@@ -815,6 +820,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
 		return
 	}
+	s.invalidateRemoteWorkCache(id)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -1494,7 +1500,7 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 	var source remoteSourceForUse
 	var configJSON string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, '')
+		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''), COALESCE(endpoint.work_url_template, '')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
 		WHERE source.id = ?
@@ -1508,6 +1514,7 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 		&source.Endpoint.APIURL,
 		&source.Endpoint.BaseURL,
 		&source.Endpoint.FallbackURL,
+		&source.Endpoint.WorkURLTemplate,
 	); err != nil {
 		return remoteSourceForUse{}, err
 	}
@@ -1522,7 +1529,7 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 
 func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remoteSourceForUse, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, '')
+		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''), COALESCE(endpoint.work_url_template, '')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
 		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
@@ -1546,6 +1553,7 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 			&source.Endpoint.APIURL,
 			&source.Endpoint.BaseURL,
 			&source.Endpoint.FallbackURL,
+			&source.Endpoint.WorkURLTemplate,
 		); err != nil {
 			return nil, err
 		}
@@ -3806,6 +3814,17 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 	return source, work, tracks, nil
 }
 
+func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
+	prefix := strconv.FormatInt(sourceID, 10) + ":"
+	s.remoteWorkCacheMu.Lock()
+	defer s.remoteWorkCacheMu.Unlock()
+	for key := range s.remoteWorkCache {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.remoteWorkCache, key)
+		}
+	}
+}
+
 func (s *Server) resolveKikoeruWork(ctx context.Context, client *kikoeru.Client, code string) (kikoeru.Work, json.RawMessage, error) {
 	remoteWork, rawWork, err := client.WorkInfo(ctx, code)
 	if err == nil {
@@ -4527,6 +4546,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		Title:           firstNonEmpty(work.Title, work.Name, displayCode),
 		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
 		SourceURL:       work.SourceURL,
+		PublicWorkURL:   publicRemoteWorkURL(source.Endpoint, code),
 		Circle:          circle,
 		CircleRef:       circleRef,
 		Rating:          work.RateAverage2DP,
@@ -5279,6 +5299,7 @@ func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {
 			COALESCE(endpoint.base_url, ''),
 			COALESCE(endpoint.api_url, ''),
 			COALESCE(endpoint.fallback_url, ''),
+			COALESCE(endpoint.work_url_template, ''),
 			COALESCE(endpoint.health_status, 'unknown'),
 			endpoint.last_checked_at
 		FROM file_source AS source
@@ -5314,6 +5335,7 @@ func (s *Server) loadFileSource(r *http.Request, id int64) (fileSourceSummary, e
 			COALESCE(endpoint.base_url, ''),
 			COALESCE(endpoint.api_url, ''),
 			COALESCE(endpoint.fallback_url, ''),
+			COALESCE(endpoint.work_url_template, ''),
 			COALESCE(endpoint.health_status, 'unknown'),
 			endpoint.last_checked_at
 		FROM file_source AS source
@@ -5342,6 +5364,7 @@ func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 		&source.Endpoint.BaseURL,
 		&source.Endpoint.APIURL,
 		&source.Endpoint.FallbackURL,
+		&source.Endpoint.WorkURLTemplate,
 		&source.HealthStatus,
 		&lastCheckedAt,
 	); err != nil {
@@ -5374,6 +5397,7 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 	payload.Endpoint.BaseURL = strings.TrimSpace(payload.Endpoint.BaseURL)
 	payload.Endpoint.APIURL = strings.TrimSpace(payload.Endpoint.APIURL)
 	payload.Endpoint.FallbackURL = strings.TrimSpace(payload.Endpoint.FallbackURL)
+	payload.Endpoint.WorkURLTemplate = remoteWorkURLTemplate(payload.Endpoint.WorkURLTemplate)
 	if payload.DisplayName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "displayName is required"})
 		return fileSourcePayload{}, false
@@ -5398,8 +5422,55 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 				return fileSourcePayload{}, false
 			}
 		}
+		if !validRemoteWorkURLTemplate(payload.Endpoint.WorkURLTemplate) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workUrlTemplate must be a relative path containing {code} or {codeLower}"})
+			return fileSourcePayload{}, false
+		}
 	}
 	return payload, true
+}
+
+func remoteWorkURLTemplate(value string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return defaultRemoteWorkURLTemplate
+}
+
+func validRemoteWorkURLTemplate(value string) bool {
+	value = remoteWorkURLTemplate(value)
+	if !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+		return false
+	}
+	if !strings.Contains(value, "{code}") && !strings.Contains(value, "{codeLower}") {
+		return false
+	}
+	remainder := strings.NewReplacer("{code}", "", "{codeLower}", "").Replace(value)
+	return !strings.ContainsAny(remainder, "{}")
+}
+
+func publicRemoteWorkURL(endpoint fileSourceEndpoint, code string) string {
+	baseURL, err := url.Parse(strings.TrimSpace(endpoint.BaseURL))
+	if err != nil || (baseURL.Scheme != "http" && baseURL.Scheme != "https") || baseURL.Host == "" {
+		return ""
+	}
+	template := remoteWorkURLTemplate(endpoint.WorkURLTemplate)
+	if !validRemoteWorkURLTemplate(template) {
+		return ""
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
+	}
+	path := strings.NewReplacer(
+		"{code}", url.PathEscape(code),
+		"{codeLower}", url.PathEscape(strings.ToLower(code)),
+	).Replace(template)
+	reference, err := url.Parse(path)
+	if err != nil {
+		return ""
+	}
+	return baseURL.ResolveReference(reference).String()
 }
 
 func upsertSetting(r *http.Request, tx *sql.Tx, key string, value any) error {

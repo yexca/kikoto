@@ -49,7 +49,7 @@ const emptyRemoteSource = {
   priority: 30,
   enabled: true,
   config: { cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}` },
-  endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "" },
+  endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "/work/{code}" },
   healthStatus: "unknown",
   lastCheckedAt: null,
 } satisfies FileSource;
@@ -1460,8 +1460,13 @@ function SourceModal({
               <option value="kikoeru_compilable_number178">kikoeru_compilable_number178</option>
             </select>
           </label>
-          <TextInput label="Base URL" value={source.endpoint.baseUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })} />
+          <TextInput label="Public site URL" value={source.endpoint.baseUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })} />
           <TextInput label="API URL" value={source.endpoint.apiUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })} />
+          <TextInput
+            label="Work URL template"
+            value={source.endpoint.workUrlTemplate}
+            onChange={(value) => patch({ endpoint: { ...source.endpoint, workUrlTemplate: value } })}
+          />
           <TextInput
             label="Fallback URL"
             value={source.endpoint.fallbackUrl}

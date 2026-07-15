@@ -204,7 +204,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 5 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" {
+	if len(migrations) != 6 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var lyricsPreferenceTable int
@@ -233,6 +233,13 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if preserved != 1 {
 		t.Fatalf("preserved work count = %d", preserved)
+	}
+	var workURLTemplate string
+	if err := db.QueryRow(`SELECT dflt_value FROM pragma_table_info('file_source_endpoint') WHERE name = 'work_url_template'`).Scan(&workURLTemplate); err != nil {
+		t.Fatal(err)
+	}
+	if workURLTemplate != "'/work/{code}'" {
+		t.Fatalf("work_url_template default = %q", workURLTemplate)
 	}
 }
 
