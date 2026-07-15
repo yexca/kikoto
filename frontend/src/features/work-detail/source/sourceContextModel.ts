@@ -18,6 +18,17 @@ export type SourceTabInfo = {
   statusLabel: string;
 };
 
+export type TrackedPresence = NonNullable<WorkDetail["sourcePresence"]>[number];
+
+export type TrackedPresenceOption = {
+  key: string;
+  presence: TrackedPresence;
+  label: string;
+  forked: boolean;
+  status: SourceTabInfo["status"];
+  statusLabel: string;
+};
+
 export type RemoteSourceAvailability = {
   source: LibrarySource;
   summary: SourceAvailabilitySource;
@@ -41,6 +52,7 @@ export function buildSourceTabs(
   items: MediaItem[],
   remoteSources: RemoteSourceAvailability[] = [],
   sourcePresence: NonNullable<WorkDetail["sourcePresence"]> = [],
+  selectedTrackedOption?: TrackedPresenceOption,
 ): SourceTabInfo[] {
   const sources = new Map<number, SourceTabInfo>();
   for (const item of items) {
@@ -76,25 +88,17 @@ export function buildSourceTabs(
     });
   }
   const baseTabs: SourceTabInfo[] = [...tabs];
-  for (const presence of sourcePresence) {
-    if (presence.type !== "tracked") continue;
-    const sourceID = trackedPresenceSourceID(presence);
-    const forked = trackedPresenceForked(presence, items);
-    const matchingRemote = remoteSources.find((remote) => remote.source.id === sourceID);
-    const canFork = matchingRemote?.summary.status === "available" || availableRemotes.length > 0;
-    const sourceName = presence.fileSourceName || presence.fileSourceCode || "Source";
+  const trackedOptions = buildTrackedPresenceOptions(items, remoteSources, sourcePresence);
+  const activeTracked = selectedTrackedOption ?? trackedOptions.find((option) => option.forked) ?? trackedOptions[0];
+  if (activeTracked) {
     baseTabs.push({
-      key: trackedSourceTabKey(presence),
-      label: `Tracked · ${sourceName}`,
+      key: "tracked",
+      label: "Tracked",
       fileSourceId: null,
       kind: "tracked",
-      presence,
-      status: forked ? "green" : canFork ? "yellow" : "red",
-      statusLabel: forked
-        ? "Tracked directory available"
-        : canFork
-          ? `Fork available from ${matchingRemote?.source.displayName ?? availableRemotes[0].source.displayName}`
-          : "Tracked directory unavailable",
+      presence: activeTracked.presence,
+      status: activeTracked.status,
+      statusLabel: activeTracked.statusLabel,
     });
   }
   for (const remote of remoteSources) {
@@ -109,6 +113,34 @@ export function buildSourceTabs(
     });
   }
   return baseTabs;
+}
+
+export function buildTrackedPresenceOptions(
+  items: MediaItem[],
+  remoteSources: RemoteSourceAvailability[],
+  sourcePresence: NonNullable<WorkDetail["sourcePresence"]>,
+): TrackedPresenceOption[] {
+  const availableRemotes = remoteSources.filter((remote) => remote.summary.status === "available");
+  return sourcePresence
+    .filter((presence) => presence.type === "tracked")
+    .map((presence) => {
+      const sourceID = trackedPresenceSourceID(presence);
+      const matchingRemote = remoteSources.find((remote) => remote.source.id === sourceID);
+      const canFork = matchingRemote?.summary.status === "available" || availableRemotes.length > 0;
+      const forked = trackedPresenceForked(presence, items);
+      return {
+        key: trackedPresenceKey(presence),
+        presence,
+        label: presence.fileSourceName || presence.fileSourceCode || "Tracked source",
+        forked,
+        status: forked ? "green" : canFork ? "yellow" : "red",
+        statusLabel: forked
+          ? "Forked directory available"
+          : canFork
+            ? "Tracked, ready to fork"
+            : "Tracked directory unavailable",
+      };
+    });
 }
 
 export function remoteSourceTabStatus(summary: SourceAvailabilitySource): Pick<SourceTabInfo, "status" | "statusLabel"> {
@@ -148,7 +180,7 @@ export function remoteSourceForTrackedPresence(
   return remoteSources.find((remote) => remote.source.id === sourceID) ?? null;
 }
 
-export function trackedSourceTabKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
+export function trackedPresenceKey(presence: NonNullable<WorkDetail["sourcePresence"]>[number]) {
   return `tracked:${presence.fileSourceId ?? 0}:${presence.remoteId ?? ""}:${presence.sourceUrl ?? ""}`;
 }
 

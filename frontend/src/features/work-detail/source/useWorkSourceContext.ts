@@ -8,6 +8,7 @@ import {
 } from "@/lib/api";
 import {
   buildSourceTabs,
+  buildTrackedPresenceOptions,
   remoteAvailabilityRouteCode,
   remoteSourceCanBrowse,
   remoteSourceForTrackedPresence,
@@ -23,20 +24,34 @@ export function useWorkSourceContext({
   work,
   sources,
   initialSourceIntent,
+  initialTrackedSourceID,
 }: {
   code: string;
   work: WorkDetail | null;
   sources: LibrarySource[];
   initialSourceIntent: DetailSourceIntent;
+  initialTrackedSourceID: number | null;
 }) {
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
   const [activeSourceKey, setActiveSourceKey] = useState<string>(initialSourceIntent);
+  const [selectedTrackedPresenceKey, setSelectedTrackedPresenceKey] = useState("");
   const [remoteLoadVersion, setRemoteLoadVersion] = useState(0);
-  const sourceTabs = useMemo(
-    () => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []),
+  const trackedPresenceOptions = useMemo(
+    () => buildTrackedPresenceOptions(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []),
     [remoteSources, work?.mediaItems, work?.sourcePresence],
+  );
+  const selectedTrackedOption = useMemo(
+    () => trackedPresenceOptions.find((option) => option.key === selectedTrackedPresenceKey)
+      ?? trackedPresenceOptions.find((option) => option.presence.fileSourceId === initialTrackedSourceID)
+      ?? trackedPresenceOptions.find((option) => option.forked)
+      ?? trackedPresenceOptions[0],
+    [initialTrackedSourceID, selectedTrackedPresenceKey, trackedPresenceOptions],
+  );
+  const sourceTabs = useMemo(
+    () => buildSourceTabs(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? [], selectedTrackedOption),
+    [remoteSources, selectedTrackedOption, work?.mediaItems, work?.sourcePresence],
   );
   const selectedSource = sourceTabs.find((source) => source.key === activeSourceKey)
     ?? sourceTabs.find((source) => source.kind === activeSourceKey)
@@ -45,7 +60,7 @@ export function useWorkSourceContext({
   const selectedRemoteSource = selectedSource?.kind === "remote"
     ? remoteSources.find((item) => selectedSource.key === remoteSourceTabKey(item.source.id))
     : undefined;
-  const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedSource.presence ?? null : null;
+  const selectedTrackedPresence = selectedSource?.kind === "tracked" ? selectedTrackedOption?.presence ?? null : null;
   const selectedTrackedForked = trackedPresenceForked(selectedTrackedPresence, work?.mediaItems ?? []);
   const selectedTrackedSourceID = trackedPresenceSourceID(selectedTrackedPresence);
   const selectedTrackedRemoteSource = remoteSourceForTrackedPresence(selectedTrackedPresence, remoteSources);
@@ -87,6 +102,11 @@ export function useWorkSourceContext({
       items.map((item) => (remoteSourceTabKey(item.source.id) === key && item.error ? { ...item, error: "" } : item)),
     );
     setRemoteLoadVersion((version) => version + 1);
+  }, []);
+
+  const selectTrackedPresence = useCallback((key: string) => {
+    setSelectedTrackedPresenceKey(key);
+    setActiveSourceKey("tracked");
   }, []);
 
   useEffect(() => {
@@ -132,7 +152,8 @@ export function useWorkSourceContext({
 
   useEffect(() => {
     setActiveSourceKey(initialSourceIntent);
-  }, [initialSourceIntent, work?.id]);
+    setSelectedTrackedPresenceKey("");
+  }, [initialSourceIntent, initialTrackedSourceID, work?.id]);
 
   return {
     remoteSources,
@@ -140,6 +161,9 @@ export function useWorkSourceContext({
     activeSourceKey,
     setActiveSourceKey,
     selectSource,
+    selectTrackedPresence,
+    trackedPresenceOptions,
+    selectedTrackedPresenceKey: selectedTrackedOption?.key ?? "",
     selectedSource,
     resolvedActiveSourceKey,
     selectedRemoteSource,

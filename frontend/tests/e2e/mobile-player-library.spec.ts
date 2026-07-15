@@ -446,8 +446,11 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
 test("work detail preserves Local and Tracked entry intent while keeping every remote source tab", async ({ page }) => {
   let sourceChecks = 0;
   const cleanupBodies: Record<string, unknown>[] = [];
-  const trackedPresence = { type: "tracked", availability: "available", fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", remoteCode: work.primaryCode };
-  const trackedWork = { ...work, availability: ["local", "tracked"], sourcePresence: [trackedPresence] };
+  const trackedPresences = [
+    { type: "tracked", availability: "available", fileSourceId: 7, fileSourceCode: "remote_a", fileSourceName: "Remote A", remoteCode: work.primaryCode },
+    { type: "tracked", availability: "available", fileSourceId: 8, fileSourceCode: "remote_b", fileSourceName: "Remote B", remoteCode: work.primaryCode },
+  ];
+  const trackedWork = { ...work, availability: ["local", "tracked"], sourcePresence: trackedPresences };
   const mediaItems = [{
     id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12, fingerprint: "source-tab-track", progress: null,
     locations: [
@@ -480,10 +483,11 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByText(work.title, { exact: true }).click();
   await expect(page).toHaveURL(/view=local/);
   const localTab = page.locator('button[title="Local: Local files available"]');
-  const trackedTab = page.locator('button[title^="Tracked · Remote A:"]');
+  const trackedTab = page.locator('button[title^="Tracked:"]');
   const remoteTab = page.locator('button[title="Remote A: Available"]');
   await expect(localTab).toHaveClass(/bg-primary/);
   await expect(trackedTab).toBeVisible();
+  await expect(page.locator('button[title^="Tracked:"]')).toHaveCount(1);
   await expect(remoteTab).toBeVisible();
   await expect(remoteTab.locator(".bg-emerald-500")).toHaveCount(1);
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
@@ -503,6 +507,17 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page.getByRole("menuitem", { name: "Fetch", exact: true })).toBeVisible();
   await trackedTab.click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
+  await expect(page.getByText("Browsing the tracked directory forked from Remote A.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Choose tracked source" }).click();
+  const trackedSourcesMenu = page.getByRole("menu", { name: "Tracked sources" });
+  await expect(trackedSourcesMenu).toBeVisible();
+  await page.getByRole("menuitemradio", { name: /Remote B/ }).click();
+  await expect(trackedSourcesMenu).toHaveCount(0);
+  await expect(page).toHaveURL(/view=tracked&trackedSource=8/);
+  await expect(page.getByText("Remote B is tracked, but its directory has not been forked.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Choose tracked source" }).click();
+  await page.getByRole("menuitemradio", { name: /Remote A/ }).click();
+  await expect(page).toHaveURL(/view=tracked&trackedSource=7/);
   await sourceOptions.click();
   await expect(page.getByText("Switch fork", { exact: true })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
@@ -515,7 +530,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
   await page.getByText(work.title, { exact: true }).click();
   await expect(page).toHaveURL(/view=tracked/);
-  await expect(page.locator('button[title^="Tracked · Remote A:"]')).toHaveClass(/bg-primary/);
+  await expect(page.locator('button[title^="Tracked:"]').locator("..")).toHaveClass(/bg-primary/);
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
   await page.getByRole("button", { name: "Options", exact: true }).click();
   await page.getByRole("menuitem", { name: /Manage cache/ }).click();

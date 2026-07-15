@@ -345,6 +345,7 @@ export function WorkCardActionButton({
   title,
   disabled,
   showLabel = false,
+  responsiveLabel = false,
   label,
   children,
   onClick,
@@ -352,6 +353,7 @@ export function WorkCardActionButton({
   title: string;
   disabled?: boolean;
   showLabel?: boolean;
+  responsiveLabel?: boolean;
   label?: string;
   children: ReactNode;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -360,14 +362,14 @@ export function WorkCardActionButton({
     <Button
       variant={showLabel ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
-      className={showLabel ? "h-8" : "h-8 w-8"}
+      className={showLabel ? responsiveLabel ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8" : "h-8 w-8"}
       title={title}
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
     >
       {children}
-      {showLabel && <span>{label ?? title}</span>}
+      {showLabel && <span className={responsiveLabel ? "hidden sm:inline" : undefined}>{label ?? title}</span>}
     </Button>
   );
 }
@@ -376,11 +378,13 @@ export function WorkCardQuickMarkButton({
   value,
   disabled,
   showLabel = false,
+  responsiveLabel = false,
   onChange,
 }: {
   value: ListeningStatus;
   disabled?: boolean;
   showLabel?: boolean;
+  responsiveLabel?: boolean;
   onChange: (status: ListeningStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -394,6 +398,7 @@ export function WorkCardQuickMarkButton({
         title={`Mark: ${current.label}`}
         disabled={disabled}
         showLabel={showLabel}
+        responsiveLabel={responsiveLabel}
         label={`Mark: ${current.label}`}
         onClick={(event) => {
           event.stopPropagation();
@@ -435,6 +440,7 @@ export function WorkCardListButton({
   active,
   disabled,
   showLabel = false,
+  responsiveLabel = false,
   ensureWorkId,
   onSaved,
 }: {
@@ -442,6 +448,7 @@ export function WorkCardListButton({
   active: boolean;
   disabled?: boolean;
   showLabel?: boolean;
+  responsiveLabel?: boolean;
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
@@ -514,6 +521,7 @@ export function WorkCardListButton({
         title={active ? "Favorite lists" : "Add to list"}
         disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
         showLabel={showLabel}
+        responsiveLabel={responsiveLabel}
         label={active ? "Lists" : "Add list"}
         onClick={(event) => {
           event.stopPropagation();

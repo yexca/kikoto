@@ -138,6 +138,7 @@ import {
   type ReforkTarget,
   type RemoteSourceAvailability,
   type SourceTabInfo,
+  type TrackedPresenceOption,
 } from "@/features/work-detail/source/sourceContextModel";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
@@ -970,6 +971,7 @@ export function LibraryPage() {
         mediaLoading={isSelectedMediaLoading}
         sources={sources}
         initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
+        initialTrackedSourceID={detailTrackedSourceIDFromLocation(window.location.search)}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onWorkReload={async (workID, includeMedia = false) => {
@@ -2905,6 +2907,7 @@ function WorkDetailView({
   mediaLoading,
   sources,
   initialSourceIntent,
+  initialTrackedSourceID,
   onBack,
   onStatusChange,
   onWorkReload,
@@ -2916,19 +2919,23 @@ function WorkDetailView({
   mediaLoading: boolean;
   sources: LibrarySource[];
   initialSourceIntent: DetailSourceIntent;
+  initialTrackedSourceID: number | null;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
-  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent });
+  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent, initialTrackedSourceID });
   const {
     remoteSources,
     sourceTabs,
     activeSourceKey,
     setActiveSourceKey,
     selectSource,
+    selectTrackedPresence,
+    trackedPresenceOptions,
+    selectedTrackedPresenceKey,
     selectedSource,
     resolvedActiveSourceKey,
     selectedRemoteSource,
@@ -2965,7 +2972,7 @@ function WorkDetailView({
     localItems: localDirectoryWork?.mediaItems ?? [],
     localCode: localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
     fileSourceId: selectedTrackedForked ? selectedTrackedSourceID : selectedSource?.fileSourceId ?? null,
-    selectionKey: `${selectedSource?.key ?? ""}:${selectedRemoteSourceID ?? 0}`,
+    selectionKey: `${selectedSource?.key ?? ""}:${selectedTrackedSourceID ?? selectedRemoteSourceID ?? 0}`,
     remoteSelected: Boolean(selectedRemoteSource),
     remoteDetail: selectedRemoteDetail,
     trackedUnavailable: Boolean(selectedTrackedPresence && !selectedTrackedForked),
@@ -3026,8 +3033,8 @@ function WorkDetailView({
   const showNoSourceDirectory = workHasNoLinkedSource && !selectedRemoteSource && !selectedTrackedPresence;
   const directoryDescription = selectedTrackedPresence
     ? selectedTrackedForked
-      ? "Browsing the forked tracked source directory."
-      : "Tracked source directory has not been forked yet."
+      ? `Browsing the tracked directory forked from ${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "the selected source"}.`
+      : `${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "The selected source"} is tracked, but its directory has not been forked.`
     : selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : workHasNoLinkedSource
@@ -3328,6 +3335,19 @@ function WorkDetailView({
     }
   };
 
+  const changeTrackedPresence = (key: string) => {
+    const option = trackedPresenceOptions.find((candidate) => candidate.key === key);
+    if (!option) return;
+    selectTrackedPresence(key);
+    setActiveEdition(null);
+    setActiveEditionCode(work?.primaryCode ?? "");
+    const search = new URLSearchParams(window.location.search);
+    search.set("view", "tracked");
+    if (option.presence.fileSourceId) search.set("trackedSource", String(option.presence.fileSourceId));
+    else search.delete("trackedSource");
+    window.history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}?${search.toString()}`);
+  };
+
   if (!work && !workPreview) {
     return (
       <div className="space-y-4">
@@ -3395,7 +3415,7 @@ function WorkDetailView({
   const mediaActions = work ? <MediaContextActionBar
     busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
     mode={actionMode}
-    contextKey={resolvedActiveSourceKey}
+    contextKey={`${resolvedActiveSourceKey}:${selectedTrackedPresenceKey}`}
     onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
     trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
     trackDisabledReason={selectedSourceDetailsLoading ? "Loading source details" : selectedRemoteSource?.error ? "Source details unavailable" : "Already tracked"}
@@ -3419,6 +3439,9 @@ function WorkDetailView({
       tabs={sourceTabs}
       activeKey={resolvedActiveSourceKey}
       onActiveKeyChange={changeSourceKey}
+      trackedPresenceOptions={trackedPresenceOptions}
+      selectedTrackedPresenceKey={selectedTrackedPresenceKey}
+      onTrackedPresenceChange={changeTrackedPresence}
       checkingSources={isCheckingSources}
       checkedAt={sourceCheckedAt}
       onCheckSources={() => void refreshSourceAvailability()}
@@ -3447,10 +3470,7 @@ function WorkDetailView({
         <RemoteSourceStatePanel remote={selectedRemoteSource} />
       ) : selectedTrackedPresence && !selectedTrackedForked ? (
         <TrackedUnforkedPanel
-          presence={selectedTrackedPresence}
           remoteSources={remoteSources}
-          busy={isSyncingDetail}
-          onFork={(remote) => requestForkSource(remote)}
         />
       ) : showNoSourceDirectory ? (
         <NoSourceDirectoryPanel
@@ -3659,8 +3679,8 @@ function DetailHero({
   const entityResolver = useDetailEntityResolver(code);
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[minmax(420px,560px)_minmax(0,1fr)]">
-      <div className="self-start overflow-hidden rounded-lg border bg-muted">
+    <section className="grid items-start gap-5 lg:grid-cols-[minmax(340px,520px)_minmax(0,1fr)]">
+      <div className="overflow-hidden rounded-lg border bg-muted">
         <div className="aspect-[4/3]">
           {coverUrl ? (
             <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain" />
@@ -3670,7 +3690,7 @@ function DetailHero({
         </div>
       </div>
 
-      <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4 lg:py-1">
         <DetailTitleBlock
           fallbackCode={fallbackCode}
           code={code}
@@ -3684,6 +3704,7 @@ function DetailHero({
           entityResolver={entityResolver}
         />
         <DetailMetadataContent
+          layout="matrix"
           ratingLabel={ratingLabel}
           rating={rating}
           ratingCount={ratingCount}
@@ -3702,9 +3723,8 @@ function DetailHero({
           tags={tags}
           code={code}
           entityResolver={entityResolver}
+          supplementary={personalTags}
         />
-
-        {personalTags}
         {actions && <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
       </div>
     </section>
@@ -3802,6 +3822,13 @@ function MobileWorkDetailLayout({
         entityResolver={entityResolver}
       />
 
+      <MobileVoiceSummary
+        voiceActors={voiceActors}
+        voiceCredits={voiceCredits}
+        entityResolver={entityResolver}
+        onShowAll={() => onActiveTabChange("info")}
+      />
+
       <div className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>
 
       <div className="grid grid-cols-2 rounded-lg border bg-card p-1 text-sm">
@@ -3847,6 +3874,44 @@ function MobileWorkDetailLayout({
         directory
       )}
     </section>
+  );
+}
+
+function MobileVoiceSummary({
+  voiceActors,
+  voiceCredits,
+  entityResolver,
+  onShowAll,
+}: {
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  entityResolver: DetailEntityResolver;
+  onShowAll: () => void;
+}) {
+  const credits = voiceCredits.length > 0
+    ? voiceCredits
+    : voiceActors.map((displayName) => ({ personId: 0, displayName }));
+  if (credits.length === 0) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2" aria-label="Voice actors">
+      <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+        {credits.slice(0, 2).map((credit) => (
+          <button
+            key={`${credit.personId}:${credit.displayName}`}
+            className="min-w-0 truncate rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+            onClick={() => credit.personId > 0 ? openVoiceRoute(credit.personId) : entityResolver.resolveEntity("voice", credit.displayName)}
+          >
+            {credit.displayName}
+          </button>
+        ))}
+        {credits.length > 2 && (
+          <button className="shrink-0 text-xs font-medium text-muted-foreground hover:text-primary" onClick={onShowAll}>
+            +{credits.length - 2}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -3931,6 +3996,7 @@ function DetailTitleBlock({
 }
 
 function DetailMetadataContent({
+  layout = "stacked",
   ratingLabel,
   rating,
   ratingCount,
@@ -3949,7 +4015,9 @@ function DetailMetadataContent({
   tags,
   code,
   entityResolver,
+  supplementary,
 }: {
+  layout?: "stacked" | "matrix";
   ratingLabel: string;
   rating: number | null;
   ratingCount: number | null;
@@ -3968,11 +4036,73 @@ function DetailMetadataContent({
   tags: string[];
   code: string;
   entityResolver: DetailEntityResolver;
+  supplementary?: ReactNode;
 }) {
   const displayVoiceCredits = voiceCredits.length > 0
     ? voiceCredits
     : voiceActors.map((name) => ({ personId: 0, displayName: name }));
   const baseTranslation = translations.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
+  const versionSelector = (metadataLanguage || baseCode || translations.length > 0) ? (
+    <WorkVersionSelector
+      metadataLanguage={metadataLanguage ?? ""}
+      baseCode={baseCode ?? ""}
+      baseAvailable={Boolean(baseTranslation?.workId)}
+      translations={translations}
+      activeVersionCode={activeVersionCode ?? code}
+      onVersionSelect={onVersionSelect}
+    />
+  ) : null;
+  if (layout === "matrix") {
+    return (
+      <div className="grid items-stretch gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border bg-card p-3">
+          <DetailChipRow
+            icon={<UserRound className="h-4 w-4" />}
+            label="Voices"
+            emptyLabel="No voice actor metadata"
+            items={displayVoiceCredits.map((credit) => ({
+              key: `${credit.personId}:${credit.displayName}`,
+              label: credit.displayName,
+              onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : () => entityResolver.resolveEntity("voice", credit.displayName),
+            }))}
+          />
+        </div>
+        <DlsiteMetrics
+          segment="primary"
+          ratingLabel={ratingLabel}
+          rating={rating}
+          ratingCount={ratingCount}
+          sales={sales}
+          releaseDate={releaseDate}
+          dlsiteFetchedAt={dlsiteFetchedAt}
+          ageRating={ageRating}
+        />
+        <div className="rounded-lg border bg-card p-3">
+          <DetailChipRow
+            icon={<Tags className="h-4 w-4" />}
+            label="Tags"
+            emptyLabel="No tag metadata"
+            items={tags.map((tag) => ({ key: tag, label: tag, onClick: () => openDetailTagSearch(tag) }))}
+          />
+        </div>
+        <DlsiteMetrics
+          segment="secondary"
+          ratingLabel={ratingLabel}
+          rating={rating}
+          ratingCount={ratingCount}
+          sales={sales}
+          releaseDate={releaseDate}
+          dlsiteFetchedAt={dlsiteFetchedAt}
+          ageRating={ageRating}
+        />
+        <div className="min-w-0">{supplementary}</div>
+        <div className="rounded-lg border bg-card p-3">
+          <InfoRow icon={<Clock3 className="h-4 w-4" />} label="Duration" value={formatDuration(durationSeconds)} />
+        </div>
+        {versionSelector && <div className="sm:col-span-2">{versionSelector}</div>}
+      </div>
+    );
+  }
   return (
     <>
       <DlsiteMetrics
@@ -3984,18 +4114,7 @@ function DetailMetadataContent({
         dlsiteFetchedAt={dlsiteFetchedAt}
         ageRating={ageRating}
       />
-
-      {(metadataLanguage || baseCode || translations.length > 0) && (
-        <WorkVersionSelector
-          metadataLanguage={metadataLanguage ?? ""}
-          baseCode={baseCode ?? ""}
-          baseAvailable={Boolean(baseTranslation?.workId)}
-          translations={translations}
-          activeVersionCode={activeVersionCode ?? code}
-          onVersionSelect={onVersionSelect}
-        />
-      )}
-
+      {versionSelector}
       <div className="space-y-3 rounded-lg border bg-card p-3">
         <DetailChipRow
           icon={<UserRound className="h-4 w-4" />}
@@ -4079,33 +4198,18 @@ function useCompactDetailLayout() {
 }
 
 function TrackedUnforkedPanel({
-  presence,
   remoteSources,
-  busy,
-  onFork,
 }: {
-  presence: NonNullable<WorkDetail["sourcePresence"]>[number];
   remoteSources: RemoteSourceAvailability[];
-  busy: boolean;
-  onFork: (remote: RemoteSourceAvailability) => void;
 }) {
-  const sourceName = presence.fileSourceName || presence.fileSourceCode || "Tracked source";
   const candidates = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
     <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      <div className="font-medium">{sourceName} is unforked</div>
+      <div className="font-medium">Tracked directory not forked</div>
       <p className="mt-1 text-amber-900">
-        This work is tracked, but no tracked directory tree has been forked yet.
+        Choose a fork source from Options to create the browsable tracked directory.
       </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {candidates.length > 0 ? candidates.map((remote) => (
-          <Button key={remote.source.id} variant="outline" size="sm" disabled={busy} onClick={() => onFork(remote)}>
-            Fork from {remote.source.displayName}
-          </Button>
-        )) : (
-          <Badge variant="warning">No browsable remote source</Badge>
-        )}
-      </div>
+      {candidates.length === 0 && <Badge variant="warning" className="mt-3">No browsable remote source</Badge>}
     </div>
   );
 }
@@ -4191,6 +4295,9 @@ function SourceDirectoryPanel({
   tabs,
   activeKey,
   onActiveKeyChange,
+  trackedPresenceOptions = [],
+  selectedTrackedPresenceKey = "",
+  onTrackedPresenceChange,
   checkingSources = false,
   checkedAt,
   onCheckSources,
@@ -4217,6 +4324,9 @@ function SourceDirectoryPanel({
   tabs: SourceTabInfo[];
   activeKey: string;
   onActiveKeyChange: (key: string) => void;
+  trackedPresenceOptions?: TrackedPresenceOption[];
+  selectedTrackedPresenceKey?: string;
+  onTrackedPresenceChange?: (key: string) => void;
   checkingSources?: boolean;
   checkedAt?: string;
   onCheckSources?: () => void;
@@ -4237,6 +4347,9 @@ function SourceDirectoryPanel({
   onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
 }) {
+  const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
+  const trackedMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => setTrackedMenuOpen(false), [activeKey, selectedTrackedPresenceKey]);
   const content = emptyState ? emptyState : directoryMode === "browse" ? (
     <DirectoryBrowser
       root={root}
@@ -4276,8 +4389,53 @@ function SourceDirectoryPanel({
             <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
           </div>
           <div className="col-span-3 row-start-2 flex min-w-0 items-center overflow-hidden rounded-md border bg-card p-1 sm:flex-1">
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {tabs.map((source) => (
+            <div className="app-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {tabs.map((source) => source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
+                <div key={source.key} ref={trackedMenuRef} className={`relative flex h-7 shrink-0 overflow-hidden rounded ${source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
+                  <button
+                    className="inline-flex min-w-0 items-center gap-2 px-2.5 text-xs font-medium"
+                    onClick={() => onActiveKeyChange(source.key)}
+                    title={`${source.label}: ${source.statusLabel}`}
+                  >
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`} aria-hidden="true" />
+                    <span>{source.label}</span>
+                    <span className="sr-only">{source.statusLabel}</span>
+                  </button>
+                  <button
+                    className={`grid w-7 place-items-center border-l ${source.key === activeKey ? "border-primary-foreground/25 hover:bg-primary-foreground/10" : "border-border hover:bg-muted"}`}
+                    aria-label="Choose tracked source"
+                    aria-haspopup="menu"
+                    aria-expanded={trackedMenuOpen}
+                    title="Choose tracked source"
+                    onClick={() => setTrackedMenuOpen((open) => !open)}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  <AnchoredPopover open={trackedMenuOpen} anchorRef={trackedMenuRef} onOpenChange={setTrackedMenuOpen} className="w-56 p-1 text-sm" zIndex={70}>
+                    <div role="menu" aria-label="Tracked sources">
+                      {trackedPresenceOptions.map((option) => (
+                        <button
+                          key={option.key}
+                          role="menuitemradio"
+                          aria-checked={option.key === selectedTrackedPresenceKey}
+                          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                          onClick={() => {
+                            onTrackedPresenceChange?.(option.key);
+                            setTrackedMenuOpen(false);
+                          }}
+                        >
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`} aria-hidden="true" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">{option.label}</span>
+                            <span className="block text-[11px] text-muted-foreground">{option.forked ? "Forked" : "Unforked"}</span>
+                          </span>
+                          {option.key === selectedTrackedPresenceKey && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                        </button>
+                      ))}
+                    </div>
+                  </AnchoredPopover>
+                </div>
+              ) : (
                 <button
                   key={source.key}
                   className={`inline-flex h-7 shrink-0 items-center gap-2 rounded px-2.5 text-xs font-medium ${
@@ -4880,6 +5038,7 @@ function WorkVersionSelector({
 }
 
 function DlsiteMetrics({
+  segment = "all",
   ratingLabel,
   rating,
   ratingCount,
@@ -4888,6 +5047,7 @@ function DlsiteMetrics({
   dlsiteFetchedAt,
   ageRating,
 }: {
+  segment?: "all" | "primary" | "secondary";
   ratingLabel: string;
   rating: number | null;
   ratingCount: number | null;
@@ -4902,13 +5062,24 @@ function DlsiteMetrics({
     : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
   const age = ageRatingPresentation(ageRating);
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
+  const primaryMetrics = (
+    <>
+      <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
+      <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.textClassName} />
+    </>
+  );
+  const secondaryMetrics = (
+    <>
+      <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
+      <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
+    </>
+  );
   return (
-    <div className="max-w-3xl rounded-lg border bg-card p-3 text-sm">
-      <div className="grid gap-x-5 gap-y-2 sm:grid-cols-[minmax(11rem,0.8fr)_minmax(18rem,1.2fr)]">
-        <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
-        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.textClassName} />
-        <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
-        <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
+    <div className="w-full rounded-lg border bg-card p-3 text-sm">
+      {segment !== "all" && <div className="mb-2 text-xs font-medium text-muted-foreground">DL info</div>}
+      <div className={`grid gap-x-5 gap-y-2 ${segment === "all" ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+        {segment !== "secondary" && primaryMetrics}
+        {segment !== "primary" && secondaryMetrics}
       </div>
     </div>
   );
@@ -6871,6 +7042,11 @@ function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent) {
 
 function detailSourceIntentFromLocation(search: string): DetailSourceIntent {
   return new URLSearchParams(search).get("view") === "tracked" ? "tracked" : "local";
+}
+
+function detailTrackedSourceIDFromLocation(search: string) {
+  const value = Number(new URLSearchParams(search).get("trackedSource"));
+  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function detailReturnTarget(fallbackPath: string) {

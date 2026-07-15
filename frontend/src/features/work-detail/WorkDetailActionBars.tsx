@@ -74,29 +74,30 @@ export function WorkIdentityActionBar({
           Resume
         </Button>
       )}
-      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel onChange={onMark} />
+      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel responsiveLabel onChange={onMark} />
       <WorkCardListButton
         workId={listWorkId}
         active={favorite}
         disabled={busy}
         showLabel
+        responsiveLabel
         ensureWorkId={onEnsureListWork}
         onSaved={onListSaved}
       />
       {dlsiteUrl && (
-        <Button variant="outline" size="sm" className="h-8" asChild>
+        <Button variant="outline" size="sm" className="h-8 w-8 px-0 sm:w-auto sm:px-3" asChild title="Open DLsite">
           <a href={dlsiteUrl} target="_blank" rel="noreferrer">
             <ExternalLink className="h-4 w-4" />
-            DLsite
+            <span className="hidden sm:inline">DLsite</span>
           </a>
         </Button>
       )}
       {(onSync || onEditMetadata) && (
         <div className="relative" ref={manageMenuRef}>
-          <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
+          <Button variant="outline" size="sm" className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7" title="Manage metadata" aria-label="Manage metadata" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
             <MoreHorizontal className="h-4 w-4" />
-            Manage
-            <ChevronDown className="absolute right-2 h-3 w-3" />
+            <span className="hidden sm:inline">Manage</span>
+            <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
           </Button>
           <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-52 p-1 text-sm" zIndex={70}>
             {onSync && (
@@ -241,7 +242,7 @@ export function MediaContextActionBar({
         open={optionsOpen && !busy}
         anchorRef={optionsAnchorRef}
         onOpenChange={setOptionsOpen}
-        className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm"
+        className="w-[min(13rem,calc(100vw-1.5rem))] p-1 text-sm"
         bottomCollisionPadding={96}
         zIndex={70}
       >

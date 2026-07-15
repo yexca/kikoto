@@ -211,12 +211,19 @@
   .app-scroll::-webkit-scrollbar,
   .app-scrollbar::-webkit-scrollbar {
     width: 0.625rem;
+    height: 0.625rem;
   }
 
   .app-scroll::-webkit-scrollbar-track,
   .app-scrollbar::-webkit-scrollbar-track {
     margin-block: 0.75rem;
     background: transparent;
+  }
+
+  .app-scroll::-webkit-scrollbar-track:horizontal,
+  .app-scrollbar::-webkit-scrollbar-track:horizontal {
+    margin-block: 0;
+    margin-inline: 0.75rem;
   }
 
   .app-scroll::-webkit-scrollbar-thumb,

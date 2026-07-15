@@ -20,6 +20,16 @@ playback actions for one work.
 - Keeps the source toolbar width stable with one Options menu. The menu changes
   with the selected Local, Tracked, or remote source and closes on outside
   interaction, Escape, or a source change.
+- Aggregates tracked presences into one Tracked tab. When a work is tracked by
+  more than one file source, the tab exposes a dropdown that switches the
+  active tracked directory without adding source names to the tab row.
+- Uses the selected tracked source name in the Directory description and keeps
+  the selection in the detail URL.
+- Presents desktop metadata as a two-column matrix beside the cover: Voices,
+  Tags, and personal tags align with split DLsite facts and duration, followed
+  by a full-width version selector. On compact screens, voice credits remain
+  visible above the primary actions while Mark, List, DLsite, and Manage
+  collapse to icon controls.
 
 ## Actions
 
