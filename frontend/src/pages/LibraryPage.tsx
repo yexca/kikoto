@@ -2834,6 +2834,7 @@ function RemoteWorkDetailView({
           <MediaContextActionBar
             busy={isFetching || isSaving}
             mode="remote_source"
+            contextKey={remoteSourceTabKey(source.id)}
             onTrack={() => void fetchWork("manual_track")}
             onFetch={() => void openSaveWorkspace()}
             remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
@@ -2988,26 +2989,27 @@ function WorkDetailView({
     : selectedTrackedPresence
       ? sourcePresenceActionCode(selectedTrackedPresence, work?.primaryCode ?? code)
       : work?.primaryCode ?? code;
-  const fetchRemoteFilePaths = useMemo(() => {
-    if (selectedRemoteDetail) return remoteSelectablePaths(tree);
-    return fetchRemote?.detail ? remoteSelectablePaths(buildRemoteTree(fetchRemote.detail.tracks)) : [];
-  }, [fetchRemote?.detail, selectedRemoteDetail, tree]);
-  const trackedCacheAvailable = Boolean(
-    selectedTrackedSourceID
-    && localDirectoryWork?.mediaItems.some((item) => item.locations.some((location) =>
-      location.fileSourceId === selectedTrackedSourceID
-      && location.locationType === "cache"
-      && location.availability === "available"
-    )),
+  const trackedCacheAvailable = useMemo(
+    () => Boolean(
+      selectedTrackedSourceID
+      && localDirectoryWork?.mediaItems.some((item) => item.locations.some((location) =>
+        location.fileSourceId === selectedTrackedSourceID
+        && location.locationType === "cache"
+        && location.availability === "available"
+      )),
+    ),
+    [localDirectoryWork?.mediaItems, selectedTrackedSourceID],
   );
   const managementTree = useMemo(
-    () => selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID
-      ? buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode)
-      : tree,
-    [localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
+    () => !isManageOpen
+      ? emptyTree()
+      : selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID
+        ? buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode)
+        : tree,
+    [isManageOpen, localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
   );
   const player = useLibraryPlayer();
-  const fetchWorkspace = useWorkFetchWorkspace({ remote: fetchRemote, remoteCode: fetchRemoteCode, remoteFilePaths: fetchRemoteFilePaths, onWorksChanged });
+  const fetchWorkspace = useWorkFetchWorkspace({ remote: fetchRemote, remoteCode: fetchRemoteCode, onWorksChanged });
   const mediaCleanup = useMediaCleanupWorkflow({
     onAccepted: () => setIsManageOpen(false),
     onCompleted: async () => {
@@ -3042,6 +3044,12 @@ function WorkDetailView({
   const forkSources = availableForkSources(remoteSources);
   const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;
   const canTrackRemote = Boolean(selectedRemoteSource?.detail?.primaryCode && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote);
+  const selectedSourceDetailsLoading = Boolean(
+    selectedRemoteSource
+    && !selectedRemoteDetail
+    && !selectedRemoteSource.error
+    && remoteSourceCanBrowse(selectedRemoteSource.summary),
+  );
 
   const saveWorkUserTags = async (tags: string[]) => {
     if (!work) return;
@@ -3387,14 +3395,17 @@ function WorkDetailView({
   const mediaActions = work ? <MediaContextActionBar
     busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
     mode={actionMode}
+    contextKey={resolvedActiveSourceKey}
     onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
     trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
+    trackDisabledReason={selectedSourceDetailsLoading ? "Loading source details" : selectedRemoteSource?.error ? "Source details unavailable" : "Already tracked"}
     forkSources={forkSources}
     currentForkSource={currentForkSource}
     onFork={(remote) => requestForkSource(remote)}
     onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? () => void fetchWorkspace.open() : undefined}
     remoteSourceWorkUrl={safeExternalHTTPURL(selectedRemoteDetail?.publicWorkUrl)}
-    remoteSourceName={selectedRemoteDetail?.sourceName}
+    remoteSourceName={selectedRemoteSource?.source.displayName ?? selectedRemoteDetail?.sourceName}
+    sourceDetailsLoading={selectedSourceDetailsLoading}
     onManageCache={selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
     manageCacheDisabled={Boolean(selectedTrackedPresence) && !trackedCacheAvailable}
     onManageFiles={actionMode === "local" ? () => setIsManageOpen(true) : undefined}
@@ -4260,9 +4271,11 @@ function SourceDirectoryPanel({
           </div>
           <p className="text-sm text-muted-foreground lg:text-right">{description}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
-          <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border bg-card p-1">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
+          <div className="col-start-1 row-start-1 sm:contents">
+            <DirectoryModeSwitch mode={directoryMode} onChange={onDirectoryModeChange} />
+          </div>
+          <div className="col-span-3 row-start-2 flex min-w-0 items-center overflow-hidden rounded-md border bg-card p-1 sm:flex-1">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               {tabs.map((source) => (
                 <button
@@ -4289,7 +4302,7 @@ function SourceDirectoryPanel({
               </IconButton>
             )}
           </div>
-          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+          {actions && <div className="col-start-3 row-start-1 flex shrink-0 items-center justify-self-end">{actions}</div>}
         </div>
         {routeSummary && <DirectoryRouteSummary summary={routeSummary} />}
       </div>

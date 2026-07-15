@@ -419,11 +419,11 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
-  await page.getByRole("button", { name: "Manage", exact: true }).click();
-  await page.getByRole("button", { name: "Refresh local files", exact: true }).click();
+  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Refresh local files", exact: true }).click();
   await expect.poll(() => localRefreshes).toBe(1);
-  await page.getByRole("button", { name: "Manage", exact: true }).click();
-  await page.getByRole("button", { name: "Manage files", exact: true }).click();
+  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(page.getByLabel("Include MP3")).toBeVisible();
@@ -489,6 +489,25 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
   await expect(missingRemoteTab).toBeVisible();
   await expect(missingRemoteTab.locator(".bg-red-500")).toHaveCount(1);
+  const sourceOptions = page.getByRole("button", { name: "Options", exact: true });
+  await sourceOptions.click();
+  await expect(page.getByRole("menu", { name: "Selected source options" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
+  await expect(page.getByRole("menuitem", { name: "Manage files", exact: true })).toBeVisible();
+  await page.mouse.click(8, 8);
+  await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
+
+  await remoteTab.click();
+  await sourceOptions.click();
+  await expect(page.getByRole("menuitem", { name: /Track/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Fetch", exact: true })).toBeVisible();
+  await trackedTab.click();
+  await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
+  await sourceOptions.click();
+  await expect(page.getByText("Switch fork", { exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
   await page.getByTitle(/Check sources/).click();
   await expect.poll(() => sourceChecks).toBe(1);
 
@@ -498,8 +517,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page).toHaveURL(/view=tracked/);
   await expect(page.locator('button[title^="Tracked · Remote A:"]')).toHaveClass(/bg-primary/);
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
-  await page.getByRole("button", { name: "Manage", exact: true }).click();
-  await page.getByRole("button", { name: "Manage files", exact: true }).click();
+  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Manage cache/ }).click();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByText("1 selected / 1 deletable", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Review deletion" }).click();

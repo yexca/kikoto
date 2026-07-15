@@ -17,6 +17,9 @@ playback actions for one work.
   that state.
 - Loads source availability through a backend aggregate check.
 - Opens remote source trees lazily after availability is known.
+- Keeps the source toolbar width stable with one Options menu. The menu changes
+  with the selected Local, Tracked, or remote source and closes on outside
+  interaction, Escape, or a source change.
 
 ## Actions
 
@@ -26,6 +29,8 @@ playback actions for one work.
 - Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.
+- Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
+  maintenance commands from the selected source's Options menu.
 - Edit manual overrides when available.
 
 ## Detail Loading Model
@@ -41,6 +46,8 @@ remote-derived state separately:
 5. Selected remote source tree, if the user opens one.
 
 This keeps remote source failures from blocking the local detail shell.
+Fetch path selection and file-management trees are derived only after their
+corresponding Options command is selected.
 
 ## Related Docs
 

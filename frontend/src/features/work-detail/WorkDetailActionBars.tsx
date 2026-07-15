@@ -8,12 +8,13 @@ import {
   GitFork,
   HardDrive,
   HardDriveDownload,
+  Loader2,
   MoreHorizontal,
   Play,
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { WorkCardListButton, WorkCardQuickMarkButton } from "@/components/work-card/WorkCardShell";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -133,14 +134,17 @@ export function WorkIdentityActionBar({
 export function MediaContextActionBar({
   busy,
   mode,
+  contextKey,
   onTrack,
   trackDisabled,
+  trackDisabledReason,
   forkSources = [],
   currentForkSource,
   onFork,
   onFetch,
   remoteSourceWorkUrl,
   remoteSourceName,
+  sourceDetailsLoading = false,
   onManageCache,
   manageCacheDisabled = false,
   onManageFiles,
@@ -148,135 +152,235 @@ export function MediaContextActionBar({
 }: {
   busy: boolean;
   mode: DetailActionMode;
+  contextKey: string;
   onTrack?: () => void;
   trackDisabled?: boolean;
+  trackDisabledReason?: string;
   forkSources?: RemoteSourceAvailability[];
   currentForkSource?: RemoteSourceAvailability | null;
   onFork?: (remote: RemoteSourceAvailability) => void;
   onFetch?: () => void;
   remoteSourceWorkUrl?: string;
   remoteSourceName?: string;
+  sourceDetailsLoading?: boolean;
   onManageCache?: () => void;
   manageCacheDisabled?: boolean;
   onManageFiles?: () => void;
   onRefreshLocalFiles?: () => void;
 }) {
-  const [forkMenuOpen, setForkMenuOpen] = useState(false);
-  const [filesMenuOpen, setFilesMenuOpen] = useState(false);
-  const forkMenuRef = useRef<HTMLDivElement | null>(null);
-  const filesMenuRef = useRef<HTMLDivElement | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsAnchorRef = useRef<HTMLDivElement | null>(null);
+  const optionsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const optionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const optionsMenuId = useId();
+  const hasForkOptions = (mode === "tracked_unforked" || mode === "tracked_forked") && Boolean(onFork);
+  const hasOptions = Boolean(onTrack || hasForkOptions || onFetch || remoteSourceWorkUrl || onManageCache || onManageFiles || onRefreshLocalFiles || sourceDetailsLoading);
+
+  useEffect(() => {
+    setOptionsOpen(false);
+  }, [contextKey]);
+
+  useEffect(() => {
+    if (busy) setOptionsOpen(false);
+  }, [busy]);
+
+  useEffect(() => {
+    if (!optionsOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      firstEnabledMenuItem(optionsMenuRef.current)?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [optionsOpen]);
+
+  const closeOptions = () => setOptionsOpen(false);
+  const runOption = (action: () => void) => {
+    closeOptions();
+    action();
+  };
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeOptions();
+      optionsButtonRef.current?.focus();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = enabledMenuItems(optionsMenuRef.current);
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + items.length) % items.length
+          : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex]?.focus();
+  };
 
   return (
-    <>
-      {mode === "remote_source" && onTrack && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          disabled={busy || trackDisabled}
-          onClick={onTrack}
-          title={trackDisabled ? "Already tracked" : "Track remote work"}
-        >
-          <BookmarkPlus className="h-4 w-4" />
-          Track
-        </Button>
-      )}
-      {(mode === "tracked_unforked" || mode === "tracked_forked") && onFork && (
-        <div className="relative" ref={forkMenuRef}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="relative h-8 pr-7"
-            disabled={busy || forkSources.length === 0}
-            onClick={() => setForkMenuOpen((open) => !open)}
-            title={mode === "tracked_forked" ? "Switch fork source" : "Fork tracked source"}
-          >
-            <GitFork className="h-4 w-4" />
-            {mode === "tracked_forked" ? "Switch fork" : "Fork"}
-            {forkSources.length > 0 && <ChevronDown className="absolute right-2 h-3 w-3" />}
-          </Button>
-          <AnchoredPopover open={forkMenuOpen} anchorRef={forkMenuRef} onOpenChange={setForkMenuOpen} className="w-60 p-1 text-sm">
-            {forkSources.map((remote) => {
-              const active = currentForkSource?.source.id === remote.source.id;
-              return (
-                <button
-                  key={remote.source.id}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                  onClick={() => {
-                    setForkMenuOpen(false);
-                    onFork(remote);
-                  }}
-                >
-                  <span className="min-w-0 flex-1 truncate">{remote.source.displayName}</span>
-                  {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                </button>
-              );
-            })}
-          </AnchoredPopover>
+    <div className="relative shrink-0" ref={optionsAnchorRef}>
+      <Button
+        ref={optionsButtonRef}
+        variant="outline"
+        size="sm"
+        className="relative h-8 min-w-[6.5rem] pr-7"
+        disabled={busy || !hasOptions}
+        aria-haspopup="menu"
+        aria-expanded={optionsOpen}
+        aria-controls={optionsOpen ? optionsMenuId : undefined}
+        title={hasOptions ? "Options for the selected source" : "No options for the selected source"}
+        onClick={() => setOptionsOpen((open) => !open)}
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+        Options
+        <ChevronDown className="absolute right-2 h-3 w-3" />
+      </Button>
+      <AnchoredPopover
+        open={optionsOpen && !busy}
+        anchorRef={optionsAnchorRef}
+        onOpenChange={setOptionsOpen}
+        className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm"
+        bottomCollisionPadding={96}
+        zIndex={70}
+      >
+        <div id={optionsMenuId} ref={optionsMenuRef} role="menu" aria-label="Selected source options" onKeyDown={handleMenuKeyDown}>
+          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+            {remoteSourceName ? `${remoteSourceName} options` : "Source options"}
+          </div>
+          {sourceDetailsLoading && (
+            <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground" role="status">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading source details
+            </div>
+          )}
+          {mode === "remote_source" && onTrack && (
+            <SourceOptionButton
+              icon={<BookmarkPlus className="h-4 w-4" />}
+              label="Track"
+              detail={trackDisabled ? trackDisabledReason || "Already tracked" : undefined}
+              disabled={trackDisabled}
+              onClick={() => runOption(onTrack)}
+            />
+          )}
+          {hasForkOptions && (
+            <div className="border-t px-1 pt-1 first:border-t-0">
+              <div className="px-1 py-1 text-[11px] font-medium uppercase text-muted-foreground">
+                {mode === "tracked_forked" ? "Switch fork" : "Fork from"}
+              </div>
+              {forkSources.length === 0 ? (
+                <div className="px-2 py-2 text-xs text-muted-foreground">No fork source available</div>
+              ) : forkSources.map((remote) => {
+                const active = currentForkSource?.source.id === remote.source.id;
+                return (
+                  <SourceOptionButton
+                    key={remote.source.id}
+                    icon={<GitFork className="h-4 w-4" />}
+                    label={remote.source.displayName}
+                    trailing={active ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined}
+                    disabled={active}
+                    onClick={() => runOption(() => onFork!(remote))}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {onFetch && (
+            <SourceOptionButton
+              icon={<HardDriveDownload className="h-4 w-4" />}
+              label="Fetch"
+              onClick={() => runOption(onFetch)}
+            />
+          )}
+          {remoteSourceWorkUrl && (
+            <a
+              role="menuitem"
+              tabIndex={-1}
+              className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+              href={remoteSourceWorkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open on ${remoteSourceName || "source"}`}
+              onClick={closeOptions}
+            >
+              <ExternalLink className="h-4 w-4" />
+              <span className="min-w-0 flex-1 truncate">Open origin</span>
+            </a>
+          )}
+          {(onManageCache || onManageFiles || onRefreshLocalFiles) && <div className="my-1 border-t" />}
+          {onRefreshLocalFiles && (
+            <SourceOptionButton
+              icon={<RefreshCw className="h-4 w-4" />}
+              label="Refresh local files"
+              onClick={() => runOption(onRefreshLocalFiles)}
+            />
+          )}
+          {onManageCache && (
+            <SourceOptionButton
+              icon={<HardDrive className="h-4 w-4" />}
+              label="Manage cache"
+              detail={manageCacheDisabled ? "No cached files" : undefined}
+              disabled={manageCacheDisabled}
+              onClick={() => runOption(onManageCache)}
+            />
+          )}
+          {onManageFiles && (
+            <SourceOptionButton
+              icon={<Trash2 className="h-4 w-4" />}
+              label="Manage files"
+              tone="danger"
+              onClick={() => runOption(onManageFiles)}
+            />
+          )}
         </div>
-      )}
-      {onFetch && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onFetch}>
-          <HardDriveDownload className="h-4 w-4" />
-          Fetch
-        </Button>
-      )}
-      {remoteSourceWorkUrl && (
-        <Button variant="outline" size="sm" className="h-8" asChild>
-          <a href={remoteSourceWorkUrl} target="_blank" rel="noopener noreferrer" title={`Open on ${remoteSourceName || "source"}`}>
-            <ExternalLink className="h-4 w-4" />
-            Origin
-          </a>
-        </Button>
-      )}
-      {onManageCache && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          disabled={busy || manageCacheDisabled}
-          title={manageCacheDisabled ? "No cached files" : "Manage cached files"}
-          onClick={onManageCache}
-        >
-          <HardDrive className="h-4 w-4" />
-          Manage cache
-        </Button>
-      )}
-      {(onManageFiles || onRefreshLocalFiles) && (
-        <div className="relative" ref={filesMenuRef}>
-          <Button variant="outline" size="sm" className="relative h-8 pr-7" disabled={busy} onClick={() => setFilesMenuOpen((open) => !open)}>
-            <MoreHorizontal className="h-4 w-4" />
-            Files
-            <ChevronDown className="absolute right-2 h-3 w-3" />
-          </Button>
-          <AnchoredPopover open={filesMenuOpen} anchorRef={filesMenuRef} onOpenChange={setFilesMenuOpen} className="w-48 p-1 text-sm" bottomCollisionPadding={96} zIndex={70}>
-            {onManageFiles && (
-              <button
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                onClick={() => {
-                  setFilesMenuOpen(false);
-                  onManageFiles();
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Manage files</span>
-              </button>
-            )}
-            {onRefreshLocalFiles && (
-              <button
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                onClick={() => {
-                  setFilesMenuOpen(false);
-                  onRefreshLocalFiles();
-                }}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Refresh local files</span>
-              </button>
-            )}
-          </AnchoredPopover>
-        </div>
-      )}
-    </>
+      </AnchoredPopover>
+    </div>
   );
+}
+
+function SourceOptionButton({
+  icon,
+  label,
+  detail,
+  trailing,
+  disabled = false,
+  tone = "default",
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  detail?: string;
+  trailing?: ReactNode;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      role="menuitem"
+      tabIndex={-1}
+      className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left focus:bg-muted focus:outline-none disabled:pointer-events-none disabled:opacity-50 ${
+        tone === "danger" ? "text-destructive hover:bg-destructive/10 focus:bg-destructive/10" : "hover:bg-muted"
+      }`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {detail && <span className="block truncate text-[11px] text-muted-foreground">{detail}</span>}
+      </span>
+      {trailing}
+    </button>
+  );
+}
+
+function enabledMenuItems(root: HTMLDivElement | null) {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'));
+}
+
+function firstEnabledMenuItem(root: HTMLDivElement | null) {
+  return enabledMenuItems(root)[0];
 }

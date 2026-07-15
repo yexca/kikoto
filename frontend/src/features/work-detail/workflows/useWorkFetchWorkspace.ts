@@ -30,12 +30,10 @@ export type WorkFetchDraft = {
 export function useWorkFetchWorkspace({
   remote,
   remoteCode,
-  remoteFilePaths,
   onWorksChanged,
 }: {
   remote: RemoteSourceAvailability | undefined;
   remoteCode: string;
-  remoteFilePaths: string[];
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -55,9 +53,7 @@ export function useWorkFetchWorkspace({
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
       const detail = remote.detail ?? await api.getRemoteSourceWork(remote.source.id, remoteCode);
-      const paths = remoteFilePaths.length > 0
-        ? remoteFilePaths
-        : remoteSelectablePaths(buildRemoteTree(detail.tracks));
+      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
       if (paths.length === 0) {
         toast.notify({ kind: "warning", message: "No remote files are available to fetch." });
         return;
