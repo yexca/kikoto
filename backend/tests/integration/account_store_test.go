@@ -1,19 +1,18 @@
-package account
+package integration_test
 
 import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/account"
 )
 
 func TestStoreManagesIdentityAndSessions(t *testing.T) {
-	db := openAccountTestDB(t)
-	store := NewStore(db)
+	db := openMigratedTestDB(t, "account.db")
+	store := account.NewStore(db)
 	ctx := context.Background()
 	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
 		t.Fatal(err)
@@ -44,14 +43,14 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 }
 
 func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
-	db := openAccountTestDB(t)
-	store := NewStore(db)
+	db := openMigratedTestDB(t, "account-users.db")
+	store := account.NewStore(db)
 	ctx := context.Background()
 	if err := store.BootstrapRoot(ctx, "root", "root-password"); err != nil {
 		t.Fatal(err)
 	}
 	root, _ := store.LoadByUsername(ctx, "root")
-	created, err := store.CreateManagedUser(ctx, CreateUserInput{
+	created, err := store.CreateManagedUser(ctx, account.CreateUserInput{
 		Username: "listener", DisplayName: "Listener", Role: "user", Password: "listener-password", Enabled: true, ActorUserID: root.ID,
 	})
 	if err != nil {
@@ -60,7 +59,7 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	if err := store.EnsureAnotherEnabledSuperAdmin(ctx, root.ID); err == nil {
 		t.Fatal("EnsureAnotherEnabledSuperAdmin() accepted the last super administrator")
 	}
-	updated, err := store.UpdateManagedUser(ctx, UpdateUserInput{
+	updated, err := store.UpdateManagedUser(ctx, account.UpdateUserInput{
 		ID: created.ID, DisplayName: created.DisplayName, Role: "super_admin", Password: "new-listener-password", Enabled: true, ActorUserID: root.ID,
 	})
 	if err != nil {
@@ -85,18 +84,4 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	if len(users) != 1 || users[0].ID != root.ID {
 		t.Fatalf("users = %#v", users)
 	}
-}
-
-func openAccountTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "account.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
 }

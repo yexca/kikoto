@@ -1,22 +1,14 @@
-package library
+package integration_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 func TestLoadMediaSelectionsPrefersAvailableLocalEdition(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "selection.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedTestDB(t, "selection.db")
 	statements := []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01000001', 'Origin'), (2, 'RJ01000002', 'Translation')`,
 		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (1, 1, 'RJ01000001')`,
@@ -30,7 +22,7 @@ func TestLoadMediaSelectionsPrefersAvailableLocalEdition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	selections, err := NewStore(db).LoadMediaSelections(context.Background(), []int64{1})
+	selections, err := library.NewStore(db).LoadMediaSelections(context.Background(), []int64{1})
 	if err != nil {
 		t.Fatal(err)
 	}

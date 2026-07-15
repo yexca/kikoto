@@ -1,39 +1,37 @@
-package workflow
+package integration_test
 
 import (
 	"context"
-	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 func TestStoreLoadsWorkflowViews(t *testing.T) {
-	db := openWorkflowTestDB(t)
+	db := openMigratedTestDB(t, "workflow-views.db")
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	definitionID, err := EnsureDefinition(ctx, tx, "test_flow", "Test flow", "Test definition", map[string]any{"nodes": []any{}})
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "test_flow", "Test flow", "Test definition", map[string]any{"nodes": []any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID, err := InsertRun(ctx, tx, definitionID, "test_flow", "Test flow", "partial", "manual", "test", map[string]any{}, map[string]any{})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "test_flow", "Test flow", "partial", "manual", "test", map[string]any{}, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "review", NodeType: "filter_candidates", DisplayName: "Review", Position: 1, Status: "partial"})
+	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "review", NodeType: "filter_candidates", DisplayName: "Review", Position: 1, Status: "partial"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status) VALUES (?, ?, 'test', 'candidate', 'pending')`, runID, nodeID); err != nil {
 		t.Fatal(err)
 	}
-	if err := InsertEvent(ctx, tx, runID, EventSpec{Level: "info", Type: "test.created", Message: "Created"}); err != nil {
+	if err := workflow.InsertEvent(ctx, tx, runID, workflow.EventSpec{Level: "info", Type: "test.created", Message: "Created"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO workflow_trigger (workflow_definition_id, trigger_type, display_name, enabled) VALUES (?, 'startup', 'Test trigger', 1)`, definitionID); err != nil {
@@ -43,8 +41,8 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := NewStore(db)
-	page, err := store.ListRuns(ctx, ListRunsOptions{Page: 1, PageSize: 10, View: "review", Query: "test"})
+	store := workflow.NewStore(db)
+	page, err := store.ListRuns(ctx, workflow.ListRunsOptions{Page: 1, PageSize: 10, View: "review", Query: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,29 +97,29 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 }
 
 func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
-	db := openWorkflowTestDB(t)
+	db := openMigratedTestDB(t, "workflow-stale.db")
 	ctx := context.Background()
 	tx, _ := db.BeginTx(ctx, nil)
-	definitionID, err := EnsureDefinition(ctx, tx, "stale_flow", "Stale flow", "Test stale recovery", map[string]any{"nodes": []any{}})
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "stale_flow", "Stale flow", "Test stale recovery", map[string]any{"nodes": []any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID, err := InsertRun(ctx, tx, definitionID, "stale_flow", "Stale flow", "running", "startup", "test", nil, nil)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "stale_flow", "Stale flow", "running", "startup", "test", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "run", NodeType: "sync_metadata", DisplayName: "Run", Position: 1, Status: "running"})
+	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "run", NodeType: "sync_metadata", DisplayName: "Run", Position: 1, Status: "running"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InsertJob(ctx, tx, runID, JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "queued"}); err != nil {
+	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "queued"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := NewStore(db).MarkStaleRuns(ctx, "restart")
+	count, err := workflow.NewStore(db).MarkStaleRuns(ctx, "restart")
 	if err != nil || count != 0 {
 		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
 	}
@@ -145,22 +143,22 @@ func TestStoreMarksStaleRunGraphFailed(t *testing.T) {
 }
 
 func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
-	db := openWorkflowTestDB(t)
+	db := openMigratedTestDB(t, "workflow-checkpoint.db")
 	ctx := context.Background()
 	tx, _ := db.BeginTx(ctx, nil)
-	definitionID, err := EnsureDefinition(ctx, tx, "recoverable_flow", "Recoverable flow", "Test checkpoint recovery", map[string]any{"nodes": []any{}})
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "recoverable_flow", "Recoverable flow", "Test checkpoint recovery", map[string]any{"nodes": []any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID, err := InsertRun(ctx, tx, definitionID, "recoverable_flow", "Recoverable flow", "running", "startup", "test", nil, nil)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "recoverable_flow", "Recoverable flow", "running", "startup", "test", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "run", NodeType: "materialize_cache", DisplayName: "Run", Position: 1, Status: "running"})
+	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "run", NodeType: "materialize_cache", DisplayName: "Run", Position: 1, Status: "running"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobID, err := InsertJob(ctx, tx, runID, JobSpec{
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: nodeID, WorkerType: "test", Status: "running", Recoverable: true, MaxRetries: 3,
 		Checkpoint: map[string]any{"phase": "download", "index": 7},
 	})
@@ -171,7 +169,7 @@ func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	count, err := NewStore(db).MarkStaleRuns(ctx, "restart")
+	count, err := workflow.NewStore(db).MarkStaleRuns(ctx, "restart")
 	if err != nil || count != 1 {
 		t.Fatalf("MarkStaleRuns() = %d, %v", count, err)
 	}
@@ -199,22 +197,22 @@ func TestStoreRequeuesRecoverableRunFromCheckpoint(t *testing.T) {
 }
 
 func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
-	db := openWorkflowTestDB(t)
+	db := openMigratedTestDB(t, "workflow-lease.db")
 	ctx := context.Background()
 	tx, _ := db.BeginTx(ctx, nil)
-	definitionID, err := EnsureDefinition(ctx, tx, "lease_flow", "Lease flow", "Test lease recovery", map[string]any{"nodes": []any{}})
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "lease_flow", "Lease flow", "Test lease recovery", map[string]any{"nodes": []any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID, err := InsertRun(ctx, tx, definitionID, "lease_flow", "Lease flow", "running", "manual", "test", nil, nil)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "lease_flow", "Lease flow", "running", "manual", "test", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeID, err := InsertNodeRun(ctx, tx, runID, NodeRunSpec{NodeID: "run", NodeType: "execute", DisplayName: "Run", Position: 1, Status: "running"})
+	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "run", NodeType: "execute", DisplayName: "Run", Position: 1, Status: "running"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobID, err := InsertJob(ctx, tx, runID, JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "running", Recoverable: true})
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "test", Status: "running", Recoverable: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +223,7 @@ func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	count, err := NewStore(db).RequeueExpiredJobs(ctx, time.Second)
+	count, err := workflow.NewStore(db).RequeueExpiredJobs(ctx, time.Second)
 	if err != nil || count != 1 {
 		t.Fatalf("RequeueExpiredJobs() = %d, %v", count, err)
 	}
@@ -237,18 +235,4 @@ func TestStoreRequeuesExpiredRecoverableLease(t *testing.T) {
 	if status != "queued" || lock != "" || resumes != 1 {
 		t.Fatalf("job status=%s lock=%q resumes=%d", status, lock, resumes)
 	}
-}
-
-func openWorkflowTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "workflow.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
 }

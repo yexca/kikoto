@@ -1,23 +1,16 @@
-package library
+package integration_test
 
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedTestDB(t, "library.db")
+	var err error
 	first, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ01234567', 'Local work')")
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +28,7 @@ func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := NewStore(db).ListPage(context.Background(), ListOptions{
+	page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{
 		Page: 1, PageSize: 24, Scope: "local", Query: "RJ01234567", Sort: "code", Direction: "asc",
 	})
 	if err != nil {
@@ -50,14 +43,8 @@ func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 }
 
 func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "user-tags.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedTestDB(t, "user-tags.db")
+	var err error
 	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('search-user', 'Search User', 'user')")
 	if err != nil {
 		t.Fatal(err)
@@ -76,9 +63,9 @@ func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO user_work_tag (user_id, work_id, user_tag_id) VALUES (?, ?, ?)", userID, workID, tagID); err != nil {
 		t.Fatal(err)
 	}
-	store := NewStore(db)
+	store := library.NewStore(db)
 	for _, query := range []string{`mytag:"Sleep aid"`, "Sleep aid"} {
-		page, err := store.ListPage(context.Background(), ListOptions{UserID: userID, Page: 1, PageSize: 24, Query: query})
+		page, err := store.ListPage(context.Background(), library.ListOptions{UserID: userID, Page: 1, PageSize: 24, Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,14 +76,7 @@ func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
 }
 
 func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "random.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedTestDB(t, "random.db")
 	for index := 1; index <= 12; index++ {
 		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", fmt.Sprintf("RJ0999%04d", index), fmt.Sprintf("Work %d", index)); err != nil {
 			t.Fatal(err)
@@ -105,7 +85,7 @@ func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
 	load := func(seed int64) []string {
 		codes := []string{}
 		for pageNumber := 1; pageNumber <= 3; pageNumber++ {
-			page, err := NewStore(db).ListPage(context.Background(), ListOptions{Page: pageNumber, PageSize: 4, Sort: "random", RandomSeed: seed})
+			page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{Page: pageNumber, PageSize: 4, Sort: "random", RandomSeed: seed})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -134,14 +114,8 @@ func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
 }
 
 func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "recommend.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedTestDB(t, "recommend.db")
+	var err error
 	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('recommend-user', 'Recommend User', 'user')")
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +142,7 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := NewStore(db).ListPage(context.Background(), ListOptions{UserID: userID, Page: 1, PageSize: 3, Sort: "recommend", Direction: "desc"})
+	page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{UserID: userID, Page: 1, PageSize: 3, Sort: "recommend", Direction: "desc"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,15 +152,8 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 }
 
 func TestStoreListPageNormalizesPagination(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "pagination.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
-	page, err := NewStore(db).ListPage(context.Background(), ListOptions{Page: -1, PageSize: 1000})
+	db := openMigratedTestDB(t, "pagination.db")
+	page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{Page: -1, PageSize: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
