@@ -63,15 +63,24 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await page.getByRole("button", { name: "Edit workflow" }).click();
   const composer = page.getByRole("dialog", { name: "Edit workflow" });
   await expect(composer).toBeVisible();
-  await expect(page.getByLabel("Workflow composer canvas")).toBeVisible();
+  const composerCanvas = page.getByLabel("Workflow composer canvas");
+  await expect(composerCanvas).toBeVisible();
+  const composerBounds = await composer.boundingBox();
+  const canvasBoundsBeforePanels = await composerCanvas.boundingBox();
+  expect(composerBounds).toEqual({ x: 0, y: 0, width: 1440, height: 900 });
+  expect(canvasBoundsBeforePanels).not.toBeNull();
   await expect(composer.locator(".react-flow__node", { hasText: "Fetch without WAV" })).toBeVisible();
   await expect(composer.locator('aside[aria-label="Node library"]')).toHaveCount(0);
 
   await composer.locator(".react-flow__node", { hasText: "Check availability" }).dispatchEvent("click");
   await expect(page.getByLabel("Delete selected node")).toBeVisible();
+  const canvasBoundsWithInspector = await composerCanvas.boundingBox();
+  expect(canvasBoundsWithInspector?.width).toBe(canvasBoundsBeforePanels?.width);
   await expect(page.getByLabel("Remote source")).toHaveValue("8");
   await expect(page.getByLabel("Remote source").getByRole("option", { name: "Local Library" })).toHaveCount(0);
   await composer.getByRole("button", { name: "Open node library" }).click();
+  const canvasBoundsWithBothPanels = await composerCanvas.boundingBox();
+  expect(canvasBoundsWithBothPanels?.width).toBe(canvasBoundsBeforePanels?.width);
   await page.getByRole("button", { name: /Tag works/ }).click();
   await expect(composer.locator(".react-flow__node", { hasText: "Tag works" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("workflow-composer.png"), fullPage: true });

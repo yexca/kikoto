@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   Position,
   ReactFlow,
@@ -610,11 +611,7 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {modalMode === "edit-workflow" && selectedDefinition && (() => {
-        const parsed = parseWorkflowDefinition(selectedDefinition.definitionJson);
-        const definitionTriggers = triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id);
-        return parsed.kind === "v2" || upgradeLegacyWorkflowDefinition(parsed.nodes, definitionTriggers).kind === "upgradeable";
-      })() && (
+      {modalMode === "edit-workflow" && selectedDefinition && parseWorkflowDefinition(selectedDefinition.definitionJson).kind === "v2" && (
         <WorkflowComposer
           definition={selectedDefinition}
           triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
@@ -1052,7 +1049,7 @@ function WorkflowDetail({
   const parsedDefinition = parseWorkflowDefinition(definition.definitionJson);
   const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
   const legacyUpgrade = parsedDefinition.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers) : null;
-  const composerEditable = !readonly && (parsedDefinition.kind === "v2" || legacyUpgrade?.kind === "upgradeable");
+  const composerEditable = !readonly && parsedDefinition.kind === "v2";
   return (
     <Card>
       <CardContent className="space-y-5 p-5">
@@ -1080,7 +1077,13 @@ function WorkflowDetail({
             {composerEditable && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
-                {parsedDefinition.kind === "legacy" ? "Upgrade workflow" : "Edit workflow"}
+                Edit workflow
+              </Button>
+            )}
+            {!readonly && parsedDefinition.kind === "legacy" && (
+              <Button size="sm" variant="outline" disabled title="Legacy workflow upgrade is reserved for a future release.">
+                <FileJson className="h-4 w-4" />
+                Upgrade workflow
               </Button>
             )}
             {onRunDefinition && parsedDefinition.kind === "v2" && (
@@ -1126,14 +1129,10 @@ function WorkflowDetail({
               : "This system workflow is read-only and is triggered by application actions."}
           </div>
         )}
-        {definition.scope === "user" && parsedDefinition.kind === "legacy" && legacyUpgrade?.kind === "upgradeable" && (
+        {definition.scope === "user" && parsedDefinition.kind === "legacy" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            This metadata flow can be upgraded in memory. It remains unchanged until Save.
-          </div>
-        )}
-        {definition.scope === "user" && parsedDefinition.kind === "legacy" && legacyUpgrade?.kind === "blocked" && (
-          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            {legacyUpgrade.reasons.join(" ")}
+            Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.
+            {legacyUpgrade?.kind === "blocked" && <span className="ml-1">Compatibility check: {legacyUpgrade.reasons.join(" ")}</span>}
           </div>
         )}
         {trigger && <TriggerSummary trigger={trigger} />}
@@ -1913,14 +1912,19 @@ function DefinitionNodeCanvas({ nodes, nodeTypes, readonly, onEditNode }: { node
   );
 }
 
-type WorkflowCanvasData = WorkflowCanvasItem & Record<string, unknown>;
+type WorkflowCanvasData = WorkflowCanvasItem & Record<string, unknown> & {
+  hasIncoming: boolean;
+  hasOutgoing: boolean;
+};
 type WorkflowCanvasNode = Node<WorkflowCanvasData, "workflow">;
 
 function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
   return (
     <div className="group relative flex h-11 min-w-40 max-w-52 items-center gap-2 rounded-md border bg-card px-3 shadow-sm">
+      {data.hasIncoming && <Handle id="in" type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-card !bg-muted-foreground" aria-hidden />}
       <StatusPoint status={data.status} />
       <span className="truncate text-sm font-medium">{data.title}</span>
+      {data.hasOutgoing && <Handle id="out" type="source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-card !bg-muted-foreground" aria-hidden />}
       <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-md border bg-popover p-3 text-left shadow-lg group-hover:block group-focus-within:block">
         <div className="text-sm font-semibold">{data.title}</div>
         <div className="mt-1 text-xs text-muted-foreground">{data.subtitle}</div>
@@ -1936,7 +1940,7 @@ function WorkflowNodeCanvas({ nodes, onNodeClick, onNodeDoubleClick, compact = f
   const flowNodes = useMemo<WorkflowCanvasNode[]>(() => nodes.map((node, index) => ({
     id: node.id,
     type: "workflow",
-    data: node,
+    data: { ...node, hasIncoming: index > 0, hasOutgoing: index < nodes.length - 1 },
     position: { x: index * 210, y: 48 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
@@ -1946,13 +1950,16 @@ function WorkflowNodeCanvas({ nodes, onNodeClick, onNodeDoubleClick, compact = f
   const edges = useMemo<Edge[]>(() => nodes.slice(0, -1).map((node, index) => ({
     id: `${node.id}->${nodes[index + 1].id}`,
     source: node.id,
+    sourceHandle: "out",
     target: nodes[index + 1].id,
+    targetHandle: "in",
+    type: "smoothstep",
     markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
     style: { strokeWidth: 1.5 },
     animated: nodes[index + 1].status === "running",
   })), [nodes]);
   return (
-    <div className={`workflow-canvas overflow-hidden rounded-md border bg-muted/20 ${compact ? "h-48" : "h-64"}`} aria-label="Workflow node canvas">
+    <div className={`workflow-canvas overflow-hidden rounded-md border ${compact ? "h-48" : "h-64"}`} aria-label="Workflow node canvas">
       <ReactFlow
         nodes={flowNodes}
         edges={edges}
@@ -1970,7 +1977,7 @@ function WorkflowNodeCanvas({ nodes, onNodeClick, onNodeDoubleClick, compact = f
         onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} size={1} />
+        <Background gap={20} size={1} color="hsl(var(--workflow-grid))" />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>

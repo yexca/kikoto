@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -238,10 +239,10 @@ export function WorkflowComposer({
 
   if (parsed?.kind === "legacy" && legacyUpgrade?.kind !== "upgradeable") return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-background p-2 lg:p-4" role="dialog" aria-modal="true" aria-label={definition ? "Edit workflow" : "New workflow"}>
-      <div className="mx-auto flex h-full max-w-[1560px] flex-col overflow-hidden rounded-md border bg-background shadow-xl">
-        <header className="flex min-h-14 items-center gap-3 border-b px-3 lg:px-4">
+  return createPortal(
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={definition ? "Edit workflow" : "New workflow"}>
+      <div className="workflow-composer-shell flex h-full w-full flex-col overflow-hidden">
+        <header className="flex min-h-14 items-center gap-3 border-b bg-card px-3 lg:px-4">
           <Workflow className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{definition ? `Edit ${displayName}` : "New workflow"}</div>
@@ -270,14 +271,14 @@ export function WorkflowComposer({
           <Button variant="ghost" size="icon" aria-label="Close workflow composer" onClick={onClose}><X className="h-4 w-4" /></Button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <nav className="hidden w-11 shrink-0 flex-col items-center gap-1 border-r bg-card py-2 lg:flex" aria-label="Workflow canvas tools">
+        <div className="relative flex min-h-0 flex-1 flex-col lg:block">
+          <nav className="hidden w-11 flex-col items-center gap-1 border-r bg-card py-2 lg:absolute lg:inset-y-0 lg:left-0 lg:z-30 lg:flex" aria-label="Workflow canvas tools">
             <Button variant={paletteOpen ? "secondary" : "ghost"} size="icon" aria-label={paletteOpen ? "Close node library" : "Open node library"} title={paletteOpen ? "Close node library" : "Open node library"} aria-pressed={paletteOpen} onClick={() => setPaletteOpen((open) => !open)}>
               {paletteOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
             </Button>
           </nav>
 
-          {paletteVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "w-60 border-r" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label="Node library">
+          {paletteVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 left-11 z-20 w-60 border-r shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label="Node library">
             <div className="sticky top-0 z-10 border-b bg-card p-3">
               <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Nodes</div>
               <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-2">
@@ -288,7 +289,7 @@ export function WorkflowComposer({
             <NodePalette inputs={inputPresets} nodeTypes={visibleNodeTypes} onAddInput={addInput} onAddNode={addNode} />
           </aside>}
 
-          <main className="order-1 flex min-h-0 min-w-0 flex-1 flex-col lg:order-none">
+          <main className="order-1 flex min-h-0 min-w-0 flex-1 flex-col lg:absolute lg:inset-y-0 lg:left-11 lg:right-11 lg:order-none">
             <div className="flex shrink-0 items-center gap-1 border-b bg-card p-2 lg:hidden">
               <Button size="sm" variant={mobilePanel === "palette" ? "secondary" : "ghost"} aria-pressed={mobilePanel === "palette"} onClick={() => setMobilePanel((panel) => panel === "palette" ? null : "palette")}>
                 <PanelLeftOpen className="h-4 w-4" />Nodes
@@ -303,7 +304,7 @@ export function WorkflowComposer({
             <div className="min-h-0 flex-1"><WorkflowCanvas document={document} nodeTypes={nodeTypes} selectedNodeId={selectedNodeId} showMiniMap={showMiniMap} onChange={updateDocument} onSelectNode={selectNode} /></div>
           </main>
 
-          {inspectorVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "w-[330px] border-l" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}>
+          {inspectorVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 right-11 z-20 w-[330px] border-l shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}>
             {selectedNode ? (
               <NodeInspector
                 node={selectedNode}
@@ -332,7 +333,7 @@ export function WorkflowComposer({
             )}
           </aside>}
 
-          <nav className="hidden w-11 shrink-0 flex-col items-center gap-1 border-l bg-card py-2 lg:flex" aria-label="Workflow view tools">
+          <nav className="hidden w-11 flex-col items-center gap-1 border-l bg-card py-2 lg:absolute lg:inset-y-0 lg:right-0 lg:z-30 lg:flex" aria-label="Workflow view tools">
             <Button variant={inspectorOpen ? "secondary" : "ghost"} size="icon" aria-label={inspectorOpen ? "Close inspector" : "Open inspector"} title={inspectorOpen ? "Close inspector" : "Open inspector"} aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>
               {inspectorOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
             </Button>
@@ -357,7 +358,8 @@ export function WorkflowComposer({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    window.document.body,
   );
 }
 

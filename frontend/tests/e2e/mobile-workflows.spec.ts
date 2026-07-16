@@ -58,7 +58,7 @@ const systemDefinitions = [
     code: "custom_draft",
     displayName: "Custom draft",
     description: "Test custom definition.",
-    definitionJson: '{"nodes":[{"id":"select","type":"select_works","displayName":"Select works"}]}',
+    definitionJson: '{"nodes":[{"id":"select","type":"select_works","displayName":"Select works"},{"id":"sync","type":"sync_metadata","displayName":"Sync metadata"}]}',
     scope: "user",
     editable: true,
     ownerUserId: 1,
@@ -202,14 +202,18 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
 });
 
-test("unsupported legacy custom definitions remain linear and explain why they are read-only", async ({ page }) => {
+test("legacy custom definitions remain read-only while showing their linear connections", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: /Custom draft/ }).click();
   await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
-  await expect(page.getByText("Only Select works to Sync metadata legacy flows can be upgraded safely.", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByText("Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upgrade workflow", exact: true })).toBeDisabled();
+  const legacyCanvas = page.getByLabel("Workflow node canvas");
+  await expect(legacyCanvas).toBeVisible();
+  await expect(legacyCanvas.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(legacyCanvas.locator(".react-flow__handle")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
 });

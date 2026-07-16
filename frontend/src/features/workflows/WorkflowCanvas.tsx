@@ -158,7 +158,7 @@ export function WorkflowCanvas({
   }, [document, onChange, onSelectNode]);
 
   return (
-    <div className={`workflow-canvas workflow-composer-canvas overflow-hidden bg-muted/15 ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`} aria-label={readonly ? "Workflow DAG canvas" : "Workflow composer canvas"}>
+    <div className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`} aria-label={readonly ? "Workflow DAG canvas" : "Workflow composer canvas"}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -191,7 +191,7 @@ export function WorkflowCanvas({
         onlyRenderVisibleElements
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={24} size={1} />
+        <Background gap={24} size={1} color="hsl(var(--workflow-grid))" />
         {connectionNotice && (
           <Panel position="top-center" className="pointer-events-none rounded-md border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm" aria-live="polite">
             {connectionNotice}
@@ -205,7 +205,7 @@ export function WorkflowCanvas({
           maskColor="hsl(var(--muted) / 0.6)"
           nodeColor="hsl(var(--muted-foreground) / 0.7)"
         />}
-        <Controls showInteractive={false} position="bottom-right" />
+        <Controls showInteractive={false} position={readonly ? "bottom-right" : "bottom-center"} />
       </ReactFlow>
     </div>
   );
