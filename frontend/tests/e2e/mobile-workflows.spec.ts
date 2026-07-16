@@ -214,6 +214,9 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await expect(legacyCanvas).toBeVisible();
   await expect(legacyCanvas.locator(".react-flow__edge")).toHaveCount(1);
   await expect(legacyCanvas.locator(".react-flow__handle")).toHaveCount(2);
+  await expect(legacyCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
+  await legacyCanvas.getByRole("button", { name: "Show minimap" }).click();
+  await expect(legacyCanvas.getByLabel("Workflow minimap")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
 });

@@ -260,6 +260,15 @@
     box-shadow: none;
   }
 
+  .workflow-canvas .workflow-viewport-controls,
+  .workflow-canvas .workflow-viewport-minimap {
+    transition: right 160ms ease;
+  }
+
+  .workflow-canvas .workflow-minimap-toggle svg {
+    fill: none;
+  }
+
   .workflow-composer-shell {
     background: hsl(var(--workflow-shell));
   }

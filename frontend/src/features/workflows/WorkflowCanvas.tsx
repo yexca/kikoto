@@ -2,10 +2,8 @@ import {
   applyNodeChanges,
   Background,
   ConnectionMode,
-  Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Panel,
   Position,
   ReactFlow,
@@ -31,6 +29,7 @@ import {
   workflowNodePorts,
   wouldCreateWorkflowCycle,
 } from "@/features/workflows/definitionModel";
+import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import type { WorkflowNodeType } from "@/lib/api";
 
 type WorkflowCanvasNodeData = Record<string, unknown> & {
@@ -48,7 +47,7 @@ export function WorkflowCanvas({
   selectedNodeId,
   readonly = false,
   compact = false,
-  showMiniMap = true,
+  viewportRightInset = 0,
   onChange,
   onSelectNode,
 }: {
@@ -57,7 +56,7 @@ export function WorkflowCanvas({
   selectedNodeId: string;
   readonly?: boolean;
   compact?: boolean;
-  showMiniMap?: boolean;
+  viewportRightInset?: number;
   onChange: (document: WorkflowDefinitionDocument) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
@@ -197,15 +196,7 @@ export function WorkflowCanvas({
             {connectionNotice}
           </Panel>
         )}
-        {showMiniMap && <MiniMap
-          pannable
-          zoomable
-          className="border border-border"
-          bgColor="hsl(var(--card))"
-          maskColor="hsl(var(--muted) / 0.6)"
-          nodeColor="hsl(var(--muted-foreground) / 0.7)"
-        />}
-        <Controls showInteractive={false} position={readonly ? "bottom-right" : "bottom-center"} />
+        <WorkflowViewportTools compact={compact} rightInset={viewportRightInset} />
       </ReactFlow>
     </div>
   );

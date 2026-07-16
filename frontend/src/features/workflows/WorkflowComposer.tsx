@@ -6,7 +6,6 @@ import {
   Download,
   Filter,
   GitBranch,
-  Map as MapIcon,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -46,6 +45,8 @@ import {
 } from "@/features/workflows/definitionModel";
 import { workflowCommandUsage } from "@/features/workflows/workflowCommands";
 import { api, type LibrarySource, type WorkflowDefinition, type WorkflowNodeType, type WorkflowTrigger } from "@/lib/api";
+
+const WORKFLOW_INSPECTOR_WIDTH = 330;
 
 const inputPresets: Array<{ type: WorkflowInputType; label: string; key: string }> = [
   { type: "text", label: "Text input", key: "text" },
@@ -87,7 +88,6 @@ export function WorkflowComposer({
   const [paletteOpen, setPaletteOpen] = useState(!definition);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"palette" | "inspector" | null>(null);
-  const [showMiniMap, setShowMiniMap] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -297,14 +297,20 @@ export function WorkflowComposer({
               <Button size="sm" variant={mobilePanel === "inspector" ? "secondary" : "ghost"} aria-pressed={mobilePanel === "inspector"} onClick={() => setMobilePanel((panel) => panel === "inspector" ? null : "inspector")}>
                 <PanelRightOpen className="h-4 w-4" />{selectedNode ? "Node" : "Workflow"}
               </Button>
-              <Button size="icon" variant={showMiniMap ? "secondary" : "ghost"} className="ml-auto" aria-label={showMiniMap ? "Hide minimap" : "Show minimap"} title={showMiniMap ? "Hide minimap" : "Show minimap"} aria-pressed={showMiniMap} onClick={() => setShowMiniMap((visible) => !visible)}>
-                <MapIcon className="h-4 w-4" />
-              </Button>
             </div>
-            <div className="min-h-0 flex-1"><WorkflowCanvas document={document} nodeTypes={nodeTypes} selectedNodeId={selectedNodeId} showMiniMap={showMiniMap} onChange={updateDocument} onSelectNode={selectNode} /></div>
+            <div className="min-h-0 flex-1">
+              <WorkflowCanvas
+                document={document}
+                nodeTypes={nodeTypes}
+                selectedNodeId={selectedNodeId}
+                viewportRightInset={wideLayout && inspectorVisible ? WORKFLOW_INSPECTOR_WIDTH : 0}
+                onChange={updateDocument}
+                onSelectNode={selectNode}
+              />
+            </div>
           </main>
 
-          {inspectorVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 right-11 z-20 w-[330px] border-l shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}>
+          {inspectorVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "absolute inset-y-0 right-11 z-20 border-l shadow-xl" : "max-h-[38vh] min-h-48 w-full border-t"}`} style={wideLayout ? { width: WORKFLOW_INSPECTOR_WIDTH } : undefined} aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}>
             {selectedNode ? (
               <NodeInspector
                 node={selectedNode}
@@ -336,9 +342,6 @@ export function WorkflowComposer({
           <nav className="hidden w-11 flex-col items-center gap-1 border-l bg-card py-2 lg:absolute lg:inset-y-0 lg:right-0 lg:z-30 lg:flex" aria-label="Workflow view tools">
             <Button variant={inspectorOpen ? "secondary" : "ghost"} size="icon" aria-label={inspectorOpen ? "Close inspector" : "Open inspector"} title={inspectorOpen ? "Close inspector" : "Open inspector"} aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>
               {inspectorOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-            </Button>
-            <Button variant={showMiniMap ? "secondary" : "ghost"} size="icon" aria-label={showMiniMap ? "Hide minimap" : "Show minimap"} title={showMiniMap ? "Hide minimap" : "Show minimap"} aria-pressed={showMiniMap} onClick={() => setShowMiniMap((visible) => !visible)}>
-              <MapIcon className="h-4 w-4" />
             </Button>
           </nav>
         </div>

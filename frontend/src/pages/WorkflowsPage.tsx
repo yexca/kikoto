@@ -23,7 +23,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
-  Controls,
   Handle,
   MarkerType,
   Position,
@@ -43,6 +42,7 @@ import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
 import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
+import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
@@ -1978,7 +1978,7 @@ function WorkflowNodeCanvas({ nodes, onNodeClick, onNodeDoubleClick, compact = f
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} color="hsl(var(--workflow-grid))" />
-        <Controls showInteractive={false} position="bottom-right" />
+        <WorkflowViewportTools compact={compact} />
       </ReactFlow>
     </div>
   );
