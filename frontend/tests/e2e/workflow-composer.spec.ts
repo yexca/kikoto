@@ -65,11 +65,13 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await expect(composer).toBeVisible();
   await expect(page.getByLabel("Workflow composer canvas")).toBeVisible();
   await expect(composer.locator(".react-flow__node", { hasText: "Fetch without WAV" })).toBeVisible();
+  await expect(composer.locator('aside[aria-label="Node library"]')).toHaveCount(0);
 
   await composer.locator(".react-flow__node", { hasText: "Check availability" }).dispatchEvent("click");
   await expect(page.getByLabel("Delete selected node")).toBeVisible();
   await expect(page.getByLabel("Remote source")).toHaveValue("8");
   await expect(page.getByLabel("Remote source").getByRole("option", { name: "Local Library" })).toHaveCount(0);
+  await composer.getByRole("button", { name: "Open node library" }).click();
   await page.getByRole("button", { name: /Tag works/ }).click();
   await expect(composer.locator(".react-flow__node", { hasText: "Tag works" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("workflow-composer.png"), fullPage: true });
@@ -113,6 +115,7 @@ test("mobile composer keeps node creation, canvas, inspector, and actions in bou
   await expect(composer.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(composer.getByRole("button", { name: "Save" })).toBeVisible();
   await expect(composer.getByRole("button", { name: "Close workflow composer" })).toBeVisible();
+  await composer.getByRole("button", { name: "Nodes", exact: true }).click();
   await expect(composer.getByRole("button", { name: "Circle input", exact: true })).toBeVisible();
   await expect(composer.getByLabel("Workflow composer canvas")).toBeVisible();
 
@@ -150,6 +153,7 @@ test("commits node positions after dragging and connects ports from either direc
   await page.mouse.up();
   await expect.poll(async () => (await draggedNode.boundingBox())?.x).toBeGreaterThan(initialBounds!.x + 50);
 
+  await composer.getByRole("button", { name: "Open node library" }).click();
   await composer.getByRole("button", { name: /^Tag works/ }).click();
   await composer.locator(".react-flow__controls-fitview").click();
   const targetHandle = composer.locator('.react-flow__node[data-id="tag_works"] .react-flow__handle.target[data-handleid="works"]');
@@ -171,6 +175,23 @@ test("commits node positions after dragging and connects ports from either direc
   const savedDocument = JSON.parse(savedDefinitions[0].definitionJson) as typeof workflowDocument;
   expect(savedDocument.nodes.find((node) => node.id === "circle_catalog")?.position).not.toEqual({ x: 290, y: 120 });
   expect(savedDocument.edges).toContainEqual(edge("fetch", "completed", "tag_works", "works"));
+});
+
+test("deletes an editable custom workflow after confirmation", async ({ page }) => {
+  let deleteRequests = 0;
+  await mockComposer(page, [], { onDefinitionDeleted: () => { deleteRequests += 1; } });
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: "Edit workflow" }).click();
+
+  const composer = page.getByRole("dialog", { name: "Edit workflow" });
+  await composer.getByRole("button", { name: "Delete workflow" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Delete workflow?" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+
+  await expect.poll(() => deleteRequests).toBe(1);
+  await expect(composer).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Circle fetch demo/ })).toHaveCount(0);
 });
 
 test("keeps a direct Quick Action open while confirmation is in flight", async ({ page }) => {
@@ -205,6 +226,7 @@ type MockComposerOptions = {
   confirmationGate?: Promise<void>;
   onConfirmationStarted?: () => void;
   onDefinitionSaved?: (payload: { definitionJson: string }) => void;
+  onDefinitionDeleted?: () => void;
 };
 
 async function mockComposer(page: Page, runRequests: unknown[], options: MockComposerOptions = {}) {
@@ -212,10 +234,11 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
     ? { ...workflowDocument, command: { enabled: true, alias: "runCircle" }, policy: { requirePreview: false } }
     : workflowDocument;
   const activeDefinition = { ...definition, definitionJson: JSON.stringify(activeDocument) };
+  let definitionDeleted = false;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return route.fulfill({ json: { authenticated: true, user: { id: 1, username: "admin", displayName: "Admin", role: "super_admin", permissions: ["system:admin"], devMode: true } } });
-    if (url.pathname === "/api/workflow-definitions") return route.fulfill({ json: [activeDefinition, foreignDefinition] });
+    if (url.pathname === "/api/workflow-definitions") return route.fulfill({ json: definitionDeleted ? [foreignDefinition] : [activeDefinition, foreignDefinition] });
     if (url.pathname === "/api/workflow-node-types") return route.fulfill({ json: nodeTypes });
     if (url.pathname === "/api/workflow-triggers") return route.fulfill({ json: [] });
     if (url.pathname === "/api/library-sources") return route.fulfill({ json: [
@@ -226,6 +249,11 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
       const payload = route.request().postDataJSON() as { definitionJson: string };
       options.onDefinitionSaved?.(payload);
       return route.fulfill({ json: { ...activeDefinition, ...payload } });
+    }
+    if (url.pathname === "/api/workflow-definitions/42" && route.request().method() === "DELETE") {
+      definitionDeleted = true;
+      options.onDefinitionDeleted?.();
+      return route.fulfill({ json: { ok: true } });
     }
     if (url.pathname === "/api/workflow-runs") return route.fulfill({ json: { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0 } });
     if (url.pathname === "/api/workflow-definitions/42/runs") {

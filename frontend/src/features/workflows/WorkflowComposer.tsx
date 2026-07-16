@@ -6,6 +6,11 @@ import {
   Download,
   Filter,
   GitBranch,
+  Map as MapIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Save,
   Search,
@@ -49,11 +54,13 @@ export function WorkflowComposer({
   definition,
   nodeTypes,
   onClose,
+  onDeleted,
   onSaved,
 }: {
   definition: WorkflowDefinition | null;
   nodeTypes: WorkflowNodeType[];
   onClose: () => void;
+  onDeleted?: () => void;
   onSaved: (definition: WorkflowDefinition) => void;
 }) {
   const parsed = definition ? parseWorkflowDefinition(definition.definitionJson) : null;
@@ -64,14 +71,23 @@ export function WorkflowComposer({
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [paletteQuery, setPaletteQuery] = useState("");
   const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(!definition);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<"palette" | "inspector" | null>(null);
+  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const wideLayout = useIsWideLayout();
   const selectedNode = document.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const issues = useMemo(() => validateWorkflowDefinition(document, nodeTypes), [document, nodeTypes]);
   const errors = issues.filter((issue) => issue.level === "error");
   const visibleNodeTypes = useMemo(() => nodeTypes
     .filter((nodeType) => nodeType.type !== "workflow_input" && nodeType.userVisible && (nodeType.composite || isBusinessNodeType(nodeType.type)))
     .filter((nodeType) => `${nodeType.displayName} ${nodeType.description}`.toLowerCase().includes(paletteQuery.trim().toLowerCase())), [nodeTypes, paletteQuery]);
+  const paletteVisible = wideLayout ? paletteOpen : mobilePanel === "palette";
+  const inspectorVisible = wideLayout ? inspectorOpen : mobilePanel === "inspector";
 
   useEffect(() => {
     api.listLibrarySources().then((nextSources) => {
@@ -109,6 +125,7 @@ export function WorkflowComposer({
       }],
     });
     setSelectedNodeId(nodeId);
+    openInspectorPanel();
   };
 
   const addNode = (metadata: WorkflowNodeType) => {
@@ -127,6 +144,20 @@ export function WorkflowComposer({
     };
     setDocument({ ...document, nodes: [...document.nodes, nextNode] });
     setSelectedNodeId(id);
+    openInspectorPanel();
+  };
+
+  const openInspectorPanel = () => {
+    if (wideLayout) {
+      setInspectorOpen(true);
+      return;
+    }
+    setMobilePanel("inspector");
+  };
+
+  const selectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    if (nodeId) openInspectorPanel();
   };
 
   const updateNode = (nodeId: string, patch: Partial<WorkflowNodeDefinition>) => {
@@ -162,6 +193,21 @@ export function WorkflowComposer({
     }
   };
 
+  const removeDefinition = async () => {
+    if (!definition?.editable || definition.scope !== "user") return;
+    setDeleting(true);
+    setError("");
+    try {
+      await api.deleteWorkflowDefinition(definition.id);
+      onDeleted?.();
+    } catch (cause) {
+      setConfirmingDelete(false);
+      setError(cause instanceof Error ? cause.message : "Workflow could not be deleted.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (parsed?.kind === "legacy") return null;
 
   return (
@@ -178,6 +224,11 @@ export function WorkflowComposer({
             <span>{document.edges.length} connections</span>
             {errors.length > 0 ? <Badge variant="warning">{errors.length} errors</Badge> : <Badge variant="secondary">Ready</Badge>}
           </div>
+          {definition?.editable && definition.scope === "user" && (
+            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label="Delete workflow" title="Delete workflow" onClick={() => setConfirmingDelete(true)} disabled={saving || deleting}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={() => void save()} disabled={saving || errors.length > 0 || !displayName.trim()}>
             <Save className="h-4 w-4" />{saving ? "Saving" : "Save"}
@@ -185,8 +236,14 @@ export function WorkflowComposer({
           <Button variant="ghost" size="icon" aria-label="Close workflow composer" onClick={onClose}><X className="h-4 w-4" /></Button>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(12rem,38vh)] lg:grid-cols-[220px_minmax(0,1fr)_330px] lg:grid-rows-1">
-          <aside className="app-scroll hidden min-h-0 overflow-y-auto border-r bg-card lg:block">
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <nav className="hidden w-11 shrink-0 flex-col items-center gap-1 border-r bg-card py-2 lg:flex" aria-label="Workflow canvas tools">
+            <Button variant={paletteOpen ? "secondary" : "ghost"} size="icon" aria-label={paletteOpen ? "Close node library" : "Open node library"} title={paletteOpen ? "Close node library" : "Open node library"} aria-pressed={paletteOpen} onClick={() => setPaletteOpen((open) => !open)}>
+              {paletteOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </Button>
+          </nav>
+
+          {paletteVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "w-60 border-r" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label="Node library">
             <div className="sticky top-0 z-10 border-b bg-card p-3">
               <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Nodes</div>
               <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-2">
@@ -195,17 +252,24 @@ export function WorkflowComposer({
               </label>
             </div>
             <NodePalette inputs={inputPresets} nodeTypes={visibleNodeTypes} onAddInput={addInput} onAddNode={addNode} />
-          </aside>
+          </aside>}
 
-          <main className="flex min-h-0 min-w-0 flex-col">
-            <div className="app-scroll flex shrink-0 gap-2 overflow-x-auto border-b bg-card p-2 lg:hidden">
-              {inputPresets.map((input) => <Button key={input.type} size="sm" variant="outline" className="shrink-0" onClick={() => addInput(input)}><Type className="h-3.5 w-3.5" />{input.label}</Button>)}
-              {visibleNodeTypes.map((nodeType) => <Button key={nodeType.type} size="sm" variant="outline" className="shrink-0" onClick={() => addNode(nodeType)}>{paletteIcon(nodeType.type)}{nodeType.displayName}</Button>)}
+          <main className="order-1 flex min-h-0 min-w-0 flex-1 flex-col lg:order-none">
+            <div className="flex shrink-0 items-center gap-1 border-b bg-card p-2 lg:hidden">
+              <Button size="sm" variant={mobilePanel === "palette" ? "secondary" : "ghost"} aria-pressed={mobilePanel === "palette"} onClick={() => setMobilePanel((panel) => panel === "palette" ? null : "palette")}>
+                <PanelLeftOpen className="h-4 w-4" />Nodes
+              </Button>
+              <Button size="sm" variant={mobilePanel === "inspector" ? "secondary" : "ghost"} aria-pressed={mobilePanel === "inspector"} onClick={() => setMobilePanel((panel) => panel === "inspector" ? null : "inspector")}>
+                <PanelRightOpen className="h-4 w-4" />{selectedNode ? "Node" : "Workflow"}
+              </Button>
+              <Button size="icon" variant={showMiniMap ? "secondary" : "ghost"} className="ml-auto" aria-label={showMiniMap ? "Hide minimap" : "Show minimap"} title={showMiniMap ? "Hide minimap" : "Show minimap"} aria-pressed={showMiniMap} onClick={() => setShowMiniMap((visible) => !visible)}>
+                <MapIcon className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="min-h-0 flex-1"><WorkflowCanvas document={document} nodeTypes={nodeTypes} selectedNodeId={selectedNodeId} onChange={updateDocument} onSelectNode={setSelectedNodeId} /></div>
+            <div className="min-h-0 flex-1"><WorkflowCanvas document={document} nodeTypes={nodeTypes} selectedNodeId={selectedNodeId} showMiniMap={showMiniMap} onChange={updateDocument} onSelectNode={selectNode} /></div>
           </main>
 
-          <aside className="app-scroll min-h-0 overflow-y-auto border-t bg-card lg:border-l lg:border-t-0">
+          {inspectorVisible && <aside className={`app-scroll order-2 min-h-0 shrink-0 overflow-y-auto bg-card lg:order-none ${wideLayout ? "w-[330px] border-l" : "max-h-[38vh] min-h-48 w-full border-t"}`} aria-label={selectedNode ? "Node inspector" : "Workflow inspector"}>
             {selectedNode ? (
               <NodeInspector
                 node={selectedNode}
@@ -231,10 +295,33 @@ export function WorkflowComposer({
                 onDocumentChange={setDocument}
               />
             )}
-          </aside>
+          </aside>}
+
+          <nav className="hidden w-11 shrink-0 flex-col items-center gap-1 border-l bg-card py-2 lg:flex" aria-label="Workflow view tools">
+            <Button variant={inspectorOpen ? "secondary" : "ghost"} size="icon" aria-label={inspectorOpen ? "Close inspector" : "Open inspector"} title={inspectorOpen ? "Close inspector" : "Open inspector"} aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>
+              {inspectorOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            </Button>
+            <Button variant={showMiniMap ? "secondary" : "ghost"} size="icon" aria-label={showMiniMap ? "Hide minimap" : "Show minimap"} title={showMiniMap ? "Hide minimap" : "Show minimap"} aria-pressed={showMiniMap} onClick={() => setShowMiniMap((visible) => !visible)}>
+              <MapIcon className="h-4 w-4" />
+            </Button>
+          </nav>
         </div>
         {error && <div className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
       </div>
+      {confirmingDelete && definition && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-background/75 p-4" onMouseDown={() => !deleting && setConfirmingDelete(false)}>
+          <div className="w-full max-w-md rounded-md border bg-card p-5 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="delete-workflow-title" onMouseDown={(event) => event.stopPropagation()}>
+            <h2 id="delete-workflow-title" className="text-base font-semibold">Delete workflow?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Delete “{definition.displayName}”? Its definition and Quick Action will be removed. Existing run history is kept.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)} disabled={deleting}>Cancel</Button>
+              <Button size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void removeDefinition()} disabled={deleting}>
+                <Trash2 className="h-4 w-4" />{deleting ? "Deleting" : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -276,7 +363,7 @@ function PaletteGroup({ label, children }: { label: string; children: React.Reac
 
 function PaletteButton({ label, description, icon, onClick }: { label: string; description: string; icon: React.ReactNode; onClick: () => void }) {
   return (
-    <button className="flex w-full items-start gap-2 rounded-md border bg-background px-2.5 py-2 text-left hover:border-primary/50 hover:bg-muted/50" onClick={onClick} title={description}>
+    <button className="flex w-full items-start gap-2 rounded-md border bg-background px-2.5 py-2 text-left hover:border-primary/50 hover:bg-muted/50" onClick={onClick} aria-label={label} title={description}>
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0"><span className="block truncate text-xs font-medium">{label}</span><span className="block truncate text-[10px] text-muted-foreground">{description}</span></span>
     </button>
@@ -445,6 +532,17 @@ function InspectorField({ label, children }: { label: string; children: React.Re
 }
 
 const inputClass = "h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60";
+
+function useIsWideLayout() {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
 
 function createStarterDocument(nodeTypes: WorkflowNodeType[]) {
   const document = createEmptyWorkflowDefinition();

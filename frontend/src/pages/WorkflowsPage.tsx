@@ -614,6 +614,15 @@ export function WorkflowsPage({
           definition={selectedDefinition}
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
+          onDeleted={() => {
+            const deletedID = selectedDefinition.id;
+            const deletedName = selectedDefinition.displayName;
+            setDefinitions((current) => current.filter((definition) => definition.id !== deletedID));
+            setSelectedDefinitionIDs((current) => ({ ...current, definitions: null }));
+            setModalMode(null);
+            refresh();
+            toast.success(`${deletedName} deleted.`);
+          }}
           onSaved={(definition) => {
             selectDefinition(definition);
             setModalMode(null);

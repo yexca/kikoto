@@ -17,9 +17,10 @@ import {
   type NodeChange,
   type OnNodeDrag,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import { Braces, CircleDot, Download, Filter, GitBranch, Tags, Type, Workflow } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import {
   canConnectWorkflowPorts,
@@ -47,6 +48,7 @@ export function WorkflowCanvas({
   selectedNodeId,
   readonly = false,
   compact = false,
+  showMiniMap = true,
   onChange,
   onSelectNode,
 }: {
@@ -55,16 +57,29 @@ export function WorkflowCanvas({
   selectedNodeId: string;
   readonly?: boolean;
   compact?: boolean;
+  showMiniMap?: boolean;
   onChange: (document: WorkflowDefinitionDocument) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [connectionNotice, setConnectionNotice] = useState("");
   const [flowNodes, setFlowNodes] = useState<WorkflowCanvasNode[]>(() => reconcileFlowNodes([], document, nodeTypes, selectedNodeId));
+  const flowInstance = useRef<ReactFlowInstance<WorkflowCanvasNode, Edge> | null>(null);
+  const previousNodeCount = useRef(document.nodes.length);
 
   useEffect(() => {
     setFlowNodes((current) => reconcileFlowNodes(current, document, nodeTypes, selectedNodeId));
   }, [document.inputs, document.nodes, nodeTypes, selectedNodeId]);
+
+  useEffect(() => {
+    const nodeAdded = document.nodes.length > previousNodeCount.current;
+    previousNodeCount.current = document.nodes.length;
+    if (!nodeAdded || !selectedNodeId) return;
+    const frame = window.requestAnimationFrame(() => {
+      void flowInstance.current?.fitView({ nodes: [{ id: selectedNodeId }], padding: 0.8, maxZoom: 1, duration: 180 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [document.nodes.length, selectedNodeId]);
 
   useEffect(() => {
     if (!connectionNotice) return;
@@ -148,6 +163,7 @@ export function WorkflowCanvas({
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={workflowEditorNodeTypes}
+        onInit={(instance) => { flowInstance.current = instance; }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -168,7 +184,7 @@ export function WorkflowCanvas({
         deleteKeyCode={readonly ? null : ["Backspace", "Delete"]}
         fitView
         fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
-        minZoom={0.35}
+        minZoom={0.2}
         maxZoom={1.6}
         snapToGrid
         snapGrid={[16, 16]}
@@ -181,14 +197,14 @@ export function WorkflowCanvas({
             {connectionNotice}
           </Panel>
         )}
-        <MiniMap
+        {showMiniMap && <MiniMap
           pannable
           zoomable
-          className="hidden border border-border lg:block"
+          className="border border-border"
           bgColor="hsl(var(--card))"
           maskColor="hsl(var(--muted) / 0.6)"
           nodeColor="hsl(var(--muted-foreground) / 0.7)"
-        />
+        />}
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
     </div>
