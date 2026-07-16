@@ -87,6 +87,35 @@ type customWorkflowGraph struct {
 	TopologicalOrder []string
 }
 
+type customWorkflowRunGraph struct {
+	SchemaVersion int                          `json:"schemaVersion"`
+	Nodes         []customWorkflowRunGraphNode `json:"nodes"`
+	Edges         []customWorkflowRunGraphEdge `json:"edges"`
+}
+
+type customWorkflowRunGraphNode struct {
+	ID          string                       `json:"id"`
+	Type        string                       `json:"type"`
+	DisplayName string                       `json:"displayName"`
+	Position    customWorkflowPosition       `json:"position"`
+	Inputs      []customWorkflowRunGraphPort `json:"inputs"`
+	Outputs     []customWorkflowRunGraphPort `json:"outputs"`
+}
+
+type customWorkflowRunGraphPort struct {
+	ID       string `json:"id"`
+	DataType string `json:"dataType"`
+}
+
+type customWorkflowRunGraphEdge struct {
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	SourceHandle string `json:"sourceHandle"`
+	Target       string `json:"target"`
+	TargetHandle string `json:"targetHandle"`
+	DataType     string `json:"dataType"`
+}
+
 type customWorkflowPort struct {
 	ID       string
 	DataType string
@@ -815,6 +844,70 @@ func customNodeOutputPorts(node customWorkflowNode, inputs map[string]customWork
 	return ports
 }
 
+func publicCustomWorkflowRunGraph(graph customWorkflowGraph) customWorkflowRunGraph {
+	inputsByKey := make(map[string]customWorkflowInput, len(graph.Definition.Inputs))
+	for _, input := range graph.Definition.Inputs {
+		inputsByKey[input.Key] = input
+	}
+	result := customWorkflowRunGraph{SchemaVersion: 1, Nodes: []customWorkflowRunGraphNode{}, Edges: []customWorkflowRunGraphEdge{}}
+	for _, node := range graph.Definition.Nodes {
+		runNode := customWorkflowRunGraphNode{
+			ID: node.ID, Type: node.Type, DisplayName: node.DisplayName, Position: node.Position,
+			Inputs: []customWorkflowRunGraphPort{}, Outputs: []customWorkflowRunGraphPort{},
+		}
+		for _, port := range customNodeInputPorts(node) {
+			runNode.Inputs = append(runNode.Inputs, customWorkflowRunGraphPort{ID: port.ID, DataType: port.DataType})
+		}
+		for _, port := range customNodeOutputPorts(node, inputsByKey) {
+			runNode.Outputs = append(runNode.Outputs, customWorkflowRunGraphPort{ID: port.ID, DataType: port.DataType})
+		}
+		result.Nodes = append(result.Nodes, runNode)
+	}
+	for _, edge := range graph.Definition.Edges {
+		dataType := "dynamic"
+		if source, ok := graph.NodesByID[edge.Source]; ok {
+			if port, found := findCustomPort(customNodeOutputPorts(source, inputsByKey), edge.SourceHandle); found {
+				dataType = port.DataType
+			}
+		}
+		result.Edges = append(result.Edges, customWorkflowRunGraphEdge{
+			ID: edge.ID, Source: edge.Source, SourceHandle: edge.SourceHandle,
+			Target: edge.Target, TargetHandle: edge.TargetHandle, DataType: dataType,
+		})
+	}
+	return result
+}
+
+func (s *Server) customWorkflowRunGraphJSON(ctx context.Context, runID int64) (string, error) {
+	var payloadJSON string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT payload_json
+		FROM workflow_job
+		WHERE workflow_run_id = ? AND worker_type = 'custom_workflow'
+		ORDER BY id ASC
+		LIMIT 1
+	`, runID).Scan(&payloadJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "{}", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var payload customWorkflowJobPayload
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		return "{}", nil
+	}
+	graph, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
+	if err != nil {
+		return "{}", nil
+	}
+	encoded, err := json.Marshal(publicCustomWorkflowRunGraph(graph))
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
 func findCustomPort(ports []customWorkflowPort, id string) (customWorkflowPort, bool) {
 	for _, port := range ports {
 		if port.ID == id {
@@ -1511,11 +1604,7 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 			return err
 		}
 		nodeRunID := nodeRunIDs[nodeID]
-		if _, err := s.db.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = 'running', input_json = ?, error_message = '', started_at = COALESCE(started_at, CURRENT_TIMESTAMP), finished_at = NULL
-			WHERE id = ?
-		`, mustJSON(customPortValuesSummary(inputs)), nodeRunID); err != nil {
+		if err := s.startCustomWorkflowNode(ctx, job, nodeRunID, node, inputs); err != nil {
 			return err
 		}
 		var execution customNodeExecution
@@ -1556,11 +1645,7 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 		if execution.Outputs == nil {
 			execution.Outputs = map[string]customPortValue{}
 		}
-		if _, err := s.db.ExecContext(ctx, `
-			UPDATE workflow_node_run
-			SET status = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, status, mustJSON(customPortValuesSummary(execution.Outputs)), nodeRunID); err != nil {
+		if err := s.completeCustomWorkflowNode(ctx, job, nodeRunID, node, status, execution.Outputs); err != nil {
 			return err
 		}
 		checkpoint.Outputs[nodeID] = execution.Outputs
@@ -1572,6 +1657,54 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 		}
 	}
 	return s.finishCustomWorkflowJob(ctx, job, checkpoint, len(graph.TopologicalOrder))
+}
+
+func (s *Server) startCustomWorkflowNode(ctx context.Context, job workflowJobRecord, nodeRunID int64, node customWorkflowNode, inputs map[string]customPortValue) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'running', input_json = ?, error_message = '', started_at = COALESCE(started_at, CURRENT_TIMESTAMP), finished_at = NULL
+		WHERE id = ?
+	`, mustJSON(customPortValuesSummary(inputs)), nodeRunID); err != nil {
+		return err
+	}
+	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		NodeRunID: nodeRunID, JobID: job.ID, Level: "info", Type: "custom_workflow.node_started",
+		Message: node.DisplayName + " started", Detail: map[string]any{"node_id": node.ID, "node_type": node.Type, "status": "running"},
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Server) completeCustomWorkflowNode(ctx context.Context, job workflowJobRecord, nodeRunID int64, node customWorkflowNode, status string, outputs map[string]customPortValue) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = ?, output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, mustJSON(customPortValuesSummary(outputs)), nodeRunID); err != nil {
+		return err
+	}
+	level := "info"
+	if status == "partial" {
+		level = "warn"
+	}
+	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		NodeRunID: nodeRunID, JobID: job.ID, Level: level, Type: "custom_workflow.node_completed",
+		Message: node.DisplayName + " " + status, Detail: map[string]any{"node_id": node.ID, "node_type": node.Type, "status": status},
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) resumeCustomPendingExecution(ctx context.Context, pending customPendingExecution) (customNodeExecution, bool, error) {
@@ -2839,6 +2972,13 @@ func (s *Server) failCustomWorkflowJob(ctx context.Context, job workflowJobRecor
 		return err
 	}
 	defer tx.Rollback()
+	failedNodeID := ""
+	failedNodeType := ""
+	if failedNodeRunID > 0 {
+		if err := tx.QueryRowContext(ctx, "SELECT node_id, node_type FROM workflow_node_run WHERE id = ? AND workflow_run_id = ?", failedNodeRunID, job.RunID).Scan(&failedNodeID, &failedNodeType); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
 	runResult, err := tx.ExecContext(ctx, `
 		UPDATE workflow_run
 		SET status = 'failed', summary_json = ?, finished_at = CURRENT_TIMESTAMP
@@ -2877,6 +3017,14 @@ func (s *Server) failCustomWorkflowJob(ctx context.Context, job workflowJobRecor
 		WHERE workflow_run_id = ? AND id <> ? AND status IN ('queued', 'running')
 	`, job.RunID, failedNodeRunID); err != nil {
 		return err
+	}
+	if failedNodeRunID > 0 {
+		if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+			NodeRunID: failedNodeRunID, JobID: job.ID, Level: "error", Type: "custom_workflow.node_failed",
+			Message: message, Detail: map[string]any{"node_id": failedNodeID, "node_type": failedNodeType, "status": "failed"},
+		}); err != nil {
+			return err
+		}
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
 		NodeRunID: failedNodeRunID, JobID: job.ID, Level: "error", Type: "custom_workflow.failed",

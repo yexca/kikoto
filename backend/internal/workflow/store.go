@@ -206,7 +206,7 @@ func (s *Store) LoadRunDetail(ctx context.Context, id int64) (RunDetail, error) 
 		return RunDetail{}, err
 	}
 	defer rows.Close()
-	detail := RunDetail{RunRecord: run, NodeRuns: []NodeRunRecord{}}
+	detail := RunDetail{RunRecord: run, NodeRuns: []NodeRunRecord{}, GraphJSON: "{}"}
 	for rows.Next() {
 		var node NodeRunRecord
 		if err := rows.Scan(&node.ID, &node.NodeID, &node.NodeType, &node.DisplayName, &node.Position, &node.Status, &node.InputJSON, &node.OutputJSON, &node.ErrorMessage, &node.StartedAt, &node.FinishedAt, &node.CreatedAt); err != nil {

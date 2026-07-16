@@ -78,7 +78,8 @@ type CandidateRecord struct {
 
 type RunDetail struct {
 	RunRecord
-	NodeRuns []NodeRunRecord `json:"nodeRuns"`
+	NodeRuns  []NodeRunRecord `json:"nodeRuns"`
+	GraphJSON string          `json:"graphJson"`
 }
 
 type DefinitionRecord struct {

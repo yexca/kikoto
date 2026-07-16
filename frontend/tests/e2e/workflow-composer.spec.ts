@@ -61,6 +61,10 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await expect(page.getByRole("button", { name: /Foreign circle fetch/ })).toBeVisible();
   const previewCanvas = page.getByLabel("Workflow DAG canvas");
   await expect(previewCanvas).toBeVisible();
+  await expect.poll(() => previewCanvas.locator(".workflow-data-edge").count()).toBeGreaterThan(0);
+  await expect(previewCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
+  const previewEdgeColors = await previewCanvas.locator(".react-flow__edge-path").evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+  expect(previewEdgeColors).toContain("rgb(139, 92, 246)");
   await expect(previewCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
   await expect(previewCanvas.getByLabel("Workflow minimap")).toHaveCount(0);
   await previewCanvas.getByRole("button", { name: "Show minimap" }).click();

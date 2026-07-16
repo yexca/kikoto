@@ -133,7 +133,82 @@ func TestCustomWorkflowRunPreviewThenConfirmQueuesRecoverableGraph(t *testing.T)
 	if !strings.Contains(jobPayload.DefinitionJSON, `"schemaVersion": 2`) || jobPayload.UserID != ownerID {
 		t.Fatalf("job payload omitted definition snapshot or actor: %+v", jobPayload)
 	}
+	detailResponse := requestWorkflowResource(t, server.getWorkflowRun, http.MethodGet, confirmResult.RunID, actor, "")
+	if detailResponse.Code != http.StatusOK {
+		t.Fatalf("run detail status = %d, body = %s", detailResponse.Code, detailResponse.Body.String())
+	}
+	var detail struct {
+		GraphJSON string `json:"graphJson"`
+	}
+	if err := json.Unmarshal(detailResponse.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	var runGraph customWorkflowRunGraph
+	if err := json.Unmarshal([]byte(detail.GraphJSON), &runGraph); err != nil {
+		t.Fatal(err)
+	}
+	if runGraph.SchemaVersion != 1 || len(runGraph.Nodes) != 2 || len(runGraph.Edges) != 1 || runGraph.Edges[0].DataType != "work_candidates" {
+		t.Fatalf("run graph = %+v", runGraph)
+	}
+	if strings.Contains(detail.GraphJSON, "excludeExtensions") || strings.Contains(detail.GraphJSON, "maxBytes") {
+		t.Fatalf("run graph leaked node config: %s", detail.GraphJSON)
+	}
 	assertCustomWorkflowAPICount(t, db, "work", 0)
+}
+
+func TestCustomWorkflowExecutionRecordsNodeLifecycleEvents(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-lifecycle-owner")
+	definitionJSON := `{
+		"schemaVersion":2,
+		"nodes":[
+			{"id":"input","type":"input_text","displayName":"Text input","config":{"value":"hello"},"position":{"x":0,"y":40}},
+			{"id":"template","type":"template_text","displayName":"Text template","config":{"template":"{{.Value}} world"},"position":{"x":260,"y":40}}
+		],
+		"edges":[{"id":"input_to_template","source":"input","sourceHandle":"value","target":"template","targetHandle":"value"}],
+		"policy":{"requirePreview":false}
+	}`
+	result, err := db.Exec(`INSERT INTO workflow_definition (code, display_name, description, definition_json, scope, editable, owner_user_id) VALUES ('lifecycle_test', 'Lifecycle test', '', ?, 'user', 1, ?)`, definitionJSON, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitionID, _ := result.LastInsertId()
+	graph, err := validateCustomWorkflowDefinition(definitionJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	runID, err := server.enqueueCustomWorkflow(context.Background(), workflowDefinitionRecord{
+		ID: definitionID, Code: "lifecycle_test", DisplayName: "Lifecycle test", DefinitionJSON: definitionJSON, OwnerUserID: &ownerID,
+	}, graph, ownerID, []string{"workflows:run"}, map[string]any{}, "", customWorkflowEnqueueOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var job workflowJobRecord
+	if err := db.QueryRow(`SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), worker_type, payload_json, checkpoint_json FROM workflow_job WHERE workflow_run_id = ?`, runID).
+		Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.executeCustomWorkflowJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	var started, completed int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'custom_workflow.node_started'`, runID).Scan(&started); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = ? AND event_type = 'custom_workflow.node_completed'`, runID).Scan(&completed); err != nil {
+		t.Fatal(err)
+	}
+	if started != 2 || completed != 2 {
+		t.Fatalf("node lifecycle events = started:%d completed:%d", started, completed)
+	}
+	var runStatus string
+	if err := db.QueryRow(`SELECT status FROM workflow_run WHERE id = ?`, runID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "succeeded" {
+		t.Fatalf("run status = %s", runStatus)
+	}
 }
 
 func TestCustomWorkflowRunEnforcesCapabilityPermissionAndOwnership(t *testing.T) {

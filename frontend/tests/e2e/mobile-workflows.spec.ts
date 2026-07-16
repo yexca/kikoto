@@ -102,6 +102,15 @@ const sampleNodes = [
   { id: 502, nodeId: "tag", nodeType: "assign_user_tags", displayName: "Add user tag", position: 2, status: "running", inputJson: "{}", outputJson: "{}", errorMessage: "", startedAt: "2026-07-14T00:00:05Z", finishedAt: "", createdAt: "2026-07-14T00:00:00Z" },
 ];
 
+const sampleRunGraph = JSON.stringify({
+  schemaVersion: 1,
+  nodes: [
+    { id: "discover", type: "discover_provider_ranking", displayName: "Discover ranking", position: { x: 0, y: 48 }, inputs: [], outputs: [{ id: "works", dataType: "work_candidates" }] },
+    { id: "tag", type: "assign_user_tags", displayName: "Add user tag", position: { x: 250, y: 48 }, inputs: [{ id: "works", dataType: "work_candidates" }], outputs: [] },
+  ],
+  edges: [{ id: "discover_to_tag", source: "discover", sourceHandle: "works", target: "tag", targetHandle: "works", dataType: "work_candidates" }],
+});
+
 async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) => void) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -134,7 +143,7 @@ async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) =>
       return;
     }
     if (url.pathname === "/api/workflow-runs/51") {
-      await route.fulfill({ json: { ...sampleRun, nodeRuns: sampleNodes } });
+      await route.fulfill({ json: { ...sampleRun, nodeRuns: sampleNodes, graphJson: sampleRunGraph } });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51/events") {
@@ -227,7 +236,14 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
 
   await expect(page.getByText("Summary", { exact: true })).toBeVisible();
   await expect(page.getByText("Execution", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  const executionCanvas = page.getByLabel("Workflow node canvas");
+  await expect(executionCanvas).toBeVisible();
+  await executionCanvas.scrollIntoViewIfNeeded();
+  await expect(executionCanvas.locator(".react-flow__edge")).toHaveCount(1);
+  await expect(executionCanvas.locator(".workflow-data-edge--active")).toHaveCount(1);
+  await expect(executionCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
+  await expect(executionCanvas.locator('.react-flow__node[data-id="tag"] .workflow-run-node--running')).toBeVisible();
+  await expect(executionCanvas.locator(".react-flow__edge-path")).toHaveCSS("stroke", "rgb(139, 92, 246)");
   await expect(page.getByText("Node logs", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Tagging works", { exact: true })).toBeVisible();

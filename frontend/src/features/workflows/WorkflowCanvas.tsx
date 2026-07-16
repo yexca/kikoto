@@ -3,7 +3,6 @@ import {
   Background,
   ConnectionMode,
   Handle,
-  MarkerType,
   Panel,
   Position,
   ReactFlow,
@@ -30,6 +29,7 @@ import {
   wouldCreateWorkflowCycle,
 } from "@/features/workflows/definitionModel";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
+import { workflowDataTypeColor, workflowEdgeClassName } from "@/features/workflows/workflowVisuals";
 import type { WorkflowNodeType } from "@/lib/api";
 
 type WorkflowCanvasNodeData = Record<string, unknown> & {
@@ -86,13 +86,20 @@ export function WorkflowCanvas({
     return () => window.clearTimeout(timeout);
   }, [connectionNotice]);
 
-  const flowEdges = useMemo<Edge[]>(() => document.edges.map((edge) => ({
-    ...edge,
-    type: "smoothstep",
-    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-    style: { strokeWidth: 1.6 },
-    selected: edge.id === selectedEdgeId,
-  })), [document.edges, selectedEdgeId]);
+  const flowEdges = useMemo<Edge[]>(() => document.edges.map((edge) => {
+    const sourceNode = document.nodes.find((node) => node.id === edge.source);
+    const sourcePort = sourceNode
+      ? workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === edge.sourceHandle)
+      : null;
+    const color = workflowDataTypeColor(sourcePort?.type);
+    return {
+      ...edge,
+      type: "bezier",
+      className: workflowEdgeClassName("idle"),
+      style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
+      selected: edge.id === selectedEdgeId,
+    };
+  }), [document, nodeTypes, selectedEdgeId]);
 
   const connectionIssue = useCallback((connection: Connection | Edge) => workflowConnectionIssue(document, nodeTypes, connection), [document, nodeTypes]);
   const isValidConnection = useCallback((connection: Connection | Edge) => connectionIssue(connection) === "", [connectionIssue]);
@@ -179,7 +186,7 @@ export function WorkflowCanvas({
         nodesDraggable={!readonly}
         nodesConnectable={!readonly}
         edgesReconnectable={false}
-        defaultEdgeOptions={{ type: "smoothstep" }}
+        defaultEdgeOptions={{ type: "bezier" }}
         deleteKeyCode={readonly ? null : ["Backspace", "Delete"]}
         fitView
         fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
@@ -228,7 +235,7 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
                 type="target"
                 position={Position.Left}
                 className="workflow-port-handle"
-                style={{ top: 70 + index * 28, "--workflow-port-color": portColor(port.type) } as CSSProperties}
+                style={{ top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties}
                 aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} input`}
               />
               <span className="truncate text-muted-foreground">{port.label}</span>
@@ -244,7 +251,7 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
                 type="source"
                 position={Position.Right}
                 className="workflow-port-handle"
-                style={{ top: 70 + index * 28, "--workflow-port-color": portColor(port.type) } as CSSProperties}
+                style={{ top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties}
                 aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} output`}
               />
             </div>
@@ -324,13 +331,4 @@ function nodeIcon(type: string) {
   if (/template|text/i.test(type)) return Braces;
   if (/select|catalog|discover/i.test(type)) return CircleDot;
   return Workflow;
-}
-
-function portColor(type: string) {
-  if (/circle|series|voice|work_code/.test(type)) return "#0ea5e9";
-  if (/catalog|candidate/.test(type)) return "#8b5cf6";
-  if (/available|presence/.test(type)) return "#10b981";
-  if (/media|file/.test(type)) return "#f59e0b";
-  if (/error|failed/.test(type)) return "#ef4444";
-  return "#64748b";
 }

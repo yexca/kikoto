@@ -630,8 +630,38 @@ export type WorkflowNodeRun = {
   createdAt: string;
 };
 
+export type WorkflowRunGraphPort = {
+  id: string;
+  dataType: string;
+};
+
+export type WorkflowRunGraphNode = {
+  id: string;
+  type: string;
+  displayName: string;
+  position: { x: number; y: number };
+  inputs: WorkflowRunGraphPort[];
+  outputs: WorkflowRunGraphPort[];
+};
+
+export type WorkflowRunGraphEdge = {
+  id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+  dataType: string;
+};
+
+export type WorkflowRunGraph = {
+  schemaVersion: 1;
+  nodes: WorkflowRunGraphNode[];
+  edges: WorkflowRunGraphEdge[];
+};
+
 export type WorkflowRunDetail = WorkflowRun & {
   nodeRuns: WorkflowNodeRun[];
+  graphJson: string;
 };
 
 export type WorkflowEvent = {

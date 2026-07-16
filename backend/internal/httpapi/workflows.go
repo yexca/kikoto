@@ -720,6 +720,12 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	graphJSON, err := s.customWorkflowRunGraphJSON(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	detail.GraphJSON = graphJSON
 	writeJSON(w, http.StatusOK, detail)
 }
 
