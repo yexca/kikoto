@@ -31,12 +31,24 @@ type localCandidateCleanupResult struct {
 }
 
 type workflowNodeTypeRecord struct {
-	Type         string `json:"type"`
-	Phase        string `json:"phase"`
-	DisplayName  string `json:"displayName"`
-	Description  string `json:"description"`
-	UserVisible  bool   `json:"userVisible"`
-	ConfigSchema string `json:"configSchema"`
-	InputSchema  string `json:"inputSchema"`
-	OutputSchema string `json:"outputSchema"`
+	Type                string                   `json:"type"`
+	Phase               string                   `json:"phase"`
+	DisplayName         string                   `json:"displayName"`
+	Description         string                   `json:"description"`
+	UserVisible         bool                     `json:"userVisible"`
+	ConfigSchema        string                   `json:"configSchema"`
+	InputSchema         string                   `json:"inputSchema"`
+	OutputSchema        string                   `json:"outputSchema"`
+	InputPorts          []workflowNodePortRecord `json:"inputPorts,omitempty"`
+	OutputPorts         []workflowNodePortRecord `json:"outputPorts,omitempty"`
+	RequiredPermissions []string                 `json:"requiredPermissions,omitempty"`
+	Composite           bool                     `json:"composite,omitempty"`
+}
+
+type workflowNodePortRecord struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Required bool   `json:"required"`
+	Multiple bool   `json:"multiple"`
 }

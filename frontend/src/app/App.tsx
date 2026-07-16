@@ -45,6 +45,7 @@ function AuthenticatedApp() {
   const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const mobileRuntime = useMobileRuntime();
   const toast = useToast();
@@ -119,6 +120,10 @@ function AuthenticatedApp() {
     CapacitorApp.addListener("backButton", async () => {
       if (disposed) return;
       if (commandPaletteOpen) {
+        if (commandPaletteBusy) {
+          toast.info("Workflow request is still being submitted.");
+          return;
+        }
         setCommandPaletteOpen(false);
         return;
       }
@@ -155,7 +160,7 @@ function AuthenticatedApp() {
       disposed = true;
       void CapacitorApp.removeAllListeners();
     };
-  }, [commandPaletteOpen, loginOpen, toast]);
+  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, toast]);
 
   if (auth.isLoading) {
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
@@ -277,6 +282,8 @@ function AuthenticatedApp() {
           onOpenChange={setCommandPaletteOpen}
           hasPermission={auth.hasPermission}
           visibleNavItems={visibleNavItems}
+          currentUserId={auth.user?.id ?? null}
+          onBusyChange={setCommandPaletteBusy}
           onOpenPage={openPage}
           onOpenPath={openPath}
         />

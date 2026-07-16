@@ -2102,6 +2102,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 }
 
 func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code string, triggerReason string) (remoteWorkSyncResult, error) {
+	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2151,7 +2152,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "trigger_reason": triggerReason}
+	runInput := map[string]any{"file_source_id": source.ID, "source_code": source.Code, "work_code": workCode, "requested_work_code": requestedCode, "trigger_reason": triggerReason}
 	runSummary := map[string]any{"remote_work_id": remoteWork.ID, "tracked": true}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_source_sync", "Track remote source", "succeeded", "manual", triggerReason, runInput, runSummary)
 	if err != nil {

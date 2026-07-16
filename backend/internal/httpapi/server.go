@@ -146,6 +146,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-definitions", s.createWorkflowDefinition)
 	mux.HandleFunc("PATCH /api/workflow-definitions/{id}", s.updateWorkflowDefinition)
 	mux.HandleFunc("DELETE /api/workflow-definitions/{id}", s.deleteWorkflowDefinition)
+	mux.HandleFunc("POST /api/workflow-definitions/{id}/runs", s.runCustomWorkflowDefinition)
 	mux.HandleFunc("GET /api/workflow-triggers", s.listWorkflowTriggers)
 	mux.HandleFunc("POST /api/workflow-triggers", s.createWorkflowTrigger)
 	mux.HandleFunc("PATCH /api/workflow-triggers/{id}", s.updateWorkflowTrigger)
@@ -3507,13 +3508,15 @@ func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	page, err := s.workflowStore.ListRuns(r.Context(), workflow.ListRunsOptions{
 		Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 25),
 		View: strings.TrimSpace(r.URL.Query().Get("view")), Status: strings.TrimSpace(r.URL.Query().Get("status")),
 		WorkflowCode: strings.TrimSpace(r.URL.Query().Get("workflowCode")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
+		ViewerUserID: actor.ID, CanViewAll: canViewAllWorkflowRuns(actor),
 	})
 	if err != nil {
 		writeError(w, err)
@@ -3523,7 +3526,8 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	if err := s.ensureSystemWorkflowDefinitions(r.Context()); err != nil {
@@ -3537,15 +3541,20 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	}
 	visible := definitions[:0]
 	for _, definition := range definitions {
-		if definition.Code != "remote_work_save" {
-			visible = append(visible, definition)
+		if definition.Code == "remote_work_save" {
+			continue
 		}
+		if definition.Scope == "user" && !canManageWorkflowDefinition(actor, definition) {
+			continue
+		}
+		visible = append(visible, definition)
 	}
 	writeJSON(w, http.StatusOK, visible)
 }
 
 func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	triggers, err := s.workflowStore.ListTriggers(r.Context())
@@ -3553,7 +3562,24 @@ func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, triggers)
+	definitions, err := s.workflowStore.ListDefinitions(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	visibleDefinitionIDs := make(map[int64]bool, len(definitions))
+	for _, definition := range definitions {
+		if canUseWorkflowDefinition(actor, definition) {
+			visibleDefinitionIDs[definition.ID] = true
+		}
+	}
+	visible := triggers[:0]
+	for _, trigger := range triggers {
+		if visibleDefinitionIDs[trigger.WorkflowDefinitionID] {
+			visible = append(visible, trigger)
+		}
+	}
+	writeJSON(w, http.StatusOK, visible)
 }
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {

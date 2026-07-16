@@ -174,7 +174,24 @@ func (s *Server) listWorkflowNodeTypes(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, workflowNodeTypeRegistry)
+	writeJSON(w, http.StatusOK, mergedWorkflowNodeTypeRecords())
+}
+
+func mergedWorkflowNodeTypeRecords() []workflowNodeTypeRecord {
+	nodeTypes := append([]workflowNodeTypeRecord{}, workflowNodeTypeRegistry...)
+	indexByType := make(map[string]int, len(nodeTypes))
+	for index, record := range nodeTypes {
+		indexByType[record.Type] = index
+	}
+	for _, record := range customWorkflowNodeTypeRecords() {
+		if index, exists := indexByType[record.Type]; exists {
+			nodeTypes[index] = record
+			continue
+		}
+		indexByType[record.Type] = len(nodeTypes)
+		nodeTypes = append(nodeTypes, record)
+	}
+	return nodeTypes
 }
 
 type systemWorkflowSpec struct {
@@ -330,13 +347,16 @@ func (s *Server) createWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := ensureWorkflowCommandAliasAvailableFrom(r.Context(), tx, actor.ID, 0, payload.DefinitionJSON); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
 
 	id, err := insertAndID(r.Context(), tx, `
 		INSERT INTO workflow_definition (
@@ -368,7 +388,8 @@ func (s *Server) createWorkflowDefinition(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -389,6 +410,10 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "system workflow definitions cannot be edited"})
 		return
 	}
+	if !canManageWorkflowDefinition(actor, current) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+		return
+	}
 
 	payload, ok := decodeWorkflowDefinitionPayload(w, r)
 	if !ok {
@@ -399,12 +424,29 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-
-	if _, err := s.db.ExecContext(r.Context(), `
+	ownerID := actor.ID
+	if current.OwnerUserID != nil {
+		ownerID = *current.OwnerUserID
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := ensureWorkflowCommandAliasAvailableFrom(r.Context(), tx, ownerID, current.ID, payload.DefinitionJSON); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE workflow_definition
 		SET display_name = ?, description = ?, definition_json = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND editable = 1
 	`, payload.DisplayName, payload.Description, payload.DefinitionJSON, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -417,12 +459,26 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) deleteWorkflowDefinition(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow definition id"})
+		return
+	}
+	current, err := s.loadWorkflowDefinition(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "editable workflow definition not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if !current.Editable || !canManageWorkflowDefinition(actor, current) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition cannot be deleted"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_definition WHERE id = ? AND editable = 1", id)
@@ -443,7 +499,8 @@ func (s *Server) deleteWorkflowDefinition(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	payload, ok := decodeWorkflowTriggerPayload(w, r)
@@ -454,12 +511,21 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if _, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID); err != nil {
+	definition, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workflow definition not found"})
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	if !canUseWorkflowDefinition(actor, definition) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+		return
+	}
+	if !workflowDefinitionSupportsScheduledTriggers(definition) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom workflow schedules are not executable yet"})
 		return
 	}
 	enabled := true
@@ -492,12 +558,31 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow trigger id"})
+		return
+	}
+	current, err := s.loadWorkflowTrigger(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow trigger not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	currentDefinition, err := s.loadWorkflowDefinition(r.Context(), current.WorkflowDefinitionID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !canUseWorkflowDefinition(actor, currentDefinition) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow trigger belongs to another user"})
 		return
 	}
 	payload, ok := decodeWorkflowTriggerPayload(w, r)
@@ -508,12 +593,21 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if _, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID); err != nil {
+	definition, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workflow definition not found"})
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	if !canUseWorkflowDefinition(actor, definition) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+		return
+	}
+	if !workflowDefinitionSupportsScheduledTriggers(definition) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom workflow schedules are not executable yet"})
 		return
 	}
 	enabled := true
@@ -555,12 +649,31 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow trigger id"})
+		return
+	}
+	current, err := s.loadWorkflowTrigger(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow trigger not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	definition, err := s.loadWorkflowDefinition(r.Context(), current.WorkflowDefinitionID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !canUseWorkflowDefinition(actor, definition) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow trigger belongs to another user"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_trigger WHERE id = ?", id)
@@ -581,12 +694,16 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
+		return
+	}
+	if !s.requireWorkflowRunAccess(w, r, actor, id) {
 		return
 	}
 	detail, err := s.workflowStore.LoadRunDetail(r.Context(), id)
@@ -602,7 +719,8 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -610,12 +728,7 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
 		return
 	}
-	if _, err := s.loadWorkflowRun(r.Context(), id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
-			return
-		}
-		writeError(w, err)
+	if !s.requireWorkflowRunAccess(w, r, actor, id) {
 		return
 	}
 	afterID := int64(0)
@@ -635,7 +748,8 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -643,12 +757,7 @@ func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
 		return
 	}
-	if _, err := s.loadWorkflowRun(r.Context(), id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
-			return
-		}
-		writeError(w, err)
+	if !s.requireWorkflowRunAccess(w, r, actor, id) {
 		return
 	}
 	candidates, err := s.loadWorkflowCandidates(r.Context(), id)
@@ -664,7 +773,8 @@ func (s *Server) loadWorkflowCandidates(ctx context.Context, runID int64) ([]wor
 }
 
 func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -713,6 +823,9 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
+	if !requireWorkflowRunAccessFrom(w, r, tx, actor, runID) {
+		return
+	}
 	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE workflow_candidate
 		SET status = ?, decision_json = ?, updated_at = CURRENT_TIMESTAMP
@@ -755,7 +868,8 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -776,6 +890,9 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be mark_unavailable or delete_files"})
 		return
 	}
+	if !s.requireWorkflowCandidateAccess(w, r, actor, id) {
+		return
+	}
 	result, err := s.runLocalCandidateCleanup(r.Context(), id, payload.Action, payload.LocationIDs)
 	if err != nil {
 		writeError(w, err)
@@ -791,7 +908,8 @@ type archivedFetchRoot struct {
 }
 
 func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -814,6 +932,9 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 	}
 	if request.Action == "delete_archived" && request.Confirm != "DELETE" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "permanent deletion requires DELETE confirmation"})
+		return
+	}
+	if !s.requireWorkflowCandidateAccess(w, r, actor, id) {
 		return
 	}
 	candidate, err := s.loadWorkflowCandidateForCleanup(r.Context(), id)
@@ -1255,7 +1376,8 @@ func eventLevelForCleanupResult(result localCandidateCleanupResult) string {
 }
 
 func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -1276,6 +1398,15 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	allowed, err := canManageWorkflowRun(r.Context(), tx, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !allowed {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 		return
 	}
 	if run.Status != "queued" && run.Status != "running" {
@@ -1332,7 +1463,8 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -1347,6 +1479,15 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	allowed, err := canManageWorkflowRun(r.Context(), s.db, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !allowed {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 		return
 	}
 	if run.Status == "queued" || run.Status == "running" {
@@ -1371,6 +1512,15 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		}
 		newRunID = result.RunID
 	default:
+		allowed, err := s.canRetryCustomWorkflowRun(r.Context(), actor, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if !allowed {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+			return
+		}
 		if err := s.retryFailedWorkflowJob(r.Context(), id); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "this workflow has no recoverable failed job"})
@@ -1397,6 +1547,103 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+type workflowRunOwnershipQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func canViewAllWorkflowRuns(actor currentUser) bool {
+	return missingCustomWorkflowPermission(actor.Permissions, []string{"system:admin"}) == ""
+}
+
+func (s *Server) requireWorkflowRunAccess(w http.ResponseWriter, r *http.Request, actor currentUser, runID int64) bool {
+	return requireWorkflowRunAccessFrom(w, r, s.db, actor, runID)
+}
+
+func requireWorkflowRunAccessFrom(w http.ResponseWriter, r *http.Request, db workflowRunOwnershipQuerier, actor currentUser, runID int64) bool {
+	allowed, err := canManageWorkflowRun(r.Context(), db, actor, runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
+		return false
+	}
+	if err != nil {
+		writeError(w, err)
+		return false
+	}
+	if !allowed {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireWorkflowCandidateAccess(w http.ResponseWriter, r *http.Request, actor currentUser, candidateID int64) bool {
+	var runID int64
+	if err := s.db.QueryRowContext(r.Context(), "SELECT workflow_run_id FROM workflow_candidate WHERE id = ?", candidateID).Scan(&runID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow candidate not found"})
+			return false
+		}
+		writeError(w, err)
+		return false
+	}
+	return s.requireWorkflowRunAccess(w, r, actor, runID)
+}
+
+func canManageWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, actor currentUser, runID int64) (bool, error) {
+	var scope, triggerReason string
+	var ownerUserID, requestedByUserID int64
+	if err := db.QueryRowContext(ctx, `
+		SELECT COALESCE(definition.scope, ''),
+			COALESCE(definition.owner_user_id, 0),
+			COALESCE(CAST(json_extract(run.input_json, '$.requested_by_user_id') AS INTEGER), 0),
+			run.trigger_reason
+		FROM workflow_run AS run
+		LEFT JOIN workflow_definition AS definition ON definition.id = run.workflow_definition_id
+		WHERE run.id = ?
+	`, runID).Scan(&scope, &ownerUserID, &requestedByUserID, &triggerReason); err != nil {
+		return false, err
+	}
+	if canViewAllWorkflowRuns(actor) {
+		return true, nil
+	}
+	if scope != "user" && !(scope == "" && triggerReason == "custom_definition") {
+		return true, nil
+	}
+	return ownerUserID == actor.ID || requestedByUserID == actor.ID, nil
+}
+
+func (s *Server) canRetryCustomWorkflowRun(ctx context.Context, actor currentUser, runID int64) (bool, error) {
+	if missingCustomWorkflowPermission(actor.Permissions, []string{"system:admin"}) == "" {
+		return true, nil
+	}
+	var payloadJSON string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT payload_json
+		FROM workflow_job
+		WHERE workflow_run_id = ? AND status = 'failed' AND recoverable = 1 AND worker_type = 'custom_workflow'
+		ORDER BY id DESC
+		LIMIT 1
+	`, runID).Scan(&payloadJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var payload customWorkflowJobPayload
+	if err := decodeWorkflowJobPayload(payloadJSON, &payload); err != nil {
+		return false, err
+	}
+	if payload.UserID != actor.ID {
+		return false, nil
+	}
+	graph, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
+	if err != nil {
+		return false, err
+	}
+	return missingCustomWorkflowPermission(actor.Permissions, customWorkflowRequiredPermissions(graph)) == "", nil
+}
+
 func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error {
 	var job workflowJobRecord
 	err := s.db.QueryRowContext(ctx, `
@@ -1407,7 +1654,7 @@ func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error 
 			AND worker_type IN (
 				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
 				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup',
-				'media_location_cleanup', 'metadata_family_sync'
+				'media_location_cleanup', 'metadata_family_sync', 'custom_workflow'
 			)
 		ORDER BY id DESC LIMIT 1
 	`, runID).Scan(
@@ -1437,6 +1684,9 @@ func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	if !s.requireWorkflowRunAccess(w, r, user, id) {
 		return
 	}
 	if run.PendingCandidates > 0 {
@@ -1481,10 +1731,11 @@ func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
-	recovered, err := s.markStaleWorkflowRuns(r.Context(), "manual recovery")
+	recovered, err := s.workflowStore.MarkStaleRunsVisibleTo(r.Context(), "manual recovery", actor.ID, canViewAllWorkflowRuns(actor))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1545,6 +1796,19 @@ func validateWorkflowDefinitionPayload(payload workflowDefinitionPayload) error 
 	}
 	if payload.DefinitionJSON == "" {
 		return fmt.Errorf("definition JSON is required")
+	}
+	var versionProbe struct {
+		SchemaVersion int `json:"schemaVersion"`
+	}
+	if err := json.Unmarshal([]byte(payload.DefinitionJSON), &versionProbe); err != nil {
+		return fmt.Errorf("definition JSON is invalid")
+	}
+	if versionProbe.SchemaVersion == customWorkflowSchemaVersion {
+		_, err := validateCustomWorkflowDefinition(payload.DefinitionJSON)
+		return err
+	}
+	if versionProbe.SchemaVersion != 0 {
+		return fmt.Errorf("unsupported workflow schemaVersion: %d", versionProbe.SchemaVersion)
 	}
 	var definition struct {
 		Nodes []struct {

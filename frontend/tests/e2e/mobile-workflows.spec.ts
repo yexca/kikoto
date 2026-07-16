@@ -202,6 +202,18 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
 });
 
+test("legacy custom definitions remain linear and read-only", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: /Custom draft/ }).click();
+  await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
+  await expect(page.getByText("This legacy linear definition remains read-only. New definitions use the typed DAG composer.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
+});
+
 test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/activity?view=completed&run=51");

@@ -38,6 +38,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
+import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
+import { parseWorkflowDefinition, workflowDefinitionNodeCount } from "@/features/workflows/definitionModel";
+import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
@@ -197,6 +201,7 @@ export function WorkflowsPage({
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [isRunsLoading, setIsRunsLoading] = useState(true);
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
+  const [launchDefinition, setLaunchDefinition] = useState<WorkflowDefinition | null>(null);
 
   const refresh = () => {
     setIsWorkflowMetaLoading(true);
@@ -255,6 +260,7 @@ export function WorkflowsPage({
     return definitions.filter((definition) => definition.scope === "user" || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
   }, [definitionView, definitions]);
   const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
+  const schedulableDefinitions = definitions.filter((definition) => definition.scope !== "user" || parseWorkflowDefinition(definition.definitionJson).kind === "legacy");
   const visibleRuns = runs;
   const selectedDefinitionId = selectedDefinitionIds[definitionView];
 
@@ -528,6 +534,7 @@ export function WorkflowsPage({
                   onRunDLsitePopular={runDLsitePopularCollection}
                   recentRuns={recentDefinitionRuns}
                   onOpenRun={openActivityRun}
+                  onRunDefinition={selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
                   emptyText={definitionEmptyText}
                   onEditDefinition={() => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
@@ -591,8 +598,7 @@ export function WorkflowsPage({
       )}
 
       {modalMode === "create-workflow" && (
-        <WorkflowModal
-          title="New workflow"
+        <WorkflowComposer
           definition={null}
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
@@ -603,9 +609,8 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {modalMode === "edit-workflow" && selectedDefinition && (
-        <WorkflowModal
-          title="Edit workflow"
+      {modalMode === "edit-workflow" && selectedDefinition && parseWorkflowDefinition(selectedDefinition.definitionJson).kind === "v2" && (
+        <WorkflowComposer
           definition={selectedDefinition}
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
@@ -630,7 +635,7 @@ export function WorkflowsPage({
       )}
       {modalMode === "create-trigger" && (
         <TriggerModal
-          definitions={definitions}
+          definitions={schedulableDefinitions}
           trigger={null}
           onClose={() => setModalMode(null)}
           onSaved={(trigger) => {
@@ -642,13 +647,24 @@ export function WorkflowsPage({
       )}
       {modalMode === "edit-trigger" && selectedTrigger && (
         <TriggerModal
-          definitions={definitions}
+          definitions={schedulableDefinitions}
           trigger={selectedTrigger}
           onClose={() => setModalMode(null)}
           onSaved={(trigger) => {
             selectTrigger(trigger);
             setModalMode(null);
             refresh();
+          }}
+        />
+      )}
+      {launchDefinition && (
+        <WorkflowRunDialog
+          definition={launchDefinition}
+          onClose={() => setLaunchDefinition(null)}
+          onQueued={(runId) => {
+            setLaunchDefinition(null);
+            window.history.pushState({}, "", `/activity?view=running&run=${runId}`);
+            window.dispatchEvent(new Event("kikoto:navigation"));
           }}
         />
       )}
@@ -756,7 +772,7 @@ function DefinitionListItem({ definition, selected, onSelect }: { definition: Wo
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span>{parseNodes(definition.definitionJson).length} nodes</span>
+        <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
         <span>{definition.triggerCount} triggers</span>
       </div>
     </button>
@@ -988,6 +1004,7 @@ function WorkflowDetail({
   onRunDLsitePopular,
   recentRuns = [],
   onOpenRun,
+  onRunDefinition,
   emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
   onEditTrigger,
@@ -1006,6 +1023,7 @@ function WorkflowDetail({
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
+  onRunDefinition?: () => void;
   emptyText?: string;
   onEditDefinition: () => void;
   onEditTrigger?: () => void;
@@ -1014,7 +1032,9 @@ function WorkflowDetail({
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
-  const nodes = parseNodes(definition.definitionJson);
+  const parsedDefinition = parseWorkflowDefinition(definition.definitionJson);
+  const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
+  const composerEditable = !readonly && parsedDefinition.kind === "v2";
   return (
     <Card>
       <CardContent className="space-y-5 p-5">
@@ -1039,10 +1059,16 @@ function WorkflowDetail({
                 Edit trigger
               </Button>
             )}
-            {!readonly && (
+            {composerEditable && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
                 Edit workflow
+              </Button>
+            )}
+            {onRunDefinition && parsedDefinition.kind === "v2" && (
+              <Button size="sm" onClick={onRunDefinition}>
+                <Play className="h-4 w-4" />
+                Preview / Run
               </Button>
             )}
             {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.filter((kind) => kind !== "dlsite_popular" && kind !== "remote_popular").map((kind) => {
@@ -1082,10 +1108,27 @@ function WorkflowDetail({
               : "This system workflow is read-only and is triggered by application actions."}
           </div>
         )}
+        {definition.scope === "user" && parsedDefinition.kind === "legacy" && (
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            This legacy linear definition remains read-only. New definitions use the typed DAG composer.
+          </div>
+        )}
         {trigger && <TriggerSummary trigger={trigger} />}
-        <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly={readonly} onEditNode={onEditNode} />
+        {parsedDefinition.kind === "v2" ? (
+          <WorkflowCanvas
+            document={parsedDefinition.document}
+            nodeTypes={nodeTypes}
+            selectedNodeId=""
+            readonly
+            compact
+            onChange={() => undefined}
+            onSelectNode={() => undefined}
+          />
+        ) : (
+          <DefinitionNodeCanvas nodes={nodes} nodeTypes={nodeTypes} readonly onEditNode={onEditNode} />
+        )}
         {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
-        <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />
+        {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
     </Card>
   );

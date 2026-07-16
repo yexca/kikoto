@@ -99,6 +99,8 @@ type ListRunsOptions struct {
 	Status       string
 	WorkflowCode string
 	Query        string
+	ViewerUserID int64
+	CanViewAll   bool
 }
 
 func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage, error) {
@@ -137,6 +139,7 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 		like := "%" + query + "%"
 		args = append(args, like, like, like)
 	}
+	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
 	whereSQL := strings.Join(conditions, " AND ")
 	var total int64
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run AS run WHERE "+whereSQL, args...).Scan(&total); err != nil {
@@ -153,6 +156,32 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 		return RunsPage{}, err
 	}
 	return RunsPage{Runs: runs, Page: options.Page, PageSize: options.PageSize, Total: total}, nil
+}
+
+func appendRunVisibility(conditions []string, args []any, viewerUserID int64, canViewAll bool) ([]string, []any) {
+	if canViewAll || viewerUserID <= 0 {
+		return conditions, args
+	}
+	conditions = append(conditions, `(
+		(
+			NOT EXISTS (
+				SELECT 1
+				FROM workflow_definition AS private_definition
+				WHERE private_definition.id = run.workflow_definition_id
+					AND private_definition.scope = 'user'
+			)
+			AND NOT (run.workflow_definition_id IS NULL AND run.trigger_reason = 'custom_definition')
+		)
+		OR EXISTS (
+			SELECT 1
+			FROM workflow_definition AS owned_definition
+			WHERE owned_definition.id = run.workflow_definition_id
+				AND owned_definition.scope = 'user'
+				AND owned_definition.owner_user_id = ?
+		)
+		OR COALESCE(CAST(json_extract(run.input_json, '$.requested_by_user_id') AS INTEGER), 0) = ?
+	)`)
+	return conditions, append(args, viewerUserID, viewerUserID)
 }
 
 func (s *Store) LoadRun(ctx context.Context, id int64) (RunRecord, error) {
@@ -288,12 +317,21 @@ func (s *Store) RecordEvent(ctx context.Context, runID int64, level string, even
 }
 
 func (s *Store) MarkStaleRuns(ctx context.Context, reason string) (int64, error) {
+	return s.markStaleRuns(ctx, reason, 0, true)
+}
+
+func (s *Store) MarkStaleRunsVisibleTo(ctx context.Context, reason string, viewerUserID int64, canViewAll bool) (int64, error) {
+	return s.markStaleRuns(ctx, reason, viewerUserID, canViewAll)
+}
+
+func (s *Store) markStaleRuns(ctx context.Context, reason string, viewerUserID int64, canViewAll bool) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT id, display_name, status FROM workflow_run WHERE status IN ('queued', 'running') ORDER BY created_at ASC, id ASC`)
+	conditions, args := appendRunVisibility([]string{"run.status IN ('queued', 'running')"}, nil, viewerUserID, canViewAll)
+	rows, err := tx.QueryContext(ctx, `SELECT run.id, run.display_name, run.status FROM workflow_run AS run WHERE `+strings.Join(conditions, " AND ")+` ORDER BY run.created_at ASC, run.id ASC`, args...)
 	if err != nil {
 		return 0, err
 	}

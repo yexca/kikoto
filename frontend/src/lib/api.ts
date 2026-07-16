@@ -692,6 +692,15 @@ export type WorkflowDefinition = {
   updatedAt: string;
 };
 
+export type WorkflowNodeTypePort = {
+  id: string;
+  dataType?: string;
+  type?: string;
+  label?: string;
+  required?: boolean;
+  multiple?: boolean;
+};
+
 export type WorkflowNodeType = {
   type: string;
   phase: string;
@@ -701,7 +710,53 @@ export type WorkflowNodeType = {
   configSchema: string;
   inputSchema: string;
   outputSchema: string;
+  inputPorts?: WorkflowNodeTypePort[];
+  outputPorts?: WorkflowNodeTypePort[];
+  requiredPermissions?: string[];
+  composite?: boolean;
 };
+
+export type WorkflowPreviewEstimate = {
+  candidateCount?: number | null;
+  fileCount?: number | null;
+  totalBytes?: number | null;
+};
+
+export type WorkflowPreviewLimit = {
+  key: string;
+  label: string;
+  value: string | number | boolean | null;
+  unit?: string;
+  satisfied?: boolean;
+  message?: string;
+};
+
+export type WorkflowDefinitionRunPreview = {
+  mode: "preview";
+  definitionId: number;
+  workflowCode: string;
+  status: "preview";
+  previewToken: string;
+  requiredPermissions?: string[];
+  normalizedInputs?: Record<string, unknown>;
+  plan: {
+    nodeCount: number;
+    edgeCount: number;
+    topologicalOrder: string[];
+    actions: unknown[];
+    estimates?: WorkflowPreviewEstimate | null;
+    limits?: WorkflowPreviewLimit[];
+  };
+  warnings?: string[];
+};
+
+export type WorkflowDefinitionRunConfirmation = {
+  mode: "confirm";
+  runId: number;
+  status: string;
+};
+
+export type WorkflowDefinitionRunResponse = WorkflowDefinitionRunPreview | WorkflowDefinitionRunConfirmation;
 
 export type WorkflowTrigger = {
   id: number;
@@ -1174,13 +1229,14 @@ async function postJSON<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function postJSONBody<T>(path: string, body: unknown): Promise<T> {
+async function postJSONBody<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetchAPI(
     path,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     },
   );
   if (!response.ok) {
@@ -1585,6 +1641,11 @@ export const api = {
     payload: { code: string; displayName: string; description: string; definitionJson: string },
   ) => patchJSONBody<WorkflowDefinition>(`/api/workflow-definitions/${id}`, payload),
   deleteWorkflowDefinition: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-definitions/${id}`),
+  runWorkflowDefinition: (
+    id: number,
+    payload: { mode: "preview" | "confirm"; inputs: Record<string, unknown>; previewToken?: string },
+    signal?: AbortSignal,
+  ) => postJSONBody<WorkflowDefinitionRunResponse>(`/api/workflow-definitions/${id}/runs`, payload, signal),
   listWorkflowTriggers: () => getJSON<WorkflowTrigger[]>("/api/workflow-triggers"),
   createWorkflowTrigger: (payload: {
     workflowDefinitionId: number;

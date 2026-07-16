@@ -80,6 +80,8 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		runErr = s.executeMediaLocationCleanupJob(jobCtx, job)
 	case "cache_orphan_cleanup":
 		runErr = s.executeCacheOrphanCleanupJob(jobCtx, job)
+	case "custom_workflow":
+		runErr = s.executeCustomWorkflowJob(jobCtx, job)
 	default:
 		message := "unsupported workflow job type: " + job.WorkerType
 		if err := s.failClaimedWorkflowJob(jobCtx, job, message); err != nil {
@@ -230,11 +232,20 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 	if err != nil || affected == 0 {
 		return err
 	}
+	nodeStatuses := []string{"failed", "running", "queued"}
+	if job.WorkerType == "custom_workflow" {
+		nodeStatuses = append(nodeStatuses, "skipped")
+	}
+	statusPlaceholders := strings.TrimRight(strings.Repeat("?,", len(nodeStatuses)), ",")
+	nodeArgs := []any{job.RunID}
+	for _, status := range nodeStatuses {
+		nodeArgs = append(nodeArgs, status)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_node_run
 		SET status = 'queued', error_message = '', finished_at = NULL
-		WHERE workflow_run_id = ? AND status IN ('failed', 'running', 'queued')
-	`, job.RunID); err != nil {
+		WHERE workflow_run_id = ? AND status IN (`+statusPlaceholders+`)
+	`, nodeArgs...); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
