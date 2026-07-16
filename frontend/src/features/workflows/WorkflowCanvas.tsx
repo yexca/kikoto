@@ -1,21 +1,25 @@
 import {
+  applyNodeChanges,
   Background,
   ConnectionMode,
   Controls,
   Handle,
   MarkerType,
   MiniMap,
+  Panel,
   Position,
   ReactFlow,
   type Connection,
   type Edge,
   type EdgeChange,
+  type FinalConnectionState,
   type Node,
   type NodeChange,
+  type OnNodeDrag,
   type NodeProps,
 } from "@xyflow/react";
 import { Braces, CircleDot, Download, Filter, GitBranch, Tags, Type, Workflow } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import {
   canConnectWorkflowPorts,
@@ -55,21 +59,18 @@ export function WorkflowCanvas({
   onSelectNode: (nodeId: string) => void;
 }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
-  const flowNodes = useMemo<WorkflowCanvasNode[]>(() => document.nodes.map((node) => {
-    const ports = workflowNodePorts(document, node, nodeTypes);
-    return {
-      id: node.id,
-      type: "workflowEditor",
-      position: node.position,
-      selected: selectedNodeId === node.id,
-      data: {
-        definition: node,
-        metadata: nodeTypes.find((candidate) => candidate.type === node.type),
-        inputs: ports.inputs,
-        outputs: ports.outputs,
-      },
-    };
-  }), [document, nodeTypes, selectedNodeId]);
+  const [connectionNotice, setConnectionNotice] = useState("");
+  const [flowNodes, setFlowNodes] = useState<WorkflowCanvasNode[]>(() => reconcileFlowNodes([], document, nodeTypes, selectedNodeId));
+
+  useEffect(() => {
+    setFlowNodes((current) => reconcileFlowNodes(current, document, nodeTypes, selectedNodeId));
+  }, [document.inputs, document.nodes, nodeTypes, selectedNodeId]);
+
+  useEffect(() => {
+    if (!connectionNotice) return;
+    const timeout = window.setTimeout(() => setConnectionNotice(""), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [connectionNotice]);
 
   const flowEdges = useMemo<Edge[]>(() => document.edges.map((edge) => ({
     ...edge,
@@ -79,17 +80,8 @@ export function WorkflowCanvas({
     selected: edge.id === selectedEdgeId,
   })), [document.edges, selectedEdgeId]);
 
-  const isValidConnection = useCallback((connection: Connection | Edge) => {
-    if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return false;
-    const sourceNode = document.nodes.find((node) => node.id === connection.source);
-    const targetNode = document.nodes.find((node) => node.id === connection.target);
-    if (!sourceNode || !targetNode) return false;
-    const sourcePort = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === connection.sourceHandle);
-    const targetPort = workflowNodePorts(document, targetNode, nodeTypes).inputs.find((port) => port.id === connection.targetHandle);
-    if (!canConnectWorkflowPorts(sourcePort, targetPort)) return false;
-    if (targetPort?.multiple !== true && document.edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
-    return !wouldCreateWorkflowCycle(document.nodes, document.edges, { source: connection.source, target: connection.target });
-  }, [document, nodeTypes]);
+  const connectionIssue = useCallback((connection: Connection | Edge) => workflowConnectionIssue(document, nodeTypes, connection), [document, nodeTypes]);
+  const isValidConnection = useCallback((connection: Connection | Edge) => connectionIssue(connection) === "", [connectionIssue]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection) || !connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return;
@@ -100,29 +92,42 @@ export function WorkflowCanvas({
       target: connection.target,
       targetHandle: connection.targetHandle,
     };
+    setConnectionNotice("");
     onChange({ ...document, edges: [...document.edges.filter((candidate) => candidate.id !== edge.id), edge] });
   }, [document, isValidConnection, onChange]);
 
   const onNodesChange = useCallback((changes: NodeChange<WorkflowCanvasNode>[]) => {
+    setFlowNodes((current) => applyNodeChanges(changes, current));
     const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
-    let nextNodes = document.nodes
-      .filter((node) => !removed.has(node.id))
-      .map((node) => {
-        const position = changes.find((change) => change.type === "position" && change.id === node.id);
-        return position?.type === "position" && position.position ? { ...node, position: position.position } : node;
-      });
     if (removed.size > 0) onSelectNode("");
     const selected = changes.find((change) => change.type === "select" && change.selected);
     if (selected?.type === "select") onSelectNode(selected.id);
-    if (nextNodes === document.nodes) nextNodes = [...nextNodes];
-    onChange({
-      ...document,
-      nodes: nextNodes,
-      edges: removed.size > 0
-        ? document.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target))
-        : document.edges,
-    });
+    if (removed.size > 0) {
+      onChange({
+        ...document,
+        nodes: document.nodes.filter((node) => !removed.has(node.id)),
+        edges: document.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+      });
+    }
   }, [document, onChange, onSelectNode]);
+
+  const commitNodePositions = useCallback<OnNodeDrag<WorkflowCanvasNode>>((_, draggedNode, draggedNodes) => {
+    if (readonly) return;
+    const positions = new Map([...draggedNodes, draggedNode].map((node) => [node.id, node.position]));
+    let changed = false;
+    const nodes = document.nodes.map((node) => {
+      const position = positions.get(node.id);
+      if (!position || samePosition(position, node.position)) return node;
+      changed = true;
+      return { ...node, position };
+    });
+    if (changed) onChange({ ...document, nodes });
+  }, [document, onChange, readonly]);
+
+  const onConnectEnd = useCallback((_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    if (state.isValid || !state.fromHandle || !state.toHandle) return;
+    setConnectionNotice(connectionIssue(connectionFromHandles(state.fromHandle, state.toHandle)));
+  }, [connectionIssue]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
@@ -146,11 +151,16 @@ export function WorkflowCanvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
+        onNodeDragStop={commitNodePositions}
         onNodeClick={(_, node) => { setSelectedEdgeId(""); onSelectNode(node.id); }}
         onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); onSelectNode(""); }}
         onPaneClick={() => { setSelectedEdgeId(""); onSelectNode(""); }}
         connectionMode={ConnectionMode.Strict}
+        connectionRadius={28}
+        connectionDragThreshold={2}
+        connectOnClick
         nodesDraggable={!readonly}
         nodesConnectable={!readonly}
         edgesReconnectable={false}
@@ -162,9 +172,15 @@ export function WorkflowCanvas({
         maxZoom={1.6}
         snapToGrid
         snapGrid={[16, 16]}
+        onlyRenderVisibleElements
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={24} size={1} />
+        {connectionNotice && (
+          <Panel position="top-center" className="pointer-events-none rounded-md border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm" aria-live="polite">
+            {connectionNotice}
+          </Panel>
+        )}
         <MiniMap
           pannable
           zoomable
@@ -179,7 +195,7 @@ export function WorkflowCanvas({
   );
 }
 
-function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
+const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
   const node = data.definition;
   const metadata = data.metadata;
   const rowCount = Math.max(1, data.inputs.length, data.outputs.length);
@@ -204,8 +220,9 @@ function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
                 id={port.id}
                 type="target"
                 position={Position.Left}
-                className="!h-2.5 !w-2.5 !border-2 !border-card"
-                style={{ top: 70 + index * 28, background: portColor(port.type) }}
+                className="workflow-port-handle"
+                style={{ top: 70 + index * 28, "--workflow-port-color": portColor(port.type) } as CSSProperties}
+                aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} input`}
               />
               <span className="truncate text-muted-foreground">{port.label}</span>
             </div>
@@ -219,8 +236,9 @@ function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
                 id={port.id}
                 type="source"
                 position={Position.Right}
-                className="!h-2.5 !w-2.5 !border-2 !border-card"
-                style={{ top: 70 + index * 28, background: portColor(port.type) }}
+                className="workflow-port-handle"
+                style={{ top: 70 + index * 28, "--workflow-port-color": portColor(port.type) } as CSSProperties}
+                aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} output`}
               />
             </div>
           ))}
@@ -228,9 +246,67 @@ function WorkflowEditorNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
       </div>
     </div>
   );
-}
+});
 
 const workflowEditorNodeTypes = { workflowEditor: WorkflowEditorNode };
+
+function reconcileFlowNodes(
+  current: WorkflowCanvasNode[],
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  selectedNodeId: string,
+) {
+  const currentById = new Map(current.map((node) => [node.id, node]));
+  const metadataByType = new Map(nodeTypes.map((metadata) => [metadata.type, metadata]));
+  return document.nodes.map((definition): WorkflowCanvasNode => {
+    const previous = currentById.get(definition.id);
+    const persistedPositionChanged = !previous || !samePosition(previous.data.definition.position, definition.position);
+    const ports = workflowNodePorts(document, definition, nodeTypes);
+    return {
+      ...previous,
+      id: definition.id,
+      type: "workflowEditor",
+      position: persistedPositionChanged ? definition.position : previous.position,
+      selected: selectedNodeId === definition.id,
+      data: {
+        definition,
+        metadata: metadataByType.get(definition.type),
+        inputs: ports.inputs,
+        outputs: ports.outputs,
+      },
+    };
+  });
+}
+
+function workflowConnectionIssue(document: WorkflowDefinitionDocument, nodeTypes: WorkflowNodeType[], connection: Connection | Edge) {
+  if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return "Select an input and output port.";
+  const sourceNode = document.nodes.find((node) => node.id === connection.source);
+  const targetNode = document.nodes.find((node) => node.id === connection.target);
+  if (!sourceNode || !targetNode) return "One of the connected nodes is no longer available.";
+  const sourcePort = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === connection.sourceHandle);
+  const targetPort = workflowNodePorts(document, targetNode, nodeTypes).inputs.find((port) => port.id === connection.targetHandle);
+  if (!sourcePort || !targetPort) return "Connect an output port to an input port.";
+  if (!canConnectWorkflowPorts(sourcePort, targetPort)) return `${sourcePort.label} (${sourcePort.type}) cannot connect to ${targetPort.label} (${targetPort.type}).`;
+  if (targetPort.multiple !== true && document.edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) {
+    return `${targetPort.label} already has a connection.`;
+  }
+  if (wouldCreateWorkflowCycle(document.nodes, document.edges, { source: connection.source, target: connection.target })) return "This connection would create a cycle.";
+  return "";
+}
+
+function connectionFromHandles(
+  from: { nodeId: string; id?: string | null; type: "source" | "target" },
+  to: { nodeId: string; id?: string | null; type: "source" | "target" },
+): Connection {
+  if (from.type === "target") {
+    return { source: to.nodeId, sourceHandle: to.id ?? null, target: from.nodeId, targetHandle: from.id ?? null };
+  }
+  return { source: from.nodeId, sourceHandle: from.id ?? null, target: to.nodeId, targetHandle: to.id ?? null };
+}
+
+function samePosition(left: { x: number; y: number }, right: { x: number; y: number }) {
+  return left.x === right.x && left.y === right.y;
+}
 
 function nodeIcon(type: string) {
   if (type === "workflow_input") return Type;

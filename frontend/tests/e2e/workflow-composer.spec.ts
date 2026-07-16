@@ -131,6 +131,48 @@ test("mobile composer keeps node creation, canvas, inspector, and actions in bou
   await page.screenshot({ path: testInfo.outputPath("workflow-composer-mobile.png"), fullPage: true });
 });
 
+test("commits node positions after dragging and connects ports from either direction", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const savedDefinitions: Array<{ definitionJson: string }> = [];
+  await mockComposer(page, [], { onDefinitionSaved: (payload) => savedDefinitions.push(payload) });
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: "Edit workflow" }).click();
+
+  const composer = page.getByRole("dialog", { name: "Edit workflow" });
+  const draggedNode = composer.locator('.react-flow__node[data-id="circle_catalog"]');
+  const initialBounds = await draggedNode.boundingBox();
+  expect(initialBounds).not.toBeNull();
+  const dragStartX = initialBounds!.x + initialBounds!.width / 2;
+  const dragStartY = initialBounds!.y + Math.min(16, initialBounds!.height / 3);
+  await page.mouse.move(dragStartX, dragStartY);
+  await page.mouse.down();
+  await page.mouse.move(dragStartX + 80, dragStartY + 48, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(async () => (await draggedNode.boundingBox())?.x).toBeGreaterThan(initialBounds!.x + 50);
+
+  await composer.getByRole("button", { name: /^Tag works/ }).click();
+  await composer.locator(".react-flow__controls-fitview").click();
+  const targetHandle = composer.locator('.react-flow__node[data-id="tag_works"] .react-flow__handle.target[data-handleid="works"]');
+  const sourceHandle = composer.locator('.react-flow__node[data-id="fetch"] .react-flow__handle.source[data-handleid="completed"]');
+  await expect(targetHandle).toBeInViewport();
+  await expect(sourceHandle).toBeInViewport();
+  const targetBounds = await targetHandle.boundingBox();
+  const sourceBounds = await sourceHandle.boundingBox();
+  expect(targetBounds).not.toBeNull();
+  expect(sourceBounds).not.toBeNull();
+  await page.mouse.move(targetBounds!.x + targetBounds!.width / 2, targetBounds!.y + targetBounds!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sourceBounds!.x + sourceBounds!.width / 2, sourceBounds!.y + sourceBounds!.height / 2, { steps: 16 });
+  await page.mouse.up();
+  await expect(composer.getByText("5 connections", { exact: true })).toBeVisible();
+
+  await composer.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => savedDefinitions).toHaveLength(1);
+  const savedDocument = JSON.parse(savedDefinitions[0].definitionJson) as typeof workflowDocument;
+  expect(savedDocument.nodes.find((node) => node.id === "circle_catalog")?.position).not.toEqual({ x: 290, y: 120 });
+  expect(savedDocument.edges).toContainEqual(edge("fetch", "completed", "tag_works", "works"));
+});
+
 test("keeps a direct Quick Action open while confirmation is in flight", async ({ page }) => {
   let releaseConfirmation = () => {};
   const confirmationGate = new Promise<void>((resolve) => { releaseConfirmation = resolve; });
@@ -162,6 +204,7 @@ type MockComposerOptions = {
   directLaunch?: boolean;
   confirmationGate?: Promise<void>;
   onConfirmationStarted?: () => void;
+  onDefinitionSaved?: (payload: { definitionJson: string }) => void;
 };
 
 async function mockComposer(page: Page, runRequests: unknown[], options: MockComposerOptions = {}) {
@@ -179,6 +222,11 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
       { id: 1, code: "local", displayName: "Local Library", sourceType: "local", enabled: true, cacheEnabled: false },
       { id: 8, code: "remote-test", displayName: "Remote Test", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
     ] });
+    if (url.pathname === "/api/workflow-definitions/42" && route.request().method() === "PATCH") {
+      const payload = route.request().postDataJSON() as { definitionJson: string };
+      options.onDefinitionSaved?.(payload);
+      return route.fulfill({ json: { ...activeDefinition, ...payload } });
+    }
     if (url.pathname === "/api/workflow-runs") return route.fulfill({ json: { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0 } });
     if (url.pathname === "/api/workflow-definitions/42/runs") {
       const payload = route.request().postDataJSON();

@@ -277,6 +277,38 @@
     fill: hsl(var(--muted-foreground));
   }
 
+  .workflow-canvas .workflow-port-handle {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 0;
+    background: transparent;
+  }
+
+  .workflow-canvas .workflow-port-handle::after {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0.625rem;
+    height: 0.625rem;
+    border: 2px solid hsl(var(--card));
+    border-radius: 9999px;
+    background: var(--workflow-port-color);
+    content: "";
+    transform: translate(-50%, -50%);
+    transition: box-shadow 120ms ease, transform 120ms ease;
+  }
+
+  .workflow-canvas .workflow-port-handle:hover::after,
+  .workflow-canvas .workflow-port-handle.connectingfrom::after {
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.22);
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  .workflow-canvas .workflow-port-handle.valid::after {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.3);
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+
   .animate-toast-progress {
     animation-name: toast-progress;
     animation-timing-function: linear;

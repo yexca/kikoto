@@ -165,7 +165,7 @@ export function WorkflowComposer({
   if (parsed?.kind === "legacy") return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/90 p-2 backdrop-blur-sm lg:p-4" role="dialog" aria-modal="true" aria-label={definition ? "Edit workflow" : "New workflow"}>
+    <div className="fixed inset-0 z-50 bg-background p-2 lg:p-4" role="dialog" aria-modal="true" aria-label={definition ? "Edit workflow" : "New workflow"}>
       <div className="mx-auto flex h-full max-w-[1560px] flex-col overflow-hidden rounded-md border bg-background shadow-xl">
         <header className="flex min-h-14 items-center gap-3 border-b px-3 lg:px-4">
           <Workflow className="h-4 w-4 shrink-0 text-primary" />
