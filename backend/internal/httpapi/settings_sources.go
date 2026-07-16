@@ -339,21 +339,23 @@ type remoteCollectionJobPayload struct {
 }
 
 type remoteWorkSaveRequest struct {
-	Paths      []string                  `json:"paths"`
-	LocalPaths []string                  `json:"localPaths"`
-	TargetRoot string                    `json:"targetRoot"`
-	RequestID  string                    `json:"requestId"`
-	Decisions  []remoteFetchFileDecision `json:"decisions"`
+	Paths        []string                  `json:"paths"`
+	LocalPaths   []string                  `json:"localPaths"`
+	TargetRoot   string                    `json:"targetRoot"`
+	RequestID    string                    `json:"requestId"`
+	Decisions    []remoteFetchFileDecision `json:"decisions"`
+	MinFreeBytes int64                     `json:"minFreeBytes"`
 }
 
 type remoteWorkFetchJobPayload struct {
-	SourceID   int64                     `json:"source_id"`
-	WorkCode   string                    `json:"work_code"`
-	Paths      []string                  `json:"paths"`
-	LocalPaths []string                  `json:"local_paths"`
-	TargetRoot string                    `json:"target_root"`
-	RequestID  string                    `json:"request_id"`
-	Decisions  []remoteFetchFileDecision `json:"decisions"`
+	SourceID     int64                     `json:"source_id"`
+	WorkCode     string                    `json:"work_code"`
+	Paths        []string                  `json:"paths"`
+	LocalPaths   []string                  `json:"local_paths"`
+	TargetRoot   string                    `json:"target_root"`
+	RequestID    string                    `json:"request_id"`
+	Decisions    []remoteFetchFileDecision `json:"decisions"`
+	MinFreeBytes int64                     `json:"min_free_bytes"`
 }
 
 type remoteWorkTracksSnapshot struct {
@@ -1349,7 +1351,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions)
+	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -2539,7 +2541,7 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 			}
 		} else {
 			var fetchResult remoteWorkSaveResult
-			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil)
+			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0)
 			if err == nil {
 				workID = fetchResult.WorkID
 				result.Fetched++
@@ -2922,7 +2924,7 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	return plan, nil
 }
 
-func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision) (remoteWorkSaveResult, error) {
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
@@ -2939,6 +2941,9 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if plan.Summary.Conflict > 0 {
 		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
 	}
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes); err != nil {
+		return remoteWorkSaveResult{}, err
+	}
 	rawWork, _ := json.Marshal(remoteWork)
 	rawTracks, _ := json.Marshal(tracks)
 
@@ -2953,7 +2958,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	}
 	runInput := remoteWorkFetchJobPayload{
 		SourceID: sourceID, WorkCode: workCode, Paths: selectedPaths, LocalPaths: selectedLocalPaths,
-		TargetRoot: plan.SaveRoot, RequestID: requestID, Decisions: decisions,
+		TargetRoot: plan.SaveRoot, RequestID: requestID, Decisions: decisions, MinFreeBytes: minFreeBytes,
 	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch remote work", "queued", "manual", "fetch_selected", runInput, map[string]any{"plan": plan.Summary})
 	if err != nil {
@@ -3135,6 +3140,10 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	}
 	if plan.Summary.Conflict > 0 {
 		err := remoteWorkSaveConflictError{Summary: plan.Summary}
+		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+		return remoteWorkSaveResult{}, err
+	}
+	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
 		return remoteWorkSaveResult{}, err
 	}

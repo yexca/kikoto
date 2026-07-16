@@ -73,12 +73,27 @@ func TestValidateCustomWorkflowDefinitionRequiresExplicitAutomaticFetchBounds(t 
 		"policy":{"requirePreview":false},
 		"nodes":[
 			{"id":"works","type":"input_work","config":{"codes":["RJ01234567"]}},
-			{"id":"fetch","type":"fetch_works","config":{"maxWorks":1,"maxFiles":100,"maxBytes":1000000}}
+			{"id":"fetch","type":"fetch_works","config":{"maxWorks":1,"maxFiles":100,"maxBytes":1000000,"minFreeBytes":1000000}}
 		],
 		"edges":[{"id":"fetch_works","source":"works","sourceHandle":"works","target":"fetch","targetHandle":"works"}]
 	}`
 	if _, err := validateCustomWorkflowDefinition(raw); err == nil || !strings.Contains(err.Error(), "allowUnknownSizes=false") {
 		t.Fatalf("error = %v, want explicit unknown-size policy", err)
+	}
+}
+
+func TestValidateCustomWorkflowDefinitionRejectsNegativeDiskReserve(t *testing.T) {
+	raw := `{
+		"schemaVersion":2,
+		"policy":{"requirePreview":true},
+		"nodes":[
+			{"id":"works","type":"input_work","config":{"codes":["RJ01234567"]}},
+			{"id":"fetch","type":"fetch_works","config":{"minFreeBytes":-1}}
+		],
+		"edges":[{"id":"fetch_works","source":"works","sourceHandle":"works","target":"fetch","targetHandle":"works"}]
+	}`
+	if _, err := validateCustomWorkflowDefinition(raw); err == nil || !strings.Contains(err.Error(), "minFreeBytes between 1") {
+		t.Fatalf("error = %v, want positive minFreeBytes requirement", err)
 	}
 }
 

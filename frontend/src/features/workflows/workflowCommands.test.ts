@@ -124,6 +124,12 @@ describe("workflow Quick Action commands", () => {
     expect(workflowCommandInputValues(["RG1234"], [circleInput]).errors).toEqual([
       "Circle: use a DLsite circle id such as RG01234.",
     ]);
+
+    const worksInput: WorkflowInputDefinition = { key: "works", label: "Works", type: "work_codes", required: true };
+    expect(workflowCommandInputValues(["RJ01234567,", "CC0001"], [worksInput]).errors).toEqual([]);
+    expect(workflowCommandInputValues(["RJ01234567,", "outside"], [worksInput]).errors).toEqual([
+      "Works: use supported work codes separated by commas.",
+    ]);
   });
 
   it("keeps command arguments as literal data", () => {

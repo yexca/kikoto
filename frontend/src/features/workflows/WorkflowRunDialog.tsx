@@ -161,17 +161,15 @@ export function WorkflowRunDialog({
 }
 
 function RunInput({ input, value, onChange }: { input: WorkflowInputDefinition; value: unknown; onChange: (value: string) => void }) {
+  const fieldClass = "rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring";
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium">{input.label}{input.required && <span className="text-destructive"> *</span>}</span>
-      <input
-        className="h-10 rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
-        value={typeof value === "string" ? value : ""}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={input.type.replace(/_/g, " ")}
-        autoCapitalize="off"
-        spellCheck={input.type === "text" || input.type === "voice_name"}
-      />
+      {input.type === "work_codes" ? (
+        <textarea className={`${fieldClass} min-h-20 py-2`} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} placeholder="RJ01234567, RJ07654321" autoCapitalize="off" spellCheck={false} />
+      ) : (
+        <input className={`${fieldClass} h-10`} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} placeholder={input.type.replace(/_/g, " ")} autoCapitalize="off" spellCheck={input.type === "text" || input.type === "voice_name"} />
+      )}
       <span className="font-mono text-[10px] text-muted-foreground">{input.key} · {input.type}</span>
     </label>
   );

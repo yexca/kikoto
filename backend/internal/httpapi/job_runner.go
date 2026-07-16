@@ -35,6 +35,9 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		if err := s.dispatchDueCustomWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("dispatch scheduled custom workflow", "error", err)
+		}
 		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("requeue expired workflow jobs", "error", err)
 		}

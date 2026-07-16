@@ -6,6 +6,7 @@ import {
   createEmptyWorkflowDefinition,
   parseWorkflowDefinition,
   serializeWorkflowDefinition,
+  upgradeLegacyWorkflowDefinition,
   validateWorkflowDefinition,
   wouldCreateWorkflowCycle,
   workflowNodePorts,
@@ -86,6 +87,29 @@ describe("workflow definition model", () => {
         { id: "sync", type: "sync_metadata", config: { forceRefresh: false } },
       ],
     });
+  });
+
+  it("upgrades only lossless legacy metadata flows in memory", () => {
+    const upgrade = upgradeLegacyWorkflowDefinition([
+      { id: "select", type: "select_works", config: { codes: ["RJ01234567"] } },
+      { id: "sync", type: "sync_metadata" },
+    ], [{ triggerType: "schedule", scheduleJson: '{"intervalMinutes":60}', configJson: "{\"inputs\":{}}" }]);
+
+    expect(upgrade.kind).toBe("upgradeable");
+    if (upgrade.kind !== "upgradeable") return;
+    expect(upgrade.document.policy.requirePreview).toBe(false);
+    expect(upgrade.document.inputs[0]).toMatchObject({ type: "work_codes", defaultValue: "RJ01234567" });
+    expect(upgrade.document.nodes.map((node) => node.type)).toEqual(["workflow_input", "metadata_sync"]);
+  });
+
+  it("blocks legacy upgrades with unsupported nodes or triggers", () => {
+    const upgrade = upgradeLegacyWorkflowDefinition([
+      { id: "scan", type: "discover_local_files" },
+      { id: "sync", type: "sync_file_locations" },
+    ], [{ triggerType: "filesystem_event", scheduleJson: "{}", configJson: "{}" }]);
+
+    expect(upgrade.kind).toBe("blocked");
+    if (upgrade.kind === "blocked") expect(upgrade.reasons.join(" ")).toContain("filesystem_event");
   });
 
   it("round-trips v2 inputs, positions, edges, command, and approval policy", () => {

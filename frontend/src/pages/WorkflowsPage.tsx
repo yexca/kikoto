@@ -40,7 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
-import { parseWorkflowDefinition, workflowDefinitionNodeCount } from "@/features/workflows/definitionModel";
+import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
@@ -260,7 +260,7 @@ export function WorkflowsPage({
     return definitions.filter((definition) => definition.scope === "user" || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
   }, [definitionView, definitions]);
   const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
-  const schedulableDefinitions = definitions.filter((definition) => definition.scope !== "user" || parseWorkflowDefinition(definition.definitionJson).kind === "legacy");
+  const schedulableDefinitions = definitions;
   const visibleRuns = runs;
   const selectedDefinitionId = selectedDefinitionIds[definitionView];
 
@@ -523,6 +523,7 @@ export function WorkflowsPage({
               right={
                 <WorkflowDetail
                   definition={selectedDefinition}
+                  definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
                   nodeTypes={nodeTypes}
                   readonly={!selectedDefinition?.editable}
                   systemRunKinds={selectedSystemRunKinds}
@@ -609,9 +610,14 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {modalMode === "edit-workflow" && selectedDefinition && parseWorkflowDefinition(selectedDefinition.definitionJson).kind === "v2" && (
+      {modalMode === "edit-workflow" && selectedDefinition && (() => {
+        const parsed = parseWorkflowDefinition(selectedDefinition.definitionJson);
+        const definitionTriggers = triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id);
+        return parsed.kind === "v2" || upgradeLegacyWorkflowDefinition(parsed.nodes, definitionTriggers).kind === "upgradeable";
+      })() && (
         <WorkflowComposer
           definition={selectedDefinition}
+          triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
           nodeTypes={nodeTypes}
           onClose={() => setModalMode(null)}
           onDeleted={() => {
@@ -1001,6 +1007,7 @@ function RunSidebarSkeletonRows() {
 
 function WorkflowDetail({
   definition,
+  definitionTriggers = [],
   trigger,
   nodeTypes,
   readonly,
@@ -1020,6 +1027,7 @@ function WorkflowDetail({
   onEditNode,
 }: {
   definition: WorkflowDefinition | null;
+  definitionTriggers?: WorkflowTrigger[];
   trigger?: WorkflowTrigger | null;
   nodeTypes: WorkflowNodeType[];
   readonly: boolean;
@@ -1043,7 +1051,8 @@ function WorkflowDetail({
   }
   const parsedDefinition = parseWorkflowDefinition(definition.definitionJson);
   const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
-  const composerEditable = !readonly && parsedDefinition.kind === "v2";
+  const legacyUpgrade = parsedDefinition.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers) : null;
+  const composerEditable = !readonly && (parsedDefinition.kind === "v2" || legacyUpgrade?.kind === "upgradeable");
   return (
     <Card>
       <CardContent className="space-y-5 p-5">
@@ -1071,7 +1080,7 @@ function WorkflowDetail({
             {composerEditable && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
-                Edit workflow
+                {parsedDefinition.kind === "legacy" ? "Upgrade workflow" : "Edit workflow"}
               </Button>
             )}
             {onRunDefinition && parsedDefinition.kind === "v2" && (
@@ -1117,9 +1126,14 @@ function WorkflowDetail({
               : "This system workflow is read-only and is triggered by application actions."}
           </div>
         )}
-        {definition.scope === "user" && parsedDefinition.kind === "legacy" && (
+        {definition.scope === "user" && parsedDefinition.kind === "legacy" && legacyUpgrade?.kind === "upgradeable" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            This legacy linear definition remains read-only. New definitions use the typed DAG composer.
+            This metadata flow can be upgraded in memory. It remains unchanged until Save.
+          </div>
+        )}
+        {definition.scope === "user" && parsedDefinition.kind === "legacy" && legacyUpgrade?.kind === "blocked" && (
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            {legacyUpgrade.reasons.join(" ")}
           </div>
         )}
         {trigger && <TriggerSummary trigger={trigger} />}
@@ -2206,14 +2220,55 @@ function TriggerModal({
   const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
   const [scheduleJson, setScheduleJson] = useState(trigger?.scheduleJson ?? '{"intervalMinutes":60}');
   const [configJson, setConfigJson] = useState(trigger?.configJson ?? "{}");
+  const [intervalMinutes, setIntervalMinutes] = useState(() => {
+    const value = parseJSONRecord(trigger?.scheduleJson ?? "").intervalMinutes;
+    return typeof value === "number" ? value : 60;
+  });
+  const [scheduledInputs, setScheduledInputs] = useState<Record<string, string>>(() => {
+    const inputs = parseJSONRecord(trigger?.configJson ?? "").inputs;
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return {};
+    return Object.fromEntries(Object.entries(inputs).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")]));
+  });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const selectedDefinition = definitions.find((definition) => definition.id === workflowDefinitionId) ?? null;
+  const selectedParsed = selectedDefinition ? parseWorkflowDefinition(selectedDefinition.definitionJson) : null;
+  const dagDocument = selectedParsed?.kind === "v2" ? selectedParsed.document : null;
+  const missingScheduledInputs = dagDocument?.inputs.filter((input) => input.required && !(scheduledInputs[input.key]?.trim())) ?? [];
+  const scheduleBlockers = dagDocument ? [
+    ...(dagDocument.policy.requirePreview ? ["Disable Require preview in the workflow before scheduling it."] : []),
+    ...(intervalMinutes < 5 || intervalMinutes > 10080 ? ["Interval must be between 5 and 10080 minutes."] : []),
+    ...(missingScheduledInputs.length > 0 ? [`Provide required inputs: ${missingScheduledInputs.map((input) => input.label).join(", ")}.`] : []),
+  ] : [];
+
+  const chooseDefinition = (definitionId: number) => {
+    setWorkflowDefinitionID(definitionId);
+    const next = definitions.find((definition) => definition.id === definitionId);
+    const parsed = next ? parseWorkflowDefinition(next.definitionJson) : null;
+    if (parsed?.kind !== "v2") return;
+    setTriggerType("schedule");
+    setIntervalMinutes(60);
+    setScheduledInputs(Object.fromEntries(parsed.document.inputs.flatMap((input) => input.defaultValue === undefined ? [] : [[input.key, input.defaultValue]])));
+  };
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      const payload = { workflowDefinitionId, displayName, triggerType, enabled, scheduleJson, configJson, nextRunAt: null };
+      if (scheduleBlockers.length > 0) throw new Error(scheduleBlockers[0]);
+      const resolvedInputs = dagDocument ? Object.fromEntries(dagDocument.inputs.flatMap((input) => {
+        const value = scheduledInputs[input.key]?.trim() ?? "";
+        return !input.required && value === "" ? [] : [[input.key, value]];
+      })) : null;
+      const payload = {
+        workflowDefinitionId,
+        displayName,
+        triggerType: dagDocument ? "schedule" : triggerType,
+        enabled,
+        scheduleJson: dagDocument ? JSON.stringify({ intervalMinutes }) : scheduleJson,
+        configJson: dagDocument ? JSON.stringify({ inputs: resolvedInputs }) : configJson,
+        nextRunAt: null,
+      };
       const saved = trigger ? await api.updateWorkflowTrigger(trigger.id, payload) : await api.createWorkflowTrigger(payload);
       onSaved(saved);
     } catch (err) {
@@ -2240,7 +2295,7 @@ function TriggerModal({
     <Modal title={trigger ? "Edit scheduled trigger" : "New scheduled trigger"} onClose={onClose}>
       <div className="grid gap-3">
         <Field label="Workflow">
-          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={workflowDefinitionId} onChange={(event) => setWorkflowDefinitionID(Number(event.target.value))}>
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={workflowDefinitionId} onChange={(event) => chooseDefinition(Number(event.target.value))}>
             {definitions.map((definition) => (
               <option key={definition.id} value={definition.id}>{definition.displayName}</option>
             ))}
@@ -2250,24 +2305,49 @@ function TriggerModal({
           <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Trigger type">
-            <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={triggerType} onChange={(event) => setTriggerType(event.target.value)}>
-              {triggerTypes.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </Field>
+          {dagDocument ? (
+            <Field label="Interval (minutes)">
+              <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" type="number" min={5} max={10080} value={intervalMinutes} onChange={(event) => setIntervalMinutes(Number(event.target.value))} />
+            </Field>
+          ) : (
+            <Field label="Trigger type">
+              <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={triggerType} onChange={(event) => setTriggerType(event.target.value)}>
+                {triggerTypes.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </Field>
+          )}
           <div className="flex items-center gap-2 self-end pb-1 text-sm">
             <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enable trigger" />
             <span>Enabled</span>
           </div>
         </div>
-        <Field label="Schedule JSON">
-          <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduleJson} onChange={(event) => setScheduleJson(event.target.value)} />
-        </Field>
-        <Field label="Config JSON">
-          <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={configJson} onChange={(event) => setConfigJson(event.target.value)} />
-        </Field>
+        {dagDocument ? (
+          dagDocument.inputs.length > 0 && <div className="grid gap-3 md:grid-cols-2">{dagDocument.inputs.map((input) => (
+            <Field key={input.key} label={`${input.label}${input.required ? " *" : ""}`}>
+              {input.type === "work_codes" ? (
+                <textarea className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
+              ) : (
+                <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
+              )}
+            </Field>
+          ))}</div>
+        ) : (
+          <>
+            <Field label="Schedule JSON">
+              <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduleJson} onChange={(event) => setScheduleJson(event.target.value)} />
+            </Field>
+            <Field label="Config JSON">
+              <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={configJson} onChange={(event) => setConfigJson(event.target.value)} />
+            </Field>
+          </>
+        )}
+        {scheduleBlockers.length > 0 && (
+          <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-muted-foreground">
+            {scheduleBlockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+          </div>
+        )}
         {error && <ErrorPanel error={error} />}
         <div className="flex justify-end gap-2">
           {trigger && (
@@ -2276,7 +2356,7 @@ function TriggerModal({
               Delete
             </Button>
           )}
-          <Button onClick={save} disabled={saving || definitions.length === 0}>
+          <Button onClick={save} disabled={saving || definitions.length === 0 || scheduleBlockers.length > 0}>
             <Save className="h-4 w-4" />
             {saving ? "Saving" : "Save"}
           </Button>

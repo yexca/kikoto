@@ -178,7 +178,7 @@ func TestCustomWorkflowRunEnforcesCapabilityPermissionAndOwnership(t *testing.T)
 func TestCustomWorkflowApprovedPolicyAllowsBoundedDirectConfirm(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-auto-owner")
-	automaticDefinition := strings.Replace(customWorkflowAPIDefinitionJSON, `"maxBytes": 1048576`, `"maxBytes": 1048576, "allowUnknownSizes": false`, 1)
+	automaticDefinition := strings.Replace(customWorkflowAPIDefinitionJSON, `"maxBytes": 1048576`, `"maxBytes": 1048576, "minFreeBytes": 1048576, "allowUnknownSizes": false`, 1)
 	automaticDefinition = strings.Replace(automaticDefinition, `"requirePreview": true`, `"requirePreview": false`, 1)
 	result, err := db.Exec(`
 		INSERT INTO workflow_definition (
@@ -219,25 +219,51 @@ func TestWorkflowCommandAliasIsUniquePerOwner(t *testing.T) {
 	}
 }
 
-func TestCustomWorkflowScheduleIsRejectedUntilSchedulerSupportsDAG(t *testing.T) {
+func TestCustomWorkflowScheduleAcceptsBoundedDAG(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-trigger-owner")
-	definitionID := insertCustomWorkflowAPIDefinition(t, db, ownerID)
+	definition := `{
+		"schemaVersion":2,
+		"inputs":[{"key":"works","label":"Works","type":"work_codes","required":true}],
+		"nodes":[{"id":"input","type":"workflow_input","config":{"inputKey":"works"}}],
+		"edges":[],
+		"policy":{"requirePreview":false}
+	}`
+	result, err := db.Exec(`INSERT INTO workflow_definition (code, display_name, definition_json, scope, editable, owner_user_id, created_by_user_id) VALUES ('custom_schedule_test', 'Custom schedule', ?, 'user', 1, ?, ?)`, definition, ownerID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitionID, _ := result.LastInsertId()
 	server := NewServer(db, config.Config{})
-	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Custom schedule","triggerType":"schedule","enabled":true,"scheduleJson":"{}","configJson":"{}"}`, definitionID)
+	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Custom schedule","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":5}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run"}}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "not executable yet") {
+	if response.Code != http.StatusCreated {
 		t.Fatalf("custom schedule response = %d, %s", response.Code, response.Body.String())
 	}
-	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_trigger WHERE workflow_definition_id = ?", definitionID).Scan(&count); err != nil {
+	var triggerID int64
+	var nextRunAt sql.NullString
+	if err := db.QueryRow("SELECT id, next_run_at FROM workflow_trigger WHERE workflow_definition_id = ?", definitionID).Scan(&triggerID, &nextRunAt); err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatalf("custom workflow trigger count = %d, want 0", count)
+	if !nextRunAt.Valid || nextRunAt.String == "" {
+		t.Fatalf("custom workflow next run = %#v", nextRunAt)
+	}
+	if _, err := db.Exec("UPDATE workflow_trigger SET next_run_at = '2000-01-01 00:00:00' WHERE id = ?", triggerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.dispatchDueCustomWorkflowTrigger(context.Background()); err != nil {
+		t.Fatalf("dispatch schedule: %v", err)
+	}
+	var runTriggerID sql.NullInt64
+	var runType, runReason string
+	if err := db.QueryRow("SELECT trigger_id, trigger_type, trigger_reason FROM workflow_run WHERE workflow_definition_id = ?", definitionID).Scan(&runTriggerID, &runType, &runReason); err != nil {
+		t.Fatal(err)
+	}
+	if !runTriggerID.Valid || runTriggerID.Int64 != triggerID || runType != "schedule" || runReason != "scheduled_interval" {
+		t.Fatalf("scheduled run = trigger %#v type %s reason %s", runTriggerID, runType, runReason)
 	}
 }
 
@@ -864,10 +890,130 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		if err != nil {
 			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}
-		refs := execution.Outputs["completed"].WorkRefs
-		if execution.Partial || len(refs) != 1 || refs[0].ChildRunID != childRunID || refs[0].WorkID != 92 {
+		if execution.Partial || execution.Pending == nil || len(execution.Pending.Children) != 1 || execution.Pending.Children[0].RunID != childRunID {
 			t.Fatalf("attempt %d result = %+v", attempt+1, execution)
 		}
+	}
+	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", childRunID); err != nil {
+		t.Fatal(err)
+	}
+	execution, waiting, err := server.resumeCustomPendingExecution(context.Background(), customPendingExecution{
+		NodeID: "fetch", Kind: "fetch", Children: []customPendingChild{{
+			RunID:     childRunID,
+			Candidate: customWorkCandidate{Code: "RJ09999991", SourceID: 88},
+			WorkRef:   customWorkRef{Code: "RJ09999991", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
+		}},
+	})
+	if err != nil || waiting {
+		t.Fatalf("resume fetch: waiting=%t err=%v", waiting, err)
+	}
+	refs := execution.Outputs["completed"].WorkRefs
+	if execution.Partial || len(refs) != 1 || refs[0].ChildRunID != childRunID || refs[0].WorkID != 92 {
+		t.Fatalf("resumed result = %+v", execution)
+	}
+}
+
+func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
+	db := openMigratedTestDB(t)
+	userID := insertCustomWorkflowAPIUser(t, db, "workflow-filter-owner")
+	workResult, err := db.Exec(`INSERT INTO work (primary_code, title, release_date) VALUES ('RJ09999991', 'Synthetic work', '2026-04-03')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	personResult, err := db.Exec(`INSERT INTO person (display_name, sort_name) VALUES ('Example Voice', 'Example Voice')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	personID, _ := personResult.LastInsertId()
+	if _, err := db.Exec(`INSERT INTO work_credit (work_id, person_id, role) VALUES (?, ?, 'voice_actor')`, workID, personID); err != nil {
+		t.Fatal(err)
+	}
+	tagResult, err := db.Exec(`INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'healing', 'Healing')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	if _, err := db.Exec(`INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'dlsite')`, workID, tagID); err != nil {
+		t.Fatal(err)
+	}
+	userTagResult, err := db.Exec(`INSERT INTO user_tag (user_id, name) VALUES (?, 'Listen later')`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userTagID, _ := userTagResult.LastInsertId()
+	if _, err := db.Exec(`INSERT INTO user_work_tag (user_id, work_id, user_tag_id) VALUES (?, ?, ?)`, userID, workID, userTagID); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	node := customWorkflowNode{Type: "filter_works", Config: map[string]any{
+		"releaseFrom": "2026-01-01", "releaseTo": "2026-12-31",
+		"voiceNames": []string{"example voice"}, "metadataTags": []string{"healing"}, "userTags": []string{"listen later"},
+	}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991"}}}}
+	execution, err := server.executeCustomFilterWorks(context.Background(), userID, node, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(execution.Outputs["accepted"].Candidates) != 1 || len(execution.Outputs["rejected"].Candidates) != 0 {
+		t.Fatalf("filter result = %+v", execution.Outputs)
+	}
+	node.Config["metadataTags"] = []string{"missing"}
+	execution, err = server.executeCustomFilterWorks(context.Background(), userID, node, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(execution.Outputs["accepted"].Candidates) != 0 || len(execution.Outputs["rejected"].Candidates) != 1 {
+		t.Fatalf("rejected filter result = %+v", execution.Outputs)
+	}
+}
+
+func TestCustomSubworkflowWaitsAndCollectsTerminalWorkRefs(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-subflow-owner")
+	childDefinition := `{
+		"schemaVersion":2,
+		"inputs":[{"key":"works","label":"Works","type":"work_codes","required":true}],
+		"nodes":[
+			{"id":"input","type":"workflow_input","config":{"inputKey":"works"}},
+			{"id":"metadata","type":"metadata_sync","config":{"maxWorks":10}}
+		],
+		"edges":[{"id":"to_metadata","source":"input","sourceHandle":"value","target":"metadata","targetHandle":"works"}],
+		"policy":{"requirePreview":true}
+	}`
+	result, err := db.Exec(`INSERT INTO workflow_definition (code, display_name, definition_json, scope, editable, owner_user_id, created_by_user_id) VALUES ('child_metadata_test', 'Child metadata', ?, 'user', 1, ?, ?)`, childDefinition, ownerID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childDefinitionID, _ := result.LastInsertId()
+	server := NewServer(db, config.Config{})
+	payload := customWorkflowJobPayload{UserID: ownerID, OwnerUserID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}, DefinitionStack: []int64{999}}
+	node := customWorkflowNode{ID: "reuse", Type: "subworkflow", Config: map[string]any{"definitionId": childDefinitionID, "inputKey": "works", "maxWorks": 10}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991"}}}}
+	execution, err := server.executeCustomSubworkflow(context.Background(), 123, payload, node, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Pending == nil || len(execution.Pending.Children) != 1 {
+		t.Fatalf("subworkflow execution = %+v", execution)
+	}
+	childRunID := execution.Pending.Children[0].RunID
+	if _, err := db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", childRunID); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{"input", "metadata"}, Outputs: map[string]map[string]customPortValue{
+		"metadata": {"completed": {Type: "work_refs", WorkRefs: []customWorkRef{{Code: "RJ09999991", WorkID: 91}}}},
+	}}
+	if _, err := db.Exec("UPDATE workflow_job SET checkpoint_json = ? WHERE workflow_run_id = ?", mustJSON(map[string]any{"phase": "completed", "detail": checkpoint}), childRunID); err != nil {
+		t.Fatal(err)
+	}
+	resumed, waiting, err := server.resumeCustomPendingExecution(context.Background(), *execution.Pending)
+	if err != nil || waiting {
+		t.Fatalf("resume subworkflow: waiting=%t err=%v", waiting, err)
+	}
+	refs := resumed.Outputs["completed"].WorkRefs
+	if resumed.Partial || len(refs) != 1 || refs[0].WorkID != 91 {
+		t.Fatalf("resumed subworkflow = %+v", resumed)
 	}
 }
 

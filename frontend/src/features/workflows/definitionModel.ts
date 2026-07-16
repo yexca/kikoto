@@ -2,7 +2,7 @@ import type { WorkflowNodeType, WorkflowNodeTypePort } from "@/lib/api";
 
 export const WORKFLOW_DEFINITION_SCHEMA_VERSION = 2 as const;
 
-export type WorkflowInputType = "text" | "circle_id" | "series_id" | "voice_name" | "work_code";
+export type WorkflowInputType = "text" | "circle_id" | "series_id" | "voice_name" | "work_code" | "work_codes";
 
 export type WorkflowInputDefinition = {
   key: string;
@@ -57,6 +57,16 @@ export type ParsedWorkflowDefinition =
   | { kind: "v2"; document: WorkflowDefinitionDocument }
   | { kind: "legacy"; nodes: LegacyWorkflowNode[] };
 
+export type LegacyWorkflowTrigger = {
+  triggerType: string;
+  scheduleJson: string;
+  configJson: string;
+};
+
+export type LegacyWorkflowUpgrade =
+  | { kind: "upgradeable"; document: WorkflowDefinitionDocument }
+  | { kind: "blocked"; reasons: string[] };
+
 export type WorkflowDefinitionIssue = {
   level: "error" | "warning";
   message: string;
@@ -73,7 +83,7 @@ export type WorkflowPort = {
   nodeId: string;
 };
 
-const inputTypes: readonly WorkflowInputType[] = ["text", "circle_id", "series_id", "voice_name", "work_code"];
+const inputTypes: readonly WorkflowInputType[] = ["text", "circle_id", "series_id", "voice_name", "work_code", "work_codes"];
 const commandAliasPattern = /^[A-Za-z][A-Za-z0-9_-]{1,31}$/;
 const inputKeyPattern = /^[a-z][a-z0-9_]{0,31}$/;
 
@@ -134,6 +144,52 @@ export function serializeWorkflowDefinition(document: WorkflowDefinitionDocument
 export function workflowDefinitionNodeCount(definitionJson: string) {
   const parsed = parseWorkflowDefinition(definitionJson);
   return parsed.kind === "v2" ? parsed.document.nodes.length : parsed.nodes.length;
+}
+
+export function upgradeLegacyWorkflowDefinition(nodes: LegacyWorkflowNode[], triggers: LegacyWorkflowTrigger[] = []): LegacyWorkflowUpgrade {
+  const reasons: string[] = [];
+  if (nodes.length !== 2 || nodes[0]?.type !== "select_works" || nodes[1]?.type !== "sync_metadata") {
+    reasons.push("Only Select works to Sync metadata legacy flows can be upgraded safely.");
+  }
+  const selectConfig = nodes[0]?.config ?? {};
+  const syncConfig = nodes[1]?.config ?? {};
+  const unsupportedSelectKeys = Object.keys(selectConfig).filter((key) => key !== "codes");
+  if (unsupportedSelectKeys.length > 0) reasons.push(`Select works uses unsupported options: ${unsupportedSelectKeys.join(", ")}.`);
+  if (Object.keys(syncConfig).length > 0) reasons.push("Sync metadata has legacy options that cannot be preserved losslessly.");
+  const configuredCodes = Array.isArray(selectConfig.codes) ? selectConfig.codes.filter((value): value is string => typeof value === "string" && value.trim() !== "") : [];
+  for (const trigger of triggers) {
+    if (trigger.triggerType !== "schedule") {
+      reasons.push(`The ${trigger.triggerType} trigger is not supported by custom DAGs.`);
+      continue;
+    }
+    const schedule = safeRecordJSON(trigger.scheduleJson);
+    const interval = schedule?.intervalMinutes;
+    if (typeof interval !== "number" || !Number.isInteger(interval) || interval < 5 || interval > 10080) {
+      reasons.push("An existing schedule does not have a valid intervalMinutes value.");
+    }
+    const config = safeRecordJSON(trigger.configJson);
+    const triggerInputs = config && isRecord(config.inputs) ? config.inputs : {};
+    if (configuredCodes.length === 0 && !nonEmptyWorkCodes(triggerInputs.works)) {
+      reasons.push("An existing schedule does not provide the works input.");
+    }
+  }
+  if (reasons.length > 0) return { kind: "blocked", reasons: [...new Set(reasons)] };
+
+  const document = createEmptyWorkflowDefinition();
+  document.inputs = [{
+    key: "works",
+    label: "Works",
+    type: "work_codes",
+    required: true,
+    ...(configuredCodes.length > 0 ? { defaultValue: configuredCodes.join(", ") } : {}),
+  }];
+  document.nodes = [
+    { id: "works_input", type: "workflow_input", displayName: nodes[0]?.displayName || "Works", config: { inputKey: "works" }, position: { x: 0, y: 120 } },
+    { id: "metadata_sync", type: "metadata_sync", displayName: nodes[1]?.displayName || "Sync metadata", config: { maxWorks: 100 }, position: { x: 320, y: 120 } },
+  ];
+  document.edges = [{ id: "works_to_metadata", source: "works_input", sourceHandle: "value", target: "metadata_sync", targetHandle: "works" }];
+  document.policy.requirePreview = triggers.length === 0;
+  return { kind: "upgradeable", document };
 }
 
 export function workflowNodePorts(
@@ -216,18 +272,23 @@ export function validateWorkflowDefinition(document: WorkflowDefinitionDocument,
         issues.push({ level: "error", message: "Input node must reference a workflow input.", nodeId: node.id });
       }
     }
-    if (["voice_source_works", "check_source_availability"].includes(node.type) && !positiveNumber(node.config?.sourceId)) {
+    if (["voice_source_works", "source_popular_works", "check_source_availability"].includes(node.type) && !positiveNumber(node.config?.sourceId)) {
       issues.push({ level: "error", message: "Select a remote source.", nodeId: node.id });
+    }
+    if (node.type === "subworkflow" && !positiveNumber(node.config?.definitionId)) {
+      issues.push({ level: "error", message: "Select a reusable workflow.", nodeId: node.id });
     }
     if (!document.policy.requirePreview) {
       const requiredBounds = node.type === "circle_catalog" || node.type === "series_catalog"
         ? ["maxWorks"]
         : node.type === "voice_source_works"
           ? ["maxWorks", "maxPages"]
+          : ["provider_popular_works", "source_popular_works", "metadata_sync", "subworkflow"].includes(node.type)
+            ? ["maxWorks"]
           : node.type === "track_works"
             ? ["maxWorks"]
             : node.type === "fetch_works"
-              ? ["maxWorks", "maxFiles", "maxBytes"]
+              ? ["maxWorks", "maxFiles", "maxBytes", "minFreeBytes"]
               : [];
       for (const key of requiredBounds) {
         if (!positiveNumber(node.config?.[key])) issues.push({ level: "error", message: `${key} is required for bounded direct launch.`, nodeId: node.id });
@@ -417,5 +478,19 @@ function nodeConfigSuppliesPort(node: WorkflowNodeDefinition, portId: string) {
 }
 
 function workflowInputPortType(type: WorkflowInputType | undefined) {
-  return type === "work_code" ? "work_candidates" : type || "text";
+  return type === "work_code" || type === "work_codes" ? "work_candidates" : type || "text";
+}
+
+function safeRecordJSON(value: string) {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function nonEmptyWorkCodes(value: unknown) {
+  if (Array.isArray(value)) return value.some((item) => typeof item === "string" && item.trim() !== "");
+  return typeof value === "string" && value.trim() !== "";
 }

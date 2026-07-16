@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -424,6 +425,10 @@ func (s *Server) updateWorkflowDefinition(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if err := s.validateWorkflowDefinitionTriggerUpdate(r.Context(), current, payload.DefinitionJSON); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	ownerID := actor.ID
 	if current.OwnerUserID != nil {
 		ownerID = *current.OwnerUserID
@@ -524,15 +529,15 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
-	if !workflowDefinitionSupportsScheduledTriggers(definition) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom workflow schedules are not executable yet"})
+	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	enabled := true
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
 	}
-	nextRunAt := normalizeOptionalString(payload.NextRunAt)
 	id, err := insertAndIDNoTx(r.Context(), s.db, `
 		INSERT INTO workflow_trigger (
 			workflow_definition_id,
@@ -606,15 +611,15 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
-	if !workflowDefinitionSupportsScheduledTriggers(definition) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom workflow schedules are not executable yet"})
+	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	enabled := true
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
 	}
-	nextRunAt := normalizeOptionalString(payload.NextRunAt)
 	result, err := s.db.ExecContext(r.Context(), `
 		UPDATE workflow_trigger
 		SET workflow_definition_id = ?,

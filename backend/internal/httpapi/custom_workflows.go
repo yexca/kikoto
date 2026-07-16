@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -162,12 +163,38 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
 		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"voiceName", "sourceId", "pageSize", "maxPages", "maxWorks"},
 	},
+	"provider_popular_works": {
+		Type: "provider_popular_works", Phase: "discover", DisplayName: "Provider popular works",
+		Description: "Read a bounded metadata-provider ranking without materializing discovered works.",
+		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"period", "releaseWindow", "year", "maxWorks"},
+	},
+	"source_popular_works": {
+		Type: "source_popular_works", Phase: "discover", DisplayName: "Source popular works",
+		Description: "Read a bounded popular collection from one compatible file source without importing it.",
+		Outputs:     []customWorkflowPort{{ID: "works", DataType: "work_candidates"}},
+		Permissions: []string{"library:read"}, Composite: true, ConfigKeys: []string{"sourceId", "maxWorks"},
+	},
 	"filter_works": {
 		Type: "filter_works", Phase: "filter", DisplayName: "Filter works",
 		Description: "Apply bounded, structured filters to work candidates.",
 		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
 		Outputs:     []customWorkflowPort{{ID: "accepted", DataType: "work_candidates"}, {ID: "rejected", DataType: "work_candidates"}},
-		ConfigKeys:  []string{"limit", "codePrefix", "existing"},
+		ConfigKeys:  []string{"limit", "codePrefix", "existing", "releaseFrom", "releaseTo", "voiceNames", "metadataTags", "userTags"},
+	},
+	"metadata_sync": {
+		Type: "metadata_sync", Phase: "commit", DisplayName: "Sync metadata",
+		Description: "Materialize accepted candidates and synchronize normalized provider metadata.",
+		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
+		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
+		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"maxWorks"},
+	},
+	"filter_library_works": {
+		Type: "filter_library_works", Phase: "filter", DisplayName: "Filter library works",
+		Description: "Filter materialized works by normalized dates, voice credits, provider tags, and user tags.",
+		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_refs", Required: true}},
+		Outputs:     []customWorkflowPort{{ID: "accepted", DataType: "work_refs"}, {ID: "rejected", DataType: "work_refs"}},
+		Permissions: []string{"library:read"}, ConfigKeys: []string{"limit", "releaseFrom", "releaseTo", "voiceNames", "metadataTags", "userTags"},
 	},
 	"check_source_availability": {
 		Type: "check_source_availability", Phase: "match", DisplayName: "Check source availability",
@@ -189,7 +216,7 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
 		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
 		Permissions: []string{"downloads:manage"}, Composite: true,
-		ConfigKeys: []string{"sourceId", "excludeExtensions", "maxWorks", "maxFiles", "maxBytes", "allowUnknownSizes", "targetRoot"},
+		ConfigKeys: []string{"sourceId", "excludeExtensions", "maxWorks", "maxFiles", "maxBytes", "minFreeBytes", "allowUnknownSizes", "targetRoot"},
 	},
 	"tag_works": {
 		Type: "tag_works", Phase: "commit", DisplayName: "Tag works",
@@ -197,6 +224,13 @@ var customWorkflowCapabilities = map[string]customWorkflowCapability{
 		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_refs", Required: true}, {ID: "tag", DataType: "text"}},
 		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_refs"}},
 		Permissions: []string{"tags:write"}, Composite: true, ConfigKeys: []string{"tagName"},
+	},
+	"subworkflow": {
+		Type: "subworkflow", Phase: "execute", DisplayName: "Reusable workflow",
+		Description: "Run another owned workflow for a bounded candidate collection and wait for its terminal work outputs.",
+		Inputs:      []customWorkflowPort{{ID: "works", DataType: "work_candidates", Required: true}},
+		Outputs:     []customWorkflowPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
+		Permissions: []string{"workflows:run"}, Composite: true, ConfigKeys: []string{"definitionId", "inputKey", "maxWorks"},
 	},
 }
 
@@ -266,10 +300,27 @@ func customWorkflowConfigSchema(capability customWorkflowCapability) string {
 		properties["pageSize"] = integer("Page size", 48, 100)
 		properties["maxPages"] = integer("Maximum pages", 10, 100)
 		properties["maxWorks"] = integer("Maximum works", 100, 2000)
-	case "filter_works":
+	case "provider_popular_works":
+		properties["period"] = property("Ranking period", "string", map[string]any{"default": "day", "enum": []string{"day", "week", "month", "year"}})
+		properties["releaseWindow"] = property("Release window", "string", map[string]any{"default": "", "enum": []string{"", "30d"}})
+		properties["year"] = property("Ranking year", "integer", map[string]any{"minimum": 2000, "maximum": time.Now().UTC().Year()})
+		properties["maxWorks"] = integer("Maximum works", 100, 1000)
+	case "source_popular_works":
+		properties["sourceId"] = sourceID()
+		properties["maxWorks"] = integer("Maximum works", 100, 100)
+	case "filter_works", "filter_library_works":
 		properties["limit"] = integer("Maximum accepted works", 100, 5000)
-		properties["codePrefix"] = property("Code prefix", "string", nil)
-		properties["existing"] = property("Database state", "string", map[string]any{"default": "any", "enum": []string{"any", "known", "unknown"}})
+		properties["releaseFrom"] = property("Released on or after", "string", nil)
+		properties["releaseTo"] = property("Released on or before", "string", nil)
+		properties["voiceNames"] = property("Voice names", "array", map[string]any{"items": map[string]any{"type": "string"}})
+		properties["metadataTags"] = property("Provider tags", "array", map[string]any{"items": map[string]any{"type": "string"}})
+		properties["userTags"] = property("User tags", "array", map[string]any{"items": map[string]any{"type": "string"}})
+		if capability.Type == "filter_works" {
+			properties["codePrefix"] = property("Code prefix", "string", nil)
+			properties["existing"] = property("Database state", "string", map[string]any{"default": "any", "enum": []string{"any", "known", "unknown"}})
+		}
+	case "metadata_sync":
+		properties["maxWorks"] = integer("Maximum works", 25, 500)
 	case "check_source_availability":
 		properties["sourceId"] = sourceID()
 	case "track_works":
@@ -281,10 +332,15 @@ func customWorkflowConfigSchema(capability customWorkflowCapability) string {
 		properties["maxWorks"] = integer("Maximum works", 25, 100)
 		properties["maxFiles"] = integer("Maximum files", 10000, 50000)
 		properties["maxBytes"] = integer("Maximum bytes", 100*1024*1024*1024, 2*1024*1024*1024*1024)
+		properties["minFreeBytes"] = integer("Minimum free bytes", 2*1024*1024*1024, 1024*1024*1024*1024)
 		properties["allowUnknownSizes"] = property("Allow unknown sizes", "boolean", map[string]any{"default": false})
 		properties["targetRoot"] = property("Existing target root", "string", nil)
 	case "tag_works":
 		properties["tagName"] = property("Tag name", "string", map[string]any{"maxLength": 40})
+	case "subworkflow":
+		properties["definitionId"] = property("Workflow definition ID", "integer", map[string]any{"minimum": 1, "maximum": math.MaxInt32})
+		properties["inputKey"] = property("Child work-code input", "string", map[string]any{"default": "works"})
+		properties["maxWorks"] = integer("Maximum works", 25, 500)
 	}
 	raw, err := json.Marshal(map[string]any{"type": "object", "properties": properties})
 	if err != nil {
@@ -541,14 +597,44 @@ func validateCustomWorkflowNodeConfig(node customWorkflowNode, requiresPreview b
 			return err
 		}
 		return bound("pageSize", 48, 100, false)
-	case "filter_works":
+	case "provider_popular_works":
+		period := strings.ToLower(configString(node.Config, "period"))
+		if period == "" {
+			period = "day"
+		}
+		if period != "day" && period != "week" && period != "month" && period != "year" {
+			return fmt.Errorf("node %s has invalid ranking period", node.ID)
+		}
+		releaseWindow := strings.ToLower(configString(node.Config, "releaseWindow"))
+		if releaseWindow != "" && releaseWindow != "30d" {
+			return fmt.Errorf("node %s has invalid release window", node.ID)
+		}
+		year := configInt(node.Config, "year", 0)
+		if period == "year" && (year < 2000 || year > time.Now().UTC().Year()) {
+			return fmt.Errorf("node %s requires a valid ranking year", node.ID)
+		}
+		if period != "year" && year != 0 {
+			return fmt.Errorf("node %s ranking year is only valid for annual rankings", node.ID)
+		}
+		return bound("maxWorks", 100, 1000, requireBound)
+	case "source_popular_works":
+		if sourceID, ok := customConfigInteger(node.Config["sourceId"]); !ok || sourceID <= 0 || sourceID > math.MaxInt32 {
+			return fmt.Errorf("node %s requires a sourceId", node.ID)
+		}
+		return bound("maxWorks", 100, 100, requireBound)
+	case "filter_works", "filter_library_works":
+		if err := validateCustomWorkFilterConfig(node); err != nil {
+			return err
+		}
 		existing := strings.ToLower(configString(node.Config, "existing"))
-		if existing != "" && existing != "any" && existing != "known" && existing != "unknown" {
+		if node.Type == "filter_works" && existing != "" && existing != "any" && existing != "known" && existing != "unknown" {
 			return fmt.Errorf("node %s has invalid existing filter", node.ID)
 		}
 		if _, ok := node.Config["limit"]; ok {
 			return bound("limit", 100, 5000, false)
 		}
+	case "metadata_sync":
+		return bound("maxWorks", 25, 500, requireBound)
 	case "check_source_availability":
 		if sourceID, ok := customConfigInteger(node.Config["sourceId"]); !ok || sourceID <= 0 || sourceID > math.MaxInt32 {
 			return fmt.Errorf("node %s requires a sourceId", node.ID)
@@ -565,6 +651,11 @@ func validateCustomWorkflowNodeConfig(node customWorkflowNode, requiresPreview b
 		if err := bound("maxBytes", 100*1024*1024*1024, 2*1024*1024*1024*1024, requireBound); err != nil {
 			return err
 		}
+		if _, configured := node.Config["minFreeBytes"]; configured || requireBound {
+			if err := bound("minFreeBytes", 2*1024*1024*1024, 1024*1024*1024*1024, requireBound); err != nil {
+				return err
+			}
+		}
 		_, unknownSizePolicySet := node.Config["allowUnknownSizes"]
 		if !requiresPreview && (!unknownSizePolicySet || configBool(node.Config, "allowUnknownSizes", false)) {
 			return fmt.Errorf("node %s requires allowUnknownSizes=false when preview is disabled", node.ID)
@@ -573,13 +664,22 @@ func validateCustomWorkflowNodeConfig(node customWorkflowNode, requiresPreview b
 		if tagName := configString(node.Config, "tagName"); len([]rune(tagName)) > 40 {
 			return fmt.Errorf("node %s tagName is too long", node.ID)
 		}
+	case "subworkflow":
+		definitionID, ok := customConfigInteger(node.Config["definitionId"])
+		if !ok || definitionID <= 0 || definitionID > math.MaxInt32 {
+			return fmt.Errorf("node %s requires a definitionId", node.ID)
+		}
+		if !customWorkflowInputKeyPattern.MatchString(configString(node.Config, "inputKey")) {
+			return fmt.Errorf("node %s requires a valid child inputKey", node.ID)
+		}
+		return bound("maxWorks", 25, 500, requireBound)
 	}
 	return nil
 }
 
 func validateCustomWorkflowConfigTypes(node customWorkflowNode) error {
-	integerKeys := map[string]bool{"sourceId": true, "pageSize": true, "maxPages": true, "maxWorks": true, "limit": true, "maxFiles": true, "maxBytes": true}
-	arrayKeys := map[string]bool{"codes": true, "excludeExtensions": true}
+	integerKeys := map[string]bool{"sourceId": true, "definitionId": true, "pageSize": true, "maxPages": true, "maxWorks": true, "limit": true, "maxFiles": true, "maxBytes": true, "minFreeBytes": true, "year": true}
+	arrayKeys := map[string]bool{"codes": true, "excludeExtensions": true, "voiceNames": true, "metadataTags": true, "userTags": true}
 	booleanKeys := map[string]bool{"allowUnknownSizes": true}
 	for key, value := range node.Config {
 		switch {
@@ -624,6 +724,24 @@ func validateCustomWorkflowConfigTypes(node customWorkflowNode) error {
 		if extension == "" || len(extension) > 16 || strings.ContainsAny(extension, `/\\`) {
 			return fmt.Errorf("node %s has invalid excluded extension", node.ID)
 		}
+	}
+	return nil
+}
+
+func validateCustomWorkFilterConfig(node customWorkflowNode) error {
+	for _, key := range []string{"releaseFrom", "releaseTo"} {
+		value := configString(node.Config, key)
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return fmt.Errorf("node %s config %s must use YYYY-MM-DD", node.ID, key)
+		}
+	}
+	from := configString(node.Config, "releaseFrom")
+	to := configString(node.Config, "releaseTo")
+	if from != "" && to != "" && from > to {
+		return fmt.Errorf("node %s releaseFrom must not be after releaseTo", node.ID)
 	}
 	return nil
 }
@@ -856,7 +974,7 @@ func (s *Server) runCustomWorkflowDefinition(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "workflow preview is required or no longer matches the definition and inputs"})
 		return
 	}
-	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, graph, actor.ID, actor.Permissions, normalizedInputs, previewToken)
+	runID, err := s.enqueueCustomWorkflow(r.Context(), definition, graph, actor.ID, actor.Permissions, normalizedInputs, previewToken, customWorkflowEnqueueOptions{})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1034,16 +1152,6 @@ func canUseWorkflowDefinition(actor currentUser, definition workflowDefinitionRe
 	return definition.Scope == "system" || canManageWorkflowDefinition(actor, definition)
 }
 
-func workflowDefinitionSupportsScheduledTriggers(definition workflowDefinitionRecord) bool {
-	if definition.Scope != "user" {
-		return true
-	}
-	var probe struct {
-		SchemaVersion int `json:"schemaVersion"`
-	}
-	return json.Unmarshal([]byte(definition.DefinitionJSON), &probe) != nil || probe.SchemaVersion != customWorkflowSchemaVersion
-}
-
 func (s *Server) ensureWorkflowCommandAliasAvailable(ctx context.Context, ownerID int64, excludeDefinitionID int64, rawDefinition string) error {
 	return ensureWorkflowCommandAliasAvailableFrom(ctx, s.db, ownerID, excludeDefinitionID, rawDefinition)
 }
@@ -1127,6 +1235,7 @@ func buildCustomWorkflowPreview(graph customWorkflowGraph, inputs map[string]any
 			appendLimit("maxWorks", "Maximum works", int64(configInt(node.Config, "maxWorks", 25)), "works")
 			appendLimit("maxFiles", "Maximum files", int64(configInt(node.Config, "maxFiles", 10000)), "files")
 			appendLimit("maxBytes", "Maximum bytes", configInt64(node.Config, "maxBytes", 100*1024*1024*1024), "bytes")
+			appendLimit("minFreeBytes", "Minimum free space", configInt64(node.Config, "minFreeBytes", 0), "bytes")
 		}
 	}
 	_ = inputTypes
@@ -1149,31 +1258,62 @@ func customWorkflowPreviewWarnings(graph customWorkflowGraph) []string {
 }
 
 type customWorkflowJobPayload struct {
-	DefinitionJSON string         `json:"definitionJson"`
-	Inputs         map[string]any `json:"inputs"`
-	UserID         int64          `json:"userId"`
-	Permissions    []string       `json:"permissions"`
-	PreviewToken   string         `json:"previewToken"`
-	StartedAt      string         `json:"startedAt"`
+	DefinitionJSON  string         `json:"definitionJson"`
+	Inputs          map[string]any `json:"inputs"`
+	UserID          int64          `json:"userId"`
+	Permissions     []string       `json:"permissions"`
+	PreviewToken    string         `json:"previewToken"`
+	StartedAt       string         `json:"startedAt"`
+	OwnerUserID     int64          `json:"ownerUserId"`
+	DefinitionStack []int64        `json:"definitionStack"`
 }
 
 type customWorkflowCheckpoint struct {
 	CompletedNodeIDs []string                              `json:"completedNodeIds"`
 	Outputs          map[string]map[string]customPortValue `json:"outputs"`
 	ChildRunIDs      []int64                               `json:"childRunIds"`
+	Pending          *customPendingExecution               `json:"pending,omitempty"`
 	Partial          bool                                  `json:"partial"`
 }
 
-func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowDefinitionRecord, graph customWorkflowGraph, userID int64, permissions []string, inputs map[string]any, previewToken string) (int64, error) {
+type customWorkflowEnqueueOptions struct {
+	TriggerID       int64
+	TriggerType     string
+	TriggerReason   string
+	DefinitionStack []int64
+}
+
+func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowDefinitionRecord, graph customWorkflowGraph, userID int64, permissions []string, inputs map[string]any, previewToken string, options customWorkflowEnqueueOptions) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	triggerType := strings.TrimSpace(options.TriggerType)
+	if triggerType == "" {
+		triggerType = "manual"
+	}
+	triggerReason := strings.TrimSpace(options.TriggerReason)
+	if triggerReason == "" {
+		triggerReason = "custom_definition"
+	}
+	stack := append([]int64{}, options.DefinitionStack...)
+	if len(stack) == 0 {
+		stack = []int64{definition.ID}
+	}
+	ownerUserID := int64(0)
+	if definition.OwnerUserID != nil {
+		ownerUserID = *definition.OwnerUserID
+	}
 	runInput := map[string]any{"inputs": inputs, "definition_schema_version": customWorkflowSchemaVersion, "requested_by_user_id": userID}
-	runID, err := workflow.InsertRun(ctx, tx, definition.ID, definition.Code, definition.DisplayName, "queued", "manual", "custom_definition", runInput, map[string]any{"nodes": len(graph.TopologicalOrder)})
+	runID, err := workflow.InsertRun(ctx, tx, definition.ID, definition.Code, definition.DisplayName, "queued", triggerType, triggerReason, runInput, map[string]any{"nodes": len(graph.TopologicalOrder)})
 	if err != nil {
 		return 0, err
+	}
+	if options.TriggerID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", options.TriggerID, runID); err != nil {
+			return 0, err
+		}
 	}
 	firstNodeRunID := int64(0)
 	for position, nodeID := range graph.TopologicalOrder {
@@ -1189,7 +1329,7 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 			firstNodeRunID = nodeRunID
 		}
 	}
-	payload := customWorkflowJobPayload{DefinitionJSON: definition.DefinitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	payload := customWorkflowJobPayload{DefinitionJSON: definition.DefinitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
 	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Payload: payload,
@@ -1279,10 +1419,13 @@ func configBool(config map[string]any, key string, fallback bool) bool {
 }
 
 type customWorkCandidate struct {
-	Code     string `json:"code"`
-	SourceID int64  `json:"sourceId,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	Code         string   `json:"code"`
+	SourceID     int64    `json:"sourceId,omitempty"`
+	Title        string   `json:"title,omitempty"`
+	ReleaseDate  string   `json:"releaseDate,omitempty"`
+	VoiceNames   []string `json:"voiceNames,omitempty"`
+	MetadataTags []string `json:"metadataTags,omitempty"`
+	Reason       string   `json:"reason,omitempty"`
 }
 
 type customWorkRef struct {
@@ -1303,6 +1446,22 @@ type customNodeExecution struct {
 	Outputs     map[string]customPortValue
 	Partial     bool
 	ChildRunIDs []int64
+	Pending     *customPendingExecution
+}
+
+type customPendingChild struct {
+	RunID     int64               `json:"runId"`
+	Candidate customWorkCandidate `json:"candidate"`
+	WorkRef   customWorkRef       `json:"workRef"`
+}
+
+type customPendingExecution struct {
+	NodeID        string                `json:"nodeId"`
+	Kind          string                `json:"kind"`
+	Children      []customPendingChild  `json:"children"`
+	Failed        []customWorkCandidate `json:"failed,omitempty"`
+	Candidates    []customWorkCandidate `json:"candidates,omitempty"`
+	OutputNodeIDs []string              `json:"outputNodeIds,omitempty"`
 }
 
 func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRecord) error {
@@ -1359,11 +1518,35 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 		`, mustJSON(customPortValuesSummary(inputs)), nodeRunID); err != nil {
 			return err
 		}
-		execution, runErr := s.executeCustomWorkflowNode(ctx, job.RunID, payload, graph, node, inputs)
+		var execution customNodeExecution
+		var runErr error
+		if checkpoint.Pending != nil {
+			if checkpoint.Pending.NodeID != nodeID {
+				runErr = fmt.Errorf("custom workflow pending node does not match execution order")
+			} else {
+				var waiting bool
+				execution, waiting, runErr = s.resumeCustomPendingExecution(ctx, *checkpoint.Pending)
+				if runErr == nil && waiting {
+					return s.deferCustomWorkflowJob(ctx, job, nodeRunID, checkpoint)
+				}
+				if runErr == nil {
+					checkpoint.Pending = nil
+				}
+			}
+		} else {
+			execution, runErr = s.executeCustomWorkflowNode(ctx, job.RunID, payload, graph, node, inputs)
+		}
 		if runErr != nil {
 			slog.Error("custom workflow node failed", "run_id", job.RunID, "node_id", node.ID, "node_type", node.Type, "error", runErr)
 			_ = s.failCustomWorkflowJob(ctx, job, nodeRunID, publicCustomWorkflowError(node.Type))
 			return runErr
+		}
+		if execution.Pending != nil {
+			checkpoint.Pending = execution.Pending
+			for _, child := range execution.Pending.Children {
+				checkpoint.ChildRunIDs = appendUniqueInt64(checkpoint.ChildRunIDs, child.RunID)
+			}
+			return s.deferCustomWorkflowJob(ctx, job, nodeRunID, checkpoint)
 		}
 		status := "succeeded"
 		if execution.Partial {
@@ -1389,6 +1572,174 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 		}
 	}
 	return s.finishCustomWorkflowJob(ctx, job, checkpoint, len(graph.TopologicalOrder))
+}
+
+func (s *Server) resumeCustomPendingExecution(ctx context.Context, pending customPendingExecution) (customNodeExecution, bool, error) {
+	switch pending.Kind {
+	case "fetch":
+		return s.resumeCustomPendingFetch(ctx, pending)
+	case "subworkflow":
+		return s.resumeCustomPendingSubworkflow(ctx, pending)
+	default:
+		return customNodeExecution{}, false, fmt.Errorf("unsupported pending custom workflow operation")
+	}
+}
+
+func (s *Server) resumeCustomPendingFetch(ctx context.Context, pending customPendingExecution) (customNodeExecution, bool, error) {
+	completed := []customWorkRef{}
+	failed := append([]customWorkCandidate{}, pending.Failed...)
+	waiting := false
+	for _, child := range pending.Children {
+		var status string
+		err := s.db.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", child.RunID).Scan(&status)
+		if errors.Is(err, sql.ErrNoRows) {
+			candidate := child.Candidate
+			candidate.Reason = "fetch_child_missing"
+			failed = append(failed, candidate)
+			continue
+		}
+		if err != nil {
+			return customNodeExecution{}, false, err
+		}
+		switch status {
+		case "queued", "running":
+			waiting = true
+		case "succeeded":
+			completed = append(completed, child.WorkRef)
+		default:
+			candidate := child.Candidate
+			candidate.Reason = "fetch_child_" + strings.ToLower(strings.TrimSpace(status))
+			failed = append(failed, candidate)
+		}
+	}
+	if waiting {
+		return customNodeExecution{}, true, nil
+	}
+	return customNodeExecution{Partial: len(failed) > 0, Outputs: map[string]customPortValue{
+		"completed": {Type: "work_refs", WorkRefs: uniqueCustomWorkRefs(completed)},
+		"failed":    {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
+	}}, false, nil
+}
+
+func (s *Server) resumeCustomPendingSubworkflow(ctx context.Context, pending customPendingExecution) (customNodeExecution, bool, error) {
+	if len(pending.Children) != 1 {
+		return customNodeExecution{}, false, fmt.Errorf("subworkflow checkpoint is invalid")
+	}
+	childRunID := pending.Children[0].RunID
+	var status string
+	if err := s.db.QueryRowContext(ctx, "SELECT status FROM workflow_run WHERE id = ?", childRunID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return failedCustomSubworkflowExecution(pending, "subworkflow_child_missing"), false, nil
+		}
+		return customNodeExecution{}, false, err
+	}
+	if status == "queued" || status == "running" {
+		return customNodeExecution{}, true, nil
+	}
+	if status != "succeeded" && status != "partial" {
+		return failedCustomSubworkflowExecution(pending, "subworkflow_child_"+strings.ToLower(strings.TrimSpace(status))), false, nil
+	}
+	var rawCheckpoint string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT checkpoint_json FROM workflow_job
+		WHERE workflow_run_id = ? AND worker_type = 'custom_workflow'
+		ORDER BY id DESC LIMIT 1
+	`, childRunID).Scan(&rawCheckpoint)
+	if err != nil {
+		return customNodeExecution{}, false, err
+	}
+	checkpoint := customWorkflowCheckpoint{}
+	if err := decodeWorkflowJobCheckpointDetail(rawCheckpoint, &checkpoint); err != nil {
+		return customNodeExecution{}, false, err
+	}
+	refs := []customWorkRef{}
+	for _, nodeID := range pending.OutputNodeIDs {
+		for _, value := range checkpoint.Outputs[nodeID] {
+			refs = append(refs, value.WorkRefs...)
+		}
+	}
+	refs = uniqueCustomWorkRefs(refs)
+	completedCodes := map[string]bool{}
+	for _, ref := range refs {
+		completedCodes[strings.ToUpper(strings.TrimSpace(ref.Code))] = true
+	}
+	failed := append([]customWorkCandidate{}, pending.Failed...)
+	for _, candidate := range pending.Candidates {
+		if completedCodes[strings.ToUpper(strings.TrimSpace(candidate.Code))] {
+			continue
+		}
+		candidate.Reason = "subworkflow_no_work_ref"
+		failed = append(failed, candidate)
+	}
+	return customNodeExecution{Partial: status == "partial" || len(failed) > 0, ChildRunIDs: []int64{childRunID}, Outputs: map[string]customPortValue{
+		"completed": {Type: "work_refs", WorkRefs: refs}, "failed": {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
+	}}, false, nil
+}
+
+func failedCustomSubworkflowExecution(pending customPendingExecution, reason string) customNodeExecution {
+	failed := append([]customWorkCandidate{}, pending.Failed...)
+	for _, candidate := range pending.Candidates {
+		candidate.Reason = reason
+		failed = append(failed, candidate)
+	}
+	childRuns := []int64{}
+	for _, child := range pending.Children {
+		childRuns = append(childRuns, child.RunID)
+	}
+	return customNodeExecution{Partial: len(failed) > 0, ChildRunIDs: childRuns, Outputs: map[string]customPortValue{
+		"completed": {Type: "work_refs", WorkRefs: []customWorkRef{}}, "failed": {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
+	}}
+}
+
+func (s *Server) deferCustomWorkflowJob(ctx context.Context, job workflowJobRecord, nodeRunID int64, checkpoint customWorkflowCheckpoint) error {
+	availableAt := time.Now().UTC().Add(2 * time.Second).Format("2006-01-02 15:04:05")
+	checkpointJSON := mustJSON(map[string]any{
+		"phase": "waiting_for_children", "detail": checkpoint,
+		"progressCurrent": len(checkpoint.CompletedNodeIDs), "progressTotal": 0,
+		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'queued', output_json = ?, error_message = '', finished_at = NULL
+		WHERE id = ?
+	`, mustJSON(map[string]any{"waiting_for_child_runs": checkpoint.ChildRunIDs}), nodeRunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'queued', checkpoint_json = ?, available_at = ?, locked_by = '', locked_at = NULL,
+			heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = 'running'
+	`, checkpointJSON, availableAt, job.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ? AND status = 'running'", job.RunID); err != nil {
+		return err
+	}
+	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		NodeRunID: nodeRunID, JobID: job.ID, Level: "info", Type: "workflow.children_waiting",
+		Message: "Waiting for child workflows", Detail: map[string]any{"child_run_ids": checkpoint.ChildRunIDs, "available_at": availableAt},
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func appendUniqueInt64(values []int64, value int64) []int64 {
+	if value <= 0 {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func customRuntimeNodeInputs(graph customWorkflowGraph, node customWorkflowNode, outputs map[string]map[string]customPortValue) (map[string]customPortValue, error) {
@@ -1419,8 +1770,16 @@ func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, pay
 		return s.executeCustomSeriesCatalog(ctx, node, inputs)
 	case "voice_source_works":
 		return s.executeCustomVoiceSourceWorks(ctx, runID, node, inputs)
+	case "provider_popular_works":
+		return s.executeCustomProviderPopularWorks(ctx, node)
+	case "source_popular_works":
+		return s.executeCustomSourcePopularWorks(ctx, node)
 	case "filter_works":
-		return s.executeCustomFilterWorks(ctx, node, inputs)
+		return s.executeCustomFilterWorks(ctx, payload.UserID, node, inputs)
+	case "metadata_sync":
+		return s.executeCustomMetadataSync(ctx, runID, node, inputs)
+	case "filter_library_works":
+		return s.executeCustomFilterLibraryWorks(ctx, payload.UserID, node, inputs)
 	case "check_source_availability":
 		return s.executeCustomSourceAvailability(ctx, runID, node, inputs)
 	case "track_works":
@@ -1429,6 +1788,8 @@ func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, pay
 		return s.executeCustomFetchWorks(ctx, runID, node, inputs)
 	case "tag_works":
 		return s.executeCustomTagWorks(ctx, payload.UserID, node, inputs)
+	case "subworkflow":
+		return s.executeCustomSubworkflow(ctx, runID, payload, node, inputs)
 	default:
 		return customNodeExecution{}, fmt.Errorf("unsupported custom workflow node: %s", node.Type)
 	}
@@ -1655,7 +2016,7 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 				continue
 			}
 			seen[code] = true
-			candidates = append(candidates, customWorkCandidate{Code: code, SourceID: source.ID, Title: firstNonEmpty(remoteWork.Title, remoteWork.Name, code)})
+			candidates = append(candidates, customCandidateFromRemoteWork(remoteWork, source.ID))
 			if len(candidates) >= maxWorks {
 				break
 			}
@@ -1677,7 +2038,89 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 	return customNodeExecution{Outputs: map[string]customPortValue{"works": {Type: "work_candidates", Candidates: candidates}}}, nil
 }
 
-func (s *Server) executeCustomFilterWorks(ctx context.Context, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+func (s *Server) executeCustomProviderPopularWorks(ctx context.Context, node customWorkflowNode) (customNodeExecution, error) {
+	period := strings.ToLower(configString(node.Config, "period"))
+	if period == "" {
+		period = "day"
+	}
+	result, err := dlsite.NewClient(nil).FetchVoiceRanking(ctx, dlsite.RankingOptions{
+		Period: period, ReleaseWindow: strings.ToLower(configString(node.Config, "releaseWindow")), Year: configInt(node.Config, "year", 0),
+	})
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	maxWorks := configInt(node.Config, "maxWorks", 100)
+	codes := result.WorkCodes
+	if len(codes) > maxWorks {
+		codes = codes[:maxWorks]
+	}
+	return customNodeExecution{Outputs: map[string]customPortValue{
+		"works": {Type: "work_candidates", Candidates: customCandidatesForCodes(codes, 0)},
+	}}, nil
+}
+
+func (s *Server) executeCustomSourcePopularWorks(ctx context.Context, node customWorkflowNode) (customNodeExecution, error) {
+	source, err := s.loadRemoteSourceForUse(ctx, configInt64(node.Config, "sourceId", 0))
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	if !source.Enabled || !isKikoeruSourceType(source.SourceType) || strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
+	}
+	maxWorks := configInt(node.Config, "maxWorks", 100)
+	page, err := kikoeruClientForSource(source).PopularWorks(ctx, 1, maxWorks)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		return customNodeExecution{}, err
+	}
+	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	candidates := make([]customWorkCandidate, 0, min(len(page.Works), maxWorks))
+	for _, work := range page.Works {
+		candidate := customCandidateFromRemoteWork(work, source.ID)
+		if candidate.Code == "" {
+			continue
+		}
+		candidates = append(candidates, candidate)
+		if len(candidates) >= maxWorks {
+			break
+		}
+	}
+	return customNodeExecution{Outputs: map[string]customPortValue{
+		"works": {Type: "work_candidates", Candidates: uniqueCustomCandidates(candidates)},
+	}}, nil
+}
+
+func customCandidateFromRemoteWork(work kikoeru.Work, sourceID int64) customWorkCandidate {
+	voices := make([]string, 0, len(work.VAs))
+	for _, voice := range work.VAs {
+		if name := strings.TrimSpace(voice.Name); name != "" {
+			voices = append(voices, name)
+		}
+	}
+	tags := make([]string, 0, len(work.Tags))
+	for _, tag := range work.Tags {
+		if name := strings.TrimSpace(tag.Name); name != "" {
+			tags = append(tags, name)
+		}
+	}
+	return customWorkCandidate{
+		Code: normalizedRemoteWorkCode(work), SourceID: sourceID, Title: firstNonEmpty(work.Title, work.Name),
+		ReleaseDate: normalizeCustomReleaseDate(work.Release), VoiceNames: uniqueFoldedStrings(voices), MetadataTags: uniqueFoldedStrings(tags),
+	}
+}
+
+func normalizeCustomReleaseDate(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 10 {
+		candidate := value[:10]
+		if _, err := time.Parse("2006-01-02", candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func (s *Server) executeCustomFilterWorks(ctx context.Context, userID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
 	limit := configInt(node.Config, "limit", min(100, len(candidates)))
 	if limit <= 0 {
@@ -1692,12 +2135,20 @@ func (s *Server) executeCustomFilterWorks(ctx context.Context, node customWorkfl
 	rejected := []customWorkCandidate{}
 	for _, candidate := range candidates {
 		keep := prefix == "" || strings.HasPrefix(candidate.Code, prefix)
+		metadata, err := s.customWorkFilterMetadata(ctx, userID, candidate.Code)
+		if err != nil {
+			return customNodeExecution{}, err
+		}
+		candidate = mergeCustomCandidateMetadata(candidate, metadata)
 		if keep && existing != "any" {
 			ref, err := s.canonicalWorkForCode(ctx, candidate.Code)
 			if err != nil {
 				return customNodeExecution{}, err
 			}
 			keep = (existing == "known" && ref.Known) || (existing == "unknown" && !ref.Known)
+		}
+		if keep {
+			keep = customWorkMatchesFilter(candidate.ReleaseDate, candidate.VoiceNames, candidate.MetadataTags, metadata.UserTags, node.Config)
 		}
 		if keep && len(accepted) < limit {
 			accepted = append(accepted, candidate)
@@ -1710,6 +2161,163 @@ func (s *Server) executeCustomFilterWorks(ctx context.Context, node customWorkfl
 		"accepted": {Type: "work_candidates", Candidates: accepted},
 		"rejected": {Type: "work_candidates", Candidates: rejected},
 	}}, nil
+}
+
+func (s *Server) executeCustomMetadataSync(ctx context.Context, runID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
+	maxWorks := configInt(node.Config, "maxWorks", 25)
+	if len(candidates) > maxWorks {
+		return customNodeExecution{}, fmt.Errorf("metadata candidate count exceeds maxWorks")
+	}
+	completed := []customWorkRef{}
+	failed := []customWorkCandidate{}
+	partial := false
+	for _, candidate := range candidates {
+		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
+			return customNodeExecution{}, err
+		}
+		family, err := s.syncWorkMetadataFamily(ctx, candidate.Code)
+		if err != nil {
+			candidate.Reason = "metadata_sync_failed"
+			failed = append(failed, candidate)
+			continue
+		}
+		var workID int64
+		var code string
+		if err := s.db.QueryRowContext(ctx, "SELECT id, primary_code FROM work WHERE UPPER(primary_code) = UPPER(?)", candidate.Code).Scan(&workID, &code); err != nil {
+			candidate.Reason = "metadata_work_missing"
+			failed = append(failed, candidate)
+			continue
+		}
+		completed = append(completed, customWorkRef{Code: code, WorkID: workID, SourceID: candidate.SourceID})
+		partial = partial || len(family.Failures) > 0
+	}
+	return customNodeExecution{Partial: partial || len(failed) > 0, Outputs: map[string]customPortValue{
+		"completed": {Type: "work_refs", WorkRefs: uniqueCustomWorkRefs(completed)},
+		"failed":    {Type: "work_candidates", Candidates: uniqueCustomCandidates(failed)},
+	}}, nil
+}
+
+func (s *Server) executeCustomFilterLibraryWorks(ctx context.Context, userID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+	refs := uniqueCustomWorkRefs(inputs["works"].WorkRefs)
+	limit := configInt(node.Config, "limit", min(100, len(refs)))
+	if limit <= 0 {
+		limit = len(refs)
+	}
+	accepted := []customWorkRef{}
+	rejected := []customWorkRef{}
+	for _, ref := range refs {
+		metadata, err := s.customWorkFilterMetadata(ctx, userID, ref.Code)
+		if err != nil {
+			return customNodeExecution{}, err
+		}
+		if customWorkMatchesFilter(metadata.ReleaseDate, metadata.VoiceNames, metadata.MetadataTags, metadata.UserTags, node.Config) && len(accepted) < limit {
+			accepted = append(accepted, ref)
+		} else {
+			rejected = append(rejected, ref)
+		}
+	}
+	return customNodeExecution{Outputs: map[string]customPortValue{
+		"accepted": {Type: "work_refs", WorkRefs: accepted}, "rejected": {Type: "work_refs", WorkRefs: rejected},
+	}}, nil
+}
+
+type customWorkFilterMetadata struct {
+	ReleaseDate  string
+	VoiceNames   []string
+	MetadataTags []string
+	UserTags     []string
+}
+
+func (s *Server) customWorkFilterMetadata(ctx context.Context, userID int64, code string) (customWorkFilterMetadata, error) {
+	metadata := customWorkFilterMetadata{}
+	var workID int64
+	var release sql.NullString
+	err := s.db.QueryRowContext(ctx, "SELECT id, release_date FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID, &release)
+	if errors.Is(err, sql.ErrNoRows) {
+		return metadata, nil
+	}
+	if err != nil {
+		return metadata, err
+	}
+	metadata.ReleaseDate = normalizeCustomReleaseDate(release.String)
+	queries := []struct {
+		Target *[]string
+		SQL    string
+		Args   []any
+	}{
+		{&metadata.VoiceNames, `SELECT DISTINCT person.display_name FROM work_credit INNER JOIN person ON person.id = work_credit.person_id WHERE work_credit.work_id = ? AND work_credit.role = 'voice_actor' ORDER BY person.display_name`, []any{workID}},
+		{&metadata.MetadataTags, `SELECT DISTINCT tag.display_name FROM work_tag INNER JOIN tag ON tag.id = work_tag.tag_id WHERE work_tag.work_id = ? ORDER BY tag.display_name`, []any{workID}},
+		{&metadata.UserTags, `SELECT DISTINCT user_tag.name FROM user_work_tag INNER JOIN user_tag ON user_tag.id = user_work_tag.user_tag_id WHERE user_work_tag.work_id = ? AND user_work_tag.user_id = ? ORDER BY user_tag.name`, []any{workID, userID}},
+	}
+	for _, query := range queries {
+		rows, err := s.db.QueryContext(ctx, query.SQL, query.Args...)
+		if err != nil {
+			return metadata, err
+		}
+		for rows.Next() {
+			var value string
+			if err := rows.Scan(&value); err != nil {
+				rows.Close()
+				return metadata, err
+			}
+			*query.Target = append(*query.Target, value)
+		}
+		if err := rows.Close(); err != nil {
+			return metadata, err
+		}
+	}
+	return metadata, nil
+}
+
+func mergeCustomCandidateMetadata(candidate customWorkCandidate, metadata customWorkFilterMetadata) customWorkCandidate {
+	if candidate.ReleaseDate == "" {
+		candidate.ReleaseDate = metadata.ReleaseDate
+	}
+	candidate.VoiceNames = uniqueFoldedStrings(append(candidate.VoiceNames, metadata.VoiceNames...))
+	candidate.MetadataTags = uniqueFoldedStrings(append(candidate.MetadataTags, metadata.MetadataTags...))
+	return candidate
+}
+
+func customWorkMatchesFilter(releaseDate string, voiceNames, metadataTags, userTags []string, config map[string]any) bool {
+	if from := configString(config, "releaseFrom"); from != "" && (releaseDate == "" || releaseDate < from) {
+		return false
+	}
+	if to := configString(config, "releaseTo"); to != "" && (releaseDate == "" || releaseDate > to) {
+		return false
+	}
+	return containsAnyFold(voiceNames, configStringSlice(config, "voiceNames")) &&
+		containsAnyFold(metadataTags, configStringSlice(config, "metadataTags")) &&
+		containsAnyFold(userTags, configStringSlice(config, "userTags"))
+}
+
+func containsAnyFold(values, wanted []string) bool {
+	if len(wanted) == 0 {
+		return true
+	}
+	for _, target := range wanted {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(target)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func uniqueFoldedStrings(values []string) []string {
+	result := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func (s *Server) executeCustomSourceAvailability(ctx context.Context, runID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
@@ -1875,8 +2483,8 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 	excluded := customExtensionSet(configStringSlice(node.Config, "excludeExtensions"))
 	prepared := []preparedCustomFetch{}
 	failed := []customWorkCandidate{}
-	completed := []customWorkRef{}
 	childRunIDs := []int64{}
+	pendingChildren := []customPendingChild{}
 	totalFiles := 0
 	totalBytes := int64(0)
 	for _, candidate := range candidates {
@@ -1916,7 +2524,8 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 			if totalBytes > maxBytes {
 				return customNodeExecution{}, fmt.Errorf("fetch size exceeds maxBytes")
 			}
-			completed = append(completed, customWorkRef{Code: existing.PrimaryCode, WorkID: existing.WorkID, SourceID: sourceID, ChildRunID: existing.RunID})
+			ref := customWorkRef{Code: existing.PrimaryCode, WorkID: existing.WorkID, SourceID: sourceID, ChildRunID: existing.RunID}
+			pendingChildren = append(pendingChildren, customPendingChild{RunID: existing.RunID, Candidate: candidate, WorkRef: ref})
 			childRunIDs = append(childRunIDs, existing.RunID)
 			continue
 		}
@@ -1969,6 +2578,7 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 		prepared = append(prepared, item)
 	}
 	targetTemplate := configString(node.Config, "targetRoot")
+	minFreeBytes := configInt64(node.Config, "minFreeBytes", 0)
 	if len(prepared) > 1 && targetTemplate != "" && !strings.Contains(targetTemplate, "<work_code>") {
 		return customNodeExecution{}, fmt.Errorf("batch targetRoot must contain <work_code>")
 	}
@@ -1980,22 +2590,29 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 		if existing, found, err := s.remoteFetchRequestResult(ctx, requestID, item.Candidate.SourceID, item.Candidate.Code); err != nil {
 			return customNodeExecution{}, err
 		} else if found {
-			completed = append(completed, customWorkRef{Code: existing.PrimaryCode, WorkID: existing.WorkID, SourceID: item.Candidate.SourceID, ChildRunID: existing.RunID})
+			ref := customWorkRef{Code: existing.PrimaryCode, WorkID: existing.WorkID, SourceID: item.Candidate.SourceID, ChildRunID: existing.RunID}
+			pendingChildren = append(pendingChildren, customPendingChild{RunID: existing.RunID, Candidate: item.Candidate, WorkRef: ref})
 			childRunIDs = append(childRunIDs, existing.RunID)
 			continue
 		}
 		targetRoot := strings.ReplaceAll(targetTemplate, "<work_code>", item.Candidate.Code)
-		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil)
+		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes)
 		if err != nil {
 			item.Candidate.Reason = "fetch_queue_failed"
 			failed = append(failed, item.Candidate)
 			continue
 		}
-		completed = append(completed, customWorkRef{Code: result.PrimaryCode, WorkID: result.WorkID, SourceID: item.Candidate.SourceID, ChildRunID: result.RunID})
+		ref := customWorkRef{Code: result.PrimaryCode, WorkID: result.WorkID, SourceID: item.Candidate.SourceID, ChildRunID: result.RunID}
+		pendingChildren = append(pendingChildren, customPendingChild{RunID: result.RunID, Candidate: item.Candidate, WorkRef: ref})
 		childRunIDs = append(childRunIDs, result.RunID)
 	}
+	if len(pendingChildren) > 0 {
+		return customNodeExecution{ChildRunIDs: childRunIDs, Pending: &customPendingExecution{
+			NodeID: node.ID, Kind: "fetch", Children: pendingChildren, Failed: failed,
+		}}, nil
+	}
 	return customNodeExecution{Partial: len(failed) > 0, ChildRunIDs: childRunIDs, Outputs: map[string]customPortValue{
-		"completed": {Type: "work_refs", WorkRefs: completed}, "failed": {Type: "work_candidates", Candidates: failed},
+		"completed": {Type: "work_refs", WorkRefs: []customWorkRef{}}, "failed": {Type: "work_candidates", Candidates: failed},
 	}}, nil
 }
 
@@ -2082,6 +2699,88 @@ func (s *Server) executeCustomTagWorks(ctx context.Context, userID int64, node c
 	}}, nil
 }
 
+func (s *Server) executeCustomSubworkflow(ctx context.Context, runID int64, payload customWorkflowJobPayload, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
+	maxWorks := configInt(node.Config, "maxWorks", 25)
+	if len(candidates) > maxWorks {
+		return customNodeExecution{}, fmt.Errorf("subworkflow candidate count exceeds maxWorks")
+	}
+	if len(candidates) == 0 {
+		return customNodeExecution{Outputs: map[string]customPortValue{
+			"completed": {Type: "work_refs", WorkRefs: []customWorkRef{}}, "failed": {Type: "work_candidates", Candidates: []customWorkCandidate{}},
+		}}, nil
+	}
+	definitionID := configInt64(node.Config, "definitionId", 0)
+	if len(payload.DefinitionStack) >= 5 {
+		return customNodeExecution{}, fmt.Errorf("subworkflow nesting depth exceeds 5")
+	}
+	for _, ancestorID := range payload.DefinitionStack {
+		if ancestorID == definitionID {
+			return customNodeExecution{}, fmt.Errorf("subworkflow definition cycle detected")
+		}
+	}
+	definition, err := s.loadWorkflowDefinition(ctx, definitionID)
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	if definition.Scope != "user" || !definition.Editable || definition.OwnerUserID == nil || payload.OwnerUserID <= 0 || *definition.OwnerUserID != payload.OwnerUserID {
+		return customNodeExecution{}, fmt.Errorf("subworkflow must reference a workflow owned by the same user")
+	}
+	graph, err := validateCustomWorkflowDefinition(definition.DefinitionJSON)
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	if missing := missingCustomWorkflowPermission(payload.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
+		return customNodeExecution{}, fmt.Errorf("subworkflow permission snapshot is missing %s", missing)
+	}
+	inputKey := configString(node.Config, "inputKey")
+	inputFound := false
+	for _, input := range graph.Definition.Inputs {
+		if input.Key == inputKey {
+			inputFound = true
+			if customInputDataType(input.Type) != "work_candidates" {
+				return customNodeExecution{}, fmt.Errorf("subworkflow input %s must accept work codes", inputKey)
+			}
+		}
+	}
+	if !inputFound {
+		return customNodeExecution{}, fmt.Errorf("subworkflow input %s does not exist", inputKey)
+	}
+	codes := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		codes = append(codes, candidate.Code)
+	}
+	childInputs, err := normalizeCustomWorkflowInputs(graph.Definition.Inputs, map[string]any{inputKey: codes})
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	stack := append(append([]int64{}, payload.DefinitionStack...), definition.ID)
+	childRunID, err := s.enqueueCustomWorkflow(ctx, definition, graph, payload.UserID, payload.Permissions, childInputs, "", customWorkflowEnqueueOptions{
+		TriggerType: "subworkflow", TriggerReason: fmt.Sprintf("parent_run_%d", runID), DefinitionStack: stack,
+	})
+	if err != nil {
+		return customNodeExecution{}, err
+	}
+	return customNodeExecution{ChildRunIDs: []int64{childRunID}, Pending: &customPendingExecution{
+		NodeID: node.ID, Kind: "subworkflow", Children: []customPendingChild{{RunID: childRunID}}, Candidates: candidates,
+		OutputNodeIDs: customWorkflowTerminalNodeIDs(graph),
+	}}, nil
+}
+
+func customWorkflowTerminalNodeIDs(graph customWorkflowGraph) []string {
+	hasOutgoing := map[string]bool{}
+	for _, edge := range graph.Definition.Edges {
+		hasOutgoing[edge.Source] = true
+	}
+	result := []string{}
+	for _, nodeID := range graph.TopologicalOrder {
+		if !hasOutgoing[nodeID] {
+			result = append(result, nodeID)
+		}
+	}
+	return result
+}
+
 func (s *Server) finishCustomWorkflowJob(ctx context.Context, job workflowJobRecord, checkpoint customWorkflowCheckpoint, total int) error {
 	status := "succeeded"
 	if checkpoint.Partial {
@@ -2118,6 +2817,9 @@ func (s *Server) finishCustomWorkflowJob(ctx context.Context, job workflowJobRec
 		JobID: job.ID, Level: map[bool]string{true: "warn", false: "info"}[checkpoint.Partial], Type: "custom_workflow.completed",
 		Message: "Custom workflow " + status, Detail: map[string]any{"status": status, "child_run_ids": checkpoint.ChildRunIDs},
 	}); err != nil {
+		return err
+	}
+	if err := updateCustomWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -2180,6 +2882,9 @@ func (s *Server) failCustomWorkflowJob(ctx context.Context, job workflowJobRecor
 		NodeRunID: failedNodeRunID, JobID: job.ID, Level: "error", Type: "custom_workflow.failed",
 		Message: message, Detail: map[string]any{"failed_node_run_id": failedNodeValue},
 	}); err != nil {
+		return err
+	}
+	if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, message); err != nil {
 		return err
 	}
 	return tx.Commit()

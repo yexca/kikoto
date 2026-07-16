@@ -3763,7 +3763,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 			}
 		}
 		if !workFailed && (action == "fetch" || action == "track_fetch") {
-			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil)
+			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0)
 			if err != nil {
 				result.Failed++
 				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))

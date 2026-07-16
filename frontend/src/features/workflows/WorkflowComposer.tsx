@@ -12,20 +12,23 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Redo2,
   Save,
   Search,
   Tags,
   Trash2,
   Type,
+  Undo2,
   Workflow,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
+import { createWorkflowDocumentHistory, workflowDocumentHistoryReducer } from "@/features/workflows/documentHistory";
 import {
   createEmptyWorkflowDefinition,
   createWorkflowEdgeID,
@@ -36,11 +39,12 @@ import {
   type WorkflowInputType,
   type WorkflowNodeDefinition,
   uniqueWorkflowNodeID,
+  upgradeLegacyWorkflowDefinition,
   validateWorkflowDefinition,
   workflowNodePorts,
 } from "@/features/workflows/definitionModel";
 import { workflowCommandUsage } from "@/features/workflows/workflowCommands";
-import { api, type LibrarySource, type WorkflowDefinition, type WorkflowNodeType } from "@/lib/api";
+import { api, type LibrarySource, type WorkflowDefinition, type WorkflowNodeType, type WorkflowTrigger } from "@/lib/api";
 
 const inputPresets: Array<{ type: WorkflowInputType; label: string; key: string }> = [
   { type: "text", label: "Text input", key: "text" },
@@ -48,29 +52,37 @@ const inputPresets: Array<{ type: WorkflowInputType; label: string; key: string 
   { type: "series_id", label: "Series input", key: "series" },
   { type: "voice_name", label: "Voice input", key: "voice" },
   { type: "work_code", label: "Work input", key: "work" },
+  { type: "work_codes", label: "Works input", key: "works" },
 ];
 
 export function WorkflowComposer({
   definition,
+  triggers = [],
   nodeTypes,
   onClose,
   onDeleted,
   onSaved,
 }: {
   definition: WorkflowDefinition | null;
+  triggers?: WorkflowTrigger[];
   nodeTypes: WorkflowNodeType[];
   onClose: () => void;
   onDeleted?: () => void;
   onSaved: (definition: WorkflowDefinition) => void;
 }) {
   const parsed = definition ? parseWorkflowDefinition(definition.definitionJson) : null;
+  const legacyUpgrade = parsed?.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsed.nodes, triggers) : null;
   const [code, setCode] = useState(definition?.code ?? `custom_workflow_${Date.now().toString().slice(-5)}`);
   const [displayName, setDisplayName] = useState(definition?.displayName ?? "New workflow");
   const [description, setDescription] = useState(definition?.description ?? "");
-  const [document, setDocument] = useState<WorkflowDefinitionDocument>(() => parsed?.kind === "v2" ? parsed.document : createStarterDocument(nodeTypes));
+  const [history, dispatchHistory] = useReducer(workflowDocumentHistoryReducer, undefined, () => createWorkflowDocumentHistory(
+    parsed?.kind === "v2" ? parsed.document : legacyUpgrade?.kind === "upgradeable" ? legacyUpgrade.document : createStarterDocument(nodeTypes),
+  ));
+  const document = history.present;
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [paletteQuery, setPaletteQuery] = useState("");
   const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [workflowDefinitions, setWorkflowDefinitions] = useState<WorkflowDefinition[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(!definition);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"palette" | "inspector" | null>(null);
@@ -95,35 +107,39 @@ export function WorkflowComposer({
       if (definition) return;
       const defaultSource = nextSources.find((source) => source.enabled && source.sourceType !== "local");
       if (!defaultSource) return;
-      setDocument((current) => ({
+      dispatchHistory({ type: "replace", update: (current) => ({
         ...current,
-        nodes: current.nodes.map((node) => ["voice_source_works", "check_source_availability", "track_works", "fetch_works"].includes(node.type) && !node.config?.sourceId
+        nodes: current.nodes.map((node) => ["voice_source_works", "source_popular_works", "check_source_availability", "track_works", "fetch_works"].includes(node.type) && !node.config?.sourceId
           ? { ...node, config: { ...node.config, sourceId: defaultSource.id } }
           : node),
-      }));
+      }) });
     }).catch(() => setSources([]));
   }, [definition]);
 
+  useEffect(() => {
+    api.listWorkflowDefinitions().then(setWorkflowDefinitions).catch(() => setWorkflowDefinitions([]));
+  }, []);
+
   const updateDocument = (next: WorkflowDefinitionDocument) => {
     const referencedInputs = new Set(next.nodes.filter((node) => node.type === "workflow_input").map((node) => stringValue(node.config?.inputKey)));
-    setDocument({ ...next, inputs: next.inputs.filter((input) => referencedInputs.has(input.key)) });
+    dispatchHistory({ type: "change", update: { ...next, inputs: next.inputs.filter((input) => referencedInputs.has(input.key)) } });
   };
 
   const addInput = (preset: (typeof inputPresets)[number]) => {
     const key = uniqueInputKey(preset.key, document.inputs);
     const nodeId = uniqueWorkflowNodeID(`input_${key}`, document.nodes);
     const input: WorkflowInputDefinition = { key, label: preset.label.replace(" input", ""), type: preset.type, required: true };
-    setDocument({
-      ...document,
-      inputs: [...document.inputs, input],
-      nodes: [...document.nodes, {
+    dispatchHistory({ type: "change", update: (current) => ({
+      ...current,
+      inputs: [...current.inputs, input],
+      nodes: [...current.nodes, {
         id: nodeId,
         type: "workflow_input",
         displayName: input.label,
         config: { inputKey: key },
-        position: nextNodePosition(document.nodes.length, true),
+        position: nextNodePosition(current.nodes.length, true),
       }],
-    });
+    }) });
     setSelectedNodeId(nodeId);
     openInspectorPanel();
   };
@@ -132,7 +148,7 @@ export function WorkflowComposer({
     const id = uniqueWorkflowNodeID(metadata.type, document.nodes);
     const config = nodeConfigDefaults(metadata);
     const defaultSource = sources.find((source) => source.enabled && source.sourceType !== "local");
-    if (["voice_source_works", "check_source_availability", "track_works", "fetch_works"].includes(metadata.type) && defaultSource && !config.sourceId) {
+    if (["voice_source_works", "source_popular_works", "check_source_availability", "track_works", "fetch_works"].includes(metadata.type) && defaultSource && !config.sourceId) {
       config.sourceId = defaultSource.id;
     }
     const nextNode: WorkflowNodeDefinition = {
@@ -142,7 +158,7 @@ export function WorkflowComposer({
       config,
       position: nextNodePosition(document.nodes.length, false),
     };
-    setDocument({ ...document, nodes: [...document.nodes, nextNode] });
+    dispatchHistory({ type: "change", update: (current) => ({ ...current, nodes: [...current.nodes, nextNode] }) });
     setSelectedNodeId(id);
     openInspectorPanel();
   };
@@ -161,20 +177,20 @@ export function WorkflowComposer({
   };
 
   const updateNode = (nodeId: string, patch: Partial<WorkflowNodeDefinition>) => {
-    setDocument((current) => ({
+    dispatchHistory({ type: "change", group: `node:${nodeId}:${Object.keys(patch).sort().join(",")}`, update: (current) => ({
       ...current,
       nodes: current.nodes.map((node) => node.id === nodeId ? { ...node, ...patch } : node),
-    }));
+    }) });
   };
 
   const removeNode = (node: WorkflowNodeDefinition) => {
     const inputKey = node.type === "workflow_input" ? stringValue(node.config?.inputKey) : "";
-    setDocument((current) => ({
+    dispatchHistory({ type: "change", update: (current) => ({
       ...current,
       nodes: current.nodes.filter((candidate) => candidate.id !== node.id),
       edges: current.edges.filter((edge) => edge.source !== node.id && edge.target !== node.id),
       inputs: inputKey ? current.inputs.filter((input) => input.key !== inputKey) : current.inputs,
-    }));
+    }) });
     setSelectedNodeId("");
   };
 
@@ -208,7 +224,19 @@ export function WorkflowComposer({
     }
   };
 
-  if (parsed?.kind === "legacy") return null;
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
+      event.preventDefault();
+      dispatchHistory({ type: event.shiftKey ? "redo" : "undo" });
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  if (parsed?.kind === "legacy" && legacyUpgrade?.kind !== "upgradeable") return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-background p-2 lg:p-4" role="dialog" aria-modal="true" aria-label={definition ? "Edit workflow" : "New workflow"}>
@@ -224,6 +252,12 @@ export function WorkflowComposer({
             <span>{document.edges.length} connections</span>
             {errors.length > 0 ? <Badge variant="warning">{errors.length} errors</Badge> : <Badge variant="secondary">Ready</Badge>}
           </div>
+          <Button variant="ghost" size="icon" aria-label="Undo workflow edit" title="Undo" onClick={() => dispatchHistory({ type: "undo" })} disabled={history.past.length === 0}>
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Redo workflow edit" title="Redo" onClick={() => dispatchHistory({ type: "redo" })} disabled={history.future.length === 0}>
+            <Redo2 className="h-4 w-4" />
+          </Button>
           {definition?.editable && definition.scope === "user" && (
             <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label="Delete workflow" title="Delete workflow" onClick={() => setConfirmingDelete(true)} disabled={saving || deleting}>
               <Trash2 className="h-4 w-4" />
@@ -276,9 +310,10 @@ export function WorkflowComposer({
                 document={document}
                 nodeTypes={nodeTypes}
                 sources={sources}
+                workflowDefinitions={workflowDefinitions.filter((candidate) => candidate.scope === "user" && candidate.editable && candidate.id !== definition?.id)}
                 issues={issues.filter((issue) => issue.nodeId === selectedNode.id)}
                 onChange={(patch) => updateNode(selectedNode.id, patch)}
-                onDocumentChange={setDocument}
+                onDocumentChange={(next) => dispatchHistory({ type: "change", group: "inspector-document", update: next })}
                 onRemove={() => removeNode(selectedNode)}
               />
             ) : (
@@ -292,7 +327,7 @@ export function WorkflowComposer({
                 onCodeChange={setCode}
                 onDisplayNameChange={setDisplayName}
                 onDescriptionChange={setDescription}
-                onDocumentChange={setDocument}
+                onDocumentChange={(next) => dispatchHistory({ type: "change", group: "inspector-document", update: next })}
               />
             )}
           </aside>}
@@ -430,6 +465,7 @@ function NodeInspector({
   document,
   nodeTypes,
   sources,
+  workflowDefinitions,
   issues,
   onChange,
   onDocumentChange,
@@ -439,6 +475,7 @@ function NodeInspector({
   document: WorkflowDefinitionDocument;
   nodeTypes: WorkflowNodeType[];
   sources: LibrarySource[];
+  workflowDefinitions: WorkflowDefinition[];
   issues: ReturnType<typeof validateWorkflowDefinition>;
   onChange: (patch: Partial<WorkflowNodeDefinition>) => void;
   onDocumentChange: (document: WorkflowDefinitionDocument) => void;
@@ -457,7 +494,7 @@ function NodeInspector({
       {workflowInput ? (
         <InputInspector input={workflowInput} document={document} node={node} onDocumentChange={onDocumentChange} />
       ) : (
-        <ConfigInspector node={node} metadata={metadata} sources={sources} onChange={onChange} />
+        <ConfigInspector node={node} metadata={metadata} sources={sources} workflowDefinitions={workflowDefinitions} onChange={onChange} />
       )}
       <section className="space-y-2 border-t pt-4">
         <div className="text-xs font-semibold uppercase text-muted-foreground">Ports</div>
@@ -491,7 +528,7 @@ function InputInspector({ input, document, node, onDocumentChange }: { input: Wo
   );
 }
 
-function ConfigInspector({ node, metadata, sources, onChange }: { node: WorkflowNodeDefinition; metadata?: WorkflowNodeType; sources: LibrarySource[]; onChange: (patch: Partial<WorkflowNodeDefinition>) => void }) {
+function ConfigInspector({ node, metadata, sources, workflowDefinitions, onChange }: { node: WorkflowNodeDefinition; metadata?: WorkflowNodeType; sources: LibrarySource[]; workflowDefinitions: WorkflowDefinition[]; onChange: (patch: Partial<WorkflowNodeDefinition>) => void }) {
   const schema = parseSchema(metadata?.configSchema);
   const fields = Object.entries(schema.properties ?? {});
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(node.config ?? {}, null, 2));
@@ -501,7 +538,7 @@ function ConfigInspector({ node, metadata, sources, onChange }: { node: Workflow
   return (
     <section className="space-y-3 border-t pt-4">
       <div><div className="text-xs font-semibold uppercase text-muted-foreground">Configuration</div>{metadata?.description && <p className="mt-1 text-xs text-muted-foreground">{metadata.description}</p>}</div>
-      {fields.map(([key, field]) => <ConfigField key={key} name={key} schema={field} value={node.config?.[key]} sources={sources} onChange={(value) => updateConfig(key, value)} />)}
+      {fields.map(([key, field]) => <ConfigField key={key} name={key} schema={field} value={node.config?.[key]} sources={sources} workflowDefinitions={workflowDefinitions} onChange={(value) => updateConfig(key, value)} />)}
       {fields.length === 0 && <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">This node has no structured options.</div>}
       <details className="group rounded-md border">
         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium">Advanced JSON<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary>
@@ -513,13 +550,16 @@ function ConfigInspector({ node, metadata, sources, onChange }: { node: Workflow
   );
 }
 
-function ConfigField({ name, schema, value, sources, onChange }: { name: string; schema: Record<string, unknown>; value: unknown; sources: LibrarySource[]; onChange: (value: unknown) => void }) {
+function ConfigField({ name, schema, value, sources, workflowDefinitions, onChange }: { name: string; schema: Record<string, unknown>; value: unknown; sources: LibrarySource[]; workflowDefinitions: WorkflowDefinition[]; onChange: (value: unknown) => void }) {
   const label = stringValue(schema.title) || humanize(name);
   const enumValues = Array.isArray(schema.enum) ? schema.enum.map(String) : [];
   const kind = stringValue(schema.type) || inferredFieldType(name, value);
   if (/sourceId$/i.test(name)) {
     const remoteSources = sources.filter((source) => source.enabled && source.sourceType !== "local");
     return <InspectorField label="Remote source"><select className={inputClass} value={String(value ?? "")} onChange={(event) => onChange(Number(event.target.value))} disabled={remoteSources.length === 0}><option value="">{remoteSources.length > 0 ? "Select source" : "No enabled remote sources"}</option>{remoteSources.map((source) => <option key={source.id} value={source.id}>{source.displayName}</option>)}</select></InspectorField>;
+  }
+  if (name === "definitionId") {
+    return <InspectorField label={label}><select className={inputClass} value={String(value ?? "")} onChange={(event) => onChange(Number(event.target.value))} disabled={workflowDefinitions.length === 0}><option value="">{workflowDefinitions.length > 0 ? "Select workflow" : "No reusable workflows"}</option>{workflowDefinitions.map((definition) => <option key={definition.id} value={definition.id}>{definition.displayName}</option>)}</select></InspectorField>;
   }
   if (enumValues.length > 0) return <InspectorField label={label}><select className={inputClass} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>{enumValues.map((option) => <option key={option} value={option}>{option}</option>)}</select></InspectorField>;
   if (kind === "boolean") return <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"><span>{label}</span><Switch checked={Boolean(value)} onCheckedChange={onChange} aria-label={label} /></div>;
@@ -568,7 +608,7 @@ function createStarterDocument(nodeTypes: WorkflowNodeType[]) {
 }
 
 function isBusinessNodeType(type: string) {
-  return ["circle_catalog", "series_catalog", "voice_source_works", "filter_works", "check_source_availability", "track_works", "fetch_works", "template_text", "tag_works"].includes(type);
+  return ["circle_catalog", "series_catalog", "voice_source_works", "provider_popular_works", "source_popular_works", "filter_works", "metadata_sync", "filter_library_works", "check_source_availability", "track_works", "fetch_works", "template_text", "tag_works", "subworkflow"].includes(type);
 }
 
 function nodeGroup(nodeType: WorkflowNodeType) {
@@ -610,7 +650,12 @@ function nodeConfigDefaults(metadata: WorkflowNodeType) {
     voice_source_works: { pageSize: 48, maxPages: 10, maxWorks: 100 },
     filter_works: { limit: 100 },
     track_works: { maxWorks: 25 },
-    fetch_works: { excludeExtensions: ["wav"], maxWorks: 25, maxFiles: 10000, maxBytes: 107374182400, allowUnknownSizes: false },
+    provider_popular_works: { period: "day", releaseWindow: "", maxWorks: 100 },
+    source_popular_works: { maxWorks: 100 },
+    metadata_sync: { maxWorks: 25 },
+    filter_library_works: { limit: 100 },
+    subworkflow: { inputKey: "works", maxWorks: 25 },
+    fetch_works: { excludeExtensions: ["wav"], maxWorks: 25, maxFiles: 10000, maxBytes: 107374182400, minFreeBytes: 2147483648, allowUnknownSizes: false },
   };
   return { ...schemaDefaults(metadata.configSchema), ...(defaults[metadata.type] ?? {}) };
 }
