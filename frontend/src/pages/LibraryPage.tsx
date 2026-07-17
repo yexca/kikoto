@@ -665,6 +665,21 @@ export function LibraryPage() {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+    if (work.workId !== null && work.primaryCode) {
+      const preview = remoteWorkPreview(work);
+      setSelectedRemoteTarget(null);
+      openPersistedRemoteSourceWorkRoute(
+        source.id,
+        work.primaryCode,
+        code,
+        libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+        "Back to library",
+        preview,
+      );
+      setSelectedWorkPreview(preview);
+      setSelectedCode(work.primaryCode);
+      return;
+    }
     setSelectedRemoteTarget({ source, code });
     openRemoteSourceWorkRoute(source.id, code, libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), "Back to library");
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
@@ -973,6 +988,7 @@ export function LibraryPage() {
         sources={sources}
         initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
         initialTrackedSourceID={detailTrackedSourceIDFromLocation(window.location.search)}
+        initialRemoteCode={detailRemoteCodeFromLocation(window.location.search)}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onWorkReload={async (workID, includeMedia = false) => {
@@ -2577,6 +2593,8 @@ function RemoteWorkDetailView({
   const [isSaving, setIsSaving] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
+  const isCompactDetailLayout = useCompactDetailLayout();
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
   const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
@@ -2778,6 +2796,91 @@ function RemoteWorkDetailView({
     );
   }
 
+  const identityActions = (
+    <WorkIdentityActionBar
+      busy={isFetching || isSaving}
+      canPlay={remotePlayableTracks.length > 0}
+      listeningStatus="none"
+      favorite={false}
+      listWorkId={detail.workId}
+      onEnsureListWork={() => syncForUserState("detail_list_remote")}
+      onListSaved={async () => {
+        await onWorksChanged();
+      }}
+      onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
+      onMark={(status) => void updateRemoteMark(status)}
+      dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
+    />
+  );
+  const directoryPanel = (
+    <SourceDirectoryPanel
+      title="Directory"
+      description={`Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`}
+      statsLabel={formatTreeStats(directoryStats)}
+      tabs={remoteTabs}
+      activeKey={remoteSourceTabKey(source.id)}
+      onActiveKeyChange={() => undefined}
+      directoryMode={directoryMode}
+      onDirectoryModeChange={setDirectoryMode}
+      actions={
+        <MediaContextActionBar
+          busy={isFetching || isSaving}
+          mode="remote_source"
+          contextKey={remoteSourceTabKey(source.id)}
+          onTrack={() => void fetchWork("manual_track")}
+          onFetch={() => void openSaveWorkspace()}
+          remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
+          remoteSourceName={detail.sourceName}
+        />
+      }
+      root={tree}
+      directoryRoutingRules={directoryRoutingRules}
+      currentLocationId={player.currentLocationId}
+      emptyLabel="No remote files detected."
+      toolbar={message ? <DirectoryMessage message={message} /> : undefined}
+      selectionModal={isSaveSelectionOpen ? (
+        <RemoteSaveSelectionPanel
+          root={tree}
+          selectedPaths={selectedSavePaths}
+          selectedLocalPaths={selectedLocalSavePaths}
+          plan={savePlan}
+          decisions={saveDecisions}
+          planDirty={savePlanDirty}
+          message={savePlanMessage}
+          sourceId={source.id}
+          activeEditionCode={remoteDetailActionCode(detail)}
+          onEditionChange={selectPreparedRemoteEdition}
+          targetRoot={selectedTargetRoot}
+          onTargetRootChange={(targetRoot) => {
+            setSelectedTargetRoot(targetRoot);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onChange={(paths) => {
+            setSelectedSavePaths(paths);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onLocalChange={(paths) => {
+            setSelectedLocalSavePaths(paths);
+            setSavePlan(null);
+            setSavePlanMessage("");
+          }}
+          onDecisionChange={(decision) => {
+            setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
+            setSavePlanDirty(true);
+          }}
+          disabled={isSaving}
+          onClose={() => setIsSaveSelectionOpen(false)}
+          onSave={() => void saveSelected()}
+        />
+      ) : null}
+      onPlayFolder={playRemoteTracks}
+      onPlayNext={(track) => queueRemoteTrack(track, true)}
+      onAppendQueue={(track) => queueRemoteTrack(track, false)}
+    />
+  );
+
   return (
     <div className="space-y-5">
       <Button variant="outline" size="sm" onClick={onBack}>
@@ -2785,111 +2888,61 @@ function RemoteWorkDetailView({
         {detailReturnTarget("library").label}
       </Button>
 
-      <DetailHero
-        coverUrl={detail.coverUrl}
-        fallbackCode={detail.primaryCode || detail.remoteId}
-        code={detail.primaryCode || detail.remoteId}
-        title={detail.title}
-        circle={detail.circle}
-        circleExternalId=""
-        ratingLabel="Rating"
-        rating={detail.rating}
-        ratingCount={null}
-        sales={detail.sales}
-        series=""
-        seriesTitleId=""
-        seriesCircleExternalId=""
-        dlsiteFetchedAt=""
-        releaseDate={detail.releaseDate || "Unknown"}
-        ageRating={detail.ageRating}
-        durationSeconds={detail.durationSeconds}
-        voiceActors={detail.voiceActors}
-        voiceCredits={[]}
-        tags={detail.tags}
-        actions={
-          <WorkIdentityActionBar
-            busy={isFetching || isSaving}
-            canPlay={remotePlayableTracks.length > 0}
-            listeningStatus="none"
-            favorite={false}
-            listWorkId={detail.workId}
-            onEnsureListWork={() => syncForUserState("detail_list_remote")}
-            onListSaved={async () => {
-              await onWorksChanged();
-            }}
-            onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
-            onMark={(status) => void updateRemoteMark(status)}
-            dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
+      {isCompactDetailLayout ? (
+        <MobileWorkDetailLayout
+          coverUrl={detail.coverUrl}
+          fallbackCode={detail.primaryCode || detail.remoteId}
+          code={detail.primaryCode || detail.remoteId}
+          title={detail.title}
+          circle={detail.circle}
+          circleExternalId={detail.circleRef?.externalId ?? ""}
+          series=""
+          seriesTitleId=""
+          seriesCircleExternalId=""
+          ratingLabel="Rating"
+          rating={detail.rating}
+          ratingCount={null}
+          sales={detail.sales}
+          dlsiteFetchedAt=""
+          releaseDate={detail.releaseDate || "Unknown"}
+          ageRating={detail.ageRating}
+          durationSeconds={detail.durationSeconds}
+          voiceActors={detail.voiceActors}
+          voiceCredits={[]}
+          tags={detail.tags}
+          activeTab={mobileDetailTab}
+          onActiveTabChange={setMobileDetailTab}
+          actions={identityActions}
+          directory={directoryPanel}
+        />
+      ) : (
+        <>
+          <DetailHero
+            coverUrl={detail.coverUrl}
+            fallbackCode={detail.primaryCode || detail.remoteId}
+            code={detail.primaryCode || detail.remoteId}
+            title={detail.title}
+            circle={detail.circle}
+            circleExternalId={detail.circleRef?.externalId ?? ""}
+            ratingLabel="Rating"
+            rating={detail.rating}
+            ratingCount={null}
+            sales={detail.sales}
+            series=""
+            seriesTitleId=""
+            seriesCircleExternalId=""
+            dlsiteFetchedAt=""
+            releaseDate={detail.releaseDate || "Unknown"}
+            ageRating={detail.ageRating}
+            durationSeconds={detail.durationSeconds}
+            voiceActors={detail.voiceActors}
+            voiceCredits={[]}
+            tags={detail.tags}
+            actions={identityActions}
           />
-        }
-      />
-
-      <SourceDirectoryPanel
-        title={detail.sourceName}
-        description={`Previewing remote files from ${detail.sourceName}; fetch before local marks or saves.`}
-        statsLabel={formatTreeStats(directoryStats)}
-        tabs={remoteTabs}
-        activeKey={remoteSourceTabKey(source.id)}
-        onActiveKeyChange={() => undefined}
-        directoryMode={directoryMode}
-        onDirectoryModeChange={setDirectoryMode}
-        actions={
-          <MediaContextActionBar
-            busy={isFetching || isSaving}
-            mode="remote_source"
-            contextKey={remoteSourceTabKey(source.id)}
-            onTrack={() => void fetchWork("manual_track")}
-            onFetch={() => void openSaveWorkspace()}
-            remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
-            remoteSourceName={detail.sourceName}
-          />
-        }
-        root={tree}
-        directoryRoutingRules={directoryRoutingRules}
-        currentLocationId={player.currentLocationId}
-        emptyLabel="No remote files detected."
-        toolbar={message ? <DirectoryMessage message={message} /> : undefined}
-        selectionModal={isSaveSelectionOpen ? (
-          <RemoteSaveSelectionPanel
-            root={tree}
-            selectedPaths={selectedSavePaths}
-            selectedLocalPaths={selectedLocalSavePaths}
-            plan={savePlan}
-            decisions={saveDecisions}
-            planDirty={savePlanDirty}
-            message={savePlanMessage}
-            sourceId={source.id}
-            activeEditionCode={detail ? remoteDetailActionCode(detail) : code}
-            onEditionChange={selectPreparedRemoteEdition}
-            targetRoot={selectedTargetRoot}
-            onTargetRootChange={(targetRoot) => {
-              setSelectedTargetRoot(targetRoot);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onChange={(paths) => {
-              setSelectedSavePaths(paths);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onLocalChange={(paths) => {
-              setSelectedLocalSavePaths(paths);
-              setSavePlan(null);
-              setSavePlanMessage("");
-            }}
-            onDecisionChange={(decision) => {
-              setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
-              setSavePlanDirty(true);
-            }}
-            disabled={isSaving}
-            onClose={() => setIsSaveSelectionOpen(false)}
-            onSave={() => void saveSelected()}
-          />
-        ) : null}
-        onPlayFolder={playRemoteTracks}
-        onPlayNext={(track) => queueRemoteTrack(track, true)}
-        onAppendQueue={(track) => queueRemoteTrack(track, false)}
-      />
+          {directoryPanel}
+        </>
+      )}
       {isManageOpen && (
         <DirectoryManagerModal
           root={tree}
@@ -2909,6 +2962,7 @@ function WorkDetailView({
   sources,
   initialSourceIntent,
   initialTrackedSourceID,
+  initialRemoteCode,
   onBack,
   onStatusChange,
   onWorkReload,
@@ -2921,13 +2975,14 @@ function WorkDetailView({
   sources: LibrarySource[];
   initialSourceIntent: DetailSourceIntent;
   initialTrackedSourceID: number | null;
+  initialRemoteCode: string;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
-  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent, initialTrackedSourceID });
+  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent, initialTrackedSourceID, initialRemoteCode });
   const {
     remoteSources,
     sourceTabs,
@@ -7042,12 +7097,23 @@ function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent) {
 }
 
 function detailSourceIntentFromLocation(search: string): DetailSourceIntent {
-  return new URLSearchParams(search).get("view") === "tracked" ? "tracked" : "local";
+  const params = new URLSearchParams(search);
+  if (params.get("view") === "tracked") return "tracked";
+  if (params.get("view") === "remote") {
+    const sourceID = Number(params.get("source"));
+    if (Number.isInteger(sourceID) && sourceID > 0) return remoteSourceTabKey(sourceID);
+  }
+  return "local";
 }
 
 function detailTrackedSourceIDFromLocation(search: string) {
   const value = Number(new URLSearchParams(search).get("trackedSource"));
   return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function detailRemoteCodeFromLocation(search: string) {
+  const params = new URLSearchParams(search);
+  return params.get("view") === "remote" ? (params.get("remoteCode") ?? "").trim() : "";
 }
 
 function detailReturnTarget(fallbackPath: string) {
@@ -7084,7 +7150,7 @@ async function resolveAndOpenWork(
       setSelectedWork({ ...work, mediaItems: media.mediaItems });
     }
     if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
-      window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}`);
+      window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
       setSelectedCode(resolved.resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
@@ -7127,6 +7193,21 @@ function workPreviewFromResolve(resolved: Awaited<ReturnType<typeof api.resolveW
     releaseDate: resolved.releaseDate,
     tags: resolved.tags,
     voiceActors: resolved.voiceActors,
+  };
+}
+
+function remoteWorkPreview(work: RemoteWork): WorkPreview {
+  return {
+    primaryCode: work.primaryCode,
+    title: work.title || work.primaryCode,
+    coverUrl: work.coverUrl,
+    circle: work.circle,
+    circleExternalId: work.circleRef?.externalId ?? "",
+    rating: work.rating,
+    sales: work.sales,
+    releaseDate: work.releaseDate || null,
+    tags: work.tags,
+    voiceActors: work.voiceActors,
   };
 }
 
@@ -7512,6 +7593,7 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
   const code = codeFromLocation(path, search);
   if (!code) return null;
   const params = new URLSearchParams(search);
+  if (params.get("view") === "remote") return null;
   const sourceID = Number(params.get("source"));
   if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
   const source = sources.find((candidate) => candidate.id === sourceID);
@@ -7621,6 +7703,26 @@ function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: str
   const cleanCode = code.trim();
   if (!cleanCode || sourceID <= 0) return;
   window.history.pushState({ returnTo, returnLabel }, "", `/${encodeURIComponent(cleanCode)}?source=${sourceID}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function openPersistedRemoteSourceWorkRoute(
+  sourceID: number,
+  canonicalCode: string,
+  remoteCode: string,
+  returnTo: string,
+  returnLabel: string,
+  workPreview: WorkPreview,
+) {
+  const cleanCanonicalCode = canonicalCode.trim();
+  const cleanRemoteCode = remoteCode.trim();
+  if (!cleanCanonicalCode || !cleanRemoteCode || sourceID <= 0) return;
+  const params = new URLSearchParams({
+    view: "remote",
+    source: String(sourceID),
+    remoteCode: cleanRemoteCode,
+  });
+  window.history.pushState({ returnTo, returnLabel, workPreview }, "", `/${encodeURIComponent(cleanCanonicalCode)}?${params.toString()}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

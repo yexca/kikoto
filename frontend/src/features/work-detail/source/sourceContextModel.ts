@@ -6,7 +6,7 @@ import type {
   WorkDetail,
 } from "@/lib/api";
 
-export type DetailSourceIntent = "local" | "tracked";
+export type DetailSourceIntent = "local" | "tracked" | `remote-source:${number}`;
 
 export type SourceTabInfo = {
   key: string;
@@ -188,7 +188,7 @@ export function remoteSourceCanBrowse(summary: SourceAvailabilitySource) {
   return summary.status === "available";
 }
 
-export function remoteSourceTabKey(sourceID: number) {
+export function remoteSourceTabKey(sourceID: number): `remote-source:${number}` {
   return `remote-source:${sourceID}`;
 }
 

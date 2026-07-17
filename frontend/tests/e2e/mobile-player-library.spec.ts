@@ -210,7 +210,7 @@ async function seedPlayer(page: Page, track = persistedTrack) {
   }, track);
 }
 
-async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
+async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -229,6 +229,34 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
       await route.fulfill({ json: { works: [work], page: 1, pageSize: 24, total: 1 } });
       return;
     }
+    if (url.pathname === `/api/works/${work.primaryCode}/source-availability`) {
+      await route.fulfill({ json: {
+        workCode: work.primaryCode,
+        checkedAt: "2026-07-17T00:00:00Z",
+        sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "1", primaryCode: work.primaryCode, title: work.title, coverUrl: "", workId: 1, hasRemote: true, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 }],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/works/1") {
+      await route.fulfill({ json: {
+        ...work,
+        baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", durationSeconds: null,
+        dlsiteFetchedAt: "", translations: [], manualOverrides: {}, mediaItems: [],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/works/1/media") {
+      await route.fulfill({ json: { workId: 1, mediaItems: [] } });
+      return;
+    }
+    if (url.pathname === "/api/favorite-lists") {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (url.pathname === "/api/recently-played-works") {
+      await route.fulfill({ json: { works: [] } });
+      return;
+    }
     if (url.pathname === "/api/remote-sources/1/works") {
       onRemoteRequest(url);
       const pageNumber = Number(url.searchParams.get("page") ?? "1");
@@ -245,7 +273,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
           sortApplied: true,
           works: [{
             remoteId: String(pageNumber),
-            primaryCode: pageNumber === 1 ? "RJ09999991" : "RJ09999992",
+            primaryCode: options.persisted && pageNumber === 1 ? work.primaryCode : pageNumber === 1 ? "RJ09999991" : "RJ09999992",
             remoteCode: pageNumber === 1 ? "RJ09999991" : "RJ09999992",
             title: pageNumber === 1 ? "Remote Japanese work" : "Remote page two work",
             releaseDate: "2026-04-03",
@@ -258,7 +286,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
             tags: ["退廃/背徳/インモラル"],
             importStatus: "remote_only",
             remotePlayable: true,
-            workId: null,
+            workId: options.persisted && pageNumber === 1 ? 1 : null,
             favorite: false,
             listeningStatus: "none",
           }],
@@ -541,6 +569,43 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("button", { name: "Permanently delete" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
   expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }] });
+});
+
+test("remote-only work uses the shared mobile detail shell without becoming persisted", async ({ page }) => {
+  const trackRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/track")) trackRequests.push(request.url());
+  });
+  await mockRemoteSource(page, () => undefined);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByText("Remote Japanese work", { exact: true }).click();
+
+  await expect.poll(() => new URL(page.url()).searchParams.get("source")).toBe("1");
+  expect(new URL(page.url()).searchParams.get("view")).toBeNull();
+  await expect(page.getByRole("button", { name: "Info", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Directory", exact: true })).toBeVisible();
+  await expect(page.getByText("Previewing remote files from Example Remote; temporary playback does not save progress.", { exact: true })).toBeVisible();
+  expect(trackRequests).toEqual([]);
+});
+
+test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {
+  const trackRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/track")) trackRequests.push(request.url());
+  });
+  await mockRemoteSource(page, () => undefined, { persisted: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByText("Remote Japanese work", { exact: true }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/${work.primaryCode}\\?`));
+  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("remote");
+  expect(new URL(page.url()).searchParams.get("source")).toBe("1");
+  expect(new URL(page.url()).searchParams.get("remoteCode")).toBe("RJ09999991");
+  await expect(page.locator('button[title="Example Remote: Available"]')).toHaveClass(/bg-primary/);
+  await expect(page.getByText("Previewing remote files from Example Remote.", { exact: true })).toBeVisible();
+  expect(trackRequests).toEqual([]);
 });
 
 test("tag clicks send a structured Unicode tag search and retain the matching work", async ({ page }) => {

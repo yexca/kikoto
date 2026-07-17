@@ -25,12 +25,14 @@ export function useWorkSourceContext({
   sources,
   initialSourceIntent,
   initialTrackedSourceID,
+  initialRemoteCode,
 }: {
   code: string;
   work: WorkDetail | null;
   sources: LibrarySource[];
   initialSourceIntent: DetailSourceIntent;
   initialTrackedSourceID: number | null;
+  initialRemoteCode: string;
 }) {
   const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
@@ -67,7 +69,9 @@ export function useWorkSourceContext({
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource
-    ? remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code)
+    ? remoteSourceTabKey(selectedRemoteSource.source.id) === initialSourceIntent && initialRemoteCode
+      ? initialRemoteCode
+      : remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code)
     : work?.primaryCode || code;
 
   const applyAvailability = useCallback((result: SourceAvailabilityResponse) => {
@@ -111,9 +115,10 @@ export function useWorkSourceContext({
 
   useEffect(() => {
     if (!work || sourceTabs.length === 0 || sourceTabs.some((source) => source.key === activeSourceKey)) return;
+    if (activeSourceKey.startsWith("remote-source:") && !sourceCheckedAt) return;
     const intendedSource = sourceTabs.find((source) => source.kind === activeSourceKey);
     setActiveSourceKey(intendedSource?.key ?? sourceTabs[0].key);
-  }, [activeSourceKey, sourceTabs, work]);
+  }, [activeSourceKey, sourceCheckedAt, sourceTabs, work]);
 
   useEffect(() => {
     setRemoteSources([]);
@@ -153,7 +158,7 @@ export function useWorkSourceContext({
   useEffect(() => {
     setActiveSourceKey(initialSourceIntent);
     setSelectedTrackedPresenceKey("");
-  }, [initialSourceIntent, initialTrackedSourceID, work?.id]);
+  }, [initialRemoteCode, initialSourceIntent, initialTrackedSourceID, work?.id]);
 
   return {
     remoteSources,
