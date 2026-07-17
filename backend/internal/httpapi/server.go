@@ -2522,7 +2522,7 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 		if err != nil {
 			return 0, err
 		}
-		request.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
+		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			downloadErr := remoteDownloadError{Err: err, Retryable: true}

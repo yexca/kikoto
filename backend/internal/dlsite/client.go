@@ -215,7 +215,7 @@ func NewClient(httpClient *http.Client) *Client {
 	return &Client{
 		httpClient: httpClient,
 		baseURL:    "https://www.dlsite.com",
-		userAgent:  buildinfo.UserAgent,
+		userAgent:  buildinfo.UserAgent(),
 	}
 }
 

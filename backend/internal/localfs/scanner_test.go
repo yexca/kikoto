@@ -13,7 +13,7 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	writeFile(t, filepath.Join(root, "RJ23456", "readme.txt"))
 	writeFile(t, filepath.Join(root, "Chinese", "RJ12345 name", "track01.flac"))
 	writeFile(t, filepath.Join(root, "RJ01", "RJ0123456 name", "track01.wav"))
-	writeFile(t, filepath.Join(root, "RJ24", "RJ245636 name", "track01.ogg"))
+	writeFile(t, filepath.Join(root, "RJ09", "RJ099999 name", "track01.ogg"))
 	writeFile(t, filepath.Join(root, "Other", "No code", "track01.mp3"))
 
 	works, summary, err := Discover(root, Options{ScanDepth: 2})
@@ -29,7 +29,7 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	want := map[string]bool{
 		"RJ12345":   true,
 		"RJ0123456": true,
-		"RJ245636":  true,
+		"RJ099999":  true,
 		"RJ23456":   true,
 	}
 	if len(got) != len(want) {

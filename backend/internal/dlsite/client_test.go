@@ -222,7 +222,7 @@ func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	profile, err := client.FetchMakerCatalog(context.Background(), "RG01001551", MakerCatalogOptions{Mode: "incremental"})
+	profile, err := client.FetchMakerCatalog(context.Background(), "RG09999999", MakerCatalogOptions{Mode: "incremental"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,8 +275,8 @@ func TestParseWorkCodesKeepsNestedSearchResults(t *testing.T) {
 }
 
 func TestParseMakerNameRemovesProfileSuffix(t *testing.T) {
-	raw := `<html><head><title>Bedtime Story 被談聲聆 サークルプロフィール | 作品一覧「DLsite 同人 - R18」</title></head></html>`
-	if got := parseMakerName(raw); got != "Bedtime Story 被談聲聆" {
+	raw := `<html><head><title>Example Circle サークルプロフィール | 作品一覧「DLsite 同人 - R18」</title></head></html>`
+	if got := parseMakerName(raw); got != "Example Circle" {
 		t.Fatalf("maker name = %q", got)
 	}
 }
@@ -285,7 +285,7 @@ func TestParseMakerSeries(t *testing.T) {
 	raw := `
 		<div class="prof_work_series">
 			<ul>
-				<li><p class="work_series"><a href="https://www.dlsite.com/maniax/fsr/=/title_id/SRI0000039267/order/release_d/from/maker_profile.series">「萌妖逸事」シリーズ （4作品）</a></p></li>
+				<li><p class="work_series"><a href="https://www.dlsite.com/maniax/fsr/=/title_id/SRI0999999999/order/release_d/from/maker_profile.series">「Example Series」シリーズ （4作品）</a></p></li>
 			</ul>
 		</div>
 	`
@@ -293,7 +293,7 @@ func TestParseMakerSeries(t *testing.T) {
 	if len(series) != 1 {
 		t.Fatalf("series = %#v", series)
 	}
-	if series[0].TitleID != "SRI0000039267" || series[0].Name != "萌妖逸事" || series[0].WorkCount != 4 {
+	if series[0].TitleID != "SRI0999999999" || series[0].Name != "Example Series" || series[0].WorkCount != 4 {
 		t.Fatalf("series[0] = %#v", series[0])
 	}
 }
@@ -310,12 +310,12 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 					<body>
 						<div id="search_result_list"><a href="/maniax/work/=/product_id/RJ01111111.html">Work</a></div>
 						<div class="prof_work_series">
-							<a href="` + server.URL + `/maniax/fsr/=/title_id/SRI0000039267/order/release_d/from/maker_profile.series">「萌妖逸事」シリーズ （2作品）</a>
+							<a href="` + server.URL + `/maniax/fsr/=/title_id/SRI0999999999/order/release_d/from/maker_profile.series">「Example Series」シリーズ （2作品）</a>
 						</div>
 					</body>
 				</html>
 			`))
-		case strings.Contains(r.URL.Path, "/fsr/=/title_id/SRI0000039267/"):
+		case strings.Contains(r.URL.Path, "/fsr/=/title_id/SRI0999999999/"):
 			seriesPath = r.URL.Path
 			_, _ = w.Write([]byte(`
 				<html><body>
@@ -333,7 +333,7 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	profile, err := client.FetchMakerCatalog(context.Background(), "RG01001551", MakerCatalogOptions{Languages: []string{"JPN", "CHI_HANS", "NM"}})
+	profile, err := client.FetchMakerCatalog(context.Background(), "RG09999999", MakerCatalogOptions{Languages: []string{"JPN", "CHI_HANS", "NM"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,13 +346,13 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 }
 
 func TestMakerProfileURLsIncludeLanguageOptionsForPages(t *testing.T) {
-	urls := makerProfileURLs("https://example.test", "maniax", "RG01001551", 2, []string{"JPN", "CHI_HANS", "NM"})
+	urls := makerProfileURLs("https://example.test", "maniax", "RG09999999", 2, []string{"JPN", "CHI_HANS", "NM"})
 	if len(urls) != 1 {
 		t.Fatalf("urls = %#v", urls)
 	}
 	got := urls[0]
 	wantParts := []string{
-		"/maniax/circle/profile/=/page/2/maker_id/RG01001551.html",
+		"/maniax/circle/profile/=/page/2/maker_id/RG09999999.html",
 		"/options[0]/JPN",
 		"/options[1]/CHI_HANS",
 		"/options[2]/NM",

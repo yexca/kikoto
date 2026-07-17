@@ -1,7 +1,30 @@
 apply plugin: 'com.android.application'
 
-def kikotoVersionCode = (project.findProperty("KIKOTO_VERSION_CODE") ?: System.getenv("KIKOTO_VERSION_CODE") ?: "4").toString().toInteger()
-def kikotoVersionName = (project.findProperty("KIKOTO_VERSION_NAME") ?: System.getenv("KIKOTO_VERSION_NAME") ?: "0.1.3").toString()
+def versionFile = new File(rootProject.projectDir, "../../VERSION")
+if (!versionFile.isFile()) {
+    throw new GradleException("Missing root VERSION file: ${versionFile}")
+}
+
+def kikotoVersion = versionFile.text.trim()
+if (!(kikotoVersion ==~ /^v\d+\.\d+\.\d+$/)) {
+    throw new GradleException("VERSION must use v<major>.<minor>.<patch>: ${kikotoVersion}")
+}
+
+def kikotoVersionName = kikotoVersion.substring(1)
+def requestedVersionName = project.findProperty("KIKOTO_VERSION_NAME") ?: System.getenv("KIKOTO_VERSION_NAME")
+if (requestedVersionName && requestedVersionName.toString() != kikotoVersionName) {
+    throw new GradleException("KIKOTO_VERSION_NAME ${requestedVersionName} does not match VERSION ${kikotoVersion}")
+}
+
+def versionParts = kikotoVersionName.tokenize('.').collect { it.toInteger() }
+if (versionParts[1] > 999 || versionParts[2] > 999) {
+    throw new GradleException("Android versionCode supports minor and patch values up to 999")
+}
+def derivedVersionCode = versionParts[0] * 1000000 + versionParts[1] * 1000 + versionParts[2]
+def kikotoVersionCode = (project.findProperty("KIKOTO_VERSION_CODE") ?: System.getenv("KIKOTO_VERSION_CODE") ?: derivedVersionCode).toString().toInteger()
+if (kikotoVersionCode <= 0 || kikotoVersionCode > 2100000000) {
+    throw new GradleException("Android versionCode must be between 1 and 2100000000")
+}
 def releaseKeystoreFile = project.findProperty("KIKOTO_KEYSTORE_FILE") ?: System.getenv("KIKOTO_KEYSTORE_FILE")
 def releaseKeystorePassword = project.findProperty("KIKOTO_KEYSTORE_PASSWORD") ?: System.getenv("KIKOTO_KEYSTORE_PASSWORD")
 def releaseKeyAlias = project.findProperty("KIKOTO_KEY_ALIAS") ?: System.getenv("KIKOTO_KEY_ALIAS")

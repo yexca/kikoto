@@ -49,6 +49,13 @@ commit runtime data.
 - [Development](docs/development/local-dev.md)
 - [Contributing](CONTRIBUTING.md)
 
+## Acknowledgements
+
+The workflow canvas interaction design was informed by
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI). Kikoto does not include
+or adapt ComfyUI source code; its canvas is an independent React implementation
+built with the MIT-licensed `@xyflow/react` library.
+
 ## Core Boundary
 
 Kikoto uses one unified work identity. Local folders, remote sources, cached
@@ -89,3 +96,8 @@ Smoke validation:
 ```sh
 make smoke
 ```
+
+## License
+
+Copyright (C) 2026 yexca. Kikoto is free software licensed under the
+[GNU Affero General Public License v3.0](LICENSE) and comes without warranty.

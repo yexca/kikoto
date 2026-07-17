@@ -4907,7 +4907,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, cover
 	if err != nil {
 		return err
 	}
-	request.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
+	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err

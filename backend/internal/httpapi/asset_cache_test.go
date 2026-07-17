@@ -16,7 +16,7 @@ func TestServeRevalidatedFileUsesIdentityETag(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/api/media/43/asset?v=current", nil)
 	response := httptest.NewRecorder()
-	serveRevalidatedFile(response, request, path, "RJ438778/image/cover_4x3.png")
+	serveRevalidatedFile(response, request, path, "RJ09999998/image/cover_4x3.png")
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
@@ -32,7 +32,7 @@ func TestServeRevalidatedFileUsesIdentityETag(t *testing.T) {
 	revalidatedRequest := httptest.NewRequest(http.MethodGet, "/api/media/43/asset?v=current", nil)
 	revalidatedRequest.Header.Set("If-None-Match", etag)
 	revalidatedResponse := httptest.NewRecorder()
-	serveRevalidatedFile(revalidatedResponse, revalidatedRequest, path, "RJ438778/image/cover_4x3.png")
+	serveRevalidatedFile(revalidatedResponse, revalidatedRequest, path, "RJ09999998/image/cover_4x3.png")
 	if revalidatedResponse.Code != http.StatusNotModified {
 		t.Fatalf("revalidated status = %d, want %d", revalidatedResponse.Code, http.StatusNotModified)
 	}
@@ -40,7 +40,7 @@ func TestServeRevalidatedFileUsesIdentityETag(t *testing.T) {
 	reboundRequest := httptest.NewRequest(http.MethodGet, "/api/media/43/asset?v=other", nil)
 	reboundRequest.Header.Set("If-None-Match", etag)
 	reboundResponse := httptest.NewRecorder()
-	serveRevalidatedFile(reboundResponse, reboundRequest, path, "RJ01034853/package.jpg")
+	serveRevalidatedFile(reboundResponse, reboundRequest, path, "RJ09999997/package.jpg")
 	if reboundResponse.Code != http.StatusOK {
 		t.Fatalf("rebound status = %d, want %d", reboundResponse.Code, http.StatusOK)
 	}

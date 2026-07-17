@@ -1,4 +1,6 @@
 {
+  "private": true,
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",

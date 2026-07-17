@@ -136,7 +136,7 @@ async function mockApplication(
       const works = Array.from({ length: workCount }, (_, index) => index === 0 ? fixtureWork : {
         ...fixtureWork,
         id: index + 1,
-        primaryCode: `RJ${String(9999999 + index).padStart(8, "0")}`,
+        primaryCode: `RJ${String(9989999 + index).padStart(8, "0")}`,
         title: `Mobile work ${index + 1}`,
       });
       await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
@@ -155,7 +155,7 @@ async function mockApplication(
     if (detailMatch) {
       const id = Number(detailMatch[1]);
       const fixtureWork = fixture.work ?? work;
-      const detailWork = id === 1 ? fixtureWork : { ...fixtureWork, id, primaryCode: `RJ${String(9999998 + id).padStart(8, "0")}`, title: `Mobile work ${id}` };
+      const detailWork = id === 1 ? fixtureWork : { ...fixtureWork, id, primaryCode: `RJ${String(9989998 + id).padStart(8, "0")}`, title: `Mobile work ${id}` };
       await route.fulfill({ json: {
         ...detailWork,
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
@@ -338,7 +338,7 @@ test("new detail navigation starts at the top, preserves user scroll while media
   const savedScroll = await page.evaluate(() => window.scrollY);
   expect(savedScroll).toBeGreaterThan(500);
   await target.click();
-  await expect(page).toHaveURL(/\/RJ10000016/);
+  await expect(page).toHaveURL(/\/RJ09990016/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
   await page.evaluate(() => window.scrollTo(0, 300));
   await page.waitForTimeout(650);

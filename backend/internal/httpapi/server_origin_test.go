@@ -10,9 +10,9 @@ import (
 )
 
 func TestParseDLsiteSnapshotUsesLanguageEditionOrigin(t *testing.T) {
-	raw := `{"product":{"workno":"RJ362169","product_name":"Chinese title","language_editions":[{"workno":"RJ362056","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ362169","display_order":3,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]},"_kikoto":{"response_language":"ja-jp","edition_language":"CHI_HANS"}}`
+	raw := `{"product":{"workno":"RJ09999992","product_name":"Chinese title","language_editions":[{"workno":"RJ09999991","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ09999992","display_order":3,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]},"_kikoto":{"response_language":"ja-jp","edition_language":"CHI_HANS"}}`
 	metadata := parseDLsiteSnapshot(raw)
-	if metadata.BaseCode != "RJ362056" {
+	if metadata.BaseCode != "RJ09999991" {
 		t.Fatalf("base code = %q", metadata.BaseCode)
 	}
 	if metadata.MetadataLanguage != "CHI_HANS" {

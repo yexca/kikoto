@@ -14,3 +14,7 @@ development docs.
 - Retrospectives that are useful after the implementation detail has moved on.
 
 Avoid using history pages as the only source of truth for current behavior.
+
+## Releases
+
+- [v0.2.0](v0.2.0.md)

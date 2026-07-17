@@ -282,7 +282,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
+	req.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -316,7 +316,7 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, target 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", buildinfo.UserAgent+" Kikoeru-compatible client")
+	req.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err

@@ -1,5 +1,9 @@
 package buildinfo
 
-const Version = "v0.1.3"
+import "strings"
 
-const UserAgent = "Kikoto/0.1.3"
+var Version = "v0.0.0-dev"
+
+func UserAgent() string {
+	return "Kikoto/" + strings.TrimPrefix(Version, "v")
+}
