@@ -290,8 +290,8 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 		like := "%" + strings.ToLower(needle) + "%"
 		switch clause.Kind {
 		case "code":
-			clauses = append(clauses, "LOWER(work.primary_code) LIKE ?")
-			args = append(args, like)
+			clauses = append(clauses, familyCodeLikeClause())
+			args = append(args, like, like, like, like)
 		case "circle":
 			clauses = append(clauses, `(EXISTS (
 				SELECT 1 FROM work_party AS search_relation
@@ -324,13 +324,23 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", NumericClauseValue(needle)))
 		case "sales_min":
 			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", NumericClauseValue(needle)))
+		case "duration_min":
+			clauses = append(clauses, familyDurationClause(">=", NumericClauseValue(needle)))
+		case "duration_max":
+			clauses = append(clauses, familyDurationClause("<=", NumericClauseValue(needle)))
+		case "age":
+			clauses = append(clauses, familyWorkColumnLikeClause("age_rating"))
+			args = append(args, like, like)
+		case "language":
+			clauses = append(clauses, familyEditionLanguageLikeClause())
+			args = append(args, like, like, like, like)
 		default:
 			personalTag := ""
 			if userID > 0 {
 				personalTag = " OR " + userTagLikeClause(false)
 			}
-			clauses = append(clauses, `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR `+normalizedTagLikeClause(false)+` OR `+latestSnapshotLikeClause()+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
-			args = append(args, like, like, like, like, like)
+			clauses = append(clauses, `(`+familyWorkTextLikeClause()+` OR `+normalizedTagLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
+			args = append(args, like, like, like, like, like, like, like, like)
 			if userID > 0 {
 				args = append(args, userID, like)
 			}
@@ -340,6 +350,82 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 		return "", nil
 	}
 	return "(" + strings.Join(clauses, " AND ") + ")", args
+}
+
+func familyCodeLikeClause() string {
+	return `(LOWER(work.primary_code) LIKE ? OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		WHERE search_current_edition.work_id = work.id AND LOWER(search_sibling_edition.primary_code) LIKE ?
+	) OR ` + familySnapshotLikeClause() + `)`
+}
+
+func familyWorkTextLikeClause() string {
+	return `(LOWER(work.primary_code) LIKE ? OR LOWER(work.title) LIKE ? OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
+		WHERE search_current_edition.work_id = work.id
+			AND (LOWER(search_sibling_work.primary_code) LIKE ? OR LOWER(search_sibling_work.title) LIKE ?)
+	) OR ` + familySnapshotLikeClause() + `)`
+}
+
+func familySnapshotLikeClause() string {
+	return `(` + latestSnapshotLikeClause() + ` OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		INNER JOIN metadata_snapshot AS search_family_snapshot ON search_family_snapshot.work_id = search_sibling_edition.work_id
+		INNER JOIN metadata_provider AS search_family_provider ON search_family_provider.id = search_family_snapshot.provider_id
+		WHERE search_current_edition.work_id = work.id
+			AND search_family_provider.code = 'dlsite'
+			AND LOWER(search_family_snapshot.snapshot_json) LIKE ?
+	))`
+}
+
+func familyWorkColumnLikeClause(column string) string {
+	if column != "age_rating" {
+		column = "title"
+	}
+	return `(LOWER(work.` + column + `) LIKE ? OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
+		WHERE search_current_edition.work_id = work.id AND LOWER(search_sibling_work.` + column + `) LIKE ?
+	))`
+}
+
+func familyEditionLanguageLikeClause() string {
+	return `(EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		WHERE search_current_edition.work_id = work.id
+			AND (LOWER(search_current_edition.metadata_language) LIKE ? OR LOWER(search_current_edition.edition_label) LIKE ?)
+	) OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		WHERE search_current_edition.work_id = work.id
+			AND (LOWER(search_sibling_edition.metadata_language) LIKE ? OR LOWER(search_sibling_edition.edition_label) LIKE ?)
+	))`
+}
+
+func familyDurationClause(operator string, value float64) string {
+	if operator != ">=" && operator != "<=" {
+		operator = ">="
+	}
+	return fmt.Sprintf(`(work.duration_seconds IS NOT NULL AND work.duration_seconds %s %g OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
+		WHERE search_current_edition.work_id = work.id
+			AND search_sibling_work.duration_seconds IS NOT NULL
+			AND search_sibling_work.duration_seconds %s %g
+	))`, operator, value, operator, value)
 }
 
 func manualOverrideFieldLikeClause(field string) string {

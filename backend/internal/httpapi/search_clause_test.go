@@ -42,6 +42,16 @@ func TestPlanRemoteSourceQueryPushesCompoundQueryToCompatibleSource(t *testing.T
 	}
 }
 
+func TestPlanLimitedRemoteSourceQueryPrioritizesLanguagePushdown(t *testing.T) {
+	plan := planRemoteSourceQuery(`RJ01234567 $lang:CHI_HANS$`, sourceTypeKikoeruCompilable178)
+	if plan.PushdownQuery != "$lang:CHI_HANS$" {
+		t.Fatalf("PushdownQuery = %q, want language clause", plan.PushdownQuery)
+	}
+	if len(plan.PostFilterClauses) != 1 || plan.PostFilterClauses[0].Kind != "code" {
+		t.Fatalf("PostFilterClauses = %#v, want one code clause", plan.PostFilterClauses)
+	}
+}
+
 func TestLibrarySearchWhereMatchesNormalizedUnicodeTag(t *testing.T) {
 	db := openMigratedTestDB(t)
 	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999999', 'Unicode tag work')")

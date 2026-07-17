@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -154,6 +155,13 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"familyCode": payload.FamilyCode}, 0, 1)
 	family, err := s.syncWorkMetadataFamily(ctx, payload.PrimaryCode)
 	if err != nil {
+		if family.RequestedUnavailable {
+			if finishErr := s.finishUnavailableWorkMetadataSyncJob(ctx, job, payload, family, err.Error()); finishErr != nil {
+				_ = s.failClaimedWorkflowJob(ctx, job, finishErr.Error())
+				return finishErr
+			}
+			return nil
+		}
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
@@ -172,6 +180,56 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 		return err
 	}
 	return nil
+}
+
+func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job workflowJobRecord, payload workMetadataSyncPayload, family metasync.DLsiteFamilySyncResult, message string) error {
+	summary := map[string]any{
+		"work_id": payload.WorkID, "primary_code": payload.PrimaryCode, "canonical_code": family.CanonicalCode,
+		"synced_codes": family.SyncedCodes, "skipped_codes": family.SkippedCodes, "failures": family.Failures,
+		"requested_unavailable": true,
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = 'skipped', output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, mustJSON(summary), message, job.NodeRunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_job
+		SET status = 'succeeded', progress_current = 1, progress_total = 1,
+			locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, mustJSON(map[string]any{"phase": "review", "detail": summary, "progressCurrent": 1, "progressTotal": 1}), job.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run SET status = 'skipped', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
+	`, mustJSON(summary), job.RunID); err != nil {
+		return err
+	}
+	candidatePayload := map[string]any{
+		"work_id": payload.WorkID, "code": payload.PrimaryCode, "provider": "dlsite",
+		"reason": "dlsite_not_found", "message": message,
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
+		VALUES (?, ?, 'dlsite_unavailable_work', ?, 'pending', ?)
+	`, job.RunID, job.NodeRunID, payload.PrimaryCode, mustJSON(candidatePayload)); err != nil {
+		return err
+	}
+	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "metadata.product_unavailable",
+		Message: "DLsite did not return the requested product", Detail: candidatePayload,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) finishWorkMetadataSyncJob(ctx context.Context, job workflowJobRecord, status string, level string, summary map[string]any, syncedCodes int) error {

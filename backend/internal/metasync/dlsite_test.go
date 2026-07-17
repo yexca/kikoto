@@ -296,6 +296,19 @@ func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
 	}
 }
 
+func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
+	db := openTestDB(t)
+	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{
+		errors: map[string]error{"RJ0123599": dlsite.ErrNoProduct},
+	}).SyncFamily(context.Background(), "RJ0123599")
+	if err == nil {
+		t.Fatal("SyncFamily() succeeded for an unavailable requested product")
+	}
+	if !result.RequestedUnavailable || len(result.SyncedCodes) != 0 || len(result.Failures) != 1 {
+		t.Fatalf("result = %+v, want requested unavailable failure", result)
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

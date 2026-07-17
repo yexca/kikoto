@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -82,5 +83,42 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	}
 	if response.Works[0].AgeRating != "R18" {
 		t.Fatalf("age rating = %q, want R18", response.Works[0].AgeRating)
+	}
+}
+
+func TestListWorksSearchesLanguageFamilyAliasesAndReturnsOrigin(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(101, 'RJ01000011', 'Origin title'),
+			(102, 'RJ01000012', 'Translated searchable title');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (101, 101, 'RJ01000011');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, edition_label, is_canonical) VALUES
+			(101, 101, 'RJ01000011', 'RJ01000011', 'JPN', 'Japanese', 1),
+			(102, 101, 'RJ01000012', 'RJ01000011', 'CHI_HANS', 'Simplified Chinese', 0);
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (101, 'test-local-family', 'Test local family', 'local');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (102, 101, 'local', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, query := range []string{"RJ01000012", "Translated searchable", `$lang:CHI_HANS$`} {
+		request := httptest.NewRequest(http.MethodGet, "/api/works?page=1&pageSize=10&scope=local&status=all&q="+url.QueryEscape(query), nil)
+		recorder := httptest.NewRecorder()
+		server.listWorks(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("query %q status = %d, body = %s", query, recorder.Code, recorder.Body.String())
+		}
+		var response struct {
+			Works []libraryWorkSummary `json:"works"`
+			Total int                  `json:"total"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Total != 1 || len(response.Works) != 1 || response.Works[0].PrimaryCode != "RJ01000011" {
+			t.Fatalf("query %q response = total %d works %#v, want the origin only", query, response.Total, response.Works)
+		}
 	}
 }

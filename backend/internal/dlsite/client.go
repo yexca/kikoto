@@ -102,15 +102,45 @@ type Product struct {
 }
 
 type TranslationInfo struct {
-	OriginalWorkNo            string                       `json:"original_workno"`
-	ParentWorkNo              string                       `json:"parent_workno"`
-	Lang                      string                       `json:"lang"`
-	StatusForTranslatorByLang map[string]TranslationStatus `json:"translation_status_for_translator"`
+	OriginalWorkNo            string              `json:"original_workno"`
+	ParentWorkNo              string              `json:"parent_workno"`
+	Lang                      string              `json:"lang"`
+	StatusForTranslatorByLang TranslationStatuses `json:"translation_status_for_translator"`
 }
 
 type TranslationStatus struct {
 	AppliedCount int  `json:"applied_count"`
 	OnSaleCount  *int `json:"on_sale_count"`
+}
+
+type TranslationStatuses map[string]TranslationStatus
+
+func (statuses *TranslationStatuses) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*statuses = nil
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "{") {
+		var parsed map[string]TranslationStatus
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			return err
+		}
+		*statuses = parsed
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var parsed []json.RawMessage
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			return err
+		}
+		if len(parsed) == 0 {
+			*statuses = TranslationStatuses{}
+			return nil
+		}
+		return fmt.Errorf("translation status must be an object or empty array")
+	}
+	return fmt.Errorf("translation status must be an object, empty array, or null")
 }
 
 type LanguageEdition struct {

@@ -653,7 +653,7 @@ test("favorite list popovers use measured mobile placement and stay inside the u
 	expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height - 150);
 });
 
-test("library URL state and per-scope search state survive navigation", async ({ page }) => {
+test("library search follows the user across scopes and survives navigation", async ({ page }) => {
 	await mockApplication(page);
 	await page.goto("/");
 
@@ -661,14 +661,14 @@ test("library URL state and per-scope search state survive navigation", async ({
 	await search.fill("local term");
 	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
 	await page.getByRole("button", { name: "Tracked", exact: true }).click();
-	await expect(search).toHaveValue("");
+	await expect(search).toHaveValue("local term");
 	await search.fill("tracked term");
 	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
 	await page.getByRole("button", { name: "Local", exact: true }).click();
-	await expect(search).toHaveValue("local term");
-	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
+	await expect(search).toHaveValue("tracked term");
+	await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
 	await page.reload();
-	await expect(search).toHaveValue("local term");
+	await expect(search).toHaveValue("tracked term");
 });
 
 test("anonymous quick marks show an actionable toast above protected mobile controls", async ({ page }) => {

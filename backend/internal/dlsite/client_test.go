@@ -2,6 +2,7 @@ package dlsite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -9,6 +10,24 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestTranslationStatusesAcceptsProviderEmptyArray(t *testing.T) {
+	var info TranslationInfo
+	if err := json.Unmarshal([]byte(`{"translation_status_for_translator":[]}`), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.StatusForTranslatorByLang == nil || len(info.StatusForTranslatorByLang) != 0 {
+		t.Fatalf("translation statuses = %#v, want an empty map", info.StatusForTranslatorByLang)
+	}
+}
+
+func TestTranslationStatusesRejectsNonEmptyArray(t *testing.T) {
+	var info TranslationInfo
+	err := json.Unmarshal([]byte(`{"translation_status_for_translator":[{"lang":"ENG"}]}`), &info)
+	if err == nil || !strings.Contains(err.Error(), "object or empty array") {
+		t.Fatalf("UnmarshalJSON() error = %v, want non-empty array rejection", err)
+	}
+}
 
 func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

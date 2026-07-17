@@ -134,6 +134,11 @@ export function libraryLocation(path: string, state: LibraryBrowseState) {
   return `${path}${libraryBrowseSearch(state)}`;
 }
 
+export function withSharedLibraryQuery(state: LibraryBrowseState, query: string): LibraryBrowseState {
+  if (state.query === query) return state;
+  return { ...state, query, page: 1, scrollY: 0 };
+}
+
 export function localPageSize(value: number): LocalWorkPageSize {
   return value === 48 ? 48 : 24;
 }

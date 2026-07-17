@@ -99,6 +99,7 @@ import {
   localPageSize,
   localWorkPageSizeOptions,
   readLibraryBrowseState,
+  withSharedLibraryQuery,
   writeLibraryBrowseState,
   type LibraryBrowseState,
   type LibraryColumnCount,
@@ -685,7 +686,7 @@ export function LibraryPage() {
   const changeTab = (tab: LibraryTab) => {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
 	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
-	const nextState = readLibraryBrowseState(libraryBrowseKey(tab, nextScope)) ?? defaultLibraryBrowseState;
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(tab, nextScope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab(tab);
 	if (tab.kind === "all") setLocalScope(nextScope);
 	applyBrowseState(nextState, tab);
@@ -701,7 +702,7 @@ export function LibraryPage() {
   const changeLocalScope = (scope: LocalLibraryScope) => {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
 	const nextTab: LibraryTab = { kind: "all" };
-	const nextState = readLibraryBrowseState(libraryBrowseKey(nextTab, scope)) ?? defaultLibraryBrowseState;
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(nextTab, scope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab({ kind: "all" });
     setLocalScope(scope);
 	applyBrowseState(nextState, nextTab);
@@ -7281,6 +7282,10 @@ function compileLibrarySearchQuery(clauses: SearchClause[]) {
         return `rating:${clause.value}`;
       case "sales_min":
         return `sales:${clause.value}`;
+      case "duration_min":
+        return `$duration:${clause.value}$`;
+      case "duration_max":
+        return `$-duration:${clause.value}$`;
       case "age":
         return `$age:${clause.value}$`;
       case "language":
@@ -7293,7 +7298,6 @@ function compileLibrarySearchQuery(clauses: SearchClause[]) {
 
 function formatRemoteSearchQuery(clauses: SearchClause[]) {
   return clauses
-    .filter((clause) => clause.kind !== "user_tag" && clause.kind !== "exclude_user_tag")
     .map(formatRemoteSearchClause)
     .join(" ");
 }

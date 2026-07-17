@@ -53,12 +53,13 @@ type DLsiteSyncResult struct {
 // language family. A missing sibling is reported without discarding products
 // that were synchronized successfully.
 type DLsiteFamilySyncResult struct {
-	RequestedCode string   `json:"requestedCode"`
-	CanonicalCode string   `json:"canonicalCode"`
-	Codes         []string `json:"codes"`
-	SyncedCodes   []string `json:"syncedCodes"`
-	SkippedCodes  []string `json:"skippedCodes"`
-	Failures      []string `json:"failures"`
+	RequestedCode        string   `json:"requestedCode"`
+	CanonicalCode        string   `json:"canonicalCode"`
+	Codes                []string `json:"codes"`
+	SyncedCodes          []string `json:"syncedCodes"`
+	SkippedCodes         []string `json:"skippedCodes"`
+	Failures             []string `json:"failures"`
+	RequestedUnavailable bool     `json:"requestedUnavailable"`
 }
 
 type DLsiteReviewCandidate struct {
@@ -250,6 +251,9 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 		result.Codes = append(result.Codes, code)
 		product, err := s.fetchProduct(ctx, code)
 		if err != nil {
+			if strings.EqualFold(code, requestedCode) && errors.Is(err, dlsite.ErrNoProduct) {
+				result.RequestedUnavailable = true
+			}
 			if !strings.EqualFold(code, requestedCode) && errors.Is(err, dlsite.ErrNoProduct) {
 				skipped[code] = true
 				result.SkippedCodes = append(result.SkippedCodes, code)

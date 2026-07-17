@@ -217,6 +217,27 @@ func TestRemoteSourceSortMapping(t *testing.T) {
 	}
 }
 
+func TestRemotePostFilterUsesExactRemoteCodeAndPersonalTags(t *testing.T) {
+	work := remoteWorkSummary{
+		PrimaryCode:    "RJ01000011",
+		RemoteCode:     "RJ01000012",
+		RemoteID:       "42",
+		SearchUserTags: []string{"Sleep aid"},
+	}
+	for _, clause := range []listSearchClause{
+		{Kind: "code", Value: "RJ01000012"},
+		{Kind: "user_tag", Value: "sleep"},
+		{Kind: "exclude_user_tag", Value: "archived"},
+	} {
+		if !remoteWorkSummaryMatchesClause(work, clause) {
+			t.Fatalf("clause %#v did not match %#v", clause, work)
+		}
+	}
+	if remoteWorkSummaryMatchesClause(work, listSearchClause{Kind: "user_tag", Value: "archived"}) {
+		t.Fatal("unassigned personal tag matched remote work")
+	}
+}
+
 func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) {
 	upstream := make([]kikoeru.Work, 0, 102)
 	for index := 1; index <= 102; index++ {

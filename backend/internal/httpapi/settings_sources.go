@@ -194,6 +194,8 @@ type remoteWorkSummary struct {
 	Favorite        bool              `json:"favorite"`
 	ListeningStatus string            `json:"listeningStatus"`
 	RecommendScore  int               `json:"recommendScore"`
+	DurationSeconds *int64            `json:"-"`
+	SearchUserTags  []string          `json:"-"`
 }
 
 type remoteWorkDetail struct {
@@ -1905,13 +1907,15 @@ func planRemoteSourceQuery(query string, sourceType string) remoteSourceQueryPla
 
 func remoteSourcePushdownRank(clause listSearchClause) int {
 	switch clause.Kind {
+	case "language":
+		return 0
 	case "code":
 		return 1
 	case "circle", "voice_actor", "tag":
 		return 2
 	case "text":
 		return 3
-	case "rating_min", "sales_min", "duration_min", "duration_max", "age", "language":
+	case "rating_min", "sales_min", "duration_min", "duration_max", "age":
 		return 4
 	default:
 		return 999
@@ -1973,7 +1977,7 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 	}
 	switch clause.Kind {
 	case "code":
-		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
+		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
 	case "circle":
 		return strings.Contains(strings.ToLower(work.Circle), needle)
 	case "tag":
@@ -1984,11 +1988,24 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 		return work.Rating != nil && *work.Rating >= numericListClauseValue(needle)
 	case "sales_min":
 		return work.Sales != nil && float64(*work.Sales) >= numericListClauseValue(needle)
-	case "voice_actor", "duration_min", "duration_max", "age", "language":
-		return true
+	case "voice_actor":
+		return stringSliceContainsSubstringFold(work.VoiceActors, needle)
+	case "user_tag":
+		return stringSliceContainsSubstringFold(work.SearchUserTags, needle)
+	case "exclude_user_tag":
+		return !stringSliceContainsSubstringFold(work.SearchUserTags, needle)
+	case "duration_min":
+		return work.DurationSeconds != nil && float64(*work.DurationSeconds) >= numericListClauseValue(needle)
+	case "duration_max":
+		return work.DurationSeconds != nil && float64(*work.DurationSeconds) <= numericListClauseValue(needle)
+	case "age":
+		return strings.Contains(strings.ToLower(work.AgeRating), needle)
+	case "language":
+		return false
 	default:
-		return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate}, needle) ||
-			stringSliceContainsSubstringFold(work.Tags, needle)
+		return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate, work.AgeRating}, needle) ||
+			stringSliceContainsSubstringFold(work.Tags, needle) || stringSliceContainsSubstringFold(work.VoiceActors, needle) ||
+			stringSliceContainsSubstringFold(work.SearchUserTags, needle)
 	}
 }
 
@@ -2079,6 +2096,10 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			ListeningStatus: listeningStatus,
 			RecommendScore:  recommendScore,
 		}
+		if work.Duration != nil && *work.Duration > 0 {
+			value := int64(*work.Duration)
+			item.DurationSeconds = &value
+		}
 		key := strings.ToUpper(strings.TrimSpace(displayCode))
 		if index, ok := seen[key]; ok {
 			existing := &result[index]
@@ -2099,6 +2120,25 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 		}
 		seen[key] = len(result)
 		result = append(result, item)
+	}
+	workIDs := make([]int64, 0, len(result))
+	for _, item := range result {
+		if item.WorkID != nil {
+			workIDs = append(workIDs, *item.WorkID)
+		}
+	}
+	userTagsByWork, err := s.loadWorkUserTagsBatch(ctx, userID, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range result {
+		if result[index].WorkID == nil {
+			result[index].SearchUserTags = []string{}
+			continue
+		}
+		for _, tag := range userTagsByWork[*result[index].WorkID] {
+			result[index].SearchUserTags = append(result[index].SearchUserTags, tag.Name)
+		}
 	}
 	return result, nil
 }

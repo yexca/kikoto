@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
 func TestWorkMetadataSyncQueuesOneRecoverableRunPerFamily(t *testing.T) {
@@ -50,5 +51,45 @@ func TestWorkMetadataSyncQueuesOneRecoverableRunPerFamily(t *testing.T) {
 	}
 	if code != "metadata_family_sync" || status != "queued" || workerType != "metadata_family_sync" || recoverable != 1 {
 		t.Fatalf("queued workflow = code %q status %q worker %q recoverable %d", code, status, workerType, recoverable)
+	}
+}
+
+func TestUnavailableRequestedProductBecomesReviewCandidate(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999993', 'Unavailable')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := result.LastInsertId()
+	run, err := server.enqueueWorkMetadataSync(context.Background(), workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nodeRunID int64
+	if err := db.QueryRow(`SELECT workflow_node_run_id FROM workflow_job WHERE id = ?`, run.JobID).Scan(&nodeRunID); err != nil {
+		t.Fatal(err)
+	}
+	job := workflowJobRecord{ID: run.JobID, RunID: run.RunID, NodeRunID: nodeRunID}
+	payload := workMetadataSyncPayload{WorkID: workID, PrimaryCode: "RJ09999993", FamilyCode: "RJ09999993"}
+	family := metasync.DLsiteFamilySyncResult{
+		RequestedCode: "RJ09999993", CanonicalCode: "RJ09999993", Codes: []string{"RJ09999993"},
+		Failures: []string{"RJ09999993: dlsite product not found"}, RequestedUnavailable: true,
+	}
+	if err := server.finishUnavailableWorkMetadataSyncJob(context.Background(), job, payload, family, "dlsite product not found"); err != nil {
+		t.Fatal(err)
+	}
+	var runStatus, jobStatus, candidateStatus, candidateType string
+	if err := db.QueryRow(`SELECT status FROM workflow_run WHERE id = ?`, run.RunID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT status FROM workflow_job WHERE id = ?`, run.JobID).Scan(&jobStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT candidate_type, status FROM workflow_candidate WHERE workflow_run_id = ?`, run.RunID).Scan(&candidateType, &candidateStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "skipped" || jobStatus != "succeeded" || candidateType != "dlsite_unavailable_work" || candidateStatus != "pending" {
+		t.Fatalf("review state = run %q job %q candidate %q/%q", runStatus, jobStatus, candidateType, candidateStatus)
 	}
 }

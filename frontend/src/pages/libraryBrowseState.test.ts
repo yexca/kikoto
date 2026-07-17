@@ -5,6 +5,7 @@ import {
   libraryBrowseSearch,
   libraryBrowseStateFromSearch,
   libraryBrowseStateFromValue,
+  withSharedLibraryQuery,
 } from "./libraryBrowseState";
 
 describe("library browse state", () => {
@@ -64,5 +65,23 @@ describe("library browse state", () => {
     expect(restored.pageSize).toBe(48);
     expect(restored.mobileColumns).toBe(3);
     expect(restored.desktopColumns).toBe(8);
+  });
+
+  it("shares a changed query while retaining source-specific browse preferences", () => {
+    const sourceState = {
+      ...defaultLibraryBrowseState,
+      query: "old query",
+      page: 4,
+      sort: "sales" as const,
+      view: "masonry" as const,
+      scrollY: 900,
+    };
+
+    expect(withSharedLibraryQuery(sourceState, "RJ01000012")).toEqual({
+      ...sourceState,
+      query: "RJ01000012",
+      page: 1,
+      scrollY: 0,
+    });
   });
 });
