@@ -39,8 +39,8 @@
     --foreground: 222 24% 12%;
     --card: 0 0% 100%;
     --card-foreground: 222 24% 12%;
-	--popover: 0 0% 100%;
-	--popover-foreground: 222 24% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 24% 12%;
     --primary: 342 62% 46%;
     --primary-foreground: 350 42% 98%;
     --secondary: 344 42% 93%;
@@ -65,8 +65,8 @@
     --foreground: 38 22% 91%;
     --card: 225 18% 11%;
     --card-foreground: 38 22% 91%;
-	--popover: 225 18% 13%;
-	--popover-foreground: 38 22% 91%;
+    --popover: 225 18% 13%;
+    --popover-foreground: 38 22% 91%;
     --primary: 342 84% 72%;
     --primary-foreground: 338 34% 10%;
     --secondary: 338 22% 19%;
@@ -85,6 +85,46 @@
     --workflow-grid: 220 9% 36%;
   }
 
+  :root[data-theme-accent="blue"] {
+    --primary: 213 72% 45%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 55% 92%;
+    --secondary-foreground: 216 42% 25%;
+    --accent: 207 78% 87%;
+    --accent-foreground: 214 48% 23%;
+    --ring: 213 72% 55%;
+  }
+
+  .dark[data-theme-accent="blue"] {
+    --primary: 211 86% 70%;
+    --primary-foreground: 218 40% 10%;
+    --secondary: 214 32% 20%;
+    --secondary-foreground: 212 54% 90%;
+    --accent: 209 65% 62%;
+    --accent-foreground: 216 40% 9%;
+    --ring: 211 86% 70%;
+  }
+
+  :root[data-theme-accent="green"] {
+    --primary: 151 54% 35%;
+    --primary-foreground: 150 40% 98%;
+    --secondary: 148 38% 91%;
+    --secondary-foreground: 151 38% 22%;
+    --accent: 142 52% 85%;
+    --accent-foreground: 151 46% 20%;
+    --ring: 151 54% 45%;
+  }
+
+  .dark[data-theme-accent="green"] {
+    --primary: 151 52% 62%;
+    --primary-foreground: 155 42% 9%;
+    --secondary: 151 25% 18%;
+    --secondary-foreground: 150 40% 88%;
+    --accent: 138 46% 52%;
+    --accent-foreground: 150 35% 8%;
+    --ring: 151 52% 62%;
+  }
+
   * {
     @apply border-border;
   }
@@ -92,8 +132,30 @@
   body {
     @apply bg-background text-foreground;
     font-family:
-      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
       sans-serif;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  button:active:not(:disabled) {
+    filter: brightness(0.94);
   }
 
   .app-shell {
@@ -293,7 +355,10 @@
 
   .workflow-canvas .workflow-data-edge .react-flow__edge-path {
     opacity: 0.58;
-    transition: opacity 160ms ease, stroke-width 160ms ease, filter 160ms ease;
+    transition:
+      opacity 160ms ease,
+      stroke-width 160ms ease,
+      filter 160ms ease;
   }
 
   .workflow-canvas .workflow-data-edge.selected .react-flow__edge-path,
@@ -329,7 +394,11 @@
   }
 
   .workflow-canvas .workflow-run-node {
-    transition: border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      opacity 160ms ease,
+      transform 160ms ease;
   }
 
   .workflow-canvas .workflow-run-node--queued {
@@ -339,7 +408,9 @@
   .workflow-canvas .workflow-run-node--running,
   .workflow-canvas .workflow-run-node--flowing {
     border-color: rgb(34 197 94 / 0.9);
-    box-shadow: 0 0 0 2px rgb(34 197 94 / 0.2), 0 0 16px rgb(34 197 94 / 0.22);
+    box-shadow:
+      0 0 0 2px rgb(34 197 94 / 0.2),
+      0 0 16px rgb(34 197 94 / 0.22);
     animation: workflow-node-running 1.25s ease-in-out infinite;
   }
 
@@ -354,7 +425,9 @@
 
   .workflow-canvas .workflow-run-node--failed {
     border-color: rgb(239 68 68 / 0.9);
-    box-shadow: 0 0 0 2px rgb(239 68 68 / 0.18), 0 0 14px rgb(239 68 68 / 0.18);
+    box-shadow:
+      0 0 0 2px rgb(239 68 68 / 0.18),
+      0 0 14px rgb(239 68 68 / 0.18);
   }
 
   .workflow-canvas .workflow-run-node--skipped {
@@ -379,7 +452,9 @@
     background: var(--workflow-port-color);
     content: "";
     transform: translate(-50%, -50%);
-    transition: box-shadow 120ms ease, transform 120ms ease;
+    transition:
+      box-shadow 120ms ease,
+      transform 120ms ease;
   }
 
   .workflow-canvas .workflow-port-handle:hover::after,
@@ -415,11 +490,22 @@
 
   @keyframes workflow-node-running {
     50% {
-      box-shadow: 0 0 0 3px rgb(34 197 94 / 0.24), 0 0 22px rgb(34 197 94 / 0.3);
+      box-shadow:
+        0 0 0 3px rgb(34 197 94 / 0.24),
+        0 0 22px rgb(34 197 94 / 0.3);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
     .workflow-canvas .workflow-data-edge--active.animated .react-flow__edge-path,
     .workflow-canvas .workflow-run-node--running,
     .workflow-canvas .workflow-run-node--flowing {

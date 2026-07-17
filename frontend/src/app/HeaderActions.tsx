@@ -15,6 +15,7 @@ import {
   LogOut,
   MoreHorizontal,
   Moon,
+  Palette,
   Play,
   RotateCcw,
   ScanLine,
@@ -30,11 +31,16 @@ import {
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import {
+  applyThemeAccent,
   applyThemeMode,
+  getStoredThemeAccent,
   getStoredThemeMode,
   resolvedThemeMode,
+  storeThemeAccent,
   storeThemeMode,
+  THEME_ACCENT_CHANGE_EVENT,
   THEME_CHANGE_EVENT,
+  type ThemeAccent,
   type ThemeMode,
   watchSystemTheme,
 } from "@/app/theme";
@@ -72,6 +78,7 @@ export function HeaderActions({
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
+  const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => getStoredThemeAccent());
   const [reviewOpen, setReviewOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -94,9 +101,20 @@ export function HeaderActions({
   }, [themeMode]);
 
   useEffect(() => {
+    applyThemeAccent(themeAccent);
+    storeThemeAccent(themeAccent);
+  }, [themeAccent]);
+
+  useEffect(() => {
     const syncTheme = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
     window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
     return () => window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+  }, []);
+
+  useEffect(() => {
+    const syncAccent = (event: Event) => setThemeAccent((event as CustomEvent<ThemeAccent>).detail ?? getStoredThemeAccent());
+    window.addEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
+    return () => window.removeEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
   }, []);
 
   const refreshReviewRuns = () => {
@@ -191,6 +209,9 @@ export function HeaderActions({
               <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
               <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
               <ThemeItem mode="system" current={themeMode} icon={<Command className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
+              <div className="mt-2 border-t px-2 pt-3">
+                <AccentColorPicker value={themeAccent} onChange={setThemeAccent} />
+              </div>
             </div>
             {isNativeApp() && (
               <div className="border-t p-2">
@@ -433,14 +454,14 @@ export function HeaderActions({
           open={themeOpen}
           onOpenChange={setThemeOpen}
           trigger={
-            <Button variant="outline" size="icon" aria-label="Theme" title={`Theme: ${themeMode}`}>
+            <Button variant="outline" size="icon" aria-label="Theme" title={`Theme: ${themeMode}, ${themeAccent}`}>
               {resolvedThemeMode(themeMode) === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
           }
           align="right"
         >
-          <div className="w-48">
-            <PopoverHeader title="Theme" subtitle="Choose display mode" />
+          <div className="w-56">
+            <PopoverHeader title="Theme" subtitle="Mode and accent" />
             <MenuList>
               <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={setThemeMode} />
               <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={setThemeMode} />
@@ -451,6 +472,9 @@ export function HeaderActions({
                 onSelect={setThemeMode}
               />
             </MenuList>
+            <div className="border-t p-3">
+              <AccentColorPicker value={themeAccent} onChange={setThemeAccent} />
+            </div>
           </div>
         </HeaderPopover>
       </div>
@@ -644,13 +668,45 @@ function ThemeItem({
 }) {
   return (
     <button
-      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] motion-reduce:active:scale-100"
+      aria-pressed={mode === current}
       onClick={() => onSelect(mode)}
     >
       {icon}
       <span className="min-w-0 flex-1 capitalize">{mode}</span>
       {mode === current && <CheckCircle2 className="h-4 w-4 text-primary" />}
     </button>
+  );
+}
+
+const headerAccentOptions: Array<{ value: ThemeAccent; label: string; swatch: string }> = [
+  { value: "pink", label: "Pink", swatch: "bg-[#d94f7b]" },
+  { value: "blue", label: "Blue", swatch: "bg-[#347fd8]" },
+  { value: "green", label: "Green", swatch: "bg-[#349866]" },
+];
+
+function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: (accent: ThemeAccent) => void }) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Palette className="h-3.5 w-3.5" />
+        Accent
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {headerAccentOptions.map((option) => (
+          <button
+            key={option.value}
+            className={`grid h-9 place-items-center rounded-md border transition-[background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95 motion-reduce:active:scale-100 ${value === option.value ? "border-primary bg-primary/10 ring-1 ring-primary/20" : "bg-background"}`}
+            aria-label={`${option.label} accent`}
+            aria-pressed={value === option.value}
+            title={option.label}
+            onClick={() => onChange(option.value)}
+          >
+            <span className={`h-4 w-4 rounded-full border border-black/10 shadow-sm ${option.swatch}`} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

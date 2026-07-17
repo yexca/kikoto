@@ -112,20 +112,6 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 	}
 	conditions := []string{"1 = 1"}
 	args := []any{}
-	switch options.View {
-	case "running":
-		conditions = append(conditions, "run.status IN ('queued', 'running')")
-	case "failed":
-		conditions = append(conditions, "run.status = 'failed'")
-	case "review":
-		conditions = append(conditions, `(
-			EXISTS (SELECT 1 FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved'))
-			OR ((run.status IN ('partial', 'skipped') OR EXISTS (SELECT 1 FROM workflow_node_run WHERE workflow_node_run.workflow_run_id = run.id AND workflow_node_run.status IN ('partial', 'skipped')))
-				AND NOT EXISTS (SELECT 1 FROM workflow_run_review WHERE workflow_run_review.workflow_run_id = run.id AND workflow_run_review.status = 'reviewed'))
-		)`)
-	case "completed", "history", "logs":
-		conditions = append(conditions, "run.status NOT IN ('queued', 'running')")
-	}
 	if options.Status != "" && options.Status != "all" {
 		conditions = append(conditions, "run.status = ?")
 		args = append(args, options.Status)
@@ -140,9 +126,22 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 		args = append(args, like, like, like)
 	}
 	conditions, args = appendRunVisibility(conditions, args, options.ViewerUserID, options.CanViewAll)
-	whereSQL := strings.Join(conditions, " AND ")
+	baseWhereSQL := strings.Join(conditions, " AND ")
+	viewConditions := appendRunViewCondition(append([]string{}, conditions...), options.View)
+	whereSQL := strings.Join(viewConditions, " AND ")
 	var total int64
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run AS run WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		return RunsPage{}, err
+	}
+	var viewTotals RunViewTotals
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN run.status IN ('queued', 'running') THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN `+reviewRunCondition+` THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN run.status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN run.status NOT IN ('queued', 'running') THEN 1 ELSE 0 END), 0)
+		FROM workflow_run AS run
+		WHERE `+baseWhereSQL, args...).Scan(&viewTotals.Running, &viewTotals.Review, &viewTotals.Failed, &viewTotals.Completed); err != nil {
 		return RunsPage{}, err
 	}
 	queryArgs := append([]any{}, args...)
@@ -155,7 +154,28 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 	if err != nil {
 		return RunsPage{}, err
 	}
-	return RunsPage{Runs: runs, Page: options.Page, PageSize: options.PageSize, Total: total}, nil
+	return RunsPage{Runs: runs, Page: options.Page, PageSize: options.PageSize, Total: total, ViewTotals: viewTotals}, nil
+}
+
+const reviewRunCondition = `(
+	EXISTS (SELECT 1 FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved'))
+	OR ((run.status IN ('partial', 'skipped') OR EXISTS (SELECT 1 FROM workflow_node_run WHERE workflow_node_run.workflow_run_id = run.id AND workflow_node_run.status IN ('partial', 'skipped')))
+		AND NOT EXISTS (SELECT 1 FROM workflow_run_review WHERE workflow_run_review.workflow_run_id = run.id AND workflow_run_review.status = 'reviewed'))
+)`
+
+func appendRunViewCondition(conditions []string, view string) []string {
+	switch view {
+	case "running":
+		return append(conditions, "run.status IN ('queued', 'running')")
+	case "failed":
+		return append(conditions, "run.status = 'failed'")
+	case "review":
+		return append(conditions, reviewRunCondition)
+	case "completed", "history", "logs":
+		return append(conditions, "run.status NOT IN ('queued', 'running')")
+	default:
+		return conditions
+	}
 }
 
 func appendRunVisibility(conditions []string, args []any, viewerUserID int64, canViewAll bool) ([]string, []any) {

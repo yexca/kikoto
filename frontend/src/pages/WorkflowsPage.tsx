@@ -13,6 +13,7 @@ import {
   Loader2,
   Play,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Tag,
@@ -92,6 +93,7 @@ const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", 
 
 const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
+const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
 const workflowViewStorageKey = "kikoto.workflows.view";
 const workflowDefinitionStoragePrefix = "kikoto.workflows.definition.";
 const workflowTriggerStorageKey = "kikoto.workflows.trigger";
@@ -187,7 +189,8 @@ export function WorkflowsPage({
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
-  const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0 });
+  const [runsPage, setRunsPage] = useState<WorkflowRunsPage>({ runs: [], page: 1, pageSize: 10, total: 0, viewTotals: emptyRunViewTotals });
+  const [runsView, setRunsView] = useState<ActivityView | null>(null);
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
   const [selectedDefinitionIds, setSelectedDefinitionIDs] = useState<Record<DefinitionView, number | null>>(() => ({
@@ -222,10 +225,12 @@ export function WorkflowsPage({
       .then((next) => {
         setRunsPage(next);
         setRuns(next.runs);
+        setRunsView(view);
       })
       .catch(() => {
-        setRunsPage({ runs: [], page, pageSize: runsPage.pageSize, total: 0 });
+        setRunsPage({ runs: [], page, pageSize: runsPage.pageSize, total: 0, viewTotals: emptyRunViewTotals });
         setRuns([]);
+        setRunsView(view);
       })
       .finally(() => setIsRunsLoading(false));
   };
@@ -264,7 +269,8 @@ export function WorkflowsPage({
   }, [definitionView, definitions]);
   const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
   const schedulableDefinitions = definitions;
-  const visibleRuns = runs;
+  const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
+  const activityTotals = runsPage.viewTotals ?? emptyRunViewTotals;
   const selectedDefinitionId = selectedDefinitionIds[definitionView];
 
   const selectedDefinition = useMemo(() => {
@@ -552,17 +558,17 @@ export function WorkflowsPage({
         </>
       ) : (
         <>
-          <SegmentedNav>
-            <ViewButton active={activityView === "running"} onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<Activity className="h-4 w-4" />}>
+          <SegmentedNav compact>
+            <ViewButton active={activityView === "running"} count={activityTotals.running} onClick={() => switchActivityView("running", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<Activity className="h-4 w-4" />}>
               Running
             </ViewButton>
-            <ViewButton active={activityView === "review"} onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<FileJson className="h-4 w-4" />}>
+            <ViewButton active={activityView === "review"} count={activityTotals.review} onClick={() => switchActivityView("review", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<FileJson className="h-4 w-4" />}>
               Review
             </ViewButton>
-            <ViewButton active={activityView === "failed"} onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<AlertCircle className="h-4 w-4" />}>
+            <ViewButton active={activityView === "failed"} count={activityTotals.failed} onClick={() => switchActivityView("failed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<AlertCircle className="h-4 w-4" />}>
               Failed
             </ViewButton>
-            <ViewButton active={activityView === "completed"} onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<ListChecks className="h-4 w-4" />}>
+            <ViewButton active={activityView === "completed"} count={activityTotals.completed} mobileLabel="Done" onClick={() => switchActivityView("completed", surface, setActivityView, setRunPage, setSelectedRunID)} icon={<ListChecks className="h-4 w-4" />}>
               Completed
             </ViewButton>
           </SegmentedNav>
@@ -576,7 +582,11 @@ export function WorkflowsPage({
             }}
             onRecoverStale={recoverStaleRuns}
           />
-          <Workbench
+          {isRunsLoading && visibleRuns.length === 0 && selectedActivityRunID === null ? (
+            <ActivityLoadingState />
+          ) : visibleRuns.length === 0 && selectedActivityRunID === null ? (
+            <ActivityEmptyState view={activityView} filtered={Boolean(runQuery.trim())} />
+          ) : <Workbench
             left={
               <RunSidebar
                 runs={visibleRuns}
@@ -597,7 +607,7 @@ export function WorkflowsPage({
               />
             }
             right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
-          />
+          />}
         </>
       )}
 
@@ -856,7 +866,7 @@ function ActivityToolbar({
   onRecoverStale: () => Promise<void>;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-3 border-b pb-3 md:flex-row md:items-center md:justify-between">
       <label className="flex h-9 min-w-0 items-center gap-2 rounded-md border bg-background px-3 text-sm md:w-80">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
         <input
@@ -871,9 +881,38 @@ function ActivityToolbar({
       </label>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
         <Button size="sm" variant="outline" onClick={() => void onRecoverStale()}>
+          <RotateCcw className="h-3.5 w-3.5" />
           Recover stale
         </Button>
       </div>
+    </div>
+  );
+}
+
+function ActivityLoadingState() {
+  return (
+    <div className="rounded-lg border bg-card p-4" aria-label="Loading runs">
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <SkeletonLine className="h-4 w-3/4 max-w-48" />
+          <SkeletonLine className="h-3 w-72 max-w-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityEmptyState({ view, filtered }: { view: ActivityView; filtered: boolean }) {
+  const messages: Record<ActivityView, string> = {
+    running: "No workflows are running.",
+    review: "No runs need review.",
+    failed: "No workflow runs have failed.",
+    completed: "No completed workflow runs yet.",
+  };
+  return (
+    <div className="grid min-h-32 place-items-center rounded-lg border border-dashed bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
+      {filtered ? "No runs match this search." : messages[view]}
     </div>
   );
 }
@@ -906,10 +945,13 @@ function RunSidebar({
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between px-1 text-sm">
-          <div>
+          <div className="flex items-start gap-2">
+            {loading && <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-primary" aria-label="Refreshing runs" />}
+            <div>
             <div className="font-semibold">Runs</div>
             <div className="text-xs text-muted-foreground">
               {start}-{end} of {total}
+            </div>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -922,7 +964,7 @@ function RunSidebar({
           </div>
         </div>
         <div className="divide-y rounded-md border">
-          {loading ? (
+          {loading && runs.length === 0 ? (
             <RunSidebarSkeletonRows />
           ) : runs.map((run) => (
             <button
@@ -983,9 +1025,7 @@ function SidebarSkeletonRows({ count }: { count: number }) {
 
 function RunSidebarSkeletonRows() {
   return (
-    <>
-      {Array.from({ length: 8 }, (_, index) => (
-        <div key={index} className="p-3">
+    <div className="p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-2">
               <SkeletonLine className="h-4 w-4/5" />
@@ -998,9 +1038,7 @@ function RunSidebarSkeletonRows() {
             <SkeletonLine className="h-3 w-20" />
             <SkeletonLine className="h-3 w-12" />
           </div>
-        </div>
-      ))}
-    </>
+    </div>
   );
 }
 
@@ -2728,20 +2766,30 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-function SegmentedNav({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">{children}</div>;
+function SegmentedNav({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
+  return <div className={compact ? "grid grid-cols-4 gap-1 rounded-lg border bg-card p-1 sm:flex sm:gap-2" : "flex gap-2 overflow-x-auto rounded-lg border bg-card p-1"}>{children}</div>;
 }
 
-function ViewButton({ active, icon, children, onClick }: { active: boolean; icon: React.ReactNode; children: React.ReactNode; onClick: () => void }) {
+function ViewButton({ active, count, mobileLabel, icon, children, onClick }: { active: boolean; count?: number; mobileLabel?: string; icon: React.ReactNode; children: React.ReactNode; onClick: () => void }) {
+  const accessibleLabel = typeof children === "string" && count !== undefined ? `${children} ${count}` : undefined;
   return (
     <button
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium ${
+      className={`inline-flex h-9 min-w-0 shrink-0 items-center justify-center gap-1 rounded-md px-1 text-xs font-medium transition-[color,background-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:active:scale-100 sm:gap-2 sm:px-3 sm:text-sm ${
         active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
+      aria-label={accessibleLabel}
+      aria-pressed={active}
       onClick={onClick}
     >
-      {icon}
-      {children}
+      <span className="hidden sm:inline-flex">{icon}</span>
+      {mobileLabel && <span className="truncate sm:hidden">{mobileLabel}</span>}
+      <span className={mobileLabel ? "hidden truncate sm:inline" : "truncate"}>{children}</span>
+      {count !== undefined && (
+        <span className={`min-w-4 rounded px-1 text-[10px] leading-4 ${active ? "bg-primary-foreground/18 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+          <span className="sm:hidden">{count > 99 ? "99+" : count}</span>
+          <span className="hidden sm:inline">{count}</span>
+        </span>
+      )}
     </button>
   );
 }

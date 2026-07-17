@@ -13,8 +13,18 @@
     <script>
       (() => {
         const mode = localStorage.getItem("kikoto:theme") || "system";
-        const dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        const storedAccent = localStorage.getItem("kikoto:theme-accent");
+        const accent = storedAccent === "blue" || storedAccent === "green" ? storedAccent : "pink";
+        const dark =
+          mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.dataset.themeAccent = accent;
+        const themeColors = {
+          pink: { light: "#b32d57", dark: "#f47ca0" },
+          blue: { light: "#2069c8", dark: "#6da9f7" },
+          green: { light: "#29905b", dark: "#62da94" },
+        };
+        document.querySelector('meta[name="theme-color"]').content = themeColors[accent][dark ? "dark" : "light"];
       })();
     </script>
     <title>Kikoto</title>

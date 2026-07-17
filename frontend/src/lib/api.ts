@@ -613,6 +613,12 @@ export type WorkflowRunsPage = {
   page: number;
   pageSize: number;
   total: number;
+  viewTotals: {
+    running: number;
+    review: number;
+    failed: number;
+    completed: number;
+  };
 };
 
 export type WorkflowNodeRun = {

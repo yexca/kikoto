@@ -49,6 +49,9 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 	if page.Total != 1 || len(page.Runs) != 1 || page.Runs[0].PendingCandidates != 1 {
 		t.Fatalf("ListRuns() = %#v", page)
 	}
+	if page.ViewTotals.Review != 1 || page.ViewTotals.Completed != 1 || page.ViewTotals.Running != 0 || page.ViewTotals.Failed != 0 {
+		t.Fatalf("ListRuns().ViewTotals = %#v", page.ViewTotals)
+	}
 	detail, err := store.LoadRunDetail(ctx, runID)
 	if err != nil {
 		t.Fatal(err)

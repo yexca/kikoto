@@ -111,7 +111,11 @@ const sampleRunGraph = JSON.stringify({
   edges: [{ id: "discover_to_tag", source: "discover", sourceHandle: "works", target: "tag", targetHandle: "works", dataType: "work_candidates" }],
 });
 
-async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) => void) {
+async function mockWorkflows(
+  page: Page,
+  onRemotePopular?: (payload: unknown) => void,
+  runsPage = { runs: [sampleRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 0, failed: 0, completed: 1 } },
+) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
@@ -139,7 +143,11 @@ async function mockWorkflows(page: Page, onRemotePopular?: (payload: unknown) =>
       return;
     }
     if (url.pathname === "/api/workflow-runs") {
-      await route.fulfill({ json: { runs: url.searchParams.get("workflowCode") === "metadata_sync" ? [] : [sampleRun], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: url.searchParams.get("workflowCode") === "metadata_sync" ? 0 : 1 } });
+      await route.fulfill({
+        json: url.searchParams.get("workflowCode") === "metadata_sync"
+          ? { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0, viewTotals: runsPage.viewTotals }
+          : { ...runsPage, pageSize: Number(url.searchParams.get("pageSize") ?? runsPage.pageSize) },
+      });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51") {
@@ -270,6 +278,27 @@ test("activity deep links load a run outside the visible list page", async ({ pa
   await expect(page.getByRole("button", { name: /Collect DLsite popular voice works/ })).toBeVisible();
 });
 
+test("activity uses compact counted tabs and a single empty state", async ({ page }) => {
+  await mockWorkflows(page, undefined, {
+    runs: [],
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    viewTotals: { running: 0, review: 2, failed: 0, completed: 14 },
+  });
+  await page.goto("/activity?view=running");
+
+  await expect(page.getByRole("button", { name: "Running 0", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Review 2", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Completed 14", exact: true })).toBeVisible();
+  await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 / 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Select a run to inspect execution by node.", { exact: true })).toHaveCount(0);
+
+  const tabs = page.getByRole("button", { name: "Running 0", exact: true }).locator("..");
+  await expect.poll(() => tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
 test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {
   const payloads: unknown[] = [];
   await mockWorkflows(page, (payload) => payloads.push(payload));
@@ -308,6 +337,8 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await page.getByRole("button", { name: "dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Blue accent" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "blue");
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
 });
@@ -318,7 +349,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Theme" }).click();
-  const popover = page.getByText("Choose display mode").locator("..");
+  const popover = page.getByText("Mode and accent").locator("..");
   await expect(popover).toBeVisible();
   const headerBox = await page.locator("header").boundingBox();
   const popoverBox = await popover.boundingBox();
@@ -327,4 +358,16 @@ test("desktop header popovers render above page content", async ({ page }) => {
   expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
   await page.getByRole("button", { name: "dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
+});
+
+test("settings persists display mode and accent color together", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockWorkflows(page);
+  await page.goto("/settings");
+
+  await page.getByRole("button", { name: "Green", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
+  await expect(page.getByRole("button", { name: "Green", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
 });

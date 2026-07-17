@@ -1378,7 +1378,7 @@ export function PlayerDock() {
           </div>
           <button
             data-mini-action
-            className="mini-action absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground shadow-lg backdrop-blur transition-all duration-200 active:scale-95 dark:border-white/10 dark:bg-background/62"
+            className="mini-action absolute left-1/2 top-1/2 z-20 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/50 bg-background/72 text-foreground shadow-lg backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-background/90 hover:text-primary hover:shadow-xl active:scale-95 dark:border-white/10 dark:bg-background/62"
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -1466,7 +1466,7 @@ export function PlayerDock() {
           {activeScrub && <div className="absolute inset-y-0 z-[1] w-px bg-primary/70" style={{ left: `${previewProgress}%` }} />}
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-white/30 dark:hover:bg-white/5 dark:active:bg-white/10"
               onClick={() => {
                 if (suppressCompactClickRef.current) {
                   suppressCompactClickRef.current = false;
@@ -1483,7 +1483,7 @@ export function PlayerDock() {
             </button>
             <Button
               data-compact-control
-              className="h-9 w-9 rounded-full border-primary/15 bg-card/80"
+              className="h-9 w-9 rounded-full border-primary/15 bg-card/80 hover:border-primary/35 hover:bg-primary/10 hover:text-primary"
               size="icon"
               variant="outline"
               onClick={() => setPreferredDockMode("mini")}
@@ -1493,7 +1493,7 @@ export function PlayerDock() {
             </Button>
             <Button
               data-compact-control
-              className="h-11 w-11 rounded-full"
+              className="h-11 w-11 rounded-full shadow-sm hover:scale-[1.04] hover:shadow-lg active:scale-95"
               size="icon"
               onClick={player.togglePlay}
               aria-label={player.isPlaying ? "Pause" : "Play"}
@@ -1758,7 +1758,7 @@ export function PlayerDock() {
 
           <div className="flex items-center justify-center gap-2">
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
               variant="outline"
               size="icon"
               onClick={player.previous}
@@ -1767,7 +1767,7 @@ export function PlayerDock() {
               <SkipBack className="h-4 w-4" />
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(-5)}
@@ -1776,7 +1776,7 @@ export function PlayerDock() {
               <SeekIcon direction="back" seconds={5} />
             </Button>
             <Button
-              className="h-14 w-14 rounded-full transition-transform active:scale-95"
+              className="h-14 w-14 rounded-full shadow-sm transition-[transform,box-shadow] hover:scale-[1.04] hover:shadow-lg active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
               size="icon"
               onClick={player.togglePlay}
               aria-label={player.isPlaying ? "Pause" : "Play"}
@@ -1784,7 +1784,7 @@ export function PlayerDock() {
               {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(10)}
@@ -1793,7 +1793,7 @@ export function PlayerDock() {
               <SeekIcon direction="forward" seconds={10} />
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:bg-white/40 dark:border-white/10 dark:bg-card/45"
+              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
               variant="outline"
               size="icon"
               onClick={player.next}

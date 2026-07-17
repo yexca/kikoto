@@ -30,10 +30,18 @@ type RunRecord struct {
 }
 
 type RunsPage struct {
-	Runs     []RunRecord `json:"runs"`
-	Page     int         `json:"page"`
-	PageSize int         `json:"pageSize"`
-	Total    int64       `json:"total"`
+	Runs       []RunRecord   `json:"runs"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"pageSize"`
+	Total      int64         `json:"total"`
+	ViewTotals RunViewTotals `json:"viewTotals"`
+}
+
+type RunViewTotals struct {
+	Running   int64 `json:"running"`
+	Review    int64 `json:"review"`
+	Failed    int64 `json:"failed"`
+	Completed int64 `json:"completed"`
 }
 
 type NodeRunRecord struct {
