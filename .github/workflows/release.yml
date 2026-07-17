@@ -35,6 +35,15 @@ jobs:
           fi
           echo "version_name=${expected_version#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Verify release notes
+        shell: bash
+        run: |
+          notes_file="docs/history/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$notes_file" ]; then
+            echo "Missing release notes: $notes_file" >&2
+            exit 1
+          fi
+
       - name: Require successful main CI for this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -184,6 +193,9 @@ jobs:
       - build_apk
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
@@ -195,5 +207,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KIKOTO_VERSION_NAME: ${{ needs.verify_release.outputs.version_name }}
         run: |
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          notes_file="docs/history/${GITHUB_REF_NAME}.md"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$notes_file"
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$notes_file"
+          fi
           gh release upload "$GITHUB_REF_NAME" "release-artifacts/kikoto-${KIKOTO_VERSION_NAME}.apk" --repo "$GITHUB_REPOSITORY" --clobber

@@ -27,6 +27,14 @@ Release notes should group changes by user-facing area:
 - Operations and reliability.
 - Development and docs.
 
+Store each release note at `docs/history/<tag>.md`, for example
+`docs/history/v0.2.0.md`. The release workflow derives this path from the tag,
+requires the file to exist, and uses it as the GitHub Release body. Rerunning a
+release also synchronizes the existing Release body with the tracked file. The
+file starts directly with the release body and does not repeat the tag as a
+level-one heading; the filename and GitHub Release title already identify the
+version.
+
 ## Version Source
 
 `VERSION` is the single source for the application semantic version and uses
