@@ -34,14 +34,11 @@
 }
 
 @keyframes overflow-marquee {
-  0%, 12% {
+  from {
     transform: translateX(0);
   }
-  45%, 57% {
+  to {
     transform: translateX(calc(-1 * var(--marquee-distance)));
-  }
-  90%, 100% {
-    transform: translateX(0);
   }
 }
 
@@ -494,10 +491,11 @@
     animation: player-panel-enter 180ms ease-out;
   }
 
-  .overflow-marquee--auto .overflow-marquee__content,
-  .group:hover .overflow-marquee--interaction .overflow-marquee__content,
-  .group:focus-within .overflow-marquee--interaction .overflow-marquee__content {
-    animation: overflow-marquee var(--marquee-duration) ease-in-out infinite;
+  .overflow-marquee--auto .overflow-marquee__track,
+  .group:hover .overflow-marquee--interaction .overflow-marquee__track,
+  .group:focus-within .overflow-marquee--interaction .overflow-marquee__track {
+    animation: overflow-marquee var(--marquee-duration) linear infinite;
+    will-change: transform;
   }
 
   @keyframes workflow-edge-flow {
@@ -530,7 +528,7 @@
       animation: none;
     }
 
-    .overflow-marquee__content {
+    .overflow-marquee__track {
       animation: none !important;
       transform: none !important;
     }

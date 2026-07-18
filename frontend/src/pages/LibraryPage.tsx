@@ -38,7 +38,6 @@ import {
   RefreshCw,
   Repeat2,
   Search,
-  Star,
   Sparkles,
   Tags,
   Unlink,
@@ -5192,17 +5191,20 @@ function DlsiteMetrics({
 }) {
   const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? "Rate" : ratingLabel;
   const rateValue = rating === null
-    ? "No rating"
+    ? "—"
     : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
   const age = ageRatingPresentation(ageRating);
+  const ageValue = age.label === "Unknown" ? "—" : age.label;
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
   return (
-    <div className="w-full rounded-lg border bg-card p-3 text-sm">
+    <div data-testid="dlsite-info" className="w-full rounded-lg border bg-card p-3 text-sm">
       <div className="mb-2 text-xs font-medium text-muted-foreground">DLsite info</div>
-      <div className="grid gap-y-2">
-        <MetricLine icon={<Star className="h-3.5 w-3.5 fill-current" />} label={normalizedRatingLabel} value={rateValue} />
-        <MetricLine icon={<CircleUserRound className="h-3.5 w-3.5" />} label="Age" value={age.label} valueClassName={age.textClassName} />
-        <MetricLine icon={<HardDriveDownload className="h-3.5 w-3.5" />} label="Sales" value={sales === null ? "Unknown" : sales.toLocaleString()} />
+      <div className="space-y-2">
+        <div data-testid="dlsite-primary-metrics" className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4">
+          <InlineDlsiteMetric label={normalizedRatingLabel} value={rateValue} />
+          <InlineDlsiteMetric label="Age" value={ageValue} valueClassName={age.textClassName} />
+          <InlineDlsiteMetric label="Sales" value={sales === null ? "—" : sales.toLocaleString()} />
+        </div>
         <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
       </div>
     </div>
@@ -5211,7 +5213,7 @@ function DlsiteMetrics({
 
 function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
   const SourceIcon = info.kind === "local" ? HardDrive : info.kind === "tracked" ? GitBranchPlus : info.kind === "remote" ? Cloud : CloudOff;
-  const noFilesValue = info.loading ? "Loading" : "—";
+  const noFilesValue = info.loading ? "..." : "—";
   const sizeValue = info.stats.knownSizeFiles > 0 ? formatBytes(info.stats.sizeBytes) : noFilesValue;
   const sizeDetail = info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
     ? `${info.stats.knownSizeFiles}/${info.stats.files} files measured`
@@ -5240,26 +5242,70 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
           <span>{info.statusLabel}</span>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-3">
-        <SourceMetric icon={<Headphones className="h-3.5 w-3.5" />} label="Audio" value={info.loading && info.stats.files === 0 ? "Loading" : info.stats.audio.toLocaleString()} />
-        <SourceMetric icon={<FileText className="h-3.5 w-3.5" />} label="Files" value={info.loading && info.stats.files === 0 ? "Loading" : info.stats.files.toLocaleString()} />
-        <SourceMetric icon={<HardDrive className="h-3.5 w-3.5" />} label="Size" value={sizeValue} detail={sizeDetail} />
-        <SourceMetric icon={<Clock3 className="h-3.5 w-3.5" />} label={durationLabel} value={durationValue} detail={durationDetail} />
+      <div className="space-y-2.5">
+        <SourceInfoRow
+          testId="source-info-audio-row"
+          firstLabel="Audio"
+          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.audio.toLocaleString()}
+          secondLabel={durationLabel}
+          secondValue={durationValue}
+          detail={durationDetail}
+        />
+        <SourceInfoRow
+          testId="source-info-files-row"
+          firstLabel="Files"
+          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.files.toLocaleString()}
+          secondLabel="Size"
+          secondValue={sizeValue}
+          detail={sizeDetail}
+        />
       </div>
     </div>
   );
 }
 
-function SourceMetric({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail?: string }) {
+function SourceInfoRow({
+  testId,
+  firstLabel,
+  firstValue,
+  secondLabel,
+  secondValue,
+  detail,
+}: {
+  testId: string;
+  firstLabel: string;
+  firstValue: string;
+  secondLabel: string;
+  secondValue: string;
+  detail: string;
+}) {
   return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="mt-1 truncate text-xs font-semibold" title={value}>{value}</div>
-      {detail && <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{detail}</div>}
+    <div data-testid={testId} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4">
+      <span className="inline-flex shrink-0 items-baseline gap-1.5" data-source-primary-metrics>
+        <InlineSourceMetric label={firstLabel} value={firstValue} />
+        <span className="h-3 self-center border-l border-border" aria-hidden="true" />
+        <InlineSourceMetric label={secondLabel} value={secondValue} />
+      </span>
+      <span className="min-w-0 flex-1 basis-32 leading-4 text-muted-foreground">({detail})</span>
     </div>
+  );
+}
+
+function InlineSourceMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-baseline gap-1">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
+    </span>
+  );
+}
+
+function InlineDlsiteMetric({ label, value, valueClassName = "" }: { label: string; value: string; valueClassName?: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-baseline gap-1">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-semibold ${valueClassName || "text-foreground"}`}>{value}</span>
+    </span>
   );
 }
 

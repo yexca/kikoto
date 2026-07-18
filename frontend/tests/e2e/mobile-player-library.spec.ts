@@ -863,11 +863,21 @@ test("work detail groups DLsite and active source information", async ({ page })
   await page.getByRole("button", { name: "Info", exact: true }).click();
 
   await expect(page.getByText("DLsite info", { exact: true })).toHaveCount(1);
+  const dlsiteInfo = page.getByTestId("dlsite-info");
+  await expect(dlsiteInfo.getByText("Rate", { exact: true })).toBeVisible();
+  await expect(dlsiteInfo.getByText("Age", { exact: true })).toBeVisible();
+  await expect(dlsiteInfo.getByText("Sales", { exact: true })).toBeVisible();
+  expect(await page.getByTestId("dlsite-primary-metrics").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(18);
   const sourceInfo = page.getByTestId("active-source-info");
   await expect(sourceInfo.getByText("Source info", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("Playable duration", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("1m", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("source-info-audio-row")).toContainText("Audio1Playable duration1m(All audio durations measured)");
+  await expect(page.getByTestId("source-info-files-row")).toContainText("Files1Size2.0 KB(All file sizes measured)");
+  const sourcePrimaryMetrics = page.locator("[data-source-primary-metrics]");
+  await expect(sourcePrimaryMetrics).toHaveCount(2);
+  expect(await sourcePrimaryMetrics.evaluateAll((elements) => elements.every((element) => element.getBoundingClientRect().height <= 18))).toBe(true);
 });
 
 test("library request failures are not presented as an empty collection", async ({ page }) => {
@@ -963,7 +973,11 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   await page.goto("/");
 
   await page.getByRole("button", { name: "Playback queue" }).click();
-  await expect(page.locator(".overflow-marquee--auto", { hasText: longTitle })).toBeVisible();
+  const queueMarquee = page.locator(".overflow-marquee--auto", { hasText: longTitle });
+  await expect(queueMarquee).toBeVisible();
+  await expect(queueMarquee.locator(".overflow-marquee__copy")).toHaveCount(2);
+  await expect(queueMarquee.locator(".overflow-marquee__copy").nth(1)).toHaveAttribute("aria-hidden", "true");
+  await expect.poll(() => queueMarquee.locator(".overflow-marquee__track").evaluate((element) => getComputedStyle(element).animationTimingFunction)).toBe("linear");
   await page.getByRole("button", { name: `Options for ${longTitle}` }).click();
   await expect(page.getByRole("menuitem", { name: "Move down" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();
@@ -971,7 +985,9 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
 
   await page.getByRole("button", { name: "Collapse player" }).click();
-  await expect(page.locator(".overflow-marquee--auto", { hasText: longTitle })).toBeVisible();
+  const compactMarquee = page.locator(".overflow-marquee--auto", { hasText: longTitle });
+  await expect(compactMarquee).toBeVisible();
+  await expect(compactMarquee.locator(".overflow-marquee__copy")).toHaveCount(2);
   await expect(page.locator(".overflow-marquee--auto", { hasText: "Tagged mobile work with an extended display name" })).toBeVisible();
 });
 
