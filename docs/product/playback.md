@@ -8,7 +8,9 @@ Playback is handled by a global browser audio player.
 - Clicking a playable file queues playable audio files in the same folder.
 - Work-level play queues all playable tracks for the work.
 - Playback continues across navigation.
-- Progress is saved per user and logical media item.
+- Progress is saved per user and logical media item. Rapid updates are
+  coalesced and sent serially; a transient database-busy response receives one
+  short jittered retry.
 - The player dock supports collapsed and expanded states, queue view, seeking,
   previous/next, skip controls, volume, and playback mode.
 - Compact playback reserves page space on mobile and desktop so final actions

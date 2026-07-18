@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -52,6 +54,14 @@ func TestWorkDetailSeparatesMediaAndLoadsLyricsPreference(t *testing.T) {
 	if len(detail.MediaItems) != 2 || detail.MediaItems[0].PreferredLyricsMediaItemID == nil || *detail.MediaItems[0].PreferredLyricsMediaItemID != 22 {
 		t.Fatalf("media preference was not loaded: %+v", detail.MediaItems)
 	}
+	mediaRequest := httptest.NewRequest(http.MethodGet, "/api/works/11/media", nil)
+	mediaRequest.SetPathValue("id", "11")
+	mediaRequest = mediaRequest.WithContext(context.WithValue(mediaRequest.Context(), currentUserKey, currentUser{ID: 7, Permissions: []string{"library:read"}}))
+	mediaResponse := httptest.NewRecorder()
+	server.getWorkMedia(mediaResponse, mediaRequest)
+	if mediaResponse.Code != http.StatusOK || !strings.Contains(mediaResponse.Body.String(), `"preferredLyricsMediaItemId":22`) {
+		t.Fatalf("media endpoint status = %d, body = %s", mediaResponse.Code, mediaResponse.Body.String())
+	}
 	request := httptest.NewRequest(http.MethodDelete, "/api/media/21/lyrics-preference", nil)
 	request.SetPathValue("id", "21")
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 7, Permissions: []string{"playback:use"}}))
@@ -86,6 +96,90 @@ func TestEnsureLocalMediaIndexedHonorsCompletedEmptyScan(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: filepath.Join(t.TempDir(), "does-not-exist")})
 	if err := server.ensureLocalMediaIndexed(context.Background(), 31); err != nil {
 		t.Fatalf("completed empty scan was repeated: %v", err)
+	}
+}
+
+func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(51, 'RJ01000051', 'Origin work'),
+			(52, 'RJ01000052', 'Media edition');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (51, 51, 'RJ01000051');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
+			(51, 51, 'RJ01000051', 'RJ01000051', 1),
+			(52, 51, 'RJ01000052', 'RJ01000051', 0);
+		INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (52, 'audio', 'Track', 'edition-track');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	mediaWorkID, err := server.resolveMediaWorkIDForRequest(context.Background(), 51)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mediaWorkID != 52 {
+		t.Fatalf("media work id = %d, want 52", mediaWorkID)
+	}
+}
+
+func TestIndexLocalMediaForWorkCoalescesConcurrentRequests(t *testing.T) {
+	dataRoot := t.TempDir()
+	workPath := filepath.Join(dataRoot, "RJ01000061")
+	if err := os.MkdirAll(workPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 100; index++ {
+		name := filepath.Join(workPath, fmt.Sprintf("note-%03d.txt", index))
+		if err := os.WriteFile(name, []byte("fixture"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (61, 'RJ01000061', 'Concurrent index work');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (71, 'concurrent-local', 'Concurrent local', 'local_folder');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
+		VALUES (61, 71, 'local', 'RJ01000061', 'available', '{"file_tree_scanned":false}');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	start := make(chan struct{})
+	errorsByWorker := make(chan error, 8)
+	var workers sync.WaitGroup
+	for index := 0; index < 8; index++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-start
+			errorsByWorker <- server.indexLocalMediaForWork(context.Background(), 61, 71, "RJ01000061")
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(errorsByWorker)
+	for err := range errorsByWorker {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var mediaItems int
+	var fingerprints int
+	var locations int
+	if err := db.QueryRow("SELECT COUNT(*), COUNT(DISTINCT fingerprint) FROM media_item WHERE work_id = 61").Scan(&mediaItems, &fingerprints); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = 61 AND location.file_source_id = 71
+	`).Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if mediaItems != 100 || fingerprints != 100 || locations != 100 {
+		t.Fatalf("indexed media = %d, fingerprints = %d, locations = %d; want 100 each", mediaItems, fingerprints, locations)
 	}
 }
 

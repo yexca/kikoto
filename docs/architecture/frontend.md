@@ -34,6 +34,8 @@ remote source management, and playback.
 - Render known local state first.
 - Load slower source availability and remote trees separately.
 - Keep source failures local to the affected source.
+- Keep work-summary and directory states independent. A media-stage failure
+  must not discard an already rendered detail shell.
 - Prefer icons for compact controls and reserve text buttons for clear commands.
 - Keep playback global so navigation does not interrupt the current queue.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
@@ -52,3 +54,5 @@ remote source management, and playback.
   not overwrite another entry's saved position.
 - For collection-to-detail navigation, persist shareable filters in the URL and
   keep ephemeral selection/focus anchors in the originating history entry.
+- Reserve a directory-shaped skeleton with stable height while media is being
+  indexed or loaded, then replace it in place without a separate loading card.

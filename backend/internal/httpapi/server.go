@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
@@ -41,6 +42,15 @@ type Server struct {
 	remoteWorkCache      map[string]remoteWorkTracksSnapshot
 	metadataSyncMu       sync.Mutex
 	jobRunnerMu          sync.Mutex
+	localMediaIndexMu    sync.Mutex
+	localMediaIndexes    map[string]*localMediaIndexCall
+	localMediaWriteSlot  chan struct{}
+	localDurationProbeMu sync.Mutex
+}
+
+type localMediaIndexCall struct {
+	done chan struct{}
+	err  error
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
@@ -48,6 +58,8 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		circleAutoRefreshing: map[int64]bool{},
 		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
+		localMediaIndexes:    map[string]*localMediaIndexCall{},
+		localMediaWriteSlot:  make(chan struct{}, 1),
 	}
 }
 
@@ -637,12 +649,21 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	work, err := s.loadWorkDetail(r.Context(), userID, id, true)
+	mediaWorkID, err := s.resolveMediaWorkIDForRequest(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	mediaItems, err := s.loadWorkMediaItems(r.Context(), userID, mediaWorkID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workId": work.ID, "mediaItems": work.MediaItems})
+	writeJSON(w, http.StatusOK, map[string]any{"workId": id, "mediaItems": mediaItems})
 }
 
 func (s *Server) workCodeExists(ctx context.Context, code string) bool {
@@ -2862,7 +2883,73 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	if !includeMedia {
 		return work, nil
 	}
+	work.MediaItems, err = s.loadWorkMediaItems(ctx, userID, mediaWorkID)
+	if err != nil {
+		return workDetail{}, err
+	}
+	return work, nil
+}
 
+func (s *Server) resolveMediaWorkIDForRequest(ctx context.Context, workID int64) (int64, error) {
+	var primaryCode string
+	var snapshot sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT work.primary_code, (
+			SELECT metadata_snapshot.snapshot_json
+			FROM metadata_snapshot
+			INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
+			WHERE metadata_snapshot.work_id = work.id
+				AND metadata_provider.code = 'dlsite'
+			ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
+			LIMIT 1
+		)
+		FROM work
+		WHERE work.id = ?
+	`, workID).Scan(&primaryCode, &snapshot); err != nil {
+		return 0, err
+	}
+	metadata := parseDLsiteSnapshot(snapshot.String)
+	candidates := []int64{workID}
+	seen := map[int64]bool{workID: true}
+	addCode := func(code string) {
+		if candidateID, ok := s.workIDForCode(ctx, code); ok && !seen[candidateID] {
+			seen[candidateID] = true
+			candidates = append(candidates, candidateID)
+		}
+	}
+	for _, edition := range metadata.LanguageEditions {
+		addCode(edition.PrimaryCode)
+	}
+	addCode(metadata.BaseCode)
+	familyIDs, err := s.familyWorkIDsForCode(ctx, primaryCode)
+	if err != nil {
+		return 0, err
+	}
+	for _, candidateID := range familyIDs {
+		if candidateID > 0 && !seen[candidateID] {
+			seen[candidateID] = true
+			candidates = append(candidates, candidateID)
+		}
+	}
+	for _, candidateID := range candidates {
+		if hasLocal, err := s.workHasAvailableLocalMedia(ctx, candidateID); err != nil {
+			return 0, err
+		} else if hasLocal {
+			return candidateID, nil
+		}
+	}
+	for _, candidateID := range candidates {
+		if hasMedia, err := s.workHasMedia(ctx, candidateID); err != nil {
+			return 0, err
+		} else if hasMedia {
+			return candidateID, nil
+		}
+	}
+	return workID, nil
+}
+
+func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWorkID int64) ([]mediaItemDetail, error) {
+	mediaItems := []mediaItemDetail{}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			media_item.id,
@@ -2895,9 +2982,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			media_item.id ASC
 	`, userID, userID, mediaWorkID)
 	if err != nil {
-		return workDetail{}, err
+		return nil, err
 	}
-	defer rows.Close()
 
 	itemIndexes := map[int64]int{}
 	for rows.Next() {
@@ -2928,7 +3014,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			&progressLastPlayedAt,
 			&preferredLyricsMediaItemID,
 		); err != nil {
-			return workDetail{}, err
+			_ = rows.Close()
+			return nil, err
 		}
 		item.ParentID = nullableInt64(parentID)
 		item.DiscNo = nullableInt64(discNo)
@@ -2938,15 +3025,19 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		item.Progress = nullableMediaProgress(progressPositionSeconds, progressDurationSeconds, progressCompleted, progressLastPlayedAt)
 		item.PreferredLyricsMediaItemID = nullableInt64(preferredLyricsMediaItemID)
 		item.Locations = []fileLocationDetail{}
-		itemIndexes[item.ID] = len(work.MediaItems)
-		work.MediaItems = append(work.MediaItems, item)
+		itemIndexes[item.ID] = len(mediaItems)
+		mediaItems = append(mediaItems, item)
 	}
 	if err := rows.Err(); err != nil {
-		return workDetail{}, err
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 
-	if len(work.MediaItems) == 0 {
-		return work, nil
+	if len(mediaItems) == 0 {
+		return mediaItems, nil
 	}
 
 	locationRows, err := s.db.QueryContext(ctx, `
@@ -2972,9 +3063,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		ORDER BY source.priority ASC, location.id ASC
 	`, mediaWorkID)
 	if err != nil {
-		return workDetail{}, err
+		return nil, err
 	}
-	defer locationRows.Close()
 
 	for locationRows.Next() {
 		var mediaItemID int64
@@ -2998,7 +3088,8 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			&location.Availability,
 			&lastCheckedAt,
 		); err != nil {
-			return workDetail{}, err
+			_ = locationRows.Close()
+			return nil, err
 		}
 		location.SizeBytes = nullableInt64(sizeBytes)
 		location.DurationSeconds = nullableInt64(locationDurationSeconds)
@@ -3007,14 +3098,17 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
 		}
 		if index, ok := itemIndexes[mediaItemID]; ok {
-			work.MediaItems[index].Locations = append(work.MediaItems[index].Locations, location)
+			mediaItems[index].Locations = append(mediaItems[index].Locations, location)
 		}
 	}
 	if err := locationRows.Err(); err != nil {
-		return workDetail{}, err
+		_ = locationRows.Close()
+		return nil, err
 	}
-
-	return work, nil
+	if err := locationRows.Close(); err != nil {
+		return nil, err
+	}
+	return mediaItems, nil
 }
 
 func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) error {
@@ -3102,6 +3196,38 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 	if relPath == "" {
 		return nil
 	}
+	indexKey := fmt.Sprintf("%d:%d:%s", workID, fileSourceID, relPath)
+	s.localMediaIndexMu.Lock()
+	if s.localMediaIndexes == nil {
+		s.localMediaIndexes = map[string]*localMediaIndexCall{}
+	}
+	if call, ok := s.localMediaIndexes[indexKey]; ok {
+		s.localMediaIndexMu.Unlock()
+		select {
+		case <-call.done:
+			return call.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	call := &localMediaIndexCall{done: make(chan struct{})}
+	s.localMediaIndexes[indexKey] = call
+	s.localMediaIndexMu.Unlock()
+
+	call.err = s.indexLocalMediaForWorkOnce(ctx, workID, fileSourceID, relPath)
+	s.localMediaIndexMu.Lock()
+	delete(s.localMediaIndexes, indexKey)
+	close(call.done)
+	s.localMediaIndexMu.Unlock()
+	return call.err
+}
+
+func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
+	startedAt := time.Now()
+	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
+	if relPath == "" {
+		return nil
+	}
 	root, err := filepath.Abs(s.cfg.DataRoot)
 	if err != nil {
 		return err
@@ -3115,10 +3241,12 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 		return fmt.Errorf("local work path escapes data root")
 	}
 
+	collectStartedAt := time.Now()
 	files, err := localfs.CollectWorkFiles(root, workPath)
 	if err != nil {
 		return err
 	}
+	collectDuration := time.Since(collectStartedAt)
 	var code string
 	var title string
 	if err := s.db.QueryRowContext(ctx, "SELECT primary_code, title FROM work WHERE id = ?", workID).Scan(&code, &title); err != nil {
@@ -3132,6 +3260,21 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 		Files:   files,
 	}
 
+	writeWaitStartedAt := time.Now()
+	s.localMediaIndexMu.Lock()
+	if s.localMediaWriteSlot == nil {
+		s.localMediaWriteSlot = make(chan struct{}, 1)
+	}
+	writeSlot := s.localMediaWriteSlot
+	s.localMediaIndexMu.Unlock()
+	select {
+	case writeSlot <- struct{}{}:
+		defer func() { <-writeSlot }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	writeWaitDuration := time.Since(writeWaitStartedAt)
+	writeStartedAt := time.Now()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -3180,8 +3323,23 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	writeDuration := time.Since(writeStartedAt)
+	if elapsed := time.Since(startedAt); elapsed >= 250*time.Millisecond {
+		slog.Info("indexed local work media",
+			"work_id", workID,
+			"file_count", len(files),
+			"collect_duration", collectDuration,
+			"write_wait_duration", writeWaitDuration,
+			"write_duration", writeDuration,
+			"elapsed", elapsed,
+		)
+	}
 
-	go s.probeLocalDurationsForFiles(context.Background(), fileSourceID, files)
+	go func() {
+		s.localDurationProbeMu.Lock()
+		defer s.localDurationProbeMu.Unlock()
+		s.probeLocalDurationsForFiles(context.Background(), fileSourceID, files)
+	}()
 	return nil
 }
 
@@ -4594,7 +4752,8 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 		trackNoValue = trackNo
 	}
 	durationValue := nullableDuration(file.DurationSeconds)
-	if _, err := tx.ExecContext(ctx, `
+	var mediaItemID int64
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO media_item (
 			work_id,
 			kind,
@@ -4608,11 +4767,15 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 		WHERE NOT EXISTS (
 			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
-	`, workID, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint, fingerprint); err != nil {
+		RETURNING id
+	`, workID, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint, fingerprint).Scan(&mediaItemID)
+	if err == nil {
+		return mediaItemID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
-
-	if _, err := tx.ExecContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE media_item
 		SET kind = ?,
 			title = ?,
@@ -4620,16 +4783,18 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			duration_seconds = COALESCE(?, duration_seconds),
 			size_bytes = ?
 		WHERE fingerprint = ?
-	`, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint); err != nil {
+		RETURNING id
+	`, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint).Scan(&mediaItemID)
+	if err != nil {
 		return 0, err
 	}
-
-	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
+	return mediaItemID, nil
 }
 
 func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {
 	durationValue := nullableDuration(file.DurationSeconds)
-	if _, err := tx.ExecContext(ctx, `
+	var locationID int64
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
 			file_source_id,
@@ -4649,11 +4814,15 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 				AND location_type = 'local'
 				AND path = ?
 		)
-	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
+		RETURNING id
+	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath).Scan(&locationID)
+	if err == nil {
+		return locationID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
-
-	if _, err := tx.ExecContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			duration_seconds = COALESCE(?, duration_seconds),
@@ -4663,18 +4832,12 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND file_source_id = ?
 			AND location_type = 'local'
 			AND path = ?
-	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
+		RETURNING id
+	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath).Scan(&locationID)
+	if err != nil {
 		return 0, err
 	}
-
-	return selectID(ctx, tx, `
-		SELECT id
-		FROM media_file_location
-		WHERE media_item_id = ?
-			AND file_source_id = ?
-			AND location_type = 'local'
-			AND path = ?
-	`, mediaItemID, fileSourceID, file.RelPath)
+	return locationID, nil
 }
 
 func refreshLocalDurationIfMissing(ctx context.Context, tx *sql.Tx, fileSourceID int64, file localfs.LocalFile) error {
@@ -4715,7 +4878,12 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 	if durationSeconds <= 0 {
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET duration_seconds = COALESCE(duration_seconds, ?)
 		WHERE file_source_id = ?
@@ -4727,7 +4895,7 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_item
 		SET duration_seconds = COALESCE(duration_seconds, ?)
 		WHERE id IN (
@@ -4740,8 +4908,10 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 				AND availability = 'available'
 		)
 			AND duration_seconds IS NULL
-	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes)
-	return err
+	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func nullableDuration(value *int64) any {

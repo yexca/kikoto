@@ -322,6 +322,7 @@ export function LibraryPage() {
   const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() => workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)));
   const [isSelectedMediaLoading, setIsSelectedMediaLoading] = useState(false);
+  const [selectedMediaError, setSelectedMediaError] = useState("");
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
   const [libraryLoadError, setLibraryLoadError] = useState("");
 	const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
@@ -569,9 +570,11 @@ export function LibraryPage() {
       setSelectedWork(null);
       setSelectedWorkNotFound(false);
       setIsSelectedMediaLoading(false);
+      setSelectedMediaError("");
       return;
     }
     setSelectedWorkNotFound(false);
+    setSelectedMediaError("");
     const controller = new AbortController();
     const work = worksRef.current.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
     const historyPreview = workPreviewFromHistory(selectedCode);
@@ -581,7 +584,7 @@ export function LibraryPage() {
       setIsSelectedMediaLoading(true);
       api.getWorkSummary(workID, controller.signal).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-          return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
+          return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
         }
         const cachedMedia = getCachedWorkMedia(detail.id);
         setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
@@ -589,6 +592,10 @@ export function LibraryPage() {
         return api.getWorkMedia(detail.id, controller.signal).then((media) => {
           setCachedWorkMedia(detail.id, media.mediaItems);
           setSelectedWork((current) => current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current);
+        }).catch((error) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setSelectedMediaError(directoryLoadErrorMessage(error));
+          }
         });
       }).catch((error) => {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -600,7 +607,7 @@ export function LibraryPage() {
       });
       return () => controller.abort();
     }
-    void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
+    void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
     return () => controller.abort();
   }, [selectedCode, works.length]);
 
@@ -1036,6 +1043,7 @@ export function LibraryPage() {
         work={selectedWork}
         workPreview={selectedWorkPreview}
         mediaLoading={isSelectedMediaLoading}
+        mediaError={selectedMediaError}
         sources={sources}
         initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
         initialTrackedSourceID={detailTrackedSourceIDFromLocation(window.location.search)}
@@ -3050,6 +3058,7 @@ function WorkDetailView({
   work,
   workPreview,
   mediaLoading,
+  mediaError,
   sources,
   initialSourceIntent,
   initialTrackedSourceID,
@@ -3063,6 +3072,7 @@ function WorkDetailView({
   work: WorkDetail | null;
   workPreview: WorkPreview | null;
   mediaLoading: boolean;
+  mediaError: string;
   sources: LibrarySource[];
   initialSourceIntent: DetailSourceIntent;
   initialTrackedSourceID: number | null;
@@ -3204,6 +3214,8 @@ function WorkDetailView({
     && !selectedRemoteSource.error
     && remoteSourceCanBrowse(selectedRemoteSource.summary),
   );
+  const directoryMediaError = selectedRemoteSource ? "" : mediaError;
+  const showDirectorySkeleton = !directoryMediaError && (!work || isDirectoryLoading || selectedSourceDetailsLoading);
 
   const saveWorkUserTags = async (tags: string[]) => {
     if (!work) return;
@@ -3622,7 +3634,9 @@ function WorkDetailView({
         />
       ) : message ? <DirectoryMessage message={message} /> : undefined}
       selectionModal={fetchSelectionModal}
-      emptyState={!work ? <DirectorySkeleton /> : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
+      emptyState={showDirectorySkeleton ? <DirectorySkeleton /> : directoryMediaError ? (
+        <DirectoryLoadErrorPanel message={directoryMediaError} />
+      ) : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
         <LocalSourceStatePanel
           status={selectedSource.status}
           remoteSources={remoteSources}
@@ -3642,7 +3656,7 @@ function WorkDetailView({
           onRefresh={() => void refreshSourceAvailability()}
         />
       ) : undefined}
-      loadingMessage={!work ? "Loading work details..." : isDirectoryLoading ? "Loading directory..." : selectedRemoteSource && !selectedRemoteDetail ? (selectedRemoteSource.loading ? "Loading remote directory..." : selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
+      loadingMessage={selectedRemoteSource && !selectedRemoteDetail && !selectedRemoteSource.loading ? (selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
       onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
       onPlayNext={(track) => queueTrack(track, true)}
       onAppendQueue={(track) => queueTrack(track, false)}
@@ -4291,10 +4305,33 @@ function DetailSkeletonActions() {
 
 function DirectorySkeleton() {
   return (
-    <div className="space-y-2">
-      <div className="h-10 animate-pulse rounded-md bg-muted" />
-      <div className="h-10 animate-pulse rounded-md bg-muted" />
-      <div className="h-10 animate-pulse rounded-md bg-muted" />
+    <div className="min-h-[22rem] space-y-3" data-testid="directory-skeleton" aria-hidden="true">
+      <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3">
+        <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+        <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
+        <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div key={index} className="flex min-h-12 items-center gap-3 rounded-md border bg-background px-3 py-2">
+            <div className="h-7 w-7 shrink-0 animate-pulse rounded-md bg-muted" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className={`h-3 animate-pulse rounded bg-muted ${index % 3 === 0 ? "w-2/3" : index % 3 === 1 ? "w-1/2" : "w-3/4"}`} />
+              <div className="h-2.5 w-24 animate-pulse rounded bg-muted/80" />
+            </div>
+            <div className="h-8 w-8 shrink-0 animate-pulse rounded-md bg-muted" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DirectoryLoadErrorPanel({ message }: { message: string }) {
+  return (
+    <div className="min-h-[22rem] rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="directory-load-error">
+      <div className="font-medium">Directory unavailable</div>
+      <p className="mt-1 text-amber-900">{message}</p>
     </div>
   );
 }
@@ -7404,11 +7441,13 @@ async function resolveAndOpenWork(
   setSelectedCode: (code: string | null) => void,
   setMediaLoading: (loading: boolean) => void,
   setNotFound: (notFound: boolean) => void,
+  setMediaError: (message: string) => void,
   signal?: AbortSignal,
 ) {
   try {
     setMediaLoading(true);
     setNotFound(false);
+    setMediaError("");
     const resolved = await api.resolveWorkCode(code, signal);
     setSelectedWorkPreview(workPreviewFromResolve(resolved));
     const work = await api.getWorkSummary(resolved.workId, signal);
@@ -7417,9 +7456,14 @@ async function resolveAndOpenWork(
       setSelectedWork({ ...work, mediaItems: cachedMedia });
     } else {
       setSelectedWork(work);
-      const media = await api.getWorkMedia(resolved.workId, signal);
-      setCachedWorkMedia(resolved.workId, media.mediaItems);
-      setSelectedWork({ ...work, mediaItems: media.mediaItems });
+      try {
+        const media = await api.getWorkMedia(resolved.workId, signal);
+        setCachedWorkMedia(resolved.workId, media.mediaItems);
+        setSelectedWork({ ...work, mediaItems: media.mediaItems });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setMediaError(directoryLoadErrorMessage(error));
+      }
     }
     if (resolved.resolvedCode && resolved.resolvedCode.toUpperCase() !== code.toUpperCase()) {
       window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
@@ -7433,6 +7477,13 @@ async function resolveAndOpenWork(
   } finally {
     if (!signal?.aborted) setMediaLoading(false);
   }
+}
+
+function directoryLoadErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.code === "database_busy") {
+    return "The database is busy. The work details remain available; retry the directory shortly.";
+  }
+  return error instanceof Error && error.message ? error.message : "The directory could not be loaded.";
 }
 
 function knownLibraryRoute(path: string, search: string, sources: LibrarySource[]) {

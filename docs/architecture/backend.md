@@ -28,6 +28,8 @@ The backend is a Go HTTP API with SQLite persistence.
 - Browse and sync remote sources.
 - Stream local media with range support.
 - Record workflow runs and activity state.
+- Coalesce concurrent local-media indexing for the same work, keep duration
+  probes serialized per server, and expose slow index phase timings in logs.
 
 ## API Shape
 
@@ -35,6 +37,10 @@ The backend owns aggregate source availability checks, workflow recording, and
 state transitions that should not be spread across the frontend. The frontend
 should not fan out directly to every source when one aggregate endpoint can own
 the result and diagnostic trail.
+
+Work summary and media APIs remain separate. The media endpoint resolves the
+media-bearing edition and loads media items directly; it does not repeat the
+complete metadata, credit, tag, and manual-override detail projection.
 
 ## Current Limits
 

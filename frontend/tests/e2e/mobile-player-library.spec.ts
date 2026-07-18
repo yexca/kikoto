@@ -61,6 +61,7 @@ type MockApplicationFixture = {
   onSourceCheck?: () => void;
   onLocalRefresh?: () => void;
   onMediaRequest?: () => void;
+  mediaBusy?: boolean;
   authenticated?: boolean;
 };
 
@@ -159,7 +160,8 @@ async function mockApplication(
       await route.fulfill({ json: {
         ...detailWork,
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
-        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {}, mediaItems,
+        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {},
+        mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
       } });
       return;
     }
@@ -167,6 +169,10 @@ async function mockApplication(
     if (mediaMatch) {
       fixture.onMediaRequest?.();
       if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
+      if (fixture.mediaBusy) {
+        await route.fulfill({ status: 503, json: { error: "database is busy; please retry", code: "database_busy", retryable: true } });
+        return;
+      }
       await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems } });
       return;
     }
@@ -814,6 +820,33 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
   await page.getByText("Tagged mobile work", { exact: true }).click();
   await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
   expect(mediaRequests).toBe(1);
+});
+
+test("work detail reserves a structured directory skeleton until media is ready", async ({ page }) => {
+  const mediaItems = [mediaFixture(1, "track.mp3", "RJ09999999/track.mp3", "audio")];
+  await mockApplication(page, undefined, false, 1, 800, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  const skeleton = page.getByTestId("directory-skeleton");
+  await expect(skeleton).toBeVisible();
+  const skeletonBox = await skeleton.boundingBox();
+  expect(skeletonBox).not.toBeNull();
+  expect(skeletonBox!.height).toBeGreaterThanOrEqual(352);
+  await expect(page.getByText("Loading directory...", { exact: true })).toHaveCount(0);
+
+  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(skeleton).toBeHidden();
+});
+
+test("directory database contention preserves loaded work details", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true, mediaBusy: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Mark: Unmarked" })).toBeVisible();
+  await expect(page.getByTestId("directory-load-error")).toContainText("The database is busy");
+  await expect(page.getByTestId("directory-skeleton")).toBeHidden();
 });
 
 test("directory rows wrap long unbroken file names without horizontal overflow", async ({ page }) => {

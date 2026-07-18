@@ -30,7 +30,7 @@ import { OverflowMarquee } from "@/components/ui/overflow-marquee";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT } from "@/app/events";
-import { api, assetURL, type MediaProgress } from "@/lib/api";
+import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import {
   addNativeMediaListeners,
@@ -50,6 +50,11 @@ type CompactScrubState = {
   previewTime: number;
   width: number;
   dragging: boolean;
+};
+type ProgressSavePayload = {
+  positionSeconds: number;
+  durationSeconds: number | null;
+  completed: boolean;
 };
 const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
@@ -233,6 +238,18 @@ function withQueueIdentity(track: PlayerTrack): PlayerTrack {
   return { ...track, queueItemId: randomID };
 }
 
+async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressSavePayload) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await api.updateMediaProgress(mediaItemId, payload);
+      return;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== "database_busy" || attempt > 0) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 200 + Math.round(Math.random() * 200)));
+    }
+  }
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const toast = useToast();
@@ -250,6 +267,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
+  const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
+    inFlight: false,
+    pending: new Map(),
+  });
   const cacheRequestedRef = useRef<Set<string>>(new Set());
   const failedLocationIDsRef = useRef<Set<number>>(new Set());
   const nativeControlRef = useRef({
@@ -450,11 +471,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     lastSavedRef.current = { mediaItemId: currentTrack.mediaItemId, position, at: now };
-    void api.updateMediaProgress(currentTrack.mediaItemId, {
+    queueProgressSave(currentTrack.mediaItemId, {
       positionSeconds: position,
       durationSeconds: durationValue,
       completed,
     });
+  };
+
+  const queueProgressSave = (mediaItemId: number, payload: ProgressSavePayload) => {
+    const queueState = progressSaveQueueRef.current;
+    queueState.pending.set(mediaItemId, payload);
+    if (queueState.inFlight) return;
+    queueState.inFlight = true;
+    void (async () => {
+      while (queueState.pending.size > 0) {
+        const next = queueState.pending.entries().next().value as [number, ProgressSavePayload] | undefined;
+        if (!next) break;
+        queueState.pending.delete(next[0]);
+        await saveProgressWithBusyRetry(next[0], next[1]);
+      }
+      queueState.inFlight = false;
+    })();
   };
 
   useEffect(() => {

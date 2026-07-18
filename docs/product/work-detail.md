@@ -18,6 +18,9 @@ playback actions for one work.
 - Lazily indexes local media files only when the media stage needs a concrete
   tree. A completed empty scan is remembered until a library scan invalidates
   that state.
+- Coalesces concurrent indexing of the same media-bearing work and reduces the
+  first-index database statements per file. Slow collection and write phases
+  are logged separately for diagnosis.
 - Loads source availability through a backend aggregate check.
 - Opens remote source trees lazily after availability is known.
 - Wraps complete folder and file names in variable-height Browse and Tree rows,
@@ -73,6 +76,8 @@ remote-derived state separately:
 5. Selected remote source tree, if the user opens one.
 
 This keeps remote source failures from blocking the local detail shell.
+The directory stage uses a stable, directory-shaped skeleton. A media error
+replaces only that skeleton and leaves the loaded metadata and actions intact.
 Fetch path selection and file-management trees are derived only after their
 corresponding Options command is selected.
 
