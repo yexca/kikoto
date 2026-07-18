@@ -216,7 +216,7 @@ function AuthenticatedApp() {
           </div>
         </aside>
 
-        <main className="min-w-0">
+        <main className="app-main min-w-0">
           <header className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0" data-toast-avoid>
             <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
               <div className="min-w-0">

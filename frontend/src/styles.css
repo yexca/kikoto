@@ -75,7 +75,7 @@
     --compact-player-height: 4.5rem;
     --compact-player-mobile-offset: calc(var(--mobile-navigation-height) + 0.75rem + var(--safe-area-bottom));
     --compact-player-desktop-offset: 1.5rem;
-    --app-shell-bottom-clearance: calc(var(--mobile-navigation-height) + 1rem + var(--safe-area-bottom));
+    --app-content-bottom-clearance: calc(var(--mobile-navigation-height) + 1rem + var(--safe-area-bottom));
     --app-update-banner-bottom: calc(var(--mobile-navigation-height) + 1rem + var(--safe-area-bottom));
   }
 
@@ -178,26 +178,26 @@
   }
 
   html {
-    scroll-padding-bottom: var(--app-shell-bottom-clearance);
+    scroll-padding-bottom: var(--app-content-bottom-clearance);
   }
 
-  .app-shell {
-    padding-bottom: var(--app-shell-bottom-clearance);
+  .app-main {
+    padding-bottom: var(--app-content-bottom-clearance);
   }
 
   html[data-player-mode="compact"] {
-    --app-shell-bottom-clearance: calc(var(--compact-player-mobile-offset) + var(--compact-player-height) + 1.25rem);
+    --app-content-bottom-clearance: calc(var(--compact-player-mobile-offset) + var(--compact-player-height) + 1.25rem);
     --app-update-banner-bottom: calc(var(--compact-player-mobile-offset) + var(--compact-player-height) + 0.75rem);
   }
 
   @media (min-width: 1024px) {
     :root {
-      --app-shell-bottom-clearance: 0px;
+      --app-content-bottom-clearance: 0px;
       --app-update-banner-bottom: 1.25rem;
     }
 
     html[data-player-mode="compact"] {
-      --app-shell-bottom-clearance: calc(var(--compact-player-desktop-offset) + var(--compact-player-height) + 1.5rem);
+      --app-content-bottom-clearance: calc(var(--compact-player-desktop-offset) + var(--compact-player-height) + 1.5rem);
       --app-update-banner-bottom: calc(var(--compact-player-desktop-offset) + var(--compact-player-height) + 0.75rem);
     }
   }

@@ -1105,15 +1105,19 @@ test("desktop compact player reserves the final directory action area", async ({
 
   const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
   const lastRow = page.getByTestId("directory-file-row").last();
-  const [compactBox, rowBox, pagePadding] = await Promise.all([
+  const [compactBox, rowBox, contentPadding, sidebarBox] = await Promise.all([
     compact.boundingBox(),
     lastRow.boundingBox(),
-    page.locator(".app-shell").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
+    page.locator(".app-main").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
+    page.locator(".app-shell > aside").boundingBox(),
   ]);
   expect(compactBox).not.toBeNull();
   expect(rowBox).not.toBeNull();
-  expect(pagePadding).toBeGreaterThanOrEqual(120);
+  expect(sidebarBox).not.toBeNull();
+  expect(contentPadding).toBeGreaterThanOrEqual(120);
   expect(rowBox!.y + rowBox!.height).toBeLessThan(compactBox!.y);
+  expect(Math.abs(sidebarBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(sidebarBox!.height - 800)).toBeLessThanOrEqual(1);
   await expect(lastRow.getByRole("button", { name: /Queue actions for track-24\.mp3/ })).toBeVisible();
 });
 
@@ -1122,7 +1126,7 @@ test("mini player reveals actions on tap, persists its snapped edge, and compact
   await seedPlayer(page);
   await page.goto("/");
 
-  const padding = await page.locator(".app-shell").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom));
+  const padding = await page.locator(".app-main").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom));
   expect(padding).toBeGreaterThanOrEqual(160);
   await page.getByRole("button", { name: "Mini player" }).click();
   const mini = page.locator(".mini-player");
