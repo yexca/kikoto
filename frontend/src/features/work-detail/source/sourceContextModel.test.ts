@@ -43,6 +43,7 @@ describe("sourceContextModel", () => {
     expect(trackedTabs[0]).toMatchObject({
       key: "tracked",
       label: "Tracked",
+      sourceName: "Remote B",
       presence: presences[1],
       status: "red",
       statusLabel: "Tracked directory unavailable",

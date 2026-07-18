@@ -451,10 +451,10 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
-  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Refresh local files", exact: true }).click();
   await expect.poll(() => localRefreshes).toBe(1);
-  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
@@ -525,7 +525,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
   await expect(missingRemoteTab).toBeVisible();
   await expect(missingRemoteTab.locator(".bg-red-500")).toHaveCount(1);
-  const sourceOptions = page.getByRole("button", { name: "Options", exact: true });
+  const sourceOptions = page.getByRole("button", { name: /Source actions for/ });
+  await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toBeVisible();
   await sourceOptions.click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
@@ -564,7 +565,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page).toHaveURL(/view=tracked/);
   await expect(page.locator('button[title^="Tracked:"]').locator("..")).toHaveClass(/bg-primary/);
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
-  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: /Manage cache/ }).click();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByText("1 selected / 1 deletable", { exact: true })).toBeVisible();
@@ -817,10 +818,17 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
 
 test("directory rows wrap long unbroken file names without horizontal overflow", async ({ page }) => {
   const longTitle = `${"very-long-track-name-".repeat(10)}.mp3`;
-  const mediaItems = [{
-    id: 1, parentId: null, kind: "audio", title: longTitle, discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12,
-    locations: [{ id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `RJ09999999/${longTitle}`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
-  }];
+  const imageTitle = "cover-image-with-a-complete-name.jpg";
+  const mediaItems = [
+    {
+      id: 1, parentId: null, kind: "audio", title: longTitle, discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12,
+      locations: [{ id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `RJ09999999/${longTitle}`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+    },
+    {
+      id: 2, parentId: null, kind: "image", title: imageTitle, discNo: null, trackNo: null, durationSeconds: null, sizeBytes: 2048,
+      locations: [{ id: 2, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `RJ09999999/${imageTitle}`, streamUrl: "", downloadUrl: "/api/media/2/download", remoteHash: "", sizeBytes: 2048, durationSeconds: null, availability: "available", lastCheckedAt: null }],
+    },
+  ];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
@@ -831,6 +839,35 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
     fits: element.scrollWidth <= element.clientWidth + 1,
     whiteSpace: getComputedStyle(element).whiteSpace,
   }))).toEqual({ fits: true, whiteSpace: "normal" });
+  const audioRow = page.getByTestId("directory-file-row").filter({ hasText: longTitle });
+  const imageRow = page.getByTestId("directory-file-row").filter({ hasText: imageTitle });
+  await expect(audioRow.getByText("Audio · 0:10 · 12 B", { exact: true })).toBeVisible();
+  await expect(imageRow.getByText("Image · 2.0 KB", { exact: true })).toBeVisible();
+  const [audioTitleBox, audioMetaBox] = await Promise.all([
+    fileName.boundingBox(),
+    audioRow.getByText("Audio · 0:10 · 12 B", { exact: true }).boundingBox(),
+  ]);
+  expect(audioTitleBox).not.toBeNull();
+  expect(audioMetaBox).not.toBeNull();
+  expect(audioMetaBox!.y).toBeGreaterThan(audioTitleBox!.y);
+});
+
+test("work detail groups DLsite and active source information", async ({ page }) => {
+  const mediaItems = [{
+    id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 90, sizeBytes: 2048,
+    locations: [{ id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Main local library", locationType: "local", path: "RJ09999999/track.mp3", streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 2048, durationSeconds: 90, availability: "available", lastCheckedAt: null }],
+  }];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+
+  await expect(page.getByText("DLsite info", { exact: true })).toHaveCount(1);
+  const sourceInfo = page.getByTestId("active-source-info");
+  await expect(sourceInfo.getByText("Source info", { exact: true })).toBeVisible();
+  await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
+  await expect(sourceInfo.getByText("Playable duration", { exact: true })).toBeVisible();
+  await expect(sourceInfo.getByText("1m", { exact: true })).toBeVisible();
 });
 
 test("library request failures are not presented as an empty collection", async ({ page }) => {

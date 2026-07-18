@@ -5,12 +5,26 @@ import {
   buildRemoteTree,
   buildTree,
   flattenTracks,
+  formatDuration,
+  formatTrackDuration,
   remoteSelectablePaths,
   toPreferredPlayerTrack,
   treeStats,
 } from "./mediaTreeModel";
 
 describe("mediaTreeModel", () => {
+  it("formats aggregate durations without showing zero minutes", () => {
+    expect(formatDuration(10)).toBe("<1m");
+    expect(formatDuration(3720)).toBe("1h 02m");
+  });
+
+  it("formats per-track durations with second precision", () => {
+    expect(formatTrackDuration(10)).toBe("0:10");
+    expect(formatTrackDuration(754)).toBe("12:34");
+    expect(formatTrackDuration(3754)).toBe("1:02:34");
+    expect(formatTrackDuration(null)).toBe("");
+  });
+
   it("builds a local tree for one selected source and keeps alternate playback locations", () => {
     const item = {
       id: 11,

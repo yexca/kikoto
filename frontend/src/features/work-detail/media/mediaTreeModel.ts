@@ -245,7 +245,17 @@ export function formatDuration(value: number | null) {
   const hours = Math.floor(value / 3600);
   const minutes = Math.floor((value % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-  return `${minutes}m`;
+  return minutes > 0 ? `${minutes}m` : "<1m";
+}
+
+export function formatTrackDuration(value: number | null) {
+  if (!value || value <= 0) return "";
+  const totalSeconds = Math.max(0, Math.floor(value));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {

@@ -19,19 +19,24 @@ playback actions for one work.
 - Opens remote source trees lazily after availability is known.
 - Wraps complete folder and file names in variable-height Browse and Tree rows,
   including long names without spaces, without horizontal page overflow.
-- Keeps the source toolbar width stable with one Options menu. The menu changes
-  with the selected Local, Tracked, or remote source and closes on outside
-  interaction, Escape, or a source change.
+- Keeps one Source menu in the Hero action bar. Its icon changes for Local,
+  Tracked, and remote contexts, its header names the selected source, and it
+  closes on outside interaction, Escape, or a source change.
 - Aggregates tracked presences into one Tracked tab. When a work is tracked by
   more than one file source, the tab exposes a dropdown that switches the
   active tracked directory without adding source names to the tab row.
 - Uses the selected tracked source name in the Directory description and keeps
   the selection in the detail URL.
-- Presents desktop metadata as a two-column matrix beside the cover: Voices,
-  Tags, and personal tags align with split DLsite facts and duration, followed
-  by a full-width version selector. On compact screens, voice credits remain
-  visible above the primary actions while Mark, List, DLsite, and Manage
-  collapse to icon controls.
+- Places desktop Hero actions immediately after the title, then presents
+  metadata as independent columns beside the cover: Voices,
+  Tags, and personal tags are on the left; one combined DLsite info card and an
+  active Source info card are on the right, followed by a full-width version
+  selector. Source info reports file/audio counts, size and duration coverage,
+  and labels a metadata-duration fallback instead of silently replacing source
+  duration. On compact screens, voice credits remain visible above the primary
+  actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
+- Uses one two-line row for every directory file type on mobile and desktop,
+  placing the complete name above type, precise audio duration, and size.
 
 ## Actions
 
@@ -44,7 +49,7 @@ playback actions for one work.
 - Opens Login before any Fetch preparation request when the current visitor is
   anonymous.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
-  maintenance commands from the selected source's Options menu.
+  maintenance commands from the selected source's Hero Source menu.
 - Edit manual overrides when available.
 
 ## Detail Loading Model

@@ -11,6 +11,7 @@ export type DetailSourceIntent = "local" | "tracked" | `remote-source:${number}`
 export type SourceTabInfo = {
   key: string;
   label: string;
+  sourceName?: string;
   fileSourceId: number | null;
   kind?: "local" | "remote" | "tracked" | "no_source";
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
@@ -62,6 +63,7 @@ export function buildSourceTabs(
         sources.set(location.fileSourceId, {
           key: `${location.fileSourceId}:${location.locationType}`,
           label: "Local",
+          sourceName: location.fileSourceName || "Local",
           fileSourceId: location.fileSourceId,
           kind: "local",
           status: "green",
@@ -77,6 +79,7 @@ export function buildSourceTabs(
     tabs.push({
       key: "local",
       label: "Local",
+      sourceName: "Local",
       fileSourceId: -1,
       kind: "local",
       status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "yellow" : "red",
@@ -94,6 +97,7 @@ export function buildSourceTabs(
     baseTabs.push({
       key: "tracked",
       label: "Tracked",
+      sourceName: activeTracked.label,
       fileSourceId: null,
       kind: "tracked",
       presence: activeTracked.presence,
@@ -106,6 +110,7 @@ export function buildSourceTabs(
     baseTabs.push({
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
+      sourceName: remote.source.displayName,
       fileSourceId: null,
       kind: "remote",
       status: status.status,

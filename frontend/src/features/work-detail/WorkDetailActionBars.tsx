@@ -2,14 +2,15 @@ import {
   BookmarkPlus,
   Check,
   ChevronDown,
+  Cloud,
   Clock3,
+  Database,
   Edit3,
   ExternalLink,
   GitFork,
   HardDrive,
   HardDriveDownload,
   Loader2,
-  MoreHorizontal,
   Play,
   RefreshCw,
   Trash2,
@@ -95,8 +96,8 @@ export function WorkIdentityActionBar({
       {(onSync || onEditMetadata) && (
         <div className="relative" ref={manageMenuRef}>
           <Button variant="outline" size="sm" className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7" title="Manage metadata" aria-label="Manage metadata" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
-            <MoreHorizontal className="h-4 w-4" />
-            <span className="hidden sm:inline">Manage</span>
+            <Database className="h-4 w-4" />
+            <span className="hidden sm:inline">Metadata</span>
             <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
           </Button>
           <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-52 p-1 text-sm" zIndex={70}>
@@ -145,6 +146,8 @@ export function MediaContextActionBar({
   onFetch,
   remoteSourceWorkUrl,
   remoteSourceName,
+  sourceLabel,
+  sourceStatus,
   sourceDetailsLoading = false,
   onManageCache,
   manageCacheDisabled = false,
@@ -163,6 +166,8 @@ export function MediaContextActionBar({
   onFetch?: () => void;
   remoteSourceWorkUrl?: string;
   remoteSourceName?: string;
+  sourceLabel?: string;
+  sourceStatus?: string;
   sourceDetailsLoading?: boolean;
   onManageCache?: () => void;
   manageCacheDisabled?: boolean;
@@ -176,6 +181,8 @@ export function MediaContextActionBar({
   const optionsMenuId = useId();
   const hasForkOptions = (mode === "tracked_unforked" || mode === "tracked_forked") && Boolean(onFork);
   const hasOptions = Boolean(onTrack || hasForkOptions || onFetch || remoteSourceWorkUrl || onManageCache || onManageFiles || onRefreshLocalFiles || sourceDetailsLoading);
+  const SourceIcon = mode === "local" ? HardDrive : mode === "remote_source" ? Cloud : GitFork;
+  const displaySourceLabel = sourceLabel || remoteSourceName || "Source";
 
   useEffect(() => {
     setOptionsOpen(false);
@@ -226,17 +233,18 @@ export function MediaContextActionBar({
         ref={optionsButtonRef}
         variant="outline"
         size="sm"
-        className="relative h-8 min-w-[6.5rem] pr-7"
+        className="relative h-8 w-8 px-0 sm:w-auto sm:min-w-[6.5rem] sm:pl-3 sm:pr-7"
         disabled={busy || !hasOptions}
+        aria-label={`Source actions for ${displaySourceLabel}`}
         aria-haspopup="menu"
         aria-expanded={optionsOpen}
         aria-controls={optionsOpen ? optionsMenuId : undefined}
-        title={hasOptions ? "Options for the selected source" : "No options for the selected source"}
+        title={hasOptions ? `Source actions for ${displaySourceLabel}` : `No actions for ${displaySourceLabel}`}
         onClick={() => setOptionsOpen((open) => !open)}
       >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
-        Options
-        <ChevronDown className="absolute right-2 h-3 w-3" />
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <SourceIcon className="h-4 w-4" />}
+        <span className="hidden sm:inline">Source</span>
+        <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
       </Button>
       <AnchoredPopover
         open={optionsOpen && !busy}
@@ -248,7 +256,8 @@ export function MediaContextActionBar({
       >
         <div id={optionsMenuId} ref={optionsMenuRef} role="menu" aria-label="Selected source options" onKeyDown={handleMenuKeyDown}>
           <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-            {remoteSourceName ? `${remoteSourceName} options` : "Source options"}
+            <span className="block truncate">{displaySourceLabel}</span>
+            {sourceStatus && <span className="mt-0.5 block text-[11px] font-normal">{sourceStatus}</span>}
           </div>
           {sourceDetailsLoading && (
             <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground" role="status">
