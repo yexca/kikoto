@@ -44,18 +44,55 @@ jobs:
             exit 1
           fi
 
-      - name: Require successful main CI for this commit
+      - name: Wait for successful main CI for this commit
+        timeout-minutes: 35
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          successful_runs="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=100" \
-            --jq '[.workflow_runs[] | select(.head_branch == "main" and .status == "completed" and .conclusion == "success")] | length')"
-          if [ "$successful_runs" -lt 1 ]; then
-            echo "No successful main CI run exists for commit $GITHUB_SHA. Wait for CI before creating the tag." >&2
-            exit 1
-          fi
+          set -euo pipefail
+
+          runs_api="repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=100"
+          deadline=$((SECONDS + 1800))
+
+          while true; do
+            state="$(gh api "$runs_api" --jq '
+              [.workflow_runs[] | select(.head_branch == "main")] as $runs
+              | if any($runs[]; .status == "completed" and .conclusion == "success") then "success"
+                elif any($runs[]; .status != "completed") then "waiting"
+                elif ($runs | length) > 0 then "failed"
+                else "missing"
+                end
+            ')"
+
+            case "$state" in
+              success)
+                echo "Successful main CI found for commit $GITHUB_SHA."
+                break
+                ;;
+              failed)
+                echo "Main CI failed for commit $GITHUB_SHA:" >&2
+                gh api "$runs_api" --jq '
+                  .workflow_runs[]
+                  | select(.head_branch == "main")
+                  | "\(.html_url) status=\(.status) conclusion=\(.conclusion)"
+                ' >&2
+                exit 1
+                ;;
+              waiting)
+                echo "Main CI for commit $GITHUB_SHA is still running; checking again in 60 seconds."
+                ;;
+              missing)
+                echo "Main CI for commit $GITHUB_SHA is not visible yet; checking again in 60 seconds."
+                ;;
+            esac
+
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for successful main CI for commit $GITHUB_SHA." >&2
+              exit 1
+            fi
+            sleep 60
+          done
 
   build_and_push:
     name: Build and push image

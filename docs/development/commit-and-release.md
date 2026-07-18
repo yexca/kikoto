@@ -43,7 +43,9 @@ inject it into the Go backend, and Android derives `versionName` from it.
 Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
-The release tag must exactly match `VERSION`. Push the release commit to
-`main`, wait for CI to succeed, and only then create the version tag. The
-release workflow verifies that the tagged commit has a successful `main` CI
-run before publishing images or APKs.
+The release tag must exactly match `VERSION` and point to a commit pushed to
+`main`. The release commit and tag may be pushed together: the release workflow
+waits up to 30 minutes for that commit's `main` CI run to appear and complete
+successfully before publishing images or APKs. A failed, cancelled, or timed-out
+CI run stops the release; the release workflow does not create a replacement CI
+run.
