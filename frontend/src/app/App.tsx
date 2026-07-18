@@ -1,6 +1,6 @@
 import { App as CapacitorApp } from "@capacitor/app";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Lock, PanelLeftClose, PanelLeftOpen, WifiOff } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, Lock, PanelLeftClose, PanelLeftOpen, Server, WifiOff, X } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
@@ -217,8 +217,8 @@ function AuthenticatedApp() {
         </aside>
 
         <main className="min-w-0">
-          <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur" data-toast-avoid>
-            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 px-4 lg:gap-3 lg:px-6">
+          <header className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0" data-toast-avoid>
+            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">{page === "not-found" ? "Not found" : activeItem?.label ?? "Library"}</h1>
@@ -237,11 +237,13 @@ function AuthenticatedApp() {
           <MobileConnectionBanner
             kind={mobileRuntime.connection.kind}
             message={mobileRuntime.connection.message}
+            releaseUrl={mobileRuntime.connection.releaseUrl}
+            noticeKey={mobileRuntime.connection.noticeKey}
             onReconnect={() => void mobileRuntime.reconnect()}
           />
 
           <Suspense fallback={<PageLoading />}>
-            <div className="px-4 py-5 lg:px-6">
+            <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
               {page !== "not-found" && !canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
               {page === "not-found" && (
                 <NotFoundPage
@@ -265,7 +267,7 @@ function AuthenticatedApp() {
           </Suspense>
         </main>
 
-        <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
           <nav className="grid grid-cols-4">
             {mobileNavItems.map((item) => {
               return (
@@ -304,22 +306,55 @@ function AuthenticatedApp() {
 function MobileConnectionBanner({
   kind,
   message,
+  releaseUrl,
+  noticeKey,
   onReconnect,
 }: {
   kind: string;
   message: string;
+  releaseUrl: string;
+  noticeKey: string;
   onReconnect: () => void;
 }) {
-  if (!isNativeApp() || !message || kind === "online" || kind === "idle") return null;
-  const Icon = kind === "version-warning" ? AlertTriangle : WifiOff;
+  const dismissedStorageKey = "kikoto:dismissed-version-notice";
+  const [dismissedNotice, setDismissedNotice] = useState(() => localStorage.getItem(dismissedStorageKey) ?? "");
+  const isClientUpdate = kind === "client-update-available" || kind === "client-update-required";
+  const isServerUpdate = kind === "server-update-available";
+  const isRequired = kind === "client-update-required";
+  const isDismissed = !isRequired && noticeKey && dismissedNotice === noticeKey;
+  if (!isNativeApp() || !message || ["online", "idle", "checking", "reconnecting"].includes(kind)) return null;
+  if (isDismissed) return null;
+  const Icon = isRequired ? AlertTriangle : isClientUpdate ? Download : isServerUpdate ? Server : WifiOff;
   return (
     <div className="border-b bg-muted/70 px-4 py-2 text-sm lg:px-6" data-toast-avoid>
       <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">{message}</span>
-        <Button variant="outline" size="sm" onClick={onReconnect}>
-          Reconnect
-        </Button>
+        {(isClientUpdate || isServerUpdate) && releaseUrl ? (
+          <Button variant="outline" size="sm" asChild>
+            <a href={releaseUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="h-3.5 w-3.5" />
+              {isClientUpdate ? "View update" : "View release"}
+            </a>
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={onReconnect}>
+            Reconnect
+          </Button>
+        )}
+        {!isRequired && noticeKey && (
+          <button
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              localStorage.setItem(dismissedStorageKey, noticeKey);
+              setDismissedNotice(noticeKey);
+            }}
+            aria-label="Dismiss version notice"
+            title="Remind me for the next version"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );

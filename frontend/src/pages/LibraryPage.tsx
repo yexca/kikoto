@@ -176,7 +176,9 @@ import {
   type DetailActionMode,
 } from "@/features/work-detail/WorkDetailActionBars";
 
-type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors">;
+type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors"> & {
+  id?: number;
+};
 
 type ActiveSourceInfoModel = {
   label: string;
@@ -572,10 +574,12 @@ export function LibraryPage() {
     setSelectedWorkNotFound(false);
     const controller = new AbortController();
     const work = worksRef.current.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
-    if (work) {
-      setSelectedWorkPreview(work);
+    const historyPreview = workPreviewFromHistory(selectedCode);
+    const workID = work?.id ?? historyPreview?.id ?? null;
+    setSelectedWorkPreview(work ?? historyPreview);
+    if (workID !== null) {
       setIsSelectedMediaLoading(true);
-      api.getWorkSummary(work.id, controller.signal).then((detail) => {
+      api.getWorkSummary(workID, controller.signal).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
           return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
         }
@@ -596,7 +600,6 @@ export function LibraryPage() {
       });
       return () => controller.abort();
     }
-    setSelectedWorkPreview(workPreviewFromHistory(selectedCode));
     void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
     return () => controller.abort();
   }, [selectedCode, works.length]);
@@ -6153,19 +6156,7 @@ function DirectoryBrowser({
 
   return (
     <div className="space-y-3">
-      <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background px-2 text-sm">
-        <button className="rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => setPath([])}>
-          root
-        </button>
-        {path.map((part, index) => (
-          <span key={`${part}:${index}`} className="inline-flex min-w-0 max-w-full items-center gap-1">
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            <button className="min-w-0 max-w-full break-all rounded px-2 py-1 text-left font-medium hover:bg-muted" onClick={() => setPath(path.slice(0, index + 1))}>
-              {part}
-            </button>
-          </span>
-        ))}
-      </div>
+      <DirectoryBreadcrumb path={path} onChange={setPath} />
       <div className="space-y-1">
         {path.length > 0 && (
           <button
@@ -6202,6 +6193,108 @@ function DirectoryBrowser({
         ))}
       </div>
     </div>
+  );
+}
+
+function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (path: string[]) => void }) {
+  const [ancestorMenuOpen, setAncestorMenuOpen] = useState(false);
+  const ancestorMenuRef = useRef<HTMLButtonElement | null>(null);
+  const current = path[path.length - 1] ?? "";
+  const ancestors = path.slice(0, -1);
+
+  useEffect(() => setAncestorMenuOpen(false), [path]);
+
+  return (
+    <nav
+      data-testid="directory-breadcrumb"
+      className="min-h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+      aria-label="Directory path"
+    >
+      <div className="flex min-h-9 min-w-0 items-center gap-1 overflow-hidden lg:hidden">
+        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
+          root
+        </button>
+        {path.length > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+        {ancestors.length > 0 && (
+          <>
+            <button
+              ref={ancestorMenuRef}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => setAncestorMenuOpen((open) => !open)}
+              aria-label={`Show ${ancestors.length} parent folder${ancestors.length === 1 ? "" : "s"}`}
+              aria-haspopup="menu"
+              aria-expanded={ancestorMenuOpen}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <AnchoredPopover
+              open={ancestorMenuOpen}
+              anchorRef={ancestorMenuRef}
+              onOpenChange={setAncestorMenuOpen}
+              className="w-[min(20rem,calc(100vw-1.5rem))] p-1"
+              bottomCollisionPadding={96}
+            >
+              <div role="menu" aria-label="Parent folders">
+                {ancestors.map((part, index) => (
+                  <button
+                    key={`${part}:${index}`}
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
+                    title={part}
+                    onClick={() => onChange(path.slice(0, index + 1))}
+                  >
+                    <Folder className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate">{part}</span>
+                  </button>
+                ))}
+              </div>
+            </AnchoredPopover>
+          </>
+        )}
+        {current && (
+          <span
+            data-testid="directory-breadcrumb-current"
+            className="min-w-0 max-w-[55vw] truncate rounded px-2 py-1 font-medium sm:max-w-[20rem]"
+            title={current}
+            aria-current="page"
+          >
+            {current}
+          </span>
+        )}
+      </div>
+
+      <div className="app-scrollbar hidden min-h-9 min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap lg:flex">
+        <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => onChange([])}>
+          root
+        </button>
+        {path.map((part, index) => {
+          const isCurrent = index === path.length - 1;
+          return (
+            <span key={`${part}:${index}`} className="inline-flex min-w-0 shrink-0 items-center gap-1">
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {isCurrent ? (
+                <span
+                  className="block max-w-[20rem] truncate rounded px-2 py-1 font-medium"
+                  title={part}
+                  aria-current="page"
+                >
+                  {part}
+                </span>
+              ) : (
+                <button
+                  className="block max-w-[18rem] truncate rounded px-2 py-1 text-left font-medium hover:bg-muted"
+                  title={part}
+                  onClick={() => onChange(path.slice(0, index + 1))}
+                >
+                  {part}
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
@@ -7366,6 +7459,7 @@ function workPreviewFromHistory(code: string | null): WorkPreview | null {
   const preview = value as Partial<WorkPreview>;
   if (typeof preview.primaryCode !== "string" || preview.primaryCode.toUpperCase() !== code.toUpperCase()) return null;
   return {
+    id: typeof preview.id === "number" && Number.isInteger(preview.id) && preview.id > 0 ? preview.id : undefined,
     primaryCode: preview.primaryCode,
     title: typeof preview.title === "string" ? preview.title : preview.primaryCode,
     coverUrl: typeof preview.coverUrl === "string" ? preview.coverUrl : "",
@@ -7381,6 +7475,7 @@ function workPreviewFromHistory(code: string | null): WorkPreview | null {
 
 function workPreviewFromResolve(resolved: Awaited<ReturnType<typeof api.resolveWorkCode>>): WorkPreview {
   return {
+    id: resolved.workId,
     primaryCode: resolved.resolvedCode,
     title: resolved.title || resolved.resolvedCode,
     coverUrl: resolved.coverUrl,
@@ -7396,6 +7491,7 @@ function workPreviewFromResolve(resolved: Awaited<ReturnType<typeof api.resolveW
 
 function remoteWorkPreview(work: RemoteWork): WorkPreview {
   return {
+    id: work.workId ?? undefined,
     primaryCode: work.primaryCode,
     title: work.title || work.primaryCode,
     coverUrl: work.coverUrl,

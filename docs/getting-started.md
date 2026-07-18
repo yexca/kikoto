@@ -35,6 +35,16 @@ The default runtime mounts are:
 - `./cache:/cache`
 - `./data:/data`
 
+## Android Client
+
+Signed Android APKs are attached to the project [GitHub Releases](https://github.com/yexca/kikoto/releases).
+The client compares its version with the connected server. An older client
+offers the matching Release, while a newer client identifies the server as the
+component to update. Network failures retain a separate Reconnect action.
+
+Kikoto does not silently install Android packages. Opening a Release and
+installing its APK remains an explicit user-confirmed Android system flow.
+
 ## First Library Scan
 
 1. Put supported audio work folders under `data/`.

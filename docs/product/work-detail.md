@@ -12,6 +12,9 @@ playback actions for one work.
 - Shows unavailable metadata-only editions without implying local playback.
 - Renders a card-provided or code-resolved preview first, then loads base detail
   and the media tree as separate stages.
+- Retains a known work id in card/history previews so Favorites and other
+  collection routes cannot race Library loading against a redundant code
+  resolution.
 - Lazily indexes local media files only when the media stage needs a concrete
   tree. A completed empty scan is remembered until a library scan invalidates
   that state.
@@ -19,6 +22,9 @@ playback actions for one work.
 - Opens remote source trees lazily after availability is known.
 - Wraps complete folder and file names in variable-height Browse and Tree rows,
   including long names without spaces, without horizontal page overflow.
+- Keeps Browse breadcrumbs on one line. Mobile collapses intermediate ancestors
+  into a menu while desktop bounds each visible segment; complete names remain
+  available through rows, ancestor commands, titles, and accessible labels.
 - Keeps one Source menu in the Hero action bar. Its icon changes for Local,
   Tracked, and remote contexts, its header names the selected source, and it
   closes on outside interaction, Escape, or a source change.
@@ -37,6 +43,8 @@ playback actions for one work.
   actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
+- Reserves bottom scroll space while the desktop Compact player is active so the
+  final queue action remains reachable.
 
 ## Actions
 

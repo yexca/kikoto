@@ -2,7 +2,7 @@ import { BookOpen, Boxes, ExternalLink, FolderCode, Scale, Sparkles } from "luci
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { APP_CLIENT_VERSION } from "@/lib/appInfo";
+import { APP_CLIENT_VERSION, KIKOTO_RELEASES_URL } from "@/lib/appInfo";
 
 const dependencyGroups = [
   {
@@ -154,6 +154,12 @@ export function AboutPage() {
                 <a href="https://github.com/yexca/kikoto" target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   View source
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a href={KIKOTO_RELEASES_URL} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  View releases
                 </a>
               </Button>
             </div>

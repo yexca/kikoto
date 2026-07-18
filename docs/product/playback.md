@@ -11,6 +11,11 @@ Playback is handled by a global browser audio player.
 - Progress is saved per user and logical media item.
 - The player dock supports collapsed and expanded states, queue view, seeking,
   previous/next, skip controls, volume, and playback mode.
+- Compact playback reserves page space on mobile and desktop so final actions
+  are not covered. PWA update notices stack above the Compact dock.
+- Mobile full playback uses edge-to-edge safe areas on every side. Bottom
+  controls retain at least 44px touch height and additional home-indicator
+  separation.
 - Compact metadata keeps the track title and work title visible. Overflowing
   text scrolls with reduced-motion support.
 - Queue rows place move-up, move-down, and remove inside an Options menu that

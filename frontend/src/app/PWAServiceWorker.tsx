@@ -47,7 +47,7 @@ export function PWAServiceWorker() {
 
   if (!waitingWorker) return null;
   return (
-    <div className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[90] mx-auto flex max-w-xl items-center gap-3 rounded-xl border bg-card p-3 text-card-foreground shadow-2xl lg:bottom-5">
+    <div className="fixed bottom-[var(--app-update-banner-bottom)] left-[max(0.75rem,var(--safe-area-left))] right-[max(0.75rem,var(--safe-area-right))] z-[90] mx-auto flex max-w-xl items-center gap-3 rounded-xl border bg-card p-3 text-card-foreground shadow-2xl">
       <RefreshCw className="h-5 w-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold">Kikoto update ready</div>

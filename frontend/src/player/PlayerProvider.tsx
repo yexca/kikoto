@@ -1202,7 +1202,8 @@ export function PlayerDock() {
       const coverHeight = cover?.getBoundingClientRect().height ?? 0;
       const titleHeight = title?.getBoundingClientRect().height ?? 0;
       if (containerHeight < 320 || coverHeight < 120 || titleHeight < 24) return;
-      const reservedGap = 36;
+      // Account for the main panel padding, artwork-stack padding, and both flex gaps.
+      const reservedGap = 56;
       const available = containerHeight - coverHeight - titleHeight - reservedGap;
       const nextRows = Math.max(1, Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT)));
       setLyricsPreviewRows((rows) => (rows === nextRows ? rows : nextRows));
@@ -1318,7 +1319,7 @@ export function PlayerDock() {
         style={
           miniPosition
             ? { left: miniPosition.x, top: miniPosition.y }
-            : { bottom: "calc(76px + env(safe-area-inset-bottom))", right: "12px" }
+            : { bottom: isMobile ? "var(--compact-player-mobile-offset)" : "var(--compact-player-desktop-offset)", right: "12px" }
         }
         onPointerEnter={showDesktopMiniActions}
         onPointerLeave={hideDesktopMiniActionsLater}
@@ -1439,7 +1440,7 @@ export function PlayerDock() {
     const scrubDelta = activeScrub ? activeScrub.previewTime - activeScrub.originTime : 0;
     const labelPosition = Math.max(22, Math.min(78, originProgress));
     return (
-      <div className="fixed inset-x-3 bottom-[calc(76px+env(safe-area-inset-bottom))] z-40 lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px]">
+      <div className="fixed bottom-[var(--compact-player-mobile-offset)] left-[max(0.75rem,var(--safe-area-left))] right-[max(0.75rem,var(--safe-area-right))] z-40 lg:inset-auto lg:bottom-[var(--compact-player-desktop-offset)] lg:right-6 lg:w-[390px]">
         {activeScrub && (
           <div className="pointer-events-none absolute inset-x-0 bottom-full h-12" aria-live="polite">
             <div className="absolute bottom-0 h-7 w-px bg-primary/60" style={{ left: `${originProgress}%` }} />
@@ -1522,7 +1523,7 @@ export function PlayerDock() {
     >
       <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
       <div
-        className="relative z-10 flex h-full flex-col pt-[env(safe-area-inset-top)]"
+        className="relative z-10 flex h-full flex-col pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] pt-[var(--safe-area-top)] lg:px-0 lg:pt-0"
         style={{ touchAction: panel ? undefined : "pan-x" }}
         onPointerDown={(event) => {
           if (!isMobile) return;
@@ -1675,7 +1676,7 @@ export function PlayerDock() {
           )}
         </div>
 
-        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
+        <div className="shrink-0 space-y-4 border-t border-white/30 bg-background/55 px-4 pb-[calc(1.5rem+var(--safe-area-bottom))] pt-4 dark:border-white/10 lg:bg-white/25 lg:p-4 dark:lg:bg-white/5">
           <div className="relative flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">
               {player.currentIndex + 1} / {player.queue.length}
@@ -1727,7 +1728,7 @@ export function PlayerDock() {
 
           <div className="flex items-center justify-center gap-2">
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.previous}
@@ -1736,7 +1737,7 @@ export function PlayerDock() {
               <SkipBack className="h-4 w-4" />
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(-5)}
@@ -1753,7 +1754,7 @@ export function PlayerDock() {
               {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(10)}
@@ -1762,7 +1763,7 @@ export function PlayerDock() {
               <SeekIcon direction="forward" seconds={10} />
             </Button>
             <Button
-              className="h-10 w-10 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.next}
@@ -1774,7 +1775,7 @@ export function PlayerDock() {
 
           <div className="relative grid grid-cols-5 gap-2">
             <Button
-              className="rounded-full border-primary/15"
+              className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={player.mode === "order" ? "outline" : "secondary"}
               size="sm"
               onClick={player.cycleMode}
@@ -1791,7 +1792,7 @@ export function PlayerDock() {
             </Button>
 
             <Button
-              className="rounded-full border-primary/15"
+              className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={panel === "queue" ? "secondary" : "outline"}
               size="sm"
               onClick={() => {
@@ -1805,7 +1806,7 @@ export function PlayerDock() {
             </Button>
             <Button
               data-compact-control
-              className="rounded-full border-primary/15"
+              className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={lyricsDisplayMode === "hidden" ? "outline" : "secondary"}
               size="sm"
               onClick={cycleLyricsDisplayMode}
@@ -1817,7 +1818,7 @@ export function PlayerDock() {
             </Button>
             <Button
               data-compact-control
-              className="rounded-full border-primary/15"
+              className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={player.playbackRate === 1 ? "outline" : "secondary"}
               size="sm"
               onClick={player.cyclePlaybackRate}
@@ -1830,7 +1831,7 @@ export function PlayerDock() {
 
             <Button
               ref={sleepButtonRef}
-              className="rounded-full border-primary/15"
+              className="h-11 rounded-full border-primary/15 lg:h-8"
               variant={player.sleepTimer ? "secondary" : "outline"}
               size="sm"
               onClick={() => setIsSleepOpen((value) => !value)}
@@ -2243,10 +2244,11 @@ function InlineLyricsPreview({
   const firstVisibleIndex = Math.max(0, Math.min(activeIndex - activeOffset, Math.max(0, parsed.lines.length - visibleRows)));
   return (
     <button
-      className="mx-auto w-full max-w-[min(86vw,340px)] overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
+      className="mx-auto w-full max-w-[min(86vw,340px)] shrink-0 overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
       style={{ height: visibleRows * LYRIC_PREVIEW_ROW_HEIGHT }}
       onClick={onOpen}
       data-player-no-drag
+      data-visible-rows={visibleRows}
       aria-label="Open lyrics"
     >
       <div

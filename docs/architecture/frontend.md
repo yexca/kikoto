@@ -36,6 +36,10 @@ remote source management, and playback.
 - Keep source failures local to the affected source.
 - Prefer icons for compact controls and reserve text buttons for clear commands.
 - Keep playback global so navigation does not interrupt the current queue.
+- Treat bottom navigation, safe areas, Compact player placement, page clearance,
+  and update notices as one fixed-surface layout contract.
+- Distinguish Android client-old, server-old, and network-disconnected states;
+  version actions open signed GitHub Releases and never imply silent install.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid/masonry behavior and responsive column choices should remain aligned.

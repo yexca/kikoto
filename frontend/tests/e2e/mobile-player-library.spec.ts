@@ -852,6 +852,39 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   expect(audioMetaBox!.y).toBeGreaterThan(audioTitleBox!.y);
 });
 
+test("mobile directory breadcrumbs collapse long ancestors without losing navigation", async ({ page }) => {
+  const first = "First folder with a deliberately long descriptive name";
+  const second = "Second folder with another deliberately long descriptive name";
+  const current = "Current folder with an especially long descriptive suffix CHI_HANS";
+  const mediaItems = [
+    mediaFixture(1, "root-note.txt", `RJ09999999/root-note.txt`, "file"),
+    mediaFixture(2, "first-note.txt", `RJ09999999/${first}/first-note.txt`, "file"),
+    mediaFixture(3, "second-note.txt", `RJ09999999/${first}/${second}/second-note.txt`, "file"),
+    mediaFixture(4, "track.mp3", `RJ09999999/${first}/${second}/${current}/track.mp3`, "audio"),
+  ];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await page.getByRole("button", { name: "root", exact: true }).click();
+  await page.getByText(first, { exact: true }).click();
+  await page.getByText(second, { exact: true }).click();
+  await page.getByText(current, { exact: true }).click();
+
+  const breadcrumb = page.getByTestId("directory-breadcrumb");
+  const currentSegment = page.getByTestId("directory-breadcrumb-current");
+  await expect(currentSegment).toHaveAttribute("title", current);
+  await expect(currentSegment).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "Show 2 parent folders" })).toBeVisible();
+  expect((await breadcrumb.boundingBox())!.height).toBeLessThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+
+  await page.getByRole("button", { name: "Show 2 parent folders" }).click();
+  const parentMenu = page.getByRole("menu", { name: "Parent folders" });
+  await expect(parentMenu.getByRole("menuitem", { name: first, exact: true })).toBeVisible();
+  await parentMenu.getByRole("menuitem", { name: second, exact: true }).click();
+  await expect(page.getByTestId("directory-breadcrumb-current")).toHaveAttribute("title", second);
+});
+
 test("work detail groups DLsite and active source information", async ({ page }) => {
   const mediaItems = [{
     id: 1, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 90, sizeBytes: 2048,
@@ -935,12 +968,13 @@ test("inline lyrics adapt visible rows to height and keep the active line center
   });
   const activeIndex = 6;
   await expect(preview.locator(`[data-lyric-index="${activeIndex}"]`)).toHaveClass(/text-primary/);
-  await page.waitForTimeout(500);
+  await expect.poll(async () => Number(await preview.getAttribute("data-visible-rows"))).toBeGreaterThan(3);
   const previewBox = await preview.boundingBox();
   expect(previewBox).not.toBeNull();
-  const visibleRows = Math.round(previewBox!.height / 28);
+  const visibleRows = Number(await preview.getAttribute("data-visible-rows"));
   expect(visibleRows).toBeGreaterThanOrEqual(3);
   expect(visibleRows).toBeLessThanOrEqual(10);
+  expect(Math.round(previewBox!.height)).toBe(visibleRows * 28);
   const lineCount = await preview.locator("[data-lyric-index]").count();
   const firstVisibleIndex = Math.max(0, Math.min(activeIndex - Math.floor(visibleRows / 2), Math.max(0, lineCount - visibleRows)));
   for (let index = 0; index < lineCount; index += 1) {
@@ -1056,6 +1090,33 @@ test("desktop player restores the user's compact dock preference", async ({ page
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
 });
 
+test("desktop compact player reserves the final directory action area", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const mediaItems = Array.from({ length: 24 }, (_, index) =>
+    mediaFixture(index + 1, `track-${index + 1}.mp3`, `RJ09999999/track-${index + 1}.mp3`, "audio"),
+  );
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await seedPlayer(page);
+  await page.goto("/RJ09999999");
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
+  await expect(page.getByTestId("directory-file-row")).toHaveCount(mediaItems.length);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+  const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
+  const lastRow = page.getByTestId("directory-file-row").last();
+  const [compactBox, rowBox, pagePadding] = await Promise.all([
+    compact.boundingBox(),
+    lastRow.boundingBox(),
+    page.locator(".app-shell").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
+  ]);
+  expect(compactBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  expect(pagePadding).toBeGreaterThanOrEqual(120);
+  expect(rowBox!.y + rowBox!.height).toBeLessThan(compactBox!.y);
+  await expect(lastRow.getByRole("button", { name: /Queue actions for track-24\.mp3/ })).toBeVisible();
+});
+
 test("mini player reveals actions on tap, persists its snapped edge, and compact mode reserves page space", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page);
@@ -1161,6 +1222,10 @@ test("legacy end-of-track sleep timers migrate without being discarded", async (
 });
 
 test("PWA metadata exposes install icons and the worker excludes API and range requests", async ({ request }) => {
+  const indexResponse = await request.get("/");
+  expect(indexResponse.ok()).toBe(true);
+  expect(await indexResponse.text()).toContain("viewport-fit=cover");
+
   const manifestResponse = await request.get("/manifest.webmanifest");
   expect(manifestResponse.ok()).toBe(true);
   const manifest = await manifestResponse.json() as { display: string; icons: Array<{ sizes: string; purpose: string }> };
@@ -1174,3 +1239,33 @@ test("PWA metadata exposes install icons and the worker excludes API and range r
   expect(worker).toContain('url.pathname.startsWith("/api/")');
   expect(worker).toContain('request.headers.has("range")');
 });
+
+function mediaFixture(id: number, title: string, path: string, kind: "audio" | "file") {
+  return {
+    id,
+    parentId: null,
+    kind,
+    title,
+    discNo: null,
+    trackNo: kind === "audio" ? id : null,
+    durationSeconds: kind === "audio" ? 10 : null,
+    sizeBytes: 12,
+    fingerprint: `fixture-${id}`,
+    progress: null,
+    locations: [{
+      id,
+      fileSourceId: 1,
+      fileSourceCode: "local",
+      fileSourceName: "Local",
+      locationType: "local",
+      path,
+      streamUrl: kind === "audio" ? `/api/media/${id}/stream` : "",
+      downloadUrl: kind === "file" ? `/api/media/${id}/download` : "",
+      remoteHash: "",
+      sizeBytes: 12,
+      durationSeconds: kind === "audio" ? 10 : null,
+      availability: "available",
+      lastCheckedAt: null,
+    }],
+  };
+}

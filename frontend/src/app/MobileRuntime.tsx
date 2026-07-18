@@ -1,18 +1,28 @@
 import { Network } from "@capacitor/network";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { APP_CLIENT_VERSION, compareVersions } from "@/lib/appInfo";
+import { APP_CLIENT_VERSION, appVersionStatus, githubReleaseURL } from "@/lib/appInfo";
 import { api, type HealthStatus } from "@/lib/api";
 import { recordDiagnostic } from "@/lib/mobileDiagnostics";
 import { getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 
-type MobileConnectionKind = "idle" | "online" | "checking" | "reconnecting" | "offline" | "version-warning";
+type MobileConnectionKind =
+  | "idle"
+  | "online"
+  | "checking"
+  | "reconnecting"
+  | "offline"
+  | "client-update-available"
+  | "client-update-required"
+  | "server-update-available";
 
 type MobileConnection = {
   kind: MobileConnectionKind;
   message: string;
   serverVersion: string;
   minimumClientVersion: string;
+  releaseUrl: string;
+  noticeKey: string;
   lastCheckedAt: string;
 };
 
@@ -26,6 +36,8 @@ const initialConnection: MobileConnection = {
   message: "",
   serverVersion: "",
   minimumClientVersion: "",
+  releaseUrl: "",
+  noticeKey: "",
   lastCheckedAt: "",
 };
 
@@ -39,17 +51,27 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
 
   const applyHealth = useCallback((health: HealthStatus) => {
     const minimumClientVersion = health.minAndroidClientVersion || health.minClientVersion || "";
-    const needsUpdate = minimumClientVersion && compareVersions(APP_CLIENT_VERSION, minimumClientVersion) < 0;
-    const versionMismatch = health.version && compareVersions(APP_CLIENT_VERSION, health.version) !== 0;
+    const versionStatus = appVersionStatus(APP_CLIENT_VERSION, health.version, minimumClientVersion);
+    const targetVersion = versionStatus === "client-update-required"
+      ? minimumClientVersion
+      : versionStatus === "client-update-available"
+        ? health.version
+        : versionStatus === "server-update-available"
+          ? APP_CLIENT_VERSION
+          : "";
     const next: MobileConnection = {
-      kind: needsUpdate || versionMismatch ? "version-warning" : "online",
-      message: needsUpdate
-        ? `Server requires client ${minimumClientVersion} or newer.`
-        : versionMismatch
-          ? `Client ${APP_CLIENT_VERSION} connected to server ${health.version}.`
-          : "Connected",
+      kind: versionStatus === "compatible" ? "online" : versionStatus,
+      message: versionStatus === "client-update-required"
+        ? `Android client ${APP_CLIENT_VERSION} is no longer supported. Version ${minimumClientVersion} or newer is required.`
+        : versionStatus === "client-update-available"
+          ? `Android client ${APP_CLIENT_VERSION} is older than server ${health.version}.`
+          : versionStatus === "server-update-available"
+            ? `Server ${health.version} is older than Android client ${APP_CLIENT_VERSION}.`
+            : "Connected",
       serverVersion: health.version,
       minimumClientVersion,
+      releaseUrl: targetVersion ? githubReleaseURL(targetVersion) : "",
+      noticeKey: targetVersion ? `${versionStatus}:${targetVersion}` : "",
       lastCheckedAt: new Date().toISOString(),
     };
     setConnection(next);
