@@ -5,15 +5,16 @@ import { AlertTriangle, Lock, PanelLeftClose, PanelLeftOpen, WifiOff } from "luc
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
-import { LOGIN_REQUEST_EVENT, useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast";
 import { LoginPage } from "@/pages/LoginPage";
 import { cn } from "@/lib/utils";
 import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { CommandPalette } from "@/app/CommandPalette";
+import { NotFoundPage } from "@/app/NotFoundPage";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
-import { ANDROID_BACK_EVENT } from "@/app/events";
+import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
@@ -28,6 +29,7 @@ const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ def
 const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
 const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
+type AppPage = PageID | "not-found";
 
 export function App() {
   return (
@@ -42,7 +44,7 @@ export function App() {
 function AuthenticatedApp() {
   useScrollRestoration();
   const auth = useAuth();
-  const [page, setPage] = useState<PageID>(() => pageFromPath(window.location.pathname));
+  const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
@@ -64,7 +66,7 @@ function AuthenticatedApp() {
     return [...preferred, ...additions].slice(0, 4);
   }, [visibleNavItems]);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
-  const canAccessCurrentPage = canAccessPage(page, authState, auth.hasPermission);
+  const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, auth.hasPermission);
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -219,7 +221,7 @@ function AuthenticatedApp() {
             <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 px-4 lg:gap-3 lg:px-6">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>
-                <h1 className="truncate text-xl font-semibold lg:text-2xl">{activeItem?.label ?? "Library"}</h1>
+                <h1 className="truncate text-xl font-semibold lg:text-2xl">{page === "not-found" ? "Not found" : activeItem?.label ?? "Library"}</h1>
               </div>
               <HeaderActions
                 user={auth.user}
@@ -240,7 +242,13 @@ function AuthenticatedApp() {
 
           <Suspense fallback={<PageLoading />}>
             <div className="px-4 py-5 lg:px-6">
-              {!canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
+              {page !== "not-found" && !canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
+              {page === "not-found" && (
+                <NotFoundPage
+                  onBack={() => window.history.length > 1 ? window.history.back() : openPath("/")}
+                  onOpenLibrary={() => openPath("/")}
+                />
+              )}
               {canAccessCurrentPage && page === "library" && <LibraryPage />}
               {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
@@ -363,7 +371,8 @@ function PageLoading() {
   );
 }
 
-function pageFromPath(path: string): PageID {
+function pageFromPath(rawPath: string): AppPage {
+  const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
   if (path === "/" || WORK_CODE_PATH_PATTERN.test(path)) {
     return "library";
   }
@@ -377,16 +386,19 @@ function pageFromPath(path: string): PageID {
   if (item) {
     return item.id;
   }
-  if (path.startsWith("/circles/")) {
-    return "circles";
-  }
-  if (path === "/voices" || path.startsWith("/voices/")) {
-    return "voice-actors";
-  }
-  if (path === "/tracked" || path === "/no-source" || path === "/library" || path.startsWith("/library/")) {
+  if (/^\/[^/]+$/.test(path)) {
     return "library";
   }
-  return "library";
+  if (/^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/.test(path)) {
+    return "circles";
+  }
+  if (path === "/voices" || /^\/voices\/\d+$/.test(path)) {
+    return "voice-actors";
+  }
+  if (path === "/tracked" || path === "/no-source" || ["/library", "/library/tracked", "/library/no-source", "/library/all", "/library/remote"].includes(path) || /^\/library\/source\/[^/]+$/.test(path)) {
+    return "library";
+  }
+  return "not-found";
 }
 
 function PlaceholderPage({ title }: { title: string }) {

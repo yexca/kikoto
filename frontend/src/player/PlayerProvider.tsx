@@ -8,6 +8,7 @@ import {
   ListMusic,
   ListOrdered,
   Maximize2,
+  MoreHorizontal,
   PanelBottom,
   Pause,
   Play,
@@ -25,6 +26,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
+import { OverflowMarquee } from "@/components/ui/overflow-marquee";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT } from "@/app/events";
@@ -1476,9 +1478,9 @@ export function PlayerDock() {
               }}
             >
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{track.title}</div>
-                <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
+              <div className="min-w-0 flex-1">
+                <OverflowMarquee text={track.title} className="text-sm font-semibold" />
+                <OverflowMarquee text={track.workTitle} className="text-xs text-muted-foreground" />
               </div>
             </button>
             <Button
@@ -1626,49 +1628,16 @@ export function PlayerDock() {
                       </button>
                     </div>
                     {player.queue.map((item, index) => (
-                      <div
+                      <PlayerQueueRow
                         key={item.queueItemId ?? `${item.locationId}:${index}`}
-                        className={`flex min-h-11 w-full items-center gap-1 rounded-md border-l-2 px-1.5 text-xs transition-colors ${
-                          index === player.currentIndex
-                            ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground"
-                            : "border-transparent hover:bg-muted"
-                        }`}
-                      >
-                        <button
-                          className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left"
-                          onClick={() => player.selectTrack(index)}
-                        >
-                          {index === player.currentIndex ? (
-                            <Pause className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          ) : (
-                            <Play className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          )}
-                          <span className="truncate">{item.title}</span>
-                        </button>
-                        <button
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30"
-                          disabled={index === 0}
-                          onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, -1)}
-                          aria-label={`Move ${item.title} up`}
-                        >
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70 disabled:opacity-30"
-                          disabled={index === player.queue.length - 1}
-                          onClick={() => item.queueItemId && player.moveQueueItem(item.queueItemId, 1)}
-                          aria-label={`Move ${item.title} down`}
-                        >
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70"
-                          onClick={() => item.queueItemId && player.removeQueueItem(item.queueItemId)}
-                          aria-label={`Remove ${item.title}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                        item={item}
+                        index={index}
+                        currentIndex={player.currentIndex}
+                        queueLength={player.queue.length}
+                        onSelect={player.selectTrack}
+                        onMove={player.moveQueueItem}
+                        onRemove={player.removeQueueItem}
+                      />
                     ))}
                   </div>
                 )}
@@ -1971,6 +1940,95 @@ export function PlayerDock() {
         </div>
       </div>
     </section>
+  );
+}
+
+function PlayerQueueRow({
+  item,
+  index,
+  currentIndex,
+  queueLength,
+  onSelect,
+  onMove,
+  onRemove,
+}: {
+  item: PlayerTrack;
+  index: number;
+  currentIndex: number;
+  queueLength: number;
+  onSelect: (index: number) => void;
+  onMove: (queueItemId: string, direction: -1 | 1) => void;
+  onRemove: (queueItemId: string) => void;
+}) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsRef = useRef<HTMLButtonElement | null>(null);
+  const active = index === currentIndex;
+  const runAction = (action: () => void) => {
+    action();
+    setOptionsOpen(false);
+  };
+
+  return (
+    <div
+      className={`group flex min-h-11 w-full items-center gap-1 rounded-md border-l-2 px-1.5 text-xs transition-colors ${
+        active
+          ? "border-primary bg-secondary/80 font-semibold text-secondary-foreground"
+          : "border-transparent hover:bg-muted"
+      }`}
+    >
+      <button className="flex min-w-0 flex-1 items-center gap-2 px-1 text-left" onClick={() => onSelect(index)}>
+        {active ? (
+          <Pause className="h-3.5 w-3.5 shrink-0 text-primary" />
+        ) : (
+          <Play className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <OverflowMarquee text={item.title} interactionOnly={!active} className="min-w-0 flex-1" />
+      </button>
+      <button
+        ref={optionsRef}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded hover:bg-background/70"
+        onClick={() => setOptionsOpen((value) => !value)}
+        aria-label={`Options for ${item.title}`}
+        aria-haspopup="menu"
+        aria-expanded={optionsOpen}
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      <AnchoredPopover
+        open={optionsOpen}
+        anchorRef={optionsRef}
+        onOpenChange={setOptionsOpen}
+        zIndex={70}
+        className="w-44 p-1 text-sm"
+      >
+        <div role="menu" aria-label={`Queue options for ${item.title}`}>
+          <button
+            role="menuitem"
+            className="flex h-9 w-full items-center gap-2 rounded-md px-2 hover:bg-muted disabled:opacity-40"
+            disabled={index === 0 || !item.queueItemId}
+            onClick={() => item.queueItemId && runAction(() => onMove(item.queueItemId!, -1))}
+          >
+            <ArrowUp className="h-4 w-4" /> Move up
+          </button>
+          <button
+            role="menuitem"
+            className="flex h-9 w-full items-center gap-2 rounded-md px-2 hover:bg-muted disabled:opacity-40"
+            disabled={index === queueLength - 1 || !item.queueItemId}
+            onClick={() => item.queueItemId && runAction(() => onMove(item.queueItemId!, 1))}
+          >
+            <ArrowDown className="h-4 w-4" /> Move down
+          </button>
+          <button
+            role="menuitem"
+            className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-destructive hover:bg-muted disabled:opacity-40"
+            disabled={!item.queueItemId}
+            onClick={() => item.queueItemId && runAction(() => onRemove(item.queueItemId!))}
+          >
+            <Trash2 className="h-4 w-4" /> Remove
+          </button>
+        </div>
+      </AnchoredPopover>
+    </div>
   );
 }
 

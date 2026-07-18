@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
+import { LOGIN_REQUEST_EVENT } from "@/app/events";
 
 export type ToastKind = "success" | "info" | "warning" | "error";
 
@@ -28,7 +29,6 @@ type ToastContextValue = {
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
-export const LOGIN_REQUEST_EVENT = "kikoto:login-request";
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { usePermissionGate } from "@/auth/usePermissionGate";
 import {
   buildRemoteTree,
   emptyTree,
@@ -37,6 +38,7 @@ export function useWorkFetchWorkspace({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [draft, setDraft] = useState<WorkFetchDraft | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const tree = useMemo(() => draft ? buildRemoteTree(draft.detail.tracks) : emptyTree(), [draft?.detail]);
@@ -49,6 +51,7 @@ export function useWorkFetchWorkspace({
 
   const open = async () => {
     if (!remote || !remoteCode.trim()) return;
+    if (!requireDownloadsManage()) return;
     setIsBusy(true);
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
@@ -103,6 +106,7 @@ export function useWorkFetchWorkspace({
 
   const save = async () => {
     if (!remote || !draft || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
+    if (!requireDownloadsManage()) return;
     setIsBusy(true);
     try {
       if (!draft.plan || draft.planDirty) {

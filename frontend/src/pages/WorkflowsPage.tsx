@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { activityViewForRun, type ActivityView } from "@/features/workflows/activityModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
@@ -64,7 +65,6 @@ import {
 type Surface = "workflows" | "activity";
 type WorkflowView = "definitions" | "scheduled" | "system";
 type DefinitionView = Exclude<WorkflowView, "scheduled">;
-type ActivityView = "running" | "review" | "failed" | "completed";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
 
 type WorkflowNode = {
@@ -979,7 +979,10 @@ function RunSidebar({
                   <div className="truncate text-sm font-semibold">{run.displayName}</div>
                   <div className="truncate text-xs text-muted-foreground">{run.workflowCode}</div>
                 </div>
-                <StatusBadge status={run.status} />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <StatusBadge status={run.status} />
+                  {run.reviewedAt && <Badge variant="secondary">Reviewed</Badge>}
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatRunTime(run)}</span>
@@ -1228,7 +1231,7 @@ function RemotePopularRunPanel({
   const [tagCustomized, setTagCustomized] = useState(false);
   const [loadingSources, setLoadingSources] = useState(true);
   const compatibleSources = useMemo(
-    () => sources.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compilable_number178"].includes(source.sourceType)),
+    () => sources.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType)),
     [sources],
   );
   const selectedSource = compatibleSources.find((source) => source.id === sourceId) ?? null;
@@ -1240,7 +1243,7 @@ function RemotePopularRunPanel({
       .then((items) => {
         if (!active) return;
         setSources(items);
-        const first = items.find((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compilable_number178"].includes(source.sourceType));
+        const first = items.find((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType));
         setSourceId((current) => current || first?.id || 0);
       })
       .catch(() => {
@@ -3095,16 +3098,6 @@ function openActivityRun(run: WorkflowRun) {
   const search = new URLSearchParams({ view, run: String(run.id) });
   window.history.pushState({}, "", `/activity?${search}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
-function activityViewForRun(run: WorkflowRun): ActivityView {
-  return ["queued", "running"].includes(run.status)
-    ? "running"
-    : run.status === "failed"
-      ? "failed"
-      : run.pendingCandidates > 0 || run.status === "partial" || run.status === "skipped"
-        ? "review"
-        : "completed";
 }
 
 function selectActivityRun(run: WorkflowRun, view: ActivityView, setSelectedRunID: (id: number | null) => void) {

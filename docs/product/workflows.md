@@ -6,7 +6,7 @@ Workflows make backend actions inspectable.
 
 - Workflows: runnable built-in definitions, custom definition drafts, and
   scheduled triggers.
-- Activity: running, review, failed, completed, and log views.
+- Activity: mutually exclusive running, review, failed, and completed views.
 
 ## Current Behavior
 
@@ -16,6 +16,8 @@ Workflows make backend actions inspectable.
 - Candidates expose reviewable outcomes.
 - Informational review runs can be acknowledged separately from candidate
   decisions.
+- Acknowledged informational runs leave Review, appear in Completed with a
+  `Reviewed` badge, and retain their original execution status.
 - Definitions puts manually runnable built-ins ahead of custom drafts. Internal
   system definitions that have no manual action are omitted from this surface.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice

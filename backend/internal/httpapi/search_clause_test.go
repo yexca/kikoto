@@ -19,7 +19,7 @@ func TestParseListSearchClauses(t *testing.T) {
 }
 
 func TestPlanRemoteSourceQueryKeepsStructuredClauses(t *testing.T) {
-	plan := planRemoteSourceQuery(`ambient $tag:耳かき$`, sourceTypeKikoeruCompilable178)
+	plan := planRemoteSourceQuery(`ambient $tag:耳かき$`, sourceTypeKikoeruCompatible178)
 	if plan.PushdownQuery != "$tag:耳かき$" {
 		t.Fatalf("PushdownQuery = %q, want %q", plan.PushdownQuery, "$tag:耳かき$")
 	}
@@ -43,7 +43,7 @@ func TestPlanRemoteSourceQueryPushesCompoundQueryToCompatibleSource(t *testing.T
 }
 
 func TestPlanLimitedRemoteSourceQueryPrioritizesLanguagePushdown(t *testing.T) {
-	plan := planRemoteSourceQuery(`RJ01234567 $lang:CHI_HANS$`, sourceTypeKikoeruCompilable178)
+	plan := planRemoteSourceQuery(`RJ01234567 $lang:CHI_HANS$`, sourceTypeKikoeruCompatible178)
 	if plan.PushdownQuery != "$lang:CHI_HANS$" {
 		t.Fatalf("PushdownQuery = %q, want language clause", plan.PushdownQuery)
 	}

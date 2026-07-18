@@ -210,11 +210,15 @@ async function seedPlayer(page: Page, track = persistedTrack) {
   }, track);
 }
 
-async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
+async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; authenticated?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: false } });
+      await route.fulfill({
+        json: options.authenticated === false
+          ? { authenticated: false }
+          : { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "playback:use", "downloads:manage"], devMode: true } },
+      });
       return;
     }
     if (url.pathname === "/api/library-sources") {
@@ -571,6 +575,32 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   expect(cleanupBodies[0]).toEqual({ targets: [{ kind: "cache", locationId: 2 }] });
 });
 
+test("anonymous Fetch opens login before loading remote detail or a fetch plan", async ({ page }) => {
+  const preparationRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/\/api\/remote-sources\/1\/works\/[^/]+/.test(path)) preparationRequests.push(path);
+  });
+  await mockRemoteSource(page, () => undefined, { authenticated: false });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  await page.getByTitle("Fetch").click();
+
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
+  expect(preparationRequests).toEqual([]);
+});
+
+test("unknown routes and missing work codes render not found states", async ({ page }) => {
+  await mockApplication(page);
+  await page.goto("/missing-route");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+
+  await page.goto("/RJ01234567");
+  await expect(page.getByRole("heading", { name: "Work not found" })).toBeVisible();
+  await expect(page.getByText("Loading RJ01234567...")).toHaveCount(0);
+});
+
 test("remote-only work uses the shared mobile detail shell without becoming persisted", async ({ page }) => {
   const trackRequests: string[] = [];
   page.on("request", (request) => {
@@ -785,6 +815,24 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
   expect(mediaRequests).toBe(1);
 });
 
+test("directory rows wrap long unbroken file names without horizontal overflow", async ({ page }) => {
+  const longTitle = `${"very-long-track-name-".repeat(10)}.mp3`;
+  const mediaItems = [{
+    id: 1, parentId: null, kind: "audio", title: longTitle, discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12,
+    locations: [{ id: 1, fileSourceId: 1, fileSourceCode: "local", fileSourceName: "Local", locationType: "local", path: `RJ09999999/${longTitle}`, streamUrl: "/api/media/1/stream", downloadUrl: "", remoteHash: "", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+  }];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  const fileName = page.getByText(longTitle, { exact: true });
+  await expect(fileName).toBeVisible();
+  expect(await fileName.evaluate((element) => ({
+    fits: element.scrollWidth <= element.clientWidth + 1,
+    whiteSpace: getComputedStyle(element).whiteSpace,
+  }))).toEqual({ fits: true, whiteSpace: "normal" });
+});
+
 test("library request failures are not presented as an empty collection", async ({ page }) => {
   await mockApplication(page);
   await page.route("**/api/works?**", (route) => route.fulfill({ status: 500, json: { error: "database temporarily unavailable" } }));
@@ -865,6 +913,29 @@ test("desktop player uses playback speed without volume or colored play glow", a
   await expect(page.getByRole("button", { name: "Playback speed 1 times" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Volume" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Play", exact: true })).not.toHaveClass(/shadow-primary/);
+});
+
+test("player scrolls overflowing metadata and closes queue options outside the menu", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  const longTitle = "A deliberately long track title that cannot fit inside the compact player or queue row";
+  const secondTrack = { ...persistedTrack, queueItemId: "e2e-track-2", locationId: 2, title: "Second queued track" };
+  await page.addInitScript(({ first, second }) => {
+    localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({ version: 1, queue: [first, second], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
+  }, { first: { ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, second: secondTrack });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Playback queue" }).click();
+  await expect(page.locator(".overflow-marquee--auto", { hasText: longTitle })).toBeVisible();
+  await page.getByRole("button", { name: `Options for ${longTitle}` }).click();
+  await expect(page.getByRole("menuitem", { name: "Move down" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();
+  await page.locator("header").click({ position: { x: 10, y: 10 } });
+  await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
+
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await expect(page.locator(".overflow-marquee--auto", { hasText: longTitle })).toBeVisible();
+  await expect(page.locator(".overflow-marquee--auto", { hasText: "Tagged mobile work with an extended display name" })).toBeVisible();
 });
 
 test("compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {

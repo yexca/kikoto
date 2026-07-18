@@ -188,6 +188,9 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999997', 'Preserved')"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec("INSERT INTO file_source (code, display_name, source_type) VALUES ('legacy-number178', 'Legacy number178', 'kikoeru_compilable_number178')"); err != nil {
+		t.Fatal(err)
+	}
 	if err := Migrate(db, migrationDir); err != nil {
 		t.Fatalf("upgrade v0.1.0 database: %v", err)
 	}
@@ -204,7 +207,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 6 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" {
+	if len(migrations) != 7 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var lyricsPreferenceTable int
@@ -213,6 +216,13 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if lyricsPreferenceTable != 1 {
 		t.Fatalf("user_media_lyrics_preference table count = %d", lyricsPreferenceTable)
+	}
+	var legacySourceType string
+	if err := db.QueryRow("SELECT source_type FROM file_source WHERE code = 'legacy-number178'").Scan(&legacySourceType); err != nil {
+		t.Fatal(err)
+	}
+	if legacySourceType != "kikoeru_compatible_number178" {
+		t.Fatalf("legacy source type = %q", legacySourceType)
 	}
 	for table, column := range map[string]string{
 		"work_edition":               "translation_kind",

@@ -39,7 +39,8 @@ import {
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
-const REMOTE_SOURCE_TYPES = new Set(["kikoeru_compatible", "kikoeru_compilable_number178"]);
+const LEGACY_NUMBER178_SOURCE_TYPE = "kikoeru_compatible_number178";
+const REMOTE_SOURCE_TYPES = new Set(["kikoeru_compatible", LEGACY_NUMBER178_SOURCE_TYPE]);
 
 const emptyRemoteSource = {
   id: 0,
@@ -1427,6 +1428,7 @@ function SourceModal({
   const patch = (next: Partial<FileSource>) => onChange({ ...source, ...next });
   const sourceSaveSuffix = templateToSuffix(source.config.saveRootTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`);
   const sourceSaveError = sourceSaveSuffix.startsWith("/") ? "" : "Save path suffix must start with /.";
+  const legacyNumber178 = source.sourceType === LEGACY_NUMBER178_SOURCE_TYPE;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1454,11 +1456,13 @@ function SourceModal({
             <select
               className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
               value={source.sourceType}
+              disabled={legacyNumber178}
               onChange={(event) => patch({ sourceType: event.target.value })}
             >
               <option value="kikoeru_compatible">kikoeru_compatible</option>
-              <option value="kikoeru_compilable_number178">kikoeru_compilable_number178</option>
+              {legacyNumber178 && <option value={LEGACY_NUMBER178_SOURCE_TYPE}>{LEGACY_NUMBER178_SOURCE_TYPE}</option>}
             </select>
+            {legacyNumber178 && <span className="text-xs text-muted-foreground">Legacy adapter retained for this existing source. New number178 sources are disabled.</span>}
           </label>
           <TextInput label="Public site URL" value={source.endpoint.baseUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, baseUrl: value } })} />
           <TextInput label="API URL" value={source.endpoint.apiUrl} onChange={(value) => patch({ endpoint: { ...source.endpoint, apiUrl: value } })} />

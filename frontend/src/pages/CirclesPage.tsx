@@ -44,8 +44,10 @@ import {
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
+import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
+import { usePermissionGate } from "@/auth/usePermissionGate";
+import { NotFoundPage } from "@/app/NotFoundPage";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const TRANSLATION_CIRCLE_ID = "RG60289";
@@ -361,7 +363,9 @@ function CircleCard({ circle, onChange }: { circle: CircleSummary; onChange: (ci
 
 function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [detail, setDetail] = useState<CircleDetail | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
   const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
@@ -383,9 +387,14 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     try {
       const next = await api.getCircle(externalId);
       setDetail(next);
+      setNotFound(false);
       return next;
     } catch (error) {
       setDetail(null);
+      if (error instanceof ApiError && error.status === 404) {
+        setNotFound(true);
+        return null;
+      }
       toast.notify(toastFromError(error, "Circle detail is unavailable."));
       return null;
     } finally {
@@ -621,10 +630,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   const bulkSaveSelected = async () => {
     if (selectedWorks.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setSaveConfirm({ count: selectedWorks.length, run: runBulkSaveSelected });
   };
 
   const runBulkSaveSelected = async () => {
+    if (!requireDownloadsManage()) return;
     setIsBulkSaving(true);
     try {
       const results = await runCircleBulkBySource(selectedWorks, "fetch");
@@ -645,6 +656,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   const bulkSyncAndSaveSelected = async () => {
     if (selectedSyncableWorks.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkSaving(true);
     try {
       const results = await runCircleBulkBySource(selectedSyncableWorks, "track_fetch");
@@ -676,6 +688,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const saveSingleWork = async (work: CircleCatalogWork) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkSaving(true);
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
@@ -692,6 +705,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   const fetchSingleSelection = async () => {
     if (!fetchSelection) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkSaving(true);
     try {
       const paths = Array.from(fetchSelection.selectedPaths);
@@ -730,6 +744,20 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       setIsBulkSaving(false);
     }
   };
+
+  if (notFound) {
+    return (
+      <NotFoundPage
+        title="Circle not found"
+        message={`${externalId} is not available in the current catalog.`}
+        onBack={() => navigateToCirclesList()}
+        onOpenLibrary={() => {
+          window.history.pushState({}, "", "/");
+          window.dispatchEvent(new Event("kikoto:navigation"));
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">

@@ -30,6 +30,8 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
 import { useAuth } from "@/auth/AuthProvider";
+import { usePermissionGate } from "@/auth/usePermissionGate";
+import { NotFoundPage } from "@/app/NotFoundPage";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -53,7 +55,7 @@ import {
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
+import { api, ApiError, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 
@@ -322,7 +324,9 @@ function VoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice:
 function VoiceDetailPage({ personId }: { personId: number }) {
   const auth = useAuth();
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isWorksLoading, setIsWorksLoading] = useState(false);
   const [remoteMatches, setRemoteMatches] = useState<VoiceRemoteSourceSet[]>([]);
@@ -344,6 +348,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsLoading(true);
     setRemoteMatches([]);
     setRemoteError("");
+    setNotFound(false);
     api.getVoiceSummary(personId).then((item) => {
       setDetail(item);
       setMessage("");
@@ -355,6 +360,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       }).finally(() => setIsWorksLoading(false));
     }).catch((error) => {
       setDetail(null);
+      if (error instanceof ApiError && error.status === 404) {
+        setNotFound(true);
+        return;
+      }
       toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
     }).finally(() => setIsLoading(false));
   }, [personId]);
@@ -540,6 +549,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const bulkSyncAndSave = async () => {
     if (selectedSyncable.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
@@ -560,10 +570,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const bulkSave = async () => {
     if (selectedSaveable.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setSaveConfirm({ count: selectedSaveable.length, run: runBulkSave });
   };
 
   const runBulkSave = async () => {
+    if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
@@ -595,6 +607,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const saveSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     setMessage("");
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
@@ -612,6 +625,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const fetchSingleSelection = async () => {
     if (!fetchSelection) return;
+    if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
@@ -654,6 +668,20 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   if (isLoading) {
     return <VoiceDetailSkeleton />;
+  }
+
+  if (notFound) {
+    return (
+      <NotFoundPage
+        title="Voice actor not found"
+        message={`Voice actor ${personId} is not available in the current catalog.`}
+        onBack={() => navigateToVoicesList()}
+        onOpenLibrary={() => {
+          window.history.pushState({}, "", "/");
+          window.dispatchEvent(new Event("kikoto:navigation"));
+        }}
+      />
+    );
   }
 
   if (!detail) {

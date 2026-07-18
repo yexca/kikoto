@@ -920,7 +920,7 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id IN (%s)
-			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 			AND source.enabled = 1
 		GROUP BY catalog.party_id
 	`, partyIDs)
@@ -1048,7 +1048,7 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id = ?
-			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
 	`, partyID)
@@ -1468,7 +1468,7 @@ func (s *Server) workSourceTags(ctx context.Context, partyID int64, code string)
 				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
 				WHERE UPPER(current_work.primary_code) = UPPER(?)
 			)
-			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 			AND source.enabled = 1
 		GROUP BY source.id, source.display_name
 	`, partyID, code, code)

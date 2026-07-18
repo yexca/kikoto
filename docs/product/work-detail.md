@@ -17,6 +17,8 @@ playback actions for one work.
   that state.
 - Loads source availability through a backend aggregate check.
 - Opens remote source trees lazily after availability is known.
+- Wraps complete folder and file names in variable-height Browse and Tree rows,
+  including long names without spaces, without horizontal page overflow.
 - Keeps the source toolbar width stable with one Options menu. The menu changes
   with the selected Local, Tracked, or remote source and closes on outside
   interaction, Escape, or a source change.
@@ -39,6 +41,8 @@ playback actions for one work.
 - Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.
+- Opens Login before any Fetch preparation request when the current visitor is
+  anonymous.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
   maintenance commands from the selected source's Options menu.
 - Edit manual overrides when available.

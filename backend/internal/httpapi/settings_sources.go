@@ -25,17 +25,18 @@ import (
 
 const (
 	sourceTypeKikoeruCompatible    = "kikoeru_compatible"
-	sourceTypeKikoeruCompilable178 = "kikoeru_compilable_number178"
+	sourceTypeKikoeruCompatible178 = "kikoeru_compatible_number178"
+	historicalMisspelled178Type    = "kikoeru_compilable_number178"
 	sourceTypeLocalFolder          = "local_folder"
 	defaultRemoteWorkURLTemplate   = "/work/{code}"
 )
 
 func isKikoeruSourceType(sourceType string) bool {
-	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompilable178
+	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompatible178
 }
 
 func kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
-	if source.SourceType == sourceTypeKikoeruCompilable178 {
+	if source.SourceType == sourceTypeKikoeruCompatible178 {
 		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, nil)
 	}
 	return kikoeru.NewClient(source.Endpoint.APIURL, nil)
@@ -49,7 +50,7 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM file_source
-		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 	`).Scan(&existing); err != nil {
 		return err
 	}
@@ -63,6 +64,9 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	for _, seed := range s.cfg.RemoteSourceSeeds {
 		sourceType := strings.TrimSpace(seed.SourceType)
+		if sourceType == sourceTypeKikoeruCompatible178 || sourceType == historicalMisspelled178Type {
+			return fmt.Errorf("remote source type %q is retained for compatibility but disabled for new configuration", sourceType)
+		}
 		if !isKikoeruSourceType(sourceType) {
 			sourceType = sourceTypeKikoeruCompatible
 		}
@@ -651,7 +655,7 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT id, code, display_name, source_type, enabled, config_json
 		FROM file_source
-		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 		ORDER BY priority ASC, id ASC
 	`)
 	if err != nil {
@@ -683,7 +687,7 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	payload, ok := parseFileSourcePayload(w, r, false)
+	payload, ok := parseFileSourcePayload(w, r, false, false)
 	if !ok {
 		return
 	}
@@ -734,7 +738,7 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
-	payload, ok := parseFileSourcePayload(w, r, true)
+	payload, ok := parseFileSourcePayload(w, r, true, true)
 	if !ok {
 		return
 	}
@@ -749,6 +753,10 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	if existingSourceType == sourceTypeLocalFolder || payload.SourceType == sourceTypeLocalFolder {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "local folder source is managed by local scan settings"})
+		return
+	}
+	if payload.SourceType == sourceTypeKikoeruCompatible178 && existingSourceType != sourceTypeKikoeruCompatible178 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "legacy number178 sources cannot be selected"})
 		return
 	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -1536,7 +1544,7 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''), COALESCE(endpoint.work_url_template, '')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
-		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compilable_number178')
+		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 		ORDER BY source.priority ASC, source.id ASC
 	`)
 	if err != nil {
@@ -5436,7 +5444,7 @@ type fileSourcePayload struct {
 	Endpoint    fileSourceEndpoint `json:"endpoint"`
 }
 
-func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal bool) (fileSourcePayload, bool) {
+func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal bool, allowLegacy bool) (fileSourcePayload, bool) {
 	var payload fileSourcePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -5454,6 +5462,10 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 	}
 	if payload.SourceType == "" {
 		payload.SourceType = sourceTypeKikoeruCompatible
+	}
+	if payload.SourceType == sourceTypeKikoeruCompatible178 && !allowLegacy {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "legacy number178 sources are disabled"})
+		return fileSourcePayload{}, false
 	}
 	if !isKikoeruSourceType(payload.SourceType) && !(allowLocal && payload.SourceType == sourceTypeLocalFolder) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported sourceType"})

@@ -168,6 +168,8 @@ import {
   type MediaDeleteTarget,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { useWorkFetchWorkspace } from "@/features/work-detail/workflows/useWorkFetchWorkspace";
+import { usePermissionGate } from "@/auth/usePermissionGate";
+import { NotFoundPage } from "@/app/NotFoundPage";
 import {
   MediaContextActionBar,
   WorkIdentityActionBar,
@@ -288,12 +290,14 @@ function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
 
 export function LibraryPage() {
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
   const [isDatabaseMenuOpen, setIsDatabaseMenuOpen] = useState(false);
@@ -303,6 +307,7 @@ export function LibraryPage() {
   const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
+  const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() => workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)));
   const [isSelectedMediaLoading, setIsSelectedMediaLoading] = useState(false);
   const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
@@ -474,6 +479,7 @@ export function LibraryPage() {
   useEffect(() => {
     api.listLibrarySources().then((items) => {
       setSources(items);
+	  setSourceRoutesReady(true);
 	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
 	  const scope = localScopeFromPath(window.location.pathname);
 	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope));
@@ -481,7 +487,10 @@ export function LibraryPage() {
 	  setActiveTab(resolved);
       const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
       if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
-    }).catch(() => setSources([]));
+    }).catch(() => {
+      setSources([]);
+      setSourceRoutesReady(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -546,9 +555,11 @@ export function LibraryPage() {
   useEffect(() => {
     if (selectedCode === null) {
       setSelectedWork(null);
+      setSelectedWorkNotFound(false);
       setIsSelectedMediaLoading(false);
       return;
     }
+    setSelectedWorkNotFound(false);
     const controller = new AbortController();
     const work = worksRef.current.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
     if (work) {
@@ -556,7 +567,7 @@ export function LibraryPage() {
       setIsSelectedMediaLoading(true);
       api.getWorkSummary(work.id, controller.signal).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-          return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, controller.signal);
+          return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
         }
         const cachedMedia = getCachedWorkMedia(detail.id);
         setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
@@ -566,14 +577,17 @@ export function LibraryPage() {
           setSelectedWork((current) => current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current);
         });
       }).catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setSelectedWork(null);
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setSelectedWork(null);
+          setSelectedWorkNotFound(error instanceof ApiError && error.status === 404);
+        }
       }).finally(() => {
         if (!controller.signal.aborted) setIsSelectedMediaLoading(false);
       });
       return () => controller.abort();
     }
     setSelectedWorkPreview(workPreviewFromHistory(selectedCode));
-    void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, controller.signal);
+    void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, controller.signal);
     return () => controller.abort();
   }, [selectedCode, works.length]);
 
@@ -761,6 +775,7 @@ export function LibraryPage() {
 
   const openTrackedFetchSelection = async (work: Work, presence: SourcePresenceItem) => {
     if (!presence.fileSourceId) return;
+    if (!requireDownloadsManage()) return;
     const source = sources.find((item) => item.id === presence.fileSourceId);
     if (!source) return;
     setIsTrackedFetching(true);
@@ -779,6 +794,7 @@ export function LibraryPage() {
 
   const fetchTrackedSelection = async () => {
     if (!trackedFetchSelection) return;
+    if (!requireDownloadsManage()) return;
     setIsTrackedFetching(true);
     const paths = Array.from(trackedFetchSelection.selectedPaths);
     const localPaths = Array.from(trackedFetchSelection.selectedLocalPaths);
@@ -885,6 +901,14 @@ export function LibraryPage() {
     setLibraryLoadError("");
   };
 
+  const openLibraryHome = () => {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new Event("kikoto:navigation"));
+    setSelectedCode(null);
+    setSelectedRemoteTarget(null);
+    setSelectedWorkNotFound(false);
+  };
+
   const selectTrackedFetchEdition = async (code: string) => {
     if (!trackedFetchSelection) return false;
     setIsTrackedFetching(true);
@@ -956,6 +980,10 @@ export function LibraryPage() {
     setClauseEditor(null);
   };
 
+  if (sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
+    return <NotFoundPage onBack={() => window.history.length > 1 ? window.history.back() : openLibraryHome()} onOpenLibrary={openLibraryHome} />;
+  }
+
   if (selectedRemoteTarget !== null) {
     return (
       <RemoteWorkDetailView
@@ -979,6 +1007,16 @@ export function LibraryPage() {
   }
 
   if (selectedCode !== null) {
+    if (selectedWorkNotFound) {
+      return (
+        <NotFoundPage
+          title="Work not found"
+          message={`${selectedCode} is not available in the current library or configured sources.`}
+          onBack={backToLibrary}
+          onOpenLibrary={openLibraryHome}
+        />
+      );
+    }
     return (
       <WorkDetailView
         code={selectedCode}
@@ -1462,6 +1500,7 @@ function RemoteSourcePanel({
   onSynced: (workID: number) => Promise<void>;
 }) {
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const isInitialLoading = loading && result === null;
   const isRefreshing = loading && result !== null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
@@ -1554,10 +1593,12 @@ function RemoteSourcePanel({
 
   const bulkSaveSelected = async () => {
     if (selectedSaveable.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setSaveConfirm({ codes: selectedSaveable.map((work) => work.primaryCode), run: runBulkSaveSelected });
   };
 
   const runBulkSaveSelected = async () => {
+    if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     try {
       const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map(remoteWorkActionCode) });
@@ -1575,6 +1616,7 @@ function RemoteSourcePanel({
 
   const openSaveSelection = async (work: RemoteWork) => {
     if (!work.primaryCode) return;
+    if (!requireDownloadsManage()) return;
     setIsSyncingCode(work.primaryCode);
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
@@ -1592,6 +1634,7 @@ function RemoteSourcePanel({
 
   const fetchSingleSelection = async () => {
     if (!saveSelection) return;
+    if (!requireDownloadsManage()) return;
     const paths = Array.from(saveSelection.selectedPaths);
     const localPaths = Array.from(saveSelection.selectedLocalPaths);
     setIsSyncingCode(saveSelection.work.primaryCode);
@@ -2587,7 +2630,9 @@ function RemoteWorkDetailView({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -2628,6 +2673,7 @@ function RemoteWorkDetailView({
 
   useEffect(() => {
     setDetail(null);
+    setNotFound(false);
     setMessage("");
     setSelectedSavePaths(new Set());
     setSelectedLocalSavePaths(new Set());
@@ -2637,6 +2683,10 @@ function RemoteWorkDetailView({
     const controller = new AbortController();
     api.getRemoteSourceWork(source.id, code, controller.signal).then(setDetail).catch((error) => {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof ApiError && error.status === 404) {
+        setNotFound(true);
+        return;
+      }
       const text = error instanceof Error ? error.message : "Remote preview failed.";
       setMessage(text);
       toast.notify({ kind: "error", message: text });
@@ -2694,6 +2744,7 @@ function RemoteWorkDetailView({
   const selectedLocalPaths = Array.from(selectedLocalSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
   const openSaveWorkspace = async () => {
     if (!detail?.primaryCode || remoteFilePaths.length === 0) return;
+    if (!requireDownloadsManage()) return;
     setIsSaving(true);
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
@@ -2714,6 +2765,7 @@ function RemoteWorkDetailView({
   };
   const saveSelected = async () => {
     if (!detail?.primaryCode || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
+    if (!requireDownloadsManage()) return;
     setIsSaving(true);
     setMessage("");
     setSavePlanMessage("");
@@ -2781,6 +2833,20 @@ function RemoteWorkDetailView({
     else player.appendQueue([queuedTrack]);
     toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
   };
+
+  if (notFound) {
+    return (
+      <NotFoundPage
+        title="Remote work not found"
+        message={`${code} is not available from ${source.displayName}.`}
+        onBack={onBack}
+        onOpenLibrary={() => {
+          window.history.pushState({}, "", "/");
+          window.dispatchEvent(new Event("kikoto:navigation"));
+        }}
+      />
+    );
+  }
 
   if (!detail) {
     return (
@@ -5990,9 +6056,9 @@ function DirectoryBrowser({
           root
         </button>
         {path.map((part, index) => (
-          <span key={`${part}:${index}`} className="inline-flex items-center gap-1">
+          <span key={`${part}:${index}`} className="inline-flex min-w-0 max-w-full items-center gap-1">
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            <button className="rounded px-2 py-1 font-medium hover:bg-muted" onClick={() => setPath(path.slice(0, index + 1))}>
+            <button className="min-w-0 max-w-full break-all rounded px-2 py-1 text-left font-medium hover:bg-muted" onClick={() => setPath(path.slice(0, index + 1))}>
               {part}
             </button>
           </span>
@@ -6001,7 +6067,7 @@ function DirectoryBrowser({
       <div className="space-y-1">
         {path.length > 0 && (
           <button
-            className="flex min-h-11 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            className="flex min-h-11 w-full items-start gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
             onClick={() => setPath(path.slice(0, -1))}
           >
             <ChevronLeft className="h-4 w-4 text-muted-foreground" />
@@ -6011,12 +6077,12 @@ function DirectoryBrowser({
         {folders.map((folder) => (
           <button
             key={folder.path || folder.name}
-            className="flex min-h-11 w-full items-center gap-2 rounded-md border bg-background px-3 text-left text-sm hover:bg-muted"
+            className="flex min-h-11 w-full items-start gap-2 rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
             onClick={() => setPath([...path, folder.name])}
           >
-            <Folder className="h-4 w-4 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{folderSummary(folder)}</span>
+            <Folder className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">{folder.name}</span>
+            <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">{folderSummary(folder)}</span>
           </button>
         ))}
         {files.map((file) => (
@@ -6053,18 +6119,18 @@ function TreeFolderRow({
   const filesLabel = formatFolderStats(stats, playable.length);
   return (
     <button
-      className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium hover:bg-muted"
-      style={{ paddingLeft: depth * 14 + 8 }}
+      className="flex min-h-11 w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm font-medium hover:bg-muted"
+      style={{ paddingLeft: Math.min(depth, 8) * 14 + 8 }}
       onClick={onToggle}
     >
       {expanded ? (
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       ) : (
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       )}
-      <Folder className="h-4 w-4 shrink-0 text-primary" />
-      <span className="truncate">{node.name}</span>
-      {filesLabel && <span className="ml-auto shrink-0 text-xs text-muted-foreground">{filesLabel}</span>}
+      <Folder className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <span className="min-w-0 flex-1 whitespace-normal break-words [overflow-wrap:anywhere]">{node.name}</span>
+      {filesLabel && <span className="ml-auto shrink-0 pt-0.5 text-xs text-muted-foreground">{filesLabel}</span>}
     </button>
   );
 }
@@ -6118,7 +6184,7 @@ function TreeFile({
       className={`flex ${file.kind === "audio" ? "min-h-14 sm:min-h-11" : "min-h-11"} items-center justify-between gap-3 rounded-md border px-3 text-left text-sm ${
         isActive ? "border-primary bg-secondary" : "bg-background hover:bg-muted"
       } ${canOpen ? "cursor-pointer" : "cursor-default"}`}
-      style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
+      style={{ marginLeft: Math.min(depth, 8) * 14, width: `calc(100% - ${Math.min(depth, 8) * 14}px)` }}
       onClick={() => {
         if (canOpen) openFile();
       }}
@@ -6133,13 +6199,13 @@ function TreeFile({
           {isActive ? <Pause className="h-4 w-4 text-primary" /> : fileIcon(file)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate">{file.title}</span>
+          <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">{file.title}</span>
           {file.kind === "audio" && (
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground sm:hidden">{mobileAudioMeta}</span>
+            <span className="mt-0.5 block break-words text-xs text-muted-foreground sm:hidden">{mobileAudioMeta}</span>
           )}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+      <span className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
         <span className={file.kind === "audio" ? "hidden sm:inline" : ""}>{fileMeta}</span>
         {canPlay && (onPlayNext || onAppendQueue) && (
@@ -7133,10 +7199,12 @@ async function resolveAndOpenWork(
   setSelectedWorkPreview: (work: WorkPreview | null) => void,
   setSelectedCode: (code: string | null) => void,
   setMediaLoading: (loading: boolean) => void,
+  setNotFound: (notFound: boolean) => void,
   signal?: AbortSignal,
 ) {
   try {
     setMediaLoading(true);
+    setNotFound(false);
     const resolved = await api.resolveWorkCode(code, signal);
     setSelectedWorkPreview(workPreviewFromResolve(resolved));
     const work = await api.getWorkSummary(resolved.workId, signal);
@@ -7157,9 +7225,28 @@ async function resolveAndOpenWork(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
     setSelectedWork(null);
+    setNotFound(error instanceof ApiError && error.status === 404);
   } finally {
     if (!signal?.aborted) setMediaLoading(false);
   }
+}
+
+function knownLibraryRoute(path: string, search: string, sources: LibrarySource[]) {
+  const normalizedPath = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  if (["/", "/library", "/tracked", "/library/tracked", "/no-source", "/library/no-source", "/library/all", "/library/remote"].includes(normalizedPath)) return true;
+  if (WORK_CODE_PATTERN.test(normalizedPath)) return true;
+
+  const sourceID = Number(new URLSearchParams(search).get("source"));
+  if (Number.isInteger(sourceID) && sourceID > 0) {
+    return REMOTE_SOURCE_WORK_PATTERN.test(normalizedPath) && sources.some((source) => source.id === sourceID);
+  }
+
+  const encodedKey = normalizedPath.startsWith("/library/source/")
+    ? normalizedPath.slice("/library/source/".length)
+    : normalizedPath.match(/^\/[^/]+$/)?.[0].slice(1) ?? "";
+  if (!encodedKey) return false;
+  const key = safeDecodePathSegment(encodedKey).toLowerCase();
+  return sources.some((source) => sourceRouteKey(source).toLowerCase() === key || source.displayName.toLowerCase() === key);
 }
 
 function workPreviewFromHistory(code: string | null): WorkPreview | null {

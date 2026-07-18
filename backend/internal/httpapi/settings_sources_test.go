@@ -8,11 +8,43 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
+
+func TestLegacyNumber178SourceTypeCannotBeCreated(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
+		"displayName":"Legacy source",
+		"sourceType":"kikoeru_compatible_number178",
+		"endpoint":{"apiUrl":"https://remote.example"}
+	}`))
+	response := httptest.NewRecorder()
+	if _, ok := parseFileSourcePayload(response, request, false, false); ok {
+		t.Fatal("legacy number178 source type was accepted for creation")
+	}
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestLegacyNumber178SourceTypesCannotBeSeededFromConfig(t *testing.T) {
+	for _, sourceType := range []string{"kikoeru_compatible_number178", "kikoeru_compilable_number178"} {
+		t.Run(sourceType, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{RemoteSourceSeeds: []config.RemoteSourceSeed{{
+				DisplayName: "Legacy source",
+				APIURL:      "https://remote.example",
+				SourceType:  sourceType,
+			}}})
+			if err := server.SeedRemoteSourcesFromConfig(context.Background()); err == nil {
+				t.Fatalf("source type %q was accepted from configuration", sourceType)
+			}
+		})
+	}
+}
 
 func TestPublicRemoteWorkURL(t *testing.T) {
 	tests := []struct {

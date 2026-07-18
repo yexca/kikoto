@@ -11,6 +11,11 @@ Playback is handled by a global browser audio player.
 - Progress is saved per user and logical media item.
 - The player dock supports collapsed and expanded states, queue view, seeking,
   previous/next, skip controls, volume, and playback mode.
+- Compact metadata keeps the track title and work title visible. Overflowing
+  text scrolls with reduced-motion support.
+- Queue rows place move-up, move-down, and remove inside an Options menu that
+  closes after selection, on Escape, or on outside interaction. Overflowing
+  queue titles scroll without resizing the player.
 - Text lyrics include LRC, SRT, VTT, and plain-text sidecars. A compound
   sidecar such as `track.mp3.vtt` is preferred for `track.mp3`, followed by a
   same-stem file and then normalized-name matches.

@@ -6,7 +6,7 @@ Sources describe where files come from.
 
 - Local folder source.
 - Kikoeru-compatible remote source.
-- Number178-compatible remote source.
+- Legacy Number178-compatible remote source for migrated existing records only.
 
 ## Current Behavior
 
@@ -21,6 +21,9 @@ Sources describe where files come from.
   preserves work progress and listening marks.
 - Remote source list and detail pages should remain source-scoped views; they do
   not replace the unified local work detail model.
+- `kikoeru_compatible_number178` retains its adapter for migrated sources but is
+  rejected by new source and configuration-seed inputs. The historical
+  `kikoeru_compilable_number178` spelling is migrated automatically.
 
 ## Availability Checks
 
