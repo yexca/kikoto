@@ -43,6 +43,14 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media item id"})
 		return
 	}
+	if eligible, err := s.demoMediaItemEligible(r.Context(), mediaItemID); err != nil || !eligible {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, err)
+			return
+		}
+		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
+		return
+	}
 	var exists int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM media_item WHERE id = ?", mediaItemID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

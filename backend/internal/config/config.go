@@ -14,6 +14,7 @@ type Config struct {
 	StaticDir           string
 	LocalScanDepth      int
 	DevMode             bool
+	DemoMode            bool
 	SessionCookieSecure bool
 	AllowedOrigins      []string
 	RootUsername        string
@@ -41,6 +42,7 @@ func Load() Config {
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
 		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
 		DevMode:             envBool("KIKOTO_DEV_MODE", false),
+		DemoMode:            envBool("KIKOTO_DEMO_MODE", false),
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),

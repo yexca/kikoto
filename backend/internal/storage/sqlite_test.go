@@ -265,6 +265,17 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999997', 'Preserved')"); err != nil {
 		t.Fatal(err)
 	}
+	var workID, providerID int64
+	if err := db.QueryRow("SELECT id FROM work WHERE primary_code = 'RJ09999997'").Scan(&workID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := `{"product":{"age_category_string":"general","official_price":0,"price":0},"dynamic":{"rate_average_2dp":4.5,"dl_count":321,"official_price":0,"price":0,"discount_rate":0,"is_discount":false}}`
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09999997', ?)", workID, providerID, snapshot); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec("INSERT INTO file_source (code, display_name, source_type) VALUES ('legacy-number178', 'Legacy number178', 'kikoeru_compilable_number178')"); err != nil {
 		t.Fatal(err)
 	}
@@ -284,8 +295,21 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 8 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" {
+	if len(migrations) != 9 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" {
 		t.Fatalf("migrations = %v", migrations)
+	}
+	var rating float64
+	var sales, regularPrice, currentPrice int64
+	var currency string
+	var permanentlyFree bool
+	if err := db.QueryRow(`
+		SELECT rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free
+		FROM work WHERE id = ?
+	`, workID).Scan(&rating, &sales, &regularPrice, &currentPrice, &currency, &permanentlyFree); err != nil {
+		t.Fatal(err)
+	}
+	if rating != 4.5 || sales != 321 || regularPrice != 0 || currentPrice != 0 || currency != "JPY" || !permanentlyFree {
+		t.Fatalf("commercial backfill = %v/%d/%d/%d/%q/%t", rating, sales, regularPrice, currentPrice, currency, permanentlyFree)
 	}
 	var lyricsPreferenceTable int
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'user_media_lyrics_preference'").Scan(&lyricsPreferenceTable); err != nil {

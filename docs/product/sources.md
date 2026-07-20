@@ -21,6 +21,12 @@ Sources describe where files come from.
   preserves work progress and listening marks.
 - Remote source list and detail pages should remain source-scoped views; they do
   not replace the unified local work detail model.
+- Compatible remote work responses map the source's current `price`. The value
+  is not persisted as price history or treated as an authoritative regular
+  price. In Demo mode, Remote Source paging always adds `$age:general$` and
+  `$-price:1$` to the upstream search. Detail and media access repeat the same
+  filtered search with an exact work code; returned age and price fields are not
+  interpreted locally as policy inputs.
 - `kikoeru_compatible_number178` retains its adapter for migrated sources but is
   rejected by new source and configuration-seed inputs. The historical
   `kikoeru_compilable_number178` spelling is migrated automatically.

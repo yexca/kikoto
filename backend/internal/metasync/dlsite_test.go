@@ -40,6 +40,11 @@ func (f fakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ s
 func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	db := openTestDB(t)
 	raw := json.RawMessage(`{"workno":"RJ0123456","product_name":"DLsite title"}`)
+	rating := 4.75
+	sales := int64(4321)
+	regularPrice := int64(0)
+	currentPrice := int64(0)
+	isDiscount := false
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		products: map[string]dlsite.Product{
 			"RJ0123456": {
@@ -50,6 +55,11 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 				IntroShort:        "Short intro",
 				RegistDate:        "2024-01-02",
 				AgeCategoryString: "adult",
+				RateAverage2DP:    &rating,
+				SalesCount:        &sales,
+				RegularPrice:      &regularPrice,
+				CurrentPrice:      &currentPrice,
+				IsDiscount:        &isDiscount,
 				Genres: []dlsite.Genre{
 					{Name: "耳かき", NameBase: "Ear cleaning"},
 				},
@@ -79,6 +89,19 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	}
 	if snapshotCount != 1 {
 		t.Fatalf("snapshotCount = %d", snapshotCount)
+	}
+	var storedRating float64
+	var storedSales, storedRegularPrice, storedCurrentPrice int64
+	var storedCurrency string
+	var storedPermanentlyFree bool
+	if err := db.QueryRow(`
+		SELECT rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free
+		FROM work WHERE primary_code = 'RJ0123456'
+	`).Scan(&storedRating, &storedSales, &storedRegularPrice, &storedCurrentPrice, &storedCurrency, &storedPermanentlyFree); err != nil {
+		t.Fatal(err)
+	}
+	if storedRating != rating || storedSales != sales || storedRegularPrice != 0 || storedCurrentPrice != 0 || storedCurrency != "JPY" || !storedPermanentlyFree {
+		t.Fatalf("commercial projection = %v/%d/%d/%d/%q/%t", storedRating, storedSales, storedRegularPrice, storedCurrentPrice, storedCurrency, storedPermanentlyFree)
 	}
 	var tagName string
 	if err := db.QueryRow(`
@@ -331,7 +354,7 @@ func openTestDB(t *testing.T) *sql.DB {
 
 	schema := []string{
 		`CREATE TABLE metadata_provider (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE work (id INTEGER PRIMARY KEY, primary_code TEXT NOT NULL UNIQUE, work_type TEXT NOT NULL DEFAULT 'audio', title TEXT NOT NULL, title_kana TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', release_date TEXT, age_rating TEXT NOT NULL DEFAULT '', cover_asset_id INTEGER, duration_seconds INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE work (id INTEGER PRIMARY KEY, primary_code TEXT NOT NULL UNIQUE, work_type TEXT NOT NULL DEFAULT 'audio', title TEXT NOT NULL, title_kana TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', release_date TEXT, age_rating TEXT NOT NULL DEFAULT '', cover_asset_id INTEGER, duration_seconds INTEGER, rating_average REAL, sales_count INTEGER, regular_price INTEGER, current_price INTEGER, price_currency TEXT NOT NULL DEFAULT '', is_permanently_free INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE logical_work (id INTEGER PRIMARY KEY, canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, canonical_code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, translation_kind TEXT NOT NULL DEFAULT 'unknown', classification_source TEXT NOT NULL DEFAULT '', maker_id TEXT NOT NULL DEFAULT '', origin_maker_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE UNIQUE INDEX idx_work_edition_provider_code ON work_edition(provider_id, primary_code)`,

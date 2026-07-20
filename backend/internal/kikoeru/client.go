@@ -44,6 +44,7 @@ type Work struct {
 	RateAverage2DP     *float64 `json:"rate_average_2dp"`
 	ReviewCount        *int64   `json:"review_count"`
 	DLCount            *int64   `json:"dl_count"`
+	Price              *int64   `json:"price"`
 	OriginalWorkNumber string   `json:"original_workno"`
 	OriginalWorkID     int64    `json:"original_work_id"`
 }
@@ -122,6 +123,16 @@ func (c *Client) ListWorksSorted(ctx context.Context, page int, pageSize int, ke
 }
 
 func (c *Client) ListWorksSortedSeeded(ctx context.Context, page int, pageSize int, keyword string, order string, direction string, seed string) (WorksPage, error) {
+	return c.listWorksSortedSeeded(ctx, page, pageSize, keyword, order, direction, seed, true)
+}
+
+// SearchWorksSortedSeeded requires the upstream search endpoint to accept the
+// query. It does not use compatibility fallbacks that fetch unfiltered works.
+func (c *Client) SearchWorksSortedSeeded(ctx context.Context, page int, pageSize int, keyword string, order string, direction string, seed string) (WorksPage, error) {
+	return c.listWorksSortedSeeded(ctx, page, pageSize, keyword, order, direction, seed, false)
+}
+
+func (c *Client) listWorksSortedSeeded(ctx context.Context, page int, pageSize int, keyword string, order string, direction string, seed string, allowCompatibilityFallback bool) (WorksPage, error) {
 	params := url.Values{}
 	params.Set("page", strconv.Itoa(page))
 	params.Set("pageSize", strconv.Itoa(pageSize))
@@ -149,7 +160,7 @@ func (c *Client) ListWorksSortedSeeded(ctx context.Context, page int, pageSize i
 		path = "/api/search/" + url.PathEscape(keyword)
 	}
 	if err := c.get(ctx, path, params, &result); err != nil {
-		if c.compatibility != CompatibilityNumber178 {
+		if !allowCompatibilityFallback || c.compatibility != CompatibilityNumber178 {
 			return WorksPage{}, err
 		}
 		if keyword == "" {

@@ -34,6 +34,9 @@ export type WorkCardViewModel = {
   voiceCredits?: VoiceCredit[];
   coverUrl?: string;
   rating?: number | null;
+  regularPrice?: number | null;
+  price?: number | null;
+  priceCurrency?: string;
   series?: string | null;
   dlsiteTags: WorkCardBadge[];
   date?: WorkCardDate | null;
@@ -98,7 +101,16 @@ export function WorkCardShell({
   };
   const content = (
     <>
-      <WorkCardMedia coverUrl={work.coverUrl} code={work.code} rating={work.rating ?? null} selection={selection} recommended={work.recommended} />
+      <WorkCardMedia
+        coverUrl={work.coverUrl}
+        code={work.code}
+        rating={work.rating ?? null}
+        regularPrice={work.regularPrice ?? null}
+        price={work.price ?? null}
+        priceCurrency={work.priceCurrency}
+        selection={selection}
+        recommended={work.recommended}
+      />
       <WorkCardBody work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} onSeriesOpen={seriesOpen} onTagOpen={onTagOpen} />
     </>
   );
@@ -135,12 +147,18 @@ export function WorkCardMedia({
   coverUrl,
   code,
   rating,
+  regularPrice,
+  price,
+  priceCurrency,
   selection,
   recommended = false,
 }: {
   coverUrl?: string;
   code: string;
   rating: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency?: string;
   selection?: ReactNode;
   recommended?: boolean;
 }) {
@@ -157,6 +175,14 @@ export function WorkCardMedia({
       {recommended && (
         <div className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground shadow-sm" title="Recommended for you" aria-label="Recommended for you">
           <Star className="h-4 w-4 fill-current" />
+        </div>
+      )}
+      {price !== null && (
+        <div
+          className="absolute bottom-3 left-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold"
+          title={regularPrice !== null && regularPrice > price ? `Regular ${formatPrice(regularPrice, priceCurrency)}` : undefined}
+        >
+          {price === 0 ? "Free" : formatPrice(price, priceCurrency)}
         </div>
       )}
       <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
@@ -317,6 +343,14 @@ function BadgeList({
       )) : <Badge variant={emptyVariant}>{emptyLabel}</Badge>}
     </div>
   );
+}
+
+function formatPrice(value: number, currency = "JPY") {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "JPY", maximumFractionDigits: 0 }).format(value);
+  } catch {
+    return `${value.toLocaleString()} ${currency || "JPY"}`;
+  }
 }
 
 export function WorkProgressLine({ progress }: { progress: WorkProgressSummary }) {

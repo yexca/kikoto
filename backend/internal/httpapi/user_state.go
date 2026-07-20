@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 )
 
 type workUserStateResponse struct {
@@ -155,6 +157,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		user.ID,
 		listID,
 	)
+	where = s.demoWorkWhere(where, "work")
 	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
 	countArgs := append([]any{user.ID}, args...)
 	var total int
@@ -163,6 +166,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shelfWhere, shelfArgs := favoriteWorksWhere("all", "all", "", user.ID, 0)
+	shelfWhere = s.demoWorkWhere(shelfWhere, "work")
 	shelfCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + shelfWhere
 	shelfCountArgs := append([]any{user.ID}, shelfArgs...)
 	var shelfTotal int
@@ -170,7 +174,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	rawWorks, err := s.libraryStore.ListMatching(r.Context(), user.ID, where, args, page, pageSize)
+	rawWorks, err := s.libraryStore.ListMatching(r.Context(), user.ID, where, args, page, pageSize, false)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -266,10 +270,17 @@ func favoriteAvailabilityExists(locationTypes string, negated bool) string {
 }
 
 func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, error) {
+	countExpression := "COUNT(item.work_id)"
+	workJoin := ""
+	if s.cfg.DemoMode {
+		countExpression = "COUNT(CASE WHEN " + contentpolicy.DemoEligibleWorkSQL("work") + " THEN item.work_id END)"
+		workJoin = " LEFT JOIN work ON work.id = item.work_id"
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT list.id, COUNT(item.work_id)
+		SELECT list.id, `+countExpression+`
 		FROM favorite_list AS list
 		LEFT JOIN favorite_list_item AS item ON item.list_id = list.id
+		`+workJoin+`
 		WHERE list.user_id = ?
 		GROUP BY list.id
 	`, userID)
@@ -291,6 +302,7 @@ func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[
 
 func (s *Server) loadFavoriteStatusCounts(ctx context.Context, userID int64) (map[string]int, error) {
 	where, args := favoriteWorksWhere("all", "all", "", userID, 0)
+	where = s.demoWorkWhere(where, "work")
 	query := `
 		SELECT COALESCE(user_work_state.listening_status, 'none'), COUNT(*)
 		FROM work
@@ -506,6 +518,16 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 		if err := rows.Scan(&workID); err != nil {
 			writeError(w, err)
 			return
+		}
+		if s.cfg.DemoMode {
+			eligible, err := s.demoWorkEligible(r.Context(), workID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			if !eligible {
+				continue
+			}
 		}
 		workIDs = append(workIDs, workID)
 	}

@@ -125,6 +125,54 @@ func TestStoreListPageSearchesDeclaredCodeAliasesWithoutRawSnapshots(t *testing.
 	}
 }
 
+func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) {
+	db := openMigratedTestDB(t, "commercial-search.db")
+	providerID := testMetadataProviderID(t, db)
+	first, err := db.Exec(`
+		INSERT INTO work (
+			primary_code, title, age_rating, rating_average, sales_count,
+			regular_price, current_price, price_currency, is_permanently_free
+		) VALUES ('RJ09992501', 'Permanent free', 'general', 4.8, 100, 0, 0, 'JPY', 1)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstID, _ := first.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO work (
+			primary_code, title, age_rating, rating_average, sales_count,
+			regular_price, current_price, price_currency, is_permanently_free
+		) VALUES
+			('RJ09992502', 'Paid all ages', 'general', 4.0, 1000, 1100, 550, 'JPY', 0),
+			('RJ09992503', 'Adult free', 'adult', 5.0, 2000, 0, 0, 'JPY', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		VALUES (?, ?, 'RJ09992501', '{"dynamic":{"rate_average_2dp":1.0,"dl_count":1}}')
+	`, firstID, providerID); err != nil {
+		t.Fatal(err)
+	}
+
+	store := library.NewStore(db)
+	ratingPage, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: "rating:4.5", Sort: "sales", Direction: "desc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ratingPage.Total != 2 || len(ratingPage.Works) != 2 || ratingPage.Works[0].PrimaryCode != "RJ09992503" || ratingPage.Works[1].Rating == nil || *ratingPage.Works[1].Rating != 4.8 {
+		t.Fatalf("normalized rating/sales page = %#v", ratingPage)
+	}
+
+	demoPage, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, DemoOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if demoPage.Total != 1 || len(demoPage.Works) != 1 || demoPage.Works[0].PrimaryCode != "RJ09992501" {
+		t.Fatalf("demo page = %#v", demoPage)
+	}
+}
+
 func TestStoreListPageSearchesNormalizedFamilyRelations(t *testing.T) {
 	db := openMigratedTestDB(t, "family-search.db")
 	providerID := testMetadataProviderID(t, db)

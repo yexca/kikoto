@@ -12,6 +12,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum local scan folder depth. |
 | `KIKOTO_DEV_MODE` | `false` | Authenticate every request as root in development. |
+| `KIKOTO_DEMO_MODE` | `false` | Restrict local work/media responses to normalized all-ages permanent-free metadata and Remote Sources to their equivalent filtered search. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | `change-me` | Root administrator password. |

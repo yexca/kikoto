@@ -577,6 +577,10 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, product.Language); err != nil {
 		return err
 	}
+	priceCurrency := ""
+	if product.RegularPrice != nil || product.CurrentPrice != nil {
+		priceCurrency = "JPY"
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE work
@@ -585,9 +589,16 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 			description = ?,
 			release_date = ?,
 			age_rating = ?,
+			rating_average = ?,
+			sales_count = ?,
+			regular_price = ?,
+			current_price = ?,
+			price_currency = ?,
+			is_permanently_free = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString, workID); err != nil {
+	`, chooseTitle(product), product.WorkNameKana, chooseDescription(product), nullableText(product.RegistDate), product.AgeCategoryString,
+		product.RateAverage2DP, product.SalesCount, product.RegularPrice, product.CurrentPrice, priceCurrency, product.IsPermanentlyFree(), workID); err != nil {
 		return err
 	}
 	if err := upsertDLsiteWorkEdition(ctx, tx, providerID, workID, product); err != nil {

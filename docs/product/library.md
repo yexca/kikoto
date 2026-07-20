@@ -12,6 +12,8 @@ The Library is the main browsing surface for works.
   snapshots during a Library request.
 - Shows cover, title, code, circle, rating, tags, voice metadata, local
   availability, source tags, and quick listening marks when available.
+- Shows the current price when normalized commercial metadata is available and
+  labels zero-price works as Free.
 - Shows the signed-in user's work tags separately from metadata tags on unified
   work cards and detail. `mytag:` filters personal tags without changing the
   provider `tag:` search meaning.
@@ -33,6 +35,10 @@ The Library is the main browsing surface for works.
   strip can be collapsed, and that preference is kept in the browser.
 - Provides database-oriented diagnostic scopes for works that do not currently
   appear in everyday source tabs.
+- When `KIKOTO_DEMO_MODE=true`, backend list, detail, and media responses admit
+  only all-ages, permanently free works. Local works use normalized commercial
+  metadata, where unknown metadata and temporary free promotions are excluded;
+  Remote Sources use their filtered search contract.
 
 Work cards use the same summary model on every collection surface, including
 voice credits when they are known. Compact cards show at most two voice names

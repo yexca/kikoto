@@ -12,6 +12,10 @@ export type Work = {
   circleExternalId: string;
   rating: number | null;
   sales: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency: string;
+  permanentlyFree: boolean | null;
   tags: string[];
   userTags: UserTag[];
   voiceActors: string[];
@@ -89,6 +93,10 @@ export type WorkDetail = {
   rating: number | null;
   ratingCount: number | null;
   sales: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency: string;
+  permanentlyFree: boolean | null;
   series: string;
   seriesTitleId: string;
   seriesCircleExternalId: string;
@@ -214,6 +222,10 @@ export type WorkResolveResponse = {
   releaseDate: string | null;
   rating: number | null;
   sales: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency: string;
+  permanentlyFree: boolean | null;
   tags: string[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
@@ -305,6 +317,7 @@ export type LibrarySource = {
 
 export type RuntimeSettings = {
   cacheEnabled: boolean;
+  demoMode: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
 };
@@ -361,6 +374,7 @@ export type RemoteWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  price: number | null;
   tags: string[];
   voiceActors: string[];
   voiceRefs: RemoteEntityRef[];
@@ -404,6 +418,7 @@ export type RemoteWorkDetail = {
   circleRef?: RemoteEntityRef;
   rating: number | null;
   sales: number | null;
+  price: number | null;
   ageRating: string;
   releaseDate: string;
   durationSeconds: number | null;
@@ -960,6 +975,10 @@ export type CircleCatalogWork = {
   voiceCredits: VoiceCredit[];
   rating: number | null;
   sales: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency: string;
+  permanentlyFree: boolean | null;
   series: string;
   seriesTitleId: string;
   catalogStatus: string;
@@ -1061,6 +1080,10 @@ export type VoiceKnownWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  regularPrice: number | null;
+  price: number | null;
+  priceCurrency: string;
+  permanentlyFree: boolean | null;
   tags: string[];
   userTags: UserTag[];
   voiceActors: string[];
@@ -1091,6 +1114,7 @@ export type VoiceRemoteWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  price: number | null;
   tags: string[];
   voiceActors: string[];
   importStatus: string;

@@ -14,6 +14,9 @@ immutable; subsequent schema changes must use the next numbered file.
 
 The current sequence continues through `008_work_code_alias.sql`, which adds
 metadata-only logical-work code aliases and backfills existing edition metadata.
+`009_work_commercial_metadata.sql` adds normalized rating, sales, current
+commercial metadata, and permanent-free status, then backfills the projections
+from each work's latest DLsite snapshot.
 
 ## Guidelines
 

@@ -189,6 +189,7 @@ type remoteWorkSummary struct {
 	AgeRating       string            `json:"ageRating"`
 	Rating          *float64          `json:"rating"`
 	Sales           *int64            `json:"sales"`
+	Price           *int64            `json:"price"`
 	Tags            []string          `json:"tags"`
 	VoiceActors     []string          `json:"voiceActors"`
 	VoiceRefs       []remoteEntityRef `json:"voiceRefs"`
@@ -217,6 +218,7 @@ type remoteWorkDetail struct {
 	CircleRef       *remoteEntityRef    `json:"circleRef,omitempty"`
 	Rating          *float64            `json:"rating"`
 	Sales           *int64              `json:"sales"`
+	Price           *int64              `json:"price"`
 	AgeRating       string              `json:"ageRating"`
 	ReleaseDate     string              `json:"releaseDate"`
 	DurationSeconds *int64              `json:"durationSeconds"`
@@ -487,6 +489,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cacheEnabled":            s.settingBool(r, "remote_cache_enabled", false),
+		"demoMode":                s.cfg.DemoMode,
 		"directoryRoutingRules":   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		"recommendationThreshold": s.settingInt(r, "recommendation_threshold", 50),
 	})
@@ -880,6 +883,24 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	if s.cfg.DemoMode {
+		includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
+		works, total, sortApplied, err := s.demoRemoteSourcePage(
+			r.Context(), userID, source.ID, client, source.SourceType, r.URL.Query().Get("q"), upstreamOrder, direction,
+			r.URL.Query().Get("seed"), page, pageSize, language, includeRecommendation,
+		)
+		if err != nil {
+			_ = s.updateSourceHealth(r.Context(), id, "unavailable")
+			writeUpstreamError(w, err)
+			return
+		}
+		_ = s.updateSourceHealth(r.Context(), id, "healthy")
+		writeJSON(w, http.StatusOK, remoteWorksResponse{
+			SourceID: source.ID, Works: works, Page: page, PageSize: pageSize, Total: total,
+			Status: "ok", Sort: sortName, Direction: direction, SortApplied: sortApplied,
+		})
+		return
+	}
 	if len(plan.PostFilterClauses) > 0 {
 		works, total, sortApplied, err := s.remotePostFilteredPage(
 			r.Context(), userID, source.ID, client, plan, upstreamOrder, direction,
@@ -933,6 +954,36 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) demoRemoteSourcePage(
+	ctx context.Context,
+	userID int64,
+	sourceID int64,
+	client *kikoeru.Client,
+	sourceType string,
+	query string,
+	upstreamOrder string,
+	direction string,
+	seed string,
+	page int,
+	pageSize int,
+	language string,
+	includeRecommendation bool,
+) ([]remoteWorkSummary, int, bool, error) {
+	plan := demoRemoteSourceQueryPlan(query, sourceType)
+	if len(plan.PostFilterClauses) > 0 {
+		return s.remotePostFilteredPage(ctx, userID, sourceID, client, plan, upstreamOrder, direction, seed, page, pageSize, language, includeRecommendation)
+	}
+	remotePage, err := client.SearchWorksSortedSeeded(ctx, page, pageSize, plan.PushdownQuery, upstreamOrder, direction, seed)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	works, err := s.remoteWorkSummaries(ctx, userID, sourceID, remotePage.Works, language, includeRecommendation)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return works, firstPositiveInt(remotePage.Pagination.TotalCount, remotePage.Pagination.Total, remotePage.Pagination.Count), remotePage.SortApplied, nil
+}
+
 func (s *Server) remotePostFilteredPage(
 	ctx context.Context,
 	userID int64,
@@ -945,6 +996,7 @@ func (s *Server) remotePostFilteredPage(
 	page int,
 	pageSize int,
 	language string,
+	includeRecommendation ...bool,
 ) ([]remoteWorkSummary, int, bool, error) {
 	const upstreamPageSize = 100
 	const maxUpstreamPages = 100
@@ -952,12 +1004,18 @@ func (s *Server) remotePostFilteredPage(
 	seen := map[string]bool{}
 	sortApplied := true
 	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
-		result, err := client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
+		var result kikoeru.WorksPage
+		var err error
+		if s.cfg.DemoMode {
+			result, err = client.SearchWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
+		} else {
+			result, err = client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
+		}
 		if err != nil {
 			return nil, 0, false, err
 		}
 		sortApplied = sortApplied && result.SortApplied
-		summaries, err := s.remoteWorkSummaries(ctx, userID, sourceID, result.Works, language)
+		summaries, err := s.remoteWorkSummaries(ctx, userID, sourceID, result.Works, language, includeRecommendation...)
 		if err != nil {
 			return nil, 0, false, err
 		}
@@ -1033,7 +1091,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 			return
 		}
 		writeUpstreamError(w, err)
@@ -1054,6 +1112,9 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
+	if !s.requireDemoWorkCode(w, r, code) {
+		return
+	}
 	response, err := s.readWorkSourceAvailability(r.Context(), code)
 	if err != nil {
 		writeError(w, err)
@@ -1069,6 +1130,9 @@ func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.R
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	if !s.requireDemoWorkCode(w, r, code) {
 		return
 	}
 	var payload sourceAvailabilityCheckRequest
@@ -2094,6 +2158,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			AgeRating:       work.AgeCategoryString,
 			Rating:          work.RateAverage2DP,
 			Sales:           work.DLCount,
+			Price:           work.Price,
 			Tags:            tags,
 			VoiceActors:     voiceActors,
 			VoiceRefs:       voiceRefs,
@@ -2119,6 +2184,9 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			if existing.WorkID == nil {
 				existing.WorkID = item.WorkID
 				existing.ImportStatus = item.ImportStatus
+			}
+			if existing.Price == nil {
+				existing.Price = item.Price
 			}
 			if existing.RemoteCode == "" || strings.EqualFold(item.RemoteCode, item.PrimaryCode) {
 				existing.RemoteCode = item.RemoteCode
@@ -2164,9 +2232,11 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 		return remoteWorkSyncResult{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
 	client := kikoeruClientForSource(source)
-	remoteWork, rawWork, err := s.resolveKikoeruWork(ctx, client, code)
+	remoteWork, rawWork, err := s.resolveRemoteWorkForAccess(ctx, client, code)
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		if !errors.Is(err, sql.ErrNoRows) {
+			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		}
 		return remoteWorkSyncResult{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
@@ -3819,9 +3889,11 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
 	client := kikoeruClientForSource(source)
-	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
+	remoteWork, _, err := s.resolveRemoteWorkForAccess(ctx, client, code)
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		if !errors.Is(err, sql.ErrNoRows) {
+			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		}
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
 	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
@@ -4609,6 +4681,7 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		CircleRef:       circleRef,
 		Rating:          work.RateAverage2DP,
 		Sales:           work.DLCount,
+		Price:           work.Price,
 		AgeRating:       work.AgeCategoryString,
 		ReleaseDate:     releaseDate,
 		DurationSeconds: duration,

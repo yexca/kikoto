@@ -91,7 +91,7 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 			if r.URL.Query().Get("product_id") != "RJ0123456" {
 				t.Fatalf("product_id = %s", r.URL.Query().Get("product_id"))
 			}
-			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.89}}`))
+			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.89,"dl_count":1234,"official_price":1100,"price":550,"discount_rate":50,"is_discount":true,"is_sale":true,"is_free":false}}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -117,9 +117,36 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	if product.RateAverage2DP == nil || *product.RateAverage2DP != 4.89 {
 		t.Fatalf("RateAverage2DP = %v", product.RateAverage2DP)
 	}
+	if product.SalesCount == nil || *product.SalesCount != 1234 || product.RegularPrice == nil || *product.RegularPrice != 1100 || product.CurrentPrice == nil || *product.CurrentPrice != 550 {
+		t.Fatalf("commercial metadata = sales %v regular %v current %v", product.SalesCount, product.RegularPrice, product.CurrentPrice)
+	}
+	if permanentlyFree := product.IsPermanentlyFree(); permanentlyFree == nil || *permanentlyFree {
+		t.Fatalf("IsPermanentlyFree() = %v, want false", permanentlyFree)
+	}
 	status, ok := product.TranslationInfo.StatusForTranslatorByLang["CHI_HANT"]
 	if !ok || status.AppliedCount != 1 || status.OnSaleCount == nil || *status.OnSaleCount != 0 {
 		t.Fatalf("translation status = %+v, present = %t", status, ok)
+	}
+}
+
+func TestProductPermanentFreeRequiresZeroRegularPriceWithoutDiscount(t *testing.T) {
+	zero := int64(0)
+	positive := int64(100)
+	falseValue := false
+	trueValue := true
+
+	permanent := Product{RegularPrice: &zero, CurrentPrice: &zero, IsDiscount: &falseValue}
+	if got := permanent.IsPermanentlyFree(); got == nil || !*got {
+		t.Fatalf("permanent free = %v, want true", got)
+	}
+
+	limited := Product{RegularPrice: &positive, CurrentPrice: &zero, IsDiscount: &trueValue}
+	if got := limited.IsPermanentlyFree(); got == nil || *got {
+		t.Fatalf("limited free = %v, want false", got)
+	}
+
+	if got := (Product{}).IsPermanentlyFree(); got != nil {
+		t.Fatalf("unknown price = %v, want nil", got)
 	}
 }
 

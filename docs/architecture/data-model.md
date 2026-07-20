@@ -22,6 +22,14 @@ Important tables:
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
 
+`work.rating_average`, `work.sales_count`, and the current commercial fields are
+normalized projections maintained by metadata sync. Interactive rating/sales
+filtering and sorting read these columns rather than extracting snapshot JSON.
+`regular_price` and `current_price` are integer JPY amounts. A work is marked
+`is_permanently_free` only when both prices are zero and the provider does not
+report a discount; temporary free campaigns therefore remain ineligible for
+Demo mode.
+
 `work_code_alias` maps provider-declared edition codes to a logical work. An
 alias may reference a persisted edition work, but metadata-only aliases do not
 create works and do not imply local or remote file availability.

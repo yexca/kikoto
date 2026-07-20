@@ -93,6 +93,10 @@ type circleCatalogWork struct {
 	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
+	RegularPrice     *int64              `json:"regularPrice"`
+	Price            *int64              `json:"price"`
+	PriceCurrency    string              `json:"priceCurrency"`
+	PermanentlyFree  *bool               `json:"permanentlyFree"`
 	Series           string              `json:"series"`
 	SeriesTitleID    string              `json:"seriesTitleId"`
 	CatalogStatus    string              `json:"catalogStatus"`
@@ -1101,6 +1105,12 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 			COALESCE(dlsite_catalog.dlsite_available, 1),
 			work.id,
 			COALESCE(work.age_rating, ''),
+			work.rating_average,
+			work.sales_count,
+			work.regular_price,
+			work.current_price,
+			COALESCE(work.price_currency, ''),
+			work.is_permanently_free,
 			COALESCE((
 				SELECT snapshot_json
 				FROM metadata_snapshot
@@ -1155,12 +1165,24 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		var item circleCatalogWork
 		var release sql.NullString
 		var workID sql.NullInt64
+		var rating sql.NullFloat64
+		var sales, regularPrice, currentPrice sql.NullInt64
+		var permanentlyFree sql.NullBool
 		var dlsiteAvailable int
 		var favorite int
 		var snapshot string
 		var seriesLink string
-		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.AgeRating, &snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
+		if err := rows.Scan(&item.PrimaryCode, &item.Title, &release, &item.DLsiteURL, &item.CatalogStatus, &dlsiteAvailable, &workID, &item.AgeRating,
+			&rating, &sales, &regularPrice, &currentPrice, &item.PriceCurrency, &permanentlyFree,
+			&snapshot, &item.ListeningMark, &favorite, &seriesLink); err != nil {
 			return nil, err
+		}
+		item.Rating = nullableFloat64(rating)
+		item.Sales = nullableInt64(sales)
+		item.RegularPrice = nullableInt64(regularPrice)
+		item.Price = nullableInt64(currentPrice)
+		if permanentlyFree.Valid {
+			item.PermanentlyFree = &permanentlyFree.Bool
 		}
 		originalCode := item.PrimaryCode
 		ref, err := s.canonicalWorkForCode(ctx, item.PrimaryCode)
@@ -1180,8 +1202,6 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		metadata := parseDLsiteSnapshot(snapshot)
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
-		item.Rating = metadata.Rating
-		item.Sales = metadata.Sales
 		if item.Series == "" {
 			item.Series = metadata.Series
 		}
@@ -1191,6 +1211,18 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		}
 		if item.WorkID == nil {
 			item.WorkID = nullableInt64(workID)
+		}
+		if s.cfg.DemoMode {
+			if item.WorkID == nil {
+				continue
+			}
+			eligible, err := s.demoWorkEligible(ctx, *item.WorkID)
+			if err != nil {
+				return nil, err
+			}
+			if !eligible {
+				continue
+			}
 		}
 		item.Favorite = favorite != 0
 		item.DLsiteAvailable = dlsiteAvailable != 0
@@ -1294,6 +1326,18 @@ func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
 	if target.Sales == nil {
 		target.Sales = item.Sales
 	}
+	if target.RegularPrice == nil {
+		target.RegularPrice = item.RegularPrice
+	}
+	if target.Price == nil {
+		target.Price = item.Price
+	}
+	if target.PriceCurrency == "" {
+		target.PriceCurrency = item.PriceCurrency
+	}
+	if target.PermanentlyFree == nil {
+		target.PermanentlyFree = item.PermanentlyFree
+	}
 	if target.Series == "" {
 		target.Series = item.Series
 		target.SeriesTitleID = item.SeriesTitleID
@@ -1392,6 +1436,22 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			return nil, err
 		}
 		item.WorkCodes = splitCatalogCodes(codes.String)
+		if s.cfg.DemoMode {
+			filteredCodes := make([]string, 0, len(item.WorkCodes))
+			for _, code := range item.WorkCodes {
+				eligible, err := s.demoWorkCodeEligible(ctx, code)
+				if err != nil {
+					return nil, err
+				}
+				if eligible {
+					filteredCodes = append(filteredCodes, code)
+				}
+			}
+			item.WorkCodes = filteredCodes
+			item.Works = len(filteredCodes)
+			item.LocalWorks = min(item.LocalWorks, item.Works)
+			item.RemoteWorks = min(item.RemoteWorks, item.Works-item.LocalWorks)
+		}
 		item.MissingWorks = maxInt(0, item.Works-item.LocalWorks-item.RemoteWorks)
 		items = append(items, item)
 	}

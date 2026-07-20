@@ -5,6 +5,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       KIKOTO_DEV_MODE: "true"
+      KIKOTO_DEMO_MODE: ${KIKOTO_DEMO_MODE:-false}
       KIKOTO_ROOT_USERNAME: ${KIKOTO_ROOT_USERNAME:-root}
       KIKOTO_ROOT_PASSWORD: ${KIKOTO_ROOT_PASSWORD:-change-me}
       KIKOTO_HTTP_ADDR: ${KIKOTO_HTTP_ADDR:-0.0.0.0:7659}

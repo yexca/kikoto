@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 )
 
 type Store struct {
@@ -25,6 +27,7 @@ type ListOptions struct {
 	Sort       string
 	Direction  string
 	RandomSeed int64
+	DemoOnly   bool
 }
 
 type RawPage struct {
@@ -39,6 +42,12 @@ type RawWork struct {
 	PrimaryCode            string
 	Title                  string
 	AgeRating              string
+	Rating                 *float64
+	Sales                  *int64
+	RegularPrice           *int64
+	CurrentPrice           *int64
+	PriceCurrency          string
+	PermanentlyFree        *bool
 	CreatedAt              string
 	TrackCount             int64
 	AvailableLocations     int64
@@ -50,8 +59,12 @@ type RawWork struct {
 	Favorite               bool
 }
 
-func (s *Store) ListAll(ctx context.Context, userID int64) ([]RawWork, error) {
-	rows, err := s.db.QueryContext(ctx, listBaseSelectSQL("1 = 1", false, false)+" ORDER BY work.created_at DESC", userID)
+func (s *Store) ListAll(ctx context.Context, userID int64, demoOnly bool) ([]RawWork, error) {
+	where := "1 = 1"
+	if demoOnly {
+		where += " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
+	rows, err := s.db.QueryContext(ctx, listBaseSelectSQL(where, false)+" ORDER BY work.created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +78,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if options.PageSize < 1 || options.PageSize > 100 {
 		options.PageSize = 24
 	}
-	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID)
+	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID, options.DemoOnly)
 	countArgs := append([]any{options.UserID}, args...)
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE "+where, countArgs...).Scan(&total); err != nil {
@@ -89,7 +102,10 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 
 // ListMatching materializes the common Library projection for a predicate
 // owned by an adjacent feature, such as a user's favorite shelf.
-func (s *Store) ListMatching(ctx context.Context, userID int64, where string, args []any, page int, pageSize int) ([]RawWork, error) {
+func (s *Store) ListMatching(ctx context.Context, userID int64, where string, args []any, page int, pageSize int, demoOnly bool) ([]RawWork, error) {
+	if demoOnly {
+		where = "(" + where + ") AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	queryArgs := append([]any{userID}, args...)
 	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
 	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, "recent", "desc", 0)+" LIMIT ? OFFSET ?", queryArgs...)
@@ -108,12 +124,21 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	for rows.Next() {
 		var item RawWork
 		var availableLocationTypes, sourcePresence, snapshot, partyLink sql.NullString
+		var rating sql.NullFloat64
+		var sales, regularPrice, currentPrice sql.NullInt64
+		var permanentlyFree sql.NullBool
 		var favorite int
 		if err := rows.Scan(
 			&item.ID,
 			&item.PrimaryCode,
 			&item.Title,
 			&item.AgeRating,
+			&rating,
+			&sales,
+			&regularPrice,
+			&currentPrice,
+			&item.PriceCurrency,
+			&permanentlyFree,
 			&item.CreatedAt,
 			&item.TrackCount,
 			&item.AvailableLocations,
@@ -127,6 +152,21 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 			return nil, err
 		}
 		item.AvailableLocationTypes = availableLocationTypes.String
+		if rating.Valid {
+			item.Rating = &rating.Float64
+		}
+		if sales.Valid {
+			item.Sales = &sales.Int64
+		}
+		if regularPrice.Valid {
+			item.RegularPrice = &regularPrice.Int64
+		}
+		if currentPrice.Valid {
+			item.CurrentPrice = &currentPrice.Int64
+		}
+		if permanentlyFree.Valid {
+			item.PermanentlyFree = &permanentlyFree.Bool
+		}
 		item.SourcePresence = sourcePresence.String
 		item.Snapshot = snapshot.String
 		item.PartyLink = partyLink.String
@@ -142,11 +182,11 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	return works, nil
 }
 
-func listOrderBy(sortKey string, direction string, randomSeed int64) (string, bool) {
+func listOrderBy(sortKey string, direction string, randomSeed int64) string {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
-		return "recommend_score " + direction + ", created_at DESC, id DESC", true
+		return "recommend_score " + direction + ", created_at DESC, id DESC"
 	case "random":
 		seed := randomSeed % 2147483647
 		if seed < 0 {
@@ -157,19 +197,19 @@ func listOrderBy(sortKey string, direction string, randomSeed int64) (string, bo
 			multiplier = 1
 		}
 		offset := (seed * 12345) % 2147483647
-		return fmt.Sprintf("((work.id * %d + %d) %% 2147483647) ASC, work.id ASC", multiplier, offset), false
+		return fmt.Sprintf("((work.id * %d + %d) %% 2147483647) ASC, work.id ASC", multiplier, offset)
 	case "release":
-		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction, false
+		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction
 	case "code":
-		return "work.primary_code " + direction + ", work.id " + direction, false
+		return "work.primary_code " + direction + ", work.id " + direction
 	case "title":
-		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction, false
+		return "work.title COLLATE NOCASE " + direction + ", work.id " + direction
 	case "rating":
-		return "latest_dlsite_rating IS NULL ASC, latest_dlsite_rating " + direction + ", created_at " + direction + ", id " + direction, true
+		return "work.rating_average IS NULL ASC, work.rating_average " + direction + ", work.created_at " + direction + ", work.id " + direction
 	case "sales":
-		return "latest_dlsite_sales IS NULL ASC, latest_dlsite_sales " + direction + ", created_at " + direction + ", id " + direction, true
+		return "work.sales_count IS NULL ASC, work.sales_count " + direction + ", work.created_at " + direction + ", work.id " + direction
 	default:
-		return "work.created_at " + direction + ", work.id " + direction, false
+		return "work.created_at " + direction + ", work.id " + direction
 	}
 }
 
@@ -201,7 +241,7 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 	return sortKey, direction
 }
 
-func listWhere(scope string, status string, queryText string, userID int64) (string, []any) {
+func listWhere(scope string, status string, queryText string, userID int64, demoOnly bool) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := []any{}
 	switch scope {
@@ -241,6 +281,9 @@ func listWhere(scope string, status string, queryText string, userID int64) (str
 		args = append(args, searchArgs...)
 	}
 	clauses = append(clauses, canonicalVisibleWhereClause())
+	if demoOnly {
+		clauses = append(clauses, contentpolicy.DemoEligibleWorkSQL("work"))
+	}
 	return strings.Join(clauses, " AND "), args
 }
 
@@ -312,9 +355,9 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 			clauses = append(clauses, userTagLikeClause(true))
 			args = append(args, userID, like)
 		case "rating_min":
-			clauses = append(clauses, latestSnapshotNumericClause("rating", ">=", NumericClauseValue(needle)))
+			clauses = append(clauses, familyNumericClause("rating_average", ">=", NumericClauseValue(needle)))
 		case "sales_min":
-			clauses = append(clauses, latestSnapshotNumericClause("sales", ">=", NumericClauseValue(needle)))
+			clauses = append(clauses, familyNumericClause("sales_count", ">=", NumericClauseValue(needle)))
 		case "duration_min":
 			clauses = append(clauses, familyDurationClause(">=", NumericClauseValue(needle)))
 		case "duration_max":
@@ -505,33 +548,34 @@ func manualOverrideAnyLikeClause(fields ...string) string {
 	return `EXISTS (SELECT 1 FROM work_manual_override AS search_override WHERE search_override.work_id = work.id AND search_override.field_name IN (` + strings.Join(quoted, ",") + `) AND LOWER(search_override.value_json) LIKE ?)`
 }
 
-func latestSnapshotNumericClause(kind string, operator string, value float64) string {
+func familyNumericClause(column string, operator string, value float64) string {
 	if operator != ">=" && operator != "<=" {
 		operator = ">="
 	}
-	path, fallback := "$.product.rate_average_2dp", "$.product.rate_average_2dp"
-	if kind == "sales" {
-		path, fallback = "$.dynamic.dl_count", "$.product.sales_count"
+	if column != "rating_average" && column != "sales_count" {
+		column = "rating_average"
 	}
-	return fmt.Sprintf(`COALESCE((SELECT CAST(COALESCE(json_extract(search_snapshot.snapshot_json, '%s'), json_extract(search_snapshot.snapshot_json, '%s')) AS REAL) FROM metadata_snapshot AS search_snapshot INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id WHERE search_snapshot.work_id = work.id AND search_provider.code = 'dlsite' ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC LIMIT 1), 0) %s %g`, path, fallback, operator, value)
+	return fmt.Sprintf(`(work.%s IS NOT NULL AND work.%s %s %g OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
+		WHERE search_current_edition.work_id = work.id
+			AND search_sibling_work.%s IS NOT NULL
+			AND search_sibling_work.%s %s %g
+	))`, column, column, operator, value, column, column, operator, value)
 }
 
 func listSelectSQL(where string, sortKey string, direction string, randomSeed int64) string {
 	normalizedSort, _ := normalizeSort(sortKey, direction)
-	orderBy, needsMetadataSort := listOrderBy(sortKey, direction, randomSeed)
-	if needsMetadataSort || normalizedSort == "recommend" {
-		return `SELECT id, primary_code, title, age_rating, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true, normalizedSort == "recommend") + `) AS library_rows ORDER BY ` + orderBy
+	orderBy := listOrderBy(sortKey, direction, randomSeed)
+	if normalizedSort == "recommend" {
+		return `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true) + `) AS library_rows ORDER BY ` + orderBy
 	}
-	return listBaseSelectSQL(where, false, false) + " ORDER BY " + orderBy
+	return listBaseSelectSQL(where, false) + " ORDER BY " + orderBy
 }
 
-func listBaseSelectSQL(where string, includeMetadataSortColumns bool, includeRecommendation bool) string {
-	metadataSortColumns := ""
-	if includeMetadataSortColumns {
-		metadataSortColumns = `,
-			(SELECT json_extract(snapshot_json, '$.product.rate_average_2dp') FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS latest_dlsite_rating,
-			(SELECT COALESCE(json_extract(snapshot_json, '$.dynamic.dl_count'), json_extract(snapshot_json, '$.product.dl_count'), json_extract(snapshot_json, '$.product.sales_count')) FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS latest_dlsite_sales`
-	}
+func listBaseSelectSQL(where string, includeRecommendation bool) string {
 	recommendationSortColumn := ""
 	if includeRecommendation {
 		recommendationSortColumn = `,
@@ -558,7 +602,9 @@ func listBaseSelectSQL(where string, includeMetadataSortColumns bool, includeRec
 			) AS recommend_score`
 	}
 	return `SELECT
-		work.id, work.primary_code, work.title, work.age_rating, work.created_at,
+		work.id, work.primary_code, work.title, work.age_rating,
+		work.rating_average, work.sales_count, work.regular_price, work.current_price, work.price_currency, work.is_permanently_free,
+		work.created_at,
 		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND media_item.kind = 'audio') AS track_count,
 		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_item.kind = 'audio' AND media_file_location.availability = 'available') AS available_locations,
 		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,
@@ -566,7 +612,7 @@ func listBaseSelectSQL(where string, includeMetadataSortColumns bool, includeRec
 		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
 		(SELECT party.display_name || '|' || external.external_id FROM work_party AS relation INNER JOIN party ON party.id = relation.party_id LEFT JOIN party_external_id AS external ON external.party_id = party.id AND external.is_primary = 1 WHERE relation.work_id = work.id AND relation.role = 'circle' ORDER BY relation.updated_at DESC LIMIT 1) AS party_link,
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + metadataSortColumns + recommendationSortColumn + `
+		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + `
 	FROM work
 	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 	WHERE ` + where

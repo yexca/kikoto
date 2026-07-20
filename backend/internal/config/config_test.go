@@ -12,3 +12,10 @@ func TestEnvListNormalizesAndDeduplicatesOrigins(t *testing.T) {
 		t.Fatalf("envList() = %#v, want %#v", got, want)
 	}
 }
+
+func TestLoadReadsDemoMode(t *testing.T) {
+	t.Setenv("KIKOTO_DEMO_MODE", "true")
+	if cfg := Load(); !cfg.DemoMode {
+		t.Fatal("Load() did not enable demo mode")
+	}
+}

@@ -97,8 +97,29 @@ type Product struct {
 	Raw               json.RawMessage   `json:"-"`
 	ProductRaw        json.RawMessage   `json:"-"`
 	DynamicRaw        json.RawMessage   `json:"-"`
-	RateAverage2DP    *float64          `json:"-"`
+	RateAverage2DP    *float64          `json:"rate_average_2dp"`
+	SalesCount        *int64            `json:"dl_count"`
+	RegularPrice      *int64            `json:"official_price"`
+	CurrentPrice      *int64            `json:"price"`
+	DiscountRate      *int64            `json:"discount_rate"`
+	IsDiscount        *bool             `json:"is_discount"`
+	IsSale            *bool             `json:"is_sale"`
+	IsFree            *bool             `json:"is_free"`
 	Language          string            `json:"-"`
+}
+
+func (product Product) IsPermanentlyFree() *bool {
+	if product.RegularPrice == nil || product.CurrentPrice == nil {
+		return nil
+	}
+	permanentlyFree := *product.RegularPrice == 0 && *product.CurrentPrice == 0
+	if product.DiscountRate != nil && *product.DiscountRate > 0 {
+		permanentlyFree = false
+	}
+	if product.IsDiscount != nil && *product.IsDiscount {
+		permanentlyFree = false
+	}
+	return &permanentlyFree
 }
 
 type TranslationInfo struct {
@@ -505,9 +526,34 @@ func (c *Client) fetchProductFromSite(ctx context.Context, site string, workno s
 	if !strings.EqualFold(product.WorkNo, workno) {
 		return Product{}, fmt.Errorf("dlsite %s returned %s for %s", site, product.WorkNo, workno)
 	}
-	if dynamicRaw, rating, err := c.fetchDynamic(ctx, product); err == nil {
+	if dynamicRaw, dynamic, err := c.fetchDynamic(ctx, product); err == nil {
 		product.DynamicRaw = dynamicRaw
-		product.RateAverage2DP = rating
+		if dynamic.RateAverage2DP != nil {
+			product.RateAverage2DP = dynamic.RateAverage2DP
+		} else if dynamic.RateAverage != nil {
+			product.RateAverage2DP = dynamic.RateAverage
+		}
+		if dynamic.SalesCount != nil {
+			product.SalesCount = dynamic.SalesCount
+		}
+		if dynamic.RegularPrice != nil {
+			product.RegularPrice = dynamic.RegularPrice
+		}
+		if dynamic.CurrentPrice != nil {
+			product.CurrentPrice = dynamic.CurrentPrice
+		}
+		if dynamic.DiscountRate != nil {
+			product.DiscountRate = dynamic.DiscountRate
+		}
+		if dynamic.IsDiscount != nil {
+			product.IsDiscount = dynamic.IsDiscount
+		}
+		if dynamic.IsSale != nil {
+			product.IsSale = dynamic.IsSale
+		}
+		if dynamic.IsFree != nil {
+			product.IsFree = dynamic.IsFree
+		}
 		product.Raw = combinedRaw(product.ProductRaw, product.DynamicRaw)
 	}
 	return product, nil
@@ -644,7 +690,19 @@ func (c *Client) fetchMakerProfilePage(ctx context.Context, site string, makerID
 	}, nil
 }
 
-func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMessage, *float64, error) {
+type dynamicProductMetadata struct {
+	RateAverage2DP *float64 `json:"rate_average_2dp"`
+	RateAverage    *float64 `json:"rate_average"`
+	SalesCount     *int64   `json:"dl_count"`
+	RegularPrice   *int64   `json:"official_price"`
+	CurrentPrice   *int64   `json:"price"`
+	DiscountRate   *int64   `json:"discount_rate"`
+	IsDiscount     *bool    `json:"is_discount"`
+	IsSale         *bool    `json:"is_sale"`
+	IsFree         *bool    `json:"is_free"`
+}
+
+func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMessage, dynamicProductMetadata, error) {
 	site := product.SiteID
 	if site == "" {
 		if strings.HasPrefix(product.WorkNo, "VJ") {
@@ -660,45 +718,38 @@ func (c *Client) fetchDynamic(ctx context.Context, product Product) (json.RawMes
 	endpoint := fmt.Sprintf("%s/%s/product/info/ajax?product_id=%s", strings.TrimRight(c.baseURL, "/"), site, url.QueryEscape(product.WorkNo))
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, dynamicProductMetadata{}, err
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("User-Agent", c.userAgent)
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, nil, err
+		return nil, dynamicProductMetadata{}, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, nil, HTTPStatusError{Operation: "dlsite dynamic", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
+		return nil, dynamicProductMetadata{}, HTTPStatusError{Operation: "dlsite dynamic", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
 	body, err := readLimitedBody(response.Body, maxDLsiteJSONBytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, dynamicProductMetadata{}, err
 	}
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, nil, err
+		return nil, dynamicProductMetadata{}, err
 	}
 	raw, ok := payload[product.WorkNo]
 	if !ok {
-		return nil, nil, fmt.Errorf("dynamic metadata missing %s", product.WorkNo)
+		return nil, dynamicProductMetadata{}, fmt.Errorf("dynamic metadata missing %s", product.WorkNo)
 	}
 
-	var dynamic struct {
-		RateAverage2DP *float64 `json:"rate_average_2dp"`
-		RateAverage    *float64 `json:"rate_average"`
-	}
+	var dynamic dynamicProductMetadata
 	if err := json.Unmarshal(raw, &dynamic); err != nil {
-		return nil, nil, err
+		return nil, dynamicProductMetadata{}, err
 	}
-	rating := dynamic.RateAverage2DP
-	if rating == nil {
-		rating = dynamic.RateAverage
-	}
-	return raw, rating, nil
+	return raw, dynamic, nil
 }
 
 func readLimitedBody(body io.Reader, maxBytes int64) ([]byte, error) {

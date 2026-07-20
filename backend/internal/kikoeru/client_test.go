@@ -16,6 +16,16 @@ func TestWorkCodeFallsBackToOriginalWorkID(t *testing.T) {
 	}
 }
 
+func TestWorkDecodesCurrentPrice(t *testing.T) {
+	var work Work
+	if err := json.Unmarshal([]byte(`{"id":1,"price":0}`), &work); err != nil {
+		t.Fatal(err)
+	}
+	if work.Price == nil || *work.Price != 0 {
+		t.Fatalf("Price = %v, want zero", work.Price)
+	}
+}
+
 func TestReadLimitedJSONBodyRejectsOversizedResponse(t *testing.T) {
 	if _, err := readLimitedJSONBody(endlessTestReader{}); err == nil {
 		t.Fatal("readLimitedJSONBody() accepted an oversized response")
@@ -60,6 +70,30 @@ func TestListWorksFallsBackToLocalFilterWhenSearchFails(t *testing.T) {
 	}
 	if got := WorkCode(page.Works[0]); got != "RJ00000002" {
 		t.Fatalf("filtered work code = %q, want RJ00000002", got)
+	}
+}
+
+func TestSearchWorksDoesNotFallbackWhenSearchFails(t *testing.T) {
+	worksRequested := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/search/$age:general$ $-price:1$":
+			http.Error(w, "search unavailable", http.StatusInternalServerError)
+		case "/api/works":
+			worksRequested = true
+			writeTestJSON(t, w, WorksPage{Works: []Work{{SourceID: "RJ00000001"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewNumber178Client(server.URL, server.Client())
+	if _, err := client.SearchWorksSortedSeeded(context.Background(), 1, 20, "$age:general$ $-price:1$", "id", "asc", ""); err == nil {
+		t.Fatal("SearchWorksSortedSeeded() error = nil, want error")
+	}
+	if worksRequested {
+		t.Fatal("SearchWorksSortedSeeded() requested unfiltered works fallback")
 	}
 }
 

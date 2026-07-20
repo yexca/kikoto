@@ -952,6 +952,9 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    regularPrice: work.regularPrice,
+    price: work.price,
+    priceCurrency: work.priceCurrency,
     series: work.series || null,
     dlsiteTags: [
       { key: `status:${work.listeningStatus}`, label: listeningStatusLabel(work.listeningStatus), variant: "secondary" },

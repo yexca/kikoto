@@ -179,7 +179,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-popular", s.createDLsitePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
-	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(mux), maxJSONRequestBytes))
+	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.demoContentMiddleware(mux)), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
 		return apiHandler
 	}
@@ -303,6 +303,14 @@ func (s *Server) getCoverAsset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
 		return
 	}
+	if eligible, err := s.demoCoverEligible(r.Context(), relPath); err != nil || !eligible {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, err)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
 	path, err := safeCachePath(filepath.Join(s.cfg.CacheRoot, "cover"), relPath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cover file"})
@@ -317,6 +325,14 @@ func (s *Server) getManualAsset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid manual asset file"})
 		return
 	}
+	if eligible, err := s.demoManualAssetEligible(r.Context(), file); err != nil || !eligible {
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
 	path := filepath.Join(s.cfg.CacheRoot, "manual", file)
 	http.ServeFile(w, r, path)
 }
@@ -328,7 +344,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		s.listWorksPageFast(w, r, userID)
 		return
 	}
-	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID)
+	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID, s.cfg.DemoMode)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -346,7 +362,9 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 	for _, row := range rows {
 		item := libraryWorkSummary{
 			ID: row.ID, PrimaryCode: row.PrimaryCode, Title: row.Title, CreatedAt: row.CreatedAt,
-			AgeRating:  row.AgeRating,
+			AgeRating: row.AgeRating,
+			Rating:    row.Rating, Sales: row.Sales, RegularPrice: row.RegularPrice, Price: row.CurrentPrice,
+			PriceCurrency: row.PriceCurrency, PermanentlyFree: row.PermanentlyFree,
 			TrackCount: row.TrackCount, AvailableLocations: row.AvailableLocations,
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite,
 		}
@@ -379,8 +397,6 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			item.Circle = name
 			item.CircleExternalID = externalID
 		}
-		item.Rating = metadata.Rating
-		item.Sales = metadata.Sales
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
@@ -417,6 +433,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
 		RandomSeed: int64(queryInt(r, "seed", 1)),
+		DemoOnly:   s.cfg.DemoMode,
 	})
 	if err != nil {
 		writeError(w, err)
@@ -476,6 +493,10 @@ type libraryWorkSummary struct {
 	CircleExternalID       string               `json:"circleExternalId"`
 	Rating                 *float64             `json:"rating"`
 	Sales                  *int64               `json:"sales"`
+	RegularPrice           *int64               `json:"regularPrice"`
+	Price                  *int64               `json:"price"`
+	PriceCurrency          string               `json:"priceCurrency"`
+	PermanentlyFree        *bool                `json:"permanentlyFree"`
 	Tags                   []string             `json:"tags"`
 	UserTags               []workUserTag        `json:"userTags"`
 	VoiceActors            []string             `json:"voiceActors"`
@@ -527,6 +548,10 @@ type workDetail struct {
 	Rating           *float64             `json:"rating"`
 	RatingCount      *int64               `json:"ratingCount"`
 	Sales            *int64               `json:"sales"`
+	RegularPrice     *int64               `json:"regularPrice"`
+	Price            *int64               `json:"price"`
+	PriceCurrency    string               `json:"priceCurrency"`
+	PermanentlyFree  *bool                `json:"permanentlyFree"`
 	Series           string               `json:"series"`
 	SeriesTitleID    string               `json:"seriesTitleId"`
 	SeriesCircleID   string               `json:"seriesCircleExternalId"`
@@ -569,6 +594,10 @@ type workResolveResponse struct {
 	ReleaseDate      *string  `json:"releaseDate"`
 	Rating           *float64 `json:"rating"`
 	Sales            *int64   `json:"sales"`
+	RegularPrice     *int64   `json:"regularPrice"`
+	Price            *int64   `json:"price"`
+	PriceCurrency    string   `json:"priceCurrency"`
+	PermanentlyFree  *bool    `json:"permanentlyFree"`
 	Tags             []string `json:"tags"`
 	VoiceActors      []string `json:"voiceActors"`
 }
@@ -616,6 +645,9 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
 		return
 	}
+	if !s.requireDemoWork(w, r, id) {
+		return
+	}
 
 	includeMedia := r.URL.Query().Get("includeMedia") != "false"
 	if includeMedia {
@@ -643,6 +675,9 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+	if !s.requireDemoWork(w, r, id) {
 		return
 	}
 	if err := s.ensureLocalMediaIndexed(r.Context(), id); err != nil {
@@ -1166,6 +1201,9 @@ func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if !s.requireDemoWork(w, r, resolved.WorkID) {
+		return
+	}
 	writeJSON(w, http.StatusOK, resolved)
 }
 
@@ -1173,6 +1211,9 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
+		return
+	}
+	if !s.requireDemoMediaLocation(w, r, id) {
 		return
 	}
 
@@ -1361,6 +1402,9 @@ func (s *Server) localMediaPath(r *http.Request, idValue string) (string, string
 	if err != nil || id <= 0 {
 		return "", "", fmt.Errorf("invalid media location id")
 	}
+	if eligible, err := s.demoMediaLocationEligible(r.Context(), id); err != nil || !eligible {
+		return "", "", fmt.Errorf("media location not found")
+	}
 	var locationType string
 	var relPath string
 	var availability string
@@ -1388,6 +1432,9 @@ func (s *Server) mediaDownloadPath(r *http.Request, idValue string) (string, str
 	id, err := strconv.ParseInt(strings.TrimSpace(idValue), 10, 64)
 	if err != nil || id <= 0 {
 		return "", "", fmt.Errorf("invalid media location id")
+	}
+	if eligible, err := s.demoMediaLocationEligible(r.Context(), id); err != nil || !eligible {
+		return "", "", fmt.Errorf("media location not found")
 	}
 	var locationType string
 	var relPath string
@@ -2735,6 +2782,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	var work workDetail
 	var releaseDate sql.NullString
 	var durationSeconds sql.NullInt64
+	var rating sql.NullFloat64
+	var sales, regularPrice, currentPrice sql.NullInt64
+	var permanentlyFree sql.NullBool
 	var favorite int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
@@ -2746,6 +2796,12 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 			work.description,
 			work.release_date,
 			work.age_rating,
+			work.rating_average,
+			work.sales_count,
+			work.regular_price,
+			work.current_price,
+			work.price_currency,
+			work.is_permanently_free,
 			work.duration_seconds,
 			work.created_at,
 			work.updated_at,
@@ -2764,6 +2820,12 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		&work.Description,
 		&releaseDate,
 		&work.AgeRating,
+		&rating,
+		&sales,
+		&regularPrice,
+		&currentPrice,
+		&work.PriceCurrency,
+		&permanentlyFree,
 		&durationSeconds,
 		&work.CreatedAt,
 		&work.UpdatedAt,
@@ -2775,6 +2837,13 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	work.Favorite = favorite != 0
 	work.ReleaseDate = nullableString(releaseDate)
 	work.DurationSeconds = nullableInt64(durationSeconds)
+	work.Rating = nullableFloat64(rating)
+	work.Sales = nullableInt64(sales)
+	work.RegularPrice = nullableInt64(regularPrice)
+	work.Price = nullableInt64(currentPrice)
+	if permanentlyFree.Valid {
+		work.PermanentlyFree = &permanentlyFree.Bool
+	}
 	work.CoverURL = s.coverURL(work.PrimaryCode)
 	work.DLsiteURL = dlsiteURL(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
@@ -2837,9 +2906,7 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		work.Circle = name
 		work.CircleExternalID = externalID
 	}
-	work.Rating = metadata.Rating
 	work.RatingCount = metadata.RatingCount
-	work.Sales = metadata.Sales
 	work.Series = metadata.Series
 	work.SeriesTitleID = s.seriesTitleIDForWork(ctx, work.PrimaryCode)
 	work.SeriesCircleID = work.CircleExternalID
@@ -3374,10 +3441,21 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		resolvedCode = canonicalCode
 		baseCode = canonicalCode
 	}
-	var title string
+	var title, priceCurrency string
 	var releaseDate sql.NullString
-	if err := s.db.QueryRowContext(ctx, "SELECT title, release_date FROM work WHERE id = ?", resolvedID).Scan(&title, &releaseDate); err != nil {
+	var rating sql.NullFloat64
+	var sales, regularPrice, currentPrice sql.NullInt64
+	var permanentlyFree sql.NullBool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT title, release_date, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free
+		FROM work
+		WHERE id = ?
+	`, resolvedID).Scan(&title, &releaseDate, &rating, &sales, &regularPrice, &currentPrice, &priceCurrency, &permanentlyFree); err != nil {
 		return workResolveResponse{}, err
+	}
+	var permanentlyFreeValue *bool
+	if permanentlyFree.Valid {
+		permanentlyFreeValue = &permanentlyFree.Bool
 	}
 	return workResolveResponse{
 		RequestedCode:    code,
@@ -3390,8 +3468,12 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		Circle:           metadata.Circle,
 		CircleExternalID: metadata.CircleExternalID,
 		ReleaseDate:      nullableString(releaseDate),
-		Rating:           metadata.Rating,
-		Sales:            metadata.Sales,
+		Rating:           nullableFloat64(rating),
+		Sales:            nullableInt64(sales),
+		RegularPrice:     nullableInt64(regularPrice),
+		Price:            nullableInt64(currentPrice),
+		PriceCurrency:    priceCurrency,
+		PermanentlyFree:  permanentlyFreeValue,
 		Tags:             metadata.Tags,
 		VoiceActors:      metadata.VoiceActors,
 	}, nil
@@ -5132,9 +5214,7 @@ type dlsiteSnapshotMetadata struct {
 	MetadataLanguage string
 	LanguageEditions []workTranslation
 	ReleaseDate      *string
-	Rating           *float64
 	RatingCount      *int64
-	Sales            *int64
 	Series           string
 	DLsiteUpdatedAt  *string
 	Tags             []string
@@ -5165,31 +5245,26 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 
 	var payload struct {
-		MakerName          string   `json:"maker_name"`
-		MakerID            string   `json:"maker_id"`
-		CircleID           string   `json:"circle_id"`
-		BrandID            string   `json:"brand_id"`
-		LabelID            string   `json:"label_id"`
-		WorkNo             string   `json:"workno"`
-		ProductID          string   `json:"product_id"`
-		OriginalWorkNo     string   `json:"original_workno"`
-		OriginalWorkNumber string   `json:"original_work_number"`
-		BaseWorkNo         string   `json:"base_workno"`
-		BaseCode           string   `json:"base_code"`
-		Language           string   `json:"language"`
-		Locale             string   `json:"locale"`
-		ReleaseDate        string   `json:"release_date"`
-		UpdateDate         string   `json:"update_date"`
-		ModifyDate         string   `json:"modify_date"`
-		Sales              *int64   `json:"dl_count"`
-		DLCount            *int64   `json:"download_count"`
-		SalesCount         *int64   `json:"sales_count"`
-		RateAverage2DP     *float64 `json:"rate_average_2dp"`
-		RateAverage        *float64 `json:"rate_average"`
-		RateCount          *int64   `json:"rate_count"`
-		ReviewCount        *int64   `json:"review_count"`
-		SeriesName         string   `json:"series_name"`
-		Series             string   `json:"series"`
+		MakerName          string `json:"maker_name"`
+		MakerID            string `json:"maker_id"`
+		CircleID           string `json:"circle_id"`
+		BrandID            string `json:"brand_id"`
+		LabelID            string `json:"label_id"`
+		WorkNo             string `json:"workno"`
+		ProductID          string `json:"product_id"`
+		OriginalWorkNo     string `json:"original_workno"`
+		OriginalWorkNumber string `json:"original_work_number"`
+		BaseWorkNo         string `json:"base_workno"`
+		BaseCode           string `json:"base_code"`
+		Language           string `json:"language"`
+		Locale             string `json:"locale"`
+		ReleaseDate        string `json:"release_date"`
+		UpdateDate         string `json:"update_date"`
+		ModifyDate         string `json:"modify_date"`
+		RateCount          *int64 `json:"rate_count"`
+		ReviewCount        *int64 `json:"review_count"`
+		SeriesName         string `json:"series_name"`
+		Series             string `json:"series"`
 		Genres             []struct {
 			Name     string `json:"name"`
 			NameBase string `json:"name_base"`
@@ -5221,31 +5296,14 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 	if len(combined.Dynamic) > 0 {
 		var dynamic struct {
-			RateAverage2DP *float64 `json:"rate_average_2dp"`
-			RateAverage    *float64 `json:"rate_average"`
-			RateCount      *int64   `json:"rate_count"`
-			ReviewCount    *int64   `json:"review_count"`
-			Sales          *int64   `json:"dl_count"`
-			DLCount        *int64   `json:"download_count"`
-			SalesCount     *int64   `json:"sales_count"`
+			RateCount   *int64 `json:"rate_count"`
+			ReviewCount *int64 `json:"review_count"`
 		}
 		if err := json.Unmarshal(combined.Dynamic, &dynamic); err == nil {
-			if dynamic.RateAverage2DP != nil {
-				payload.RateAverage2DP = dynamic.RateAverage2DP
-			} else if dynamic.RateAverage != nil {
-				payload.RateAverage = dynamic.RateAverage
-			}
 			if dynamic.RateCount != nil {
 				payload.RateCount = dynamic.RateCount
 			} else if dynamic.ReviewCount != nil {
 				payload.ReviewCount = dynamic.ReviewCount
-			}
-			if dynamic.Sales != nil {
-				payload.Sales = dynamic.Sales
-			} else if dynamic.DLCount != nil {
-				payload.DLCount = dynamic.DLCount
-			} else if dynamic.SalesCount != nil {
-				payload.SalesCount = dynamic.SalesCount
 			}
 		}
 	}
@@ -5311,22 +5369,10 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	if updated := strings.TrimSpace(firstNonEmpty(payload.UpdateDate, payload.ModifyDate)); updated != "" {
 		metadata.DLsiteUpdatedAt = &updated
 	}
-	if payload.RateAverage2DP != nil {
-		metadata.Rating = payload.RateAverage2DP
-	} else if payload.RateAverage != nil {
-		metadata.Rating = payload.RateAverage
-	}
 	if payload.RateCount != nil {
 		metadata.RatingCount = payload.RateCount
 	} else if payload.ReviewCount != nil {
 		metadata.RatingCount = payload.ReviewCount
-	}
-	if payload.Sales != nil {
-		metadata.Sales = payload.Sales
-	} else if payload.DLCount != nil {
-		metadata.Sales = payload.DLCount
-	} else if payload.SalesCount != nil {
-		metadata.Sales = payload.SalesCount
 	}
 	metadata.Series = strings.TrimSpace(firstNonEmpty(payload.SeriesName, payload.Series))
 	if metadata.Series == "" {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 )
 
 func (s *Server) listRecentlyPlayedWorks(w http.ResponseWriter, r *http.Request) {
@@ -28,13 +30,19 @@ func (s *Server) listRecentlyPlayedWorks(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit int) ([]libraryWorkSummary, error) {
+	demoWhere := ""
+	if s.cfg.DemoMode {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT media_item.work_id, MAX(progress.last_played_at) AS latest_played_at
 		FROM user_media_progress AS progress
 		INNER JOIN media_item ON media_item.id = progress.media_item_id
+		INNER JOIN work ON work.id = media_item.work_id
 		WHERE progress.user_id = ?
 			AND progress.last_played_at IS NOT NULL
 			AND media_item.kind = 'audio'
+			`+demoWhere+`
 		GROUP BY media_item.work_id
 		ORDER BY latest_played_at DESC, media_item.work_id DESC
 		LIMIT ?
@@ -67,7 +75,7 @@ func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit in
 		args[index] = workID
 	}
 	where := fmt.Sprintf("work.id IN (%s)", strings.TrimSuffix(strings.Repeat("?,", len(workIDs)), ","))
-	rawWorks, err := s.libraryStore.ListMatching(ctx, userID, where, args, 1, len(workIDs))
+	rawWorks, err := s.libraryStore.ListMatching(ctx, userID, where, args, 1, len(workIDs), s.cfg.DemoMode)
 	if err != nil {
 		return nil, err
 	}

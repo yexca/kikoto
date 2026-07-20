@@ -142,6 +142,10 @@ type voiceKnownWork struct {
 	AgeRating        string              `json:"ageRating"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
+	RegularPrice     *int64              `json:"regularPrice"`
+	Price            *int64              `json:"price"`
+	PriceCurrency    string              `json:"priceCurrency"`
+	PermanentlyFree  *bool               `json:"permanentlyFree"`
 	Tags             []string            `json:"tags"`
 	UserTags         []workUserTag       `json:"userTags"`
 	VoiceActors      []string            `json:"voiceActors"`
@@ -184,6 +188,7 @@ type voiceRemoteWork struct {
 	AgeRating      string   `json:"ageRating"`
 	Rating         *float64 `json:"rating"`
 	Sales          *int64   `json:"sales"`
+	Price          *int64   `json:"price"`
 	Tags           []string `json:"tags"`
 	VoiceActors    []string `json:"voiceActors"`
 	ImportStatus   string   `json:"importStatus"`
@@ -738,6 +743,12 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			work.title,
 			work.release_date,
 			work.age_rating,
+			work.rating_average,
+			work.sales_count,
+			work.regular_price,
+			work.current_price,
+			work.price_currency,
+			work.is_permanently_free,
 			COALESCE((
 				SELECT snapshot_json
 				FROM metadata_snapshot
@@ -816,6 +827,15 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				displayWorkID = ref.WorkID
 			}
 		}
+		if s.cfg.DemoMode {
+			eligible, err := s.demoWorkEligible(ctx, displayWorkID)
+			if err != nil {
+				return nil, err
+			}
+			if !eligible {
+				continue
+			}
+		}
 		metadata := parseDLsiteSnapshot(row.Snapshot)
 		sourceTags, err := s.workSourceTagsByCode(ctx, displayCode)
 		if err != nil {
@@ -848,8 +868,12 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			Circle:           metadata.Circle,
 			CircleExternalID: metadata.CircleExternalID,
 			AgeRating:        row.AgeRating,
-			Rating:           metadata.Rating,
-			Sales:            metadata.Sales,
+			Rating:           row.Rating,
+			Sales:            row.Sales,
+			RegularPrice:     row.RegularPrice,
+			Price:            row.Price,
+			PriceCurrency:    row.PriceCurrency,
+			PermanentlyFree:  row.PermanentlyFree,
 			Tags:             metadata.Tags,
 			VoiceActors:      metadata.VoiceActors,
 			Series:           metadata.Series,
@@ -922,6 +946,18 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	}
 	if target.Sales == nil {
 		target.Sales = item.Sales
+	}
+	if target.RegularPrice == nil {
+		target.RegularPrice = item.RegularPrice
+	}
+	if target.Price == nil {
+		target.Price = item.Price
+	}
+	if target.PriceCurrency == "" {
+		target.PriceCurrency = item.PriceCurrency
+	}
+	if target.PermanentlyFree == nil {
+		target.PermanentlyFree = item.PermanentlyFree
 	}
 	if len(target.Tags) == 0 {
 		target.Tags = item.Tags
@@ -1001,7 +1037,14 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				started := time.Now()
 				sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
 				client := kikoeruClientForSource(source)
-				page, err := client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
+				var page kikoeru.WorksPage
+				var err error
+				if s.cfg.DemoMode {
+					plan := demoRemoteSourceQueryPlan(keyword, source.SourceType)
+					page, err = client.SearchWorksSortedSeeded(sourceCtx, 1, voiceRemotePageSize, plan.PushdownQuery, "create_date", "desc", "")
+				} else {
+					page, err = client.ListWorks(sourceCtx, 1, voiceRemotePageSize, keyword)
+				}
 				cancel()
 				result.ElapsedMS = time.Since(started).Milliseconds()
 				if err != nil {
@@ -1056,6 +1099,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 						AgeRating:      remoteWork.AgeCategoryString,
 						Rating:         remoteWork.RateAverage2DP,
 						Sales:          remoteWork.DLCount,
+						Price:          remoteWork.Price,
 						Tags:           remoteTagNames(remoteWork.Tags),
 						VoiceActors:    voiceActors,
 						ImportStatus:   remoteImportStatus(flags.WorkID),
@@ -2107,6 +2151,12 @@ type voiceWorkRow struct {
 	Title           string
 	ReleaseDate     sql.NullString
 	AgeRating       string
+	Rating          *float64
+	Sales           *int64
+	RegularPrice    *int64
+	Price           *int64
+	PriceCurrency   string
+	PermanentlyFree *bool
 	Snapshot        string
 	CircleLink      sql.NullString
 	ListeningStatus string
@@ -2121,7 +2171,19 @@ func scanVoiceWorkRow(rows *sql.Rows) (voiceWorkRow, error) {
 	var item voiceWorkRow
 	var hasLocal, hasRemote, hasCache int
 	var favorite int
-	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.AgeRating, &item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
+	var rating sql.NullFloat64
+	var sales, regularPrice, currentPrice sql.NullInt64
+	var permanentlyFree sql.NullBool
+	err := rows.Scan(&item.ID, &item.PrimaryCode, &item.Title, &item.ReleaseDate, &item.AgeRating,
+		&rating, &sales, &regularPrice, &currentPrice, &item.PriceCurrency, &permanentlyFree,
+		&item.Snapshot, &item.CircleLink, &item.ListeningStatus, &favorite, &hasLocal, &hasRemote, &hasCache, &item.SeriesTitleID)
+	item.Rating = nullableFloat64(rating)
+	item.Sales = nullableInt64(sales)
+	item.RegularPrice = nullableInt64(regularPrice)
+	item.Price = nullableInt64(currentPrice)
+	if permanentlyFree.Valid {
+		item.PermanentlyFree = &permanentlyFree.Bool
+	}
 	item.Favorite = favorite != 0
 	item.HasLocal = hasLocal != 0
 	item.HasRemote = hasRemote != 0
