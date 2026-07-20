@@ -167,6 +167,83 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 	}
 }
 
+func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
+	migrationDir := filepath.Join("..", "..", "migrations")
+	preAliasDir := t.TempDir()
+	entries, err := os.ReadDir(migrationDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == "008_work_code_alias.sql" {
+			continue
+		}
+		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(preAliasDir, entry.Name()), contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	db, err := Open(filepath.Join(t.TempDir(), "code-alias.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db, preAliasDir); err != nil {
+		t.Fatal(err)
+	}
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09994001', 'Canonical')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09994001')", workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalWorkID, _ := logicalResult.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical)
+		VALUES (?, ?, ?, 'RJ09994001', 1)
+	`, workID, logicalWorkID, providerID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := `{"product":{"language_editions":[{"workno":"RJ09994001","lang":"JPN","label":"Japanese"},{"workno":"RJ09994002","lang":"ENG","label":"English"}]}}`
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09994001', ?)", workID, providerID, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(db, migrationDir); err != nil {
+		t.Fatal(err)
+	}
+
+	var sourceWorkID sql.NullInt64
+	var language, label, kind string
+	if err := db.QueryRow(`
+		SELECT source_work_id, metadata_language, edition_label, relationship_kind
+		FROM work_code_alias
+		WHERE provider_id = ? AND primary_code = 'RJ09994002'
+	`, providerID).Scan(&sourceWorkID, &language, &label, &kind); err != nil {
+		t.Fatal(err)
+	}
+	if sourceWorkID.Valid || language != "ENG" || label != "English" || kind != "provider_declared" {
+		t.Fatalf("declared alias = source %v, language %q, label %q, kind %q", sourceWorkID, language, label, kind)
+	}
+	var persistedSourceID sql.NullInt64
+	if err := db.QueryRow("SELECT source_work_id FROM work_code_alias WHERE provider_id = ? AND primary_code = 'RJ09994001'", providerID).Scan(&persistedSourceID); err != nil {
+		t.Fatal(err)
+	}
+	if !persistedSourceID.Valid || persistedSourceID.Int64 != workID {
+		t.Fatalf("persisted alias source = %v, want %d", persistedSourceID, workID)
+	}
+}
+
 func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
 	initialSQL, err := os.ReadFile(filepath.Join(migrationDir, "001_initial.sql"))
@@ -207,7 +284,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 7 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" {
+	if len(migrations) != 8 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var lyricsPreferenceTable int
@@ -266,6 +343,7 @@ func TestMigrateAddsQueryIndexes(t *testing.T) {
 		"metadata_snapshot": "idx_metadata_snapshot_work_provider_latest",
 		"work":              "idx_work_primary_code_upper",
 		"work_edition":      "idx_work_edition_primary_code_upper",
+		"work_code_alias":   "idx_work_code_alias_code_upper",
 		"party_series_work": "idx_party_series_work_code_upper",
 		"workflow_event":    "idx_workflow_event_run_id",
 	} {

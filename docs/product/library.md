@@ -6,6 +6,10 @@ The Library is the main browsing surface for works.
 
 - Shows local, tracked, and configured remote source tabs.
 - Uses server-side pagination for large result sets.
+- Searches normalized titles, codes, language-edition aliases, circles, tags,
+  and voice credits before hydrating the current page. Provider-declared edition
+  codes remain searchable without creating extra works or scanning raw metadata
+  snapshots during a Library request.
 - Shows cover, title, code, circle, rating, tags, voice metadata, local
   availability, source tags, and quick listening marks when available.
 - Shows the signed-in user's work tags separately from metadata tags on unified

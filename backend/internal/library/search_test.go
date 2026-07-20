@@ -2,6 +2,7 @@ package library
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,26 @@ func TestParseSearchClausesSupportsPersonalTags(t *testing.T) {
 func TestNumericClauseValueIgnoresUnits(t *testing.T) {
 	if got := NumericClauseValue("4.75 stars"); got != 4.75 {
 		t.Fatalf("NumericClauseValue() = %v, want 4.75", got)
+	}
+}
+
+func TestCodeAndTextSearchPredicatesAvoidRawMetadataSnapshots(t *testing.T) {
+	for _, query := range []string{"RJ01234567", "Example title"} {
+		where, _ := SearchWhereForUser(query, 42)
+		lower := strings.ToLower(where)
+		if strings.Contains(lower, "metadata_snapshot") || strings.Contains(lower, "snapshot_json") {
+			t.Fatalf("SearchWhereForUser(%q) reads raw metadata snapshots: %s", query, where)
+		}
+	}
+}
+
+func TestCodeSearchUsesExactNormalizedAliases(t *testing.T) {
+	where, args := SearchWhere("rj01234567")
+	if !strings.Contains(where, "work_code_alias") || strings.Contains(where, " LIKE ") {
+		t.Fatalf("code predicate = %s", where)
+	}
+	want := []any{"RJ01234567", "RJ01234567", "RJ01234567", "RJ01234567"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("code args = %#v, want %#v", args, want)
 	}
 }

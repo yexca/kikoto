@@ -962,6 +962,12 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 	`, workID, logicalWorkID, providerID, currentCode, baseCode, language, editionLabel, isCanonical, strings.ToUpper(strings.TrimSpace(product.MakerID))); err != nil {
 		return err
 	}
+	if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, currentCode, language, editionLabel, workID, "persisted_edition"); err != nil {
+		return err
+	}
+	if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, canonicalCode, "", "", nil, "provider_declared"); err != nil {
+		return err
+	}
 	if isCanonical == 1 {
 		if _, err = tx.ExecContext(ctx, "UPDATE logical_work SET canonical_work_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", workID, logicalWorkID); err != nil {
 			return err
@@ -976,6 +982,11 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 		if !dlsiteWorkNoPattern.MatchString(code) {
 			continue
 		}
+		language := strings.TrimSpace(firstNonEmptyText(edition.Lang, edition.Label))
+		label := strings.TrimSpace(edition.Label)
+		if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, code, language, label, nil, "provider_declared"); err != nil {
+			return err
+		}
 		editionWorkID, err := selectID(ctx, tx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -987,8 +998,6 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 		if strings.EqualFold(code, canonicalCode) {
 			isCanonical = 1
 		}
-		language := strings.TrimSpace(firstNonEmptyText(edition.Lang, edition.Label))
-		label := strings.TrimSpace(edition.Label)
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1010,8 +1019,45 @@ func syncKnownProductLanguageEditions(ctx context.Context, tx *sql.Tx, providerI
 		`, editionWorkID, logicalWorkID, providerID, code, canonicalCode, language, label, isCanonical); err != nil {
 			return err
 		}
+		if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, code, language, label, editionWorkID, "persisted_edition"); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func upsertWorkCodeAlias(ctx context.Context, tx *sql.Tx, logicalWorkID int64, providerID int64, code string, language string, label string, sourceWorkID any, relationshipKind string) error {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if !dlsiteWorkNoPattern.MatchString(code) {
+		return nil
+	}
+	if relationshipKind != "persisted_edition" {
+		relationshipKind = "provider_declared"
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO work_code_alias (
+			logical_work_id, provider_id, primary_code, metadata_language,
+			edition_label, source_work_id, relationship_kind, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(provider_id, primary_code) DO UPDATE SET
+			logical_work_id = excluded.logical_work_id,
+			metadata_language = CASE
+				WHEN excluded.metadata_language <> '' THEN excluded.metadata_language
+				ELSE work_code_alias.metadata_language
+			END,
+			edition_label = CASE
+				WHEN excluded.edition_label <> '' THEN excluded.edition_label
+				ELSE work_code_alias.edition_label
+			END,
+			source_work_id = COALESCE(excluded.source_work_id, work_code_alias.source_work_id),
+			relationship_kind = CASE
+				WHEN excluded.source_work_id IS NOT NULL THEN 'persisted_edition'
+				ELSE work_code_alias.relationship_kind
+			END,
+			updated_at = CURRENT_TIMESTAMP
+	`, logicalWorkID, providerID, code, strings.TrimSpace(language), strings.TrimSpace(label), sourceWorkID, relationshipKind)
+	return err
 }
 
 func originCodeFromSnapshot(raw string) string {

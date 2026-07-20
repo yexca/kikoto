@@ -9,6 +9,7 @@ Important tables:
 - `work`
 - `logical_work`
 - `work_edition`
+- `work_code_alias`
 - `work_external_id`
 - `metadata_provider`
 - `metadata_snapshot`
@@ -20,6 +21,10 @@ Important tables:
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
+
+`work_code_alias` maps provider-declared edition codes to a logical work. An
+alias may reference a persisted edition work, but metadata-only aliases do not
+create works and do not imply local or remote file availability.
 
 ## File Availability
 
@@ -73,6 +78,8 @@ item; runtime location selection remains a file-source concern.
 - Concrete local, cache, stream, and download paths go in `media_file_location`.
 - Provider snapshots stay available for traceability even when normalized work
   fields are updated.
+- Interactive code and text search reads normalized metadata and aliases rather
+  than scanning raw provider snapshot JSON.
 - User state should survive metadata refresh and source replacement.
 
 ## Related Docs

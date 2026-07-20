@@ -290,23 +290,14 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 		like := "%" + strings.ToLower(needle) + "%"
 		switch clause.Kind {
 		case "code":
-			clauses = append(clauses, familyCodeLikeClause())
-			args = append(args, like, like, like, like)
+			exactCode := strings.ToUpper(needle)
+			clauses = append(clauses, familyCodeClause())
+			args = append(args, exactCode, exactCode, exactCode, exactCode)
 		case "circle":
-			clauses = append(clauses, `(EXISTS (
-				SELECT 1 FROM work_party AS search_relation
-				INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
-				LEFT JOIN party_external_id AS search_external ON search_external.party_id = search_party.id
-				WHERE search_relation.work_id = work.id AND search_relation.role = 'circle'
-					AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
-			) OR `+manualOverrideFieldLikeClause("circle")+`)`)
+			clauses = append(clauses, `(`+familyCircleLikeClause()+` OR `+manualOverrideFieldLikeClause("circle")+`)`)
 			args = append(args, like, like, like)
 		case "voice_actor":
-			clauses = append(clauses, `(EXISTS (
-				SELECT 1 FROM work_credit AS search_credit
-				INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
-				WHERE search_credit.work_id = work.id AND search_credit.role = 'voice_actor' AND LOWER(search_person.display_name) LIKE ?
-			) OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
+			clauses = append(clauses, `(`+familyVoiceActorLikeClause()+` OR `+manualOverrideFieldLikeClause("voice_actors")+`)`)
 			args = append(args, like, like)
 		case "tag":
 			clauses = append(clauses, normalizedTagLikeClause(false))
@@ -339,8 +330,8 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 			if userID > 0 {
 				personalTag = " OR " + userTagLikeClause(false)
 			}
-			clauses = append(clauses, `(`+familyWorkTextLikeClause()+` OR `+normalizedTagLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
-			args = append(args, like, like, like, like, like, like, like, like)
+			clauses = append(clauses, `(`+familyWorkTextLikeClause()+` OR `+familyCircleLikeClause()+` OR `+familyVoiceActorLikeClause()+` OR `+normalizedTagLikeClause(false)+` OR `+manualOverrideAnyLikeClause("title", "circle", "series", "voice_actors")+personalTag+`)`)
+			args = append(args, like, like, like, like, like, like, like, like, like, like)
 			if userID > 0 {
 				args = append(args, userID, like)
 			}
@@ -352,13 +343,24 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 	return "(" + strings.Join(clauses, " AND ") + ")", args
 }
 
-func familyCodeLikeClause() string {
-	return `(LOWER(work.primary_code) LIKE ? OR EXISTS (
+func familyCodeClause() string {
+	return `(UPPER(work.primary_code) = ? OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-		WHERE search_current_edition.work_id = work.id AND LOWER(search_sibling_edition.primary_code) LIKE ?
-	) OR ` + familySnapshotLikeClause() + `)`
+		WHERE search_current_edition.work_id = work.id AND UPPER(search_sibling_edition.primary_code) = ?
+	) OR EXISTS (
+		SELECT 1
+		FROM work_edition AS search_current_edition
+		INNER JOIN work_code_alias AS search_alias ON search_alias.logical_work_id = search_current_edition.logical_work_id
+		WHERE search_current_edition.work_id = work.id AND UPPER(search_alias.primary_code) = ?
+	) OR EXISTS (
+		SELECT 1
+		FROM work_external_id AS search_external_id
+		WHERE search_external_id.work_id = work.id
+			AND search_external_id.id_type IN ('workno', 'product_id')
+			AND UPPER(search_external_id.external_id) = ?
+	))`
 }
 
 func familyWorkTextLikeClause() string {
@@ -369,20 +371,52 @@ func familyWorkTextLikeClause() string {
 		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
 		WHERE search_current_edition.work_id = work.id
 			AND (LOWER(search_sibling_work.primary_code) LIKE ? OR LOWER(search_sibling_work.title) LIKE ?)
-	) OR ` + familySnapshotLikeClause() + `)`
-}
-
-func familySnapshotLikeClause() string {
-	return `(` + latestSnapshotLikeClause() + ` OR EXISTS (
+	) OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
-		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
-		INNER JOIN metadata_snapshot AS search_family_snapshot ON search_family_snapshot.work_id = search_sibling_edition.work_id
-		INNER JOIN metadata_provider AS search_family_provider ON search_family_provider.id = search_family_snapshot.provider_id
+		INNER JOIN work_code_alias AS search_alias ON search_alias.logical_work_id = search_current_edition.logical_work_id
 		WHERE search_current_edition.work_id = work.id
-			AND search_family_provider.code = 'dlsite'
-			AND LOWER(search_family_snapshot.snapshot_json) LIKE ?
+			AND LOWER(search_alias.primary_code) LIKE ?
 	))`
+}
+
+func familyCircleLikeClause() string {
+	return `EXISTS (
+		SELECT 1
+		FROM work_party AS search_relation
+		INNER JOIN party AS search_party ON search_party.id = search_relation.party_id
+		LEFT JOIN party_external_id AS search_external ON search_external.party_id = search_party.id
+		WHERE search_relation.role = 'circle'
+			AND (
+				search_relation.work_id = work.id
+				OR search_relation.work_id IN (
+					SELECT search_sibling_edition.work_id
+					FROM work_edition AS search_current_edition
+					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+					WHERE search_current_edition.work_id = work.id
+				)
+			)
+			AND (LOWER(search_party.display_name) LIKE ? OR LOWER(COALESCE(search_external.external_id, '')) LIKE ?)
+	)`
+}
+
+func familyVoiceActorLikeClause() string {
+	return `EXISTS (
+		SELECT 1
+		FROM work_credit AS search_credit
+		INNER JOIN person AS search_person ON search_person.id = search_credit.person_id
+		WHERE search_credit.role = 'voice_actor'
+			AND (
+				search_credit.work_id = work.id
+				OR search_credit.work_id IN (
+					SELECT search_sibling_edition.work_id
+					FROM work_edition AS search_current_edition
+					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+					WHERE search_current_edition.work_id = work.id
+				)
+			)
+			AND LOWER(search_person.display_name) LIKE ?
+	)`
 }
 
 func familyWorkColumnLikeClause(column string) string {
@@ -437,7 +471,22 @@ func normalizedTagLikeClause(negated bool) string {
 	if negated {
 		prefix = "NOT EXISTS"
 	}
-	return prefix + ` (SELECT 1 FROM work_tag AS search_work_tag INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id WHERE search_work_tag.work_id = work.id AND search_tag.namespace = 'dlsite' AND LOWER(search_tag.display_name) LIKE ?)`
+	return prefix + ` (
+		SELECT 1
+		FROM work_tag AS search_work_tag
+		INNER JOIN tag AS search_tag ON search_tag.id = search_work_tag.tag_id
+		WHERE search_tag.namespace = 'dlsite'
+			AND (
+				search_work_tag.work_id = work.id
+				OR search_work_tag.work_id IN (
+					SELECT search_sibling_edition.work_id
+					FROM work_edition AS search_current_edition
+					INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
+					WHERE search_current_edition.work_id = work.id
+				)
+			)
+			AND LOWER(search_tag.display_name) LIKE ?
+	)`
 }
 
 func userTagLikeClause(negated bool) string {
@@ -454,10 +503,6 @@ func manualOverrideAnyLikeClause(fields ...string) string {
 		quoted = append(quoted, "'"+field+"'")
 	}
 	return `EXISTS (SELECT 1 FROM work_manual_override AS search_override WHERE search_override.work_id = work.id AND search_override.field_name IN (` + strings.Join(quoted, ",") + `) AND LOWER(search_override.value_json) LIKE ?)`
-}
-
-func latestSnapshotLikeClause() string {
-	return `(LOWER(COALESCE((SELECT snapshot_json FROM metadata_snapshot AS search_snapshot INNER JOIN metadata_provider AS search_provider ON search_provider.id = search_snapshot.provider_id WHERE search_snapshot.work_id = work.id AND search_provider.code = 'dlsite' ORDER BY search_snapshot.fetched_at DESC, search_snapshot.id DESC LIMIT 1), '')) LIKE ?)`
 }
 
 func latestSnapshotNumericClause(kind string, operator string, value float64) string {

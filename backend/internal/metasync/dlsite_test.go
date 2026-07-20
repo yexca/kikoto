@@ -294,6 +294,16 @@ func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
 	if calls["RJ0123505"] != 1 {
 		t.Fatalf("unknown-status unavailable edition calls = %d, want 1", calls["RJ0123505"])
 	}
+	var aliasCount, workCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_code_alias WHERE primary_code IN ('RJ0123502', 'RJ0123505') AND source_work_id IS NULL").Scan(&aliasCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code IN ('RJ0123502', 'RJ0123505')").Scan(&workCount); err != nil {
+		t.Fatal(err)
+	}
+	if aliasCount != 2 || workCount != 0 {
+		t.Fatalf("unavailable editions = aliases %d, works %d, want 2 aliases and no works", aliasCount, workCount)
+	}
 }
 
 func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
@@ -326,6 +336,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, translation_kind TEXT NOT NULL DEFAULT 'unknown', classification_source TEXT NOT NULL DEFAULT '', maker_id TEXT NOT NULL DEFAULT '', origin_maker_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE UNIQUE INDEX idx_work_edition_provider_code ON work_edition(provider_id, primary_code)`,
 		`CREATE INDEX idx_work_edition_logical_work ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
+		`CREATE TABLE work_code_alias (id INTEGER PRIMARY KEY, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', source_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, relationship_kind TEXT NOT NULL DEFAULT 'provider_declared', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(provider_id, primary_code))`,
 		`CREATE TABLE work_external_id (id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), id_type TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, UNIQUE(provider_id, id_type, external_id))`,
 		`CREATE TABLE metadata_snapshot (id INTEGER PRIMARY KEY, work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), external_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE tag (id INTEGER PRIMARY KEY, namespace TEXT NOT NULL, normalized_name TEXT NOT NULL, display_name TEXT NOT NULL, language TEXT NOT NULL DEFAULT '', is_user_defined INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(namespace, normalized_name, language))`,

@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -73,6 +74,134 @@ func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
 			t.Fatalf("ListPage(%q) = total %d, works %#v", query, page.Total, page.Works)
 		}
 	}
+}
+
+func TestStoreListPageSearchesDeclaredCodeAliasesWithoutRawSnapshots(t *testing.T) {
+	db := openMigratedTestDB(t, "code-aliases.db")
+	providerID := testMetadataProviderID(t, db)
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09992001', 'Canonical title')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09992001')", workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalWorkID, _ := logicalResult.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical)
+		VALUES (?, ?, ?, 'RJ09992001', 1)
+	`, workID, logicalWorkID, providerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO work_code_alias (logical_work_id, provider_id, primary_code, metadata_language, edition_label)
+		VALUES (?, ?, 'RJ09992002', 'ENG', 'English')
+	`, logicalWorkID, providerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		VALUES (?, ?, 'RJ09992001', '{"internal_only":"RawSnapshotNeedle"}')
+	`, workID, providerID); err != nil {
+		t.Fatal(err)
+	}
+
+	store := library.NewStore(db)
+	page, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: "RJ09992002"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].ID != workID {
+		t.Fatalf("alias search = total %d, works %#v", page.Total, page.Works)
+	}
+	page, err = store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: "RawSnapshotNeedle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 0 || len(page.Works) != 0 {
+		t.Fatalf("raw snapshot search = total %d, works %#v", page.Total, page.Works)
+	}
+}
+
+func TestStoreListPageSearchesNormalizedFamilyRelations(t *testing.T) {
+	db := openMigratedTestDB(t, "family-search.db")
+	providerID := testMetadataProviderID(t, db)
+	canonicalResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09993001', 'Canonical title')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalID, _ := canonicalResult.LastInsertId()
+	siblingResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09993002', 'Translated title')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siblingID, _ := siblingResult.LastInsertId()
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09993001')", canonicalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalWorkID, _ := logicalResult.LastInsertId()
+	for _, item := range []struct {
+		workID int64
+		code   string
+		base   string
+		canon  int
+	}{{canonicalID, "RJ09993001", "", 1}, {siblingID, "RJ09993002", "RJ09993001", 0}} {
+		if _, err := db.Exec(`
+			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, is_canonical)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, item.workID, logicalWorkID, providerID, item.code, item.base, item.canon); err != nil {
+			t.Fatal(err)
+		}
+	}
+	partyResult, err := db.Exec("INSERT INTO party (display_name) VALUES ('Normalized Circle')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	partyID, _ := partyResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_party (work_id, party_id, role) VALUES (?, ?, 'circle')", siblingID, partyID); err != nil {
+		t.Fatal(err)
+	}
+	personResult, err := db.Exec("INSERT INTO person (display_name) VALUES ('Normalized Voice')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	personID, _ := personResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_credit (work_id, person_id, role) VALUES (?, ?, 'voice_actor')", siblingID, personID); err != nil {
+		t.Fatal(err)
+	}
+	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'normalized-tag', 'Normalized Tag')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'test')", siblingID, tagID); err != nil {
+		t.Fatal(err)
+	}
+
+	store := library.NewStore(db)
+	for _, query := range []string{"Normalized Circle", "Normalized Voice", "Normalized Tag"} {
+		page, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != 1 || len(page.Works) != 1 || page.Works[0].ID != canonicalID {
+			t.Fatalf("family search %q = total %d, works %#v", query, page.Total, page.Works)
+		}
+	}
+}
+
+func testMetadataProviderID(t *testing.T, db interface {
+	QueryRow(query string, args ...any) *sql.Row
+}) int64 {
+	t.Helper()
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	return providerID
 }
 
 func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {

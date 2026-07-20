@@ -12,6 +12,9 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
+The current sequence continues through `008_work_code_alias.sql`, which adds
+metadata-only logical-work code aliases and backfills existing edition metadata.
+
 ## Guidelines
 
 - Keep schema changes aligned with the unified work model.
