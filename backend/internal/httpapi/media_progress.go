@@ -51,16 +51,6 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
 		return
 	}
-	var exists int
-	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM media_item WHERE id = ?", mediaItemID).Scan(&exists); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media item not found"})
-			return
-		}
-		writeError(w, err)
-		return
-	}
-
 	var payload struct {
 		PositionSeconds float64  `json:"positionSeconds"`
 		DurationSeconds *float64 `json:"durationSeconds"`
@@ -82,7 +72,10 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		payload.PositionSeconds = *payload.DurationSeconds
 	}
 
-	if _, err := s.db.ExecContext(r.Context(), `
+	var progress mediaProgressResponse
+	var durationSeconds sql.NullFloat64
+	var lastPlayedAt sql.NullString
+	if err := s.db.QueryRowContext(r.Context(), `
 		INSERT INTO user_media_progress (
 			user_id,
 			media_item_id,
@@ -91,29 +84,33 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 			completed,
 			last_played_at
 		)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		SELECT ?, item.id, ?, ?, ?, CURRENT_TIMESTAMP
+		FROM media_item AS item
+		WHERE item.id = ?
 		ON CONFLICT(user_id, media_item_id) DO UPDATE SET
 			position_seconds = excluded.position_seconds,
 			duration_seconds = excluded.duration_seconds,
 			completed = excluded.completed,
 			last_played_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
-	`, user.ID, mediaItemID, payload.PositionSeconds, payload.DurationSeconds, payload.Completed); err != nil {
+		RETURNING media_item_id, position_seconds, duration_seconds, completed, last_played_at
+	`, user.ID, payload.PositionSeconds, payload.DurationSeconds, payload.Completed, mediaItemID).Scan(
+		&progress.MediaItemID,
+		&progress.PositionSeconds,
+		&durationSeconds,
+		&progress.Completed,
+		&lastPlayedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media item not found"})
+			return
+		}
 		writeError(w, err)
 		return
 	}
-	progress, err := s.loadMediaProgress(r.Context(), user.ID, mediaItemID)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, mediaProgressResponse{
-		MediaItemID:     mediaItemID,
-		PositionSeconds: progress.PositionSeconds,
-		DurationSeconds: progress.DurationSeconds,
-		Completed:       progress.Completed,
-		LastPlayedAt:    progress.LastPlayedAt,
-	})
+	progress.DurationSeconds = nullableFloat64(durationSeconds)
+	progress.LastPlayedAt = nullableString(lastPlayedAt)
+	writeJSON(w, http.StatusOK, progress)
 }
 
 func validSeconds(value float64) bool {

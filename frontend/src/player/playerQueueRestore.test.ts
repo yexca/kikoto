@@ -68,4 +68,43 @@ describe("revalidatePersistedQueue", () => {
   it("removes a queue item whose media no longer exists", async () => {
     await expect(revalidatePersistedQueue([persistedTrack], async () => [])).resolves.toEqual([]);
   });
+
+  it("keeps a newer local checkpoint while refreshing media locations", async () => {
+    const localProgress = {
+      positionSeconds: 42,
+      durationSeconds: 60,
+      completed: false,
+      lastPlayedAt: "2026-07-21T01:00:30.000Z",
+    };
+    const mediaItems = [{
+      id: 10,
+      parentId: null,
+      kind: "audio",
+      title: "Track",
+      discNo: null,
+      trackNo: null,
+      durationSeconds: 60,
+      sizeBytes: 1000,
+      fingerprint: "",
+      progress: { ...localProgress, positionSeconds: 20, lastPlayedAt: "2026-07-21 01:00:00" },
+      locations: [{
+        id: 100,
+        fileSourceId: 1,
+        fileSourceCode: "local",
+        fileSourceName: "Local",
+        locationType: "local",
+        path: "track.mp3",
+        streamUrl: "/api/media/100/stream",
+        downloadUrl: "",
+        remoteHash: "",
+        sizeBytes: 1000,
+        durationSeconds: 60,
+        availability: "available",
+        lastCheckedAt: null,
+      }],
+    }] satisfies MediaItem[];
+
+    const result = await revalidatePersistedQueue([{ ...persistedTrack, progress: localProgress }], async () => mediaItems);
+    expect(result[0].progress).toEqual(localProgress);
+  });
 });

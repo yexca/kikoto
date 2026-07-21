@@ -145,6 +145,31 @@ async function mockApplication(
       await route.fulfill({ json: { works, page: 1, pageSize: 24, total: works.length } });
       return;
     }
+    if (url.pathname === `/api/works/${fixture.work?.primaryCode ?? work.primaryCode}/resolve`) {
+      const fixtureWork = fixture.work ?? work;
+      await route.fulfill({ json: {
+        requestedCode: fixtureWork.primaryCode,
+        resolvedCode: fixtureWork.primaryCode,
+        workId: fixtureWork.id,
+        baseCode: "",
+        isTranslation: false,
+        title: fixtureWork.title,
+        coverUrl: fixtureWork.coverUrl,
+        circle: fixtureWork.circle,
+        circleExternalId: fixtureWork.circleExternalId,
+        releaseDate: fixtureWork.releaseDate,
+        rating: fixtureWork.rating,
+        sales: fixtureWork.sales,
+        regularPrice: null,
+        price: null,
+        priceCurrency: "JPY",
+        permanentlyFree: false,
+        tags: fixtureWork.tags,
+        voiceActors: fixtureWork.voiceActors,
+        voiceCredits: fixtureWork.voiceCredits,
+      } });
+      return;
+    }
     if (url.pathname === `/api/works/${fixture.work?.primaryCode ?? work.primaryCode}/source-availability`) {
       if (route.request().method() === "POST") fixture.onSourceCheck?.();
       await route.fulfill({ json: fixture.sourceAvailability ?? { workCode: fixture.work?.primaryCode ?? work.primaryCode, checkedAt: "", sources: [] } });
@@ -1107,6 +1132,10 @@ test("compact player supports relative drag seeking and global playback shortcut
     element.dispatchEvent(new Event("timeupdate"));
   });
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
+  await expect.poll(() => page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("kikoto:player-progress:v1") ?? "null");
+    return stored?.items?.["1"]?.positionSeconds ?? 0;
+  })).toBeGreaterThan(39);
   const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
   const box = await compact.boundingBox();
   expect(box).not.toBeNull();

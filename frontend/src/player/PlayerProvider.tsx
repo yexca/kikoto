@@ -39,6 +39,14 @@ import {
   updateNativeMedia,
 } from "@/lib/nativeMedia";
 import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
+import {
+  checkpointProgress,
+  newestMediaProgress,
+  shouldSaveLocalProgress,
+  shouldSaveRemoteProgress,
+  type LocalProgressCheckpoint,
+  type ProgressSaveMarker,
+} from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 
 export type PlayMode = "order" | "loop" | "single";
@@ -146,8 +154,51 @@ type LibraryPlayerContextValue = {
 
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
 const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
+const PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
 const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
+const MAX_LOCAL_PROGRESS_CHECKPOINTS = 100;
+
+function loadLocalProgressCheckpoints(): Record<string, LocalProgressCheckpoint> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLAYER_PROGRESS_STORAGE_KEY) ?? "null") as {
+      version?: number;
+      items?: Record<string, LocalProgressCheckpoint>;
+    } | null;
+    if (parsed?.version !== 1 || !parsed.items || typeof parsed.items !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed.items).filter(([, checkpoint]) =>
+        checkpoint &&
+        checkpoint.mediaItemId > 0 &&
+        Number.isFinite(checkpoint.positionSeconds) &&
+        checkpoint.positionSeconds >= 0 &&
+        typeof checkpoint.updatedAt === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function persistLocalProgressCheckpoint(
+  checkpoints: Record<string, LocalProgressCheckpoint>,
+  checkpoint: LocalProgressCheckpoint,
+) {
+  checkpoints[String(checkpoint.mediaItemId)] = checkpoint;
+  const items = Object.fromEntries(
+    Object.entries(checkpoints)
+      .sort(([, first], [, second]) => second.updatedAt.localeCompare(first.updatedAt))
+      .slice(0, MAX_LOCAL_PROGRESS_CHECKPOINTS),
+  );
+  for (const key of Object.keys(checkpoints)) {
+    if (!(key in items)) delete checkpoints[key];
+  }
+  try {
+    localStorage.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify({ version: 1, items }));
+  } catch {
+    // Playback should continue when browser storage is unavailable or full.
+  }
+}
 
 function isDockMode(value: unknown): value is DockMode {
   return value === "full" || value === "compact" || value === "mini";
@@ -195,6 +246,7 @@ function loadPersistedQueue(): {
   sleepTimer: SleepTimerState;
 } {
   try {
+    const localProgress = loadLocalProgressCheckpoints();
     const parsed = JSON.parse(localStorage.getItem(PLAYER_QUEUE_STORAGE_KEY) ?? "null") as {
       version?: number;
       queue?: PlayerTrack[];
@@ -204,7 +256,15 @@ function loadPersistedQueue(): {
       sleepTimer?: SleepTimerState | { mode: "track_end" };
     } | null;
     const queue = Array.isArray(parsed?.queue)
-      ? parsed.queue.filter((track) => track && track.mediaItemId > 0 && track.streamUrl).map(withQueueIdentity)
+      ? parsed.queue
+          .filter((track) => track && track.mediaItemId > 0 && track.streamUrl)
+          .map(withQueueIdentity)
+          .map((track) => {
+            const checkpoint = localProgress[String(track.mediaItemId)];
+            return checkpoint
+              ? { ...track, progress: newestMediaProgress(track.progress, checkpointProgress(checkpoint)) }
+              : track;
+          })
       : [];
     const currentIndex = Math.max(0, Math.min(queue.length - 1, Number(parsed?.currentIndex) || 0));
     const mode = parsed?.mode === "loop" || parsed?.mode === "single" ? parsed.mode : "order";
@@ -269,7 +329,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const restoredMediaItemRef = useRef<number | null>(null);
-  const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
+  const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
+  const lastLocalSavedRef = useRef<ProgressSaveMarker | null>(null);
+  const localProgressRef = useRef(loadLocalProgressCheckpoints());
+  const progressSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
   const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
     inFlight: false,
     pending: new Map(),
@@ -428,6 +491,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playQueue = useCallback((tracks: PlayerTrack[], locationId: number) => {
     if (tracks.length === 0) return;
+    progressSaveRef.current(false, true);
     const normalizedTracks = tracks.map(withQueueIdentity);
     const nextIndex = Math.max(
       0,
@@ -440,26 +504,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const selectTrack = (index: number) => {
     if (index < 0 || index >= queue.length) return;
+    if (index !== currentIndex) progressSaveRef.current(false, true);
     setCurrentIndex(index);
     setIsPlaying(true);
   };
 
   const next = () => {
-    setCurrentIndex((index) => {
-      if (queue.length === 0) return 0;
-      if (index < queue.length - 1) return index + 1;
-      return mode === "loop" ? 0 : index;
-    });
-    if (queue.length > 0) setIsPlaying(true);
+    if (queue.length === 0) return;
+    const nextIndex = currentIndex < queue.length - 1 ? currentIndex + 1 : mode === "loop" ? 0 : currentIndex;
+    if (nextIndex !== currentIndex) progressSaveRef.current(false, true);
+    setCurrentIndex(nextIndex);
+    setIsPlaying(true);
   };
 
   const previous = () => {
-    setCurrentIndex((index) => {
-      if (queue.length === 0) return 0;
-      if (index > 0) return index - 1;
-      return mode === "loop" ? queue.length - 1 : index;
-    });
-    if (queue.length > 0) setIsPlaying(true);
+    if (queue.length === 0) return;
+    const nextIndex = currentIndex > 0 ? currentIndex - 1 : mode === "loop" ? queue.length - 1 : currentIndex;
+    if (nextIndex !== currentIndex) progressSaveRef.current(false, true);
+    setCurrentIndex(nextIndex);
+    setIsPlaying(true);
   };
 
   const seekTo = (seconds: number) => {
@@ -477,23 +540,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
-    if (!auth.user || auth.demoMode) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
     const position = completed ? audio.duration || audio.currentTime : audio.currentTime;
     if (!Number.isFinite(position) || position < 0) return;
     const durationValue = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null;
     const now = Date.now();
-    const lastSaved = lastSavedRef.current;
-    if (
-      !force &&
-      lastSaved?.mediaItemId === currentTrack.mediaItemId &&
-      now - lastSaved.at < 10_000 &&
-      Math.abs(position - lastSaved.position) < 8
-    ) {
-      return;
+    const marker = { mediaItemId: currentTrack.mediaItemId, position, completed, at: now };
+    const lastLocalSaved = lastLocalSavedRef.current;
+    if (shouldSaveLocalProgress(lastLocalSaved, marker, force)) {
+      persistLocalProgressCheckpoint(localProgressRef.current, {
+        mediaItemId: currentTrack.mediaItemId,
+        positionSeconds: position,
+        durationSeconds: durationValue,
+        completed,
+        updatedAt: new Date(now).toISOString(),
+      });
+      lastLocalSavedRef.current = marker;
     }
-    lastSavedRef.current = { mediaItemId: currentTrack.mediaItemId, position, at: now };
+    if (!auth.user || auth.demoMode) return;
+    if (!shouldSaveRemoteProgress(lastSavedRef.current, marker, force)) return;
+    lastSavedRef.current = marker;
     queueProgressSave(currentTrack.mediaItemId, {
       positionSeconds: position,
       durationSeconds: durationValue,
@@ -516,6 +583,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       queueState.inFlight = false;
     })();
   };
+
+  progressSaveRef.current = saveProgress;
+
+  useEffect(() => {
+    const flushProgress = () => progressSaveRef.current(false, true);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushProgress();
+    };
+    window.addEventListener("pagehide", flushProgress);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushProgress);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!sleepTimer) {
@@ -613,6 +695,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeQueueItem = (queueItemId: string) => {
+    if (queue[currentIndex]?.queueItemId === queueItemId) progressSaveRef.current(false, true);
     setQueue((items) => {
       const removedIndex = items.findIndex((item) => item.queueItemId === queueItemId);
       if (removedIndex < 0) return items;
@@ -631,6 +714,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearQueue = () => {
+    progressSaveRef.current(false, true);
     setQueue([]);
     setCurrentIndex(0);
     setIsPlaying(false);
@@ -638,6 +722,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const selectLocation = (locationId: number) => {
+    if (currentTrack?.locationId !== locationId) progressSaveRef.current(false, true);
     failedLocationIDsRef.current.clear();
     setQueue((items) =>
       items.map((item, index) => {
@@ -663,6 +748,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       toast.error(`Playback failed: no working source remains for ${currentTrack.title}.`);
       return;
     }
+    progressSaveRef.current(false, true);
     setQueue((items) =>
       items.map((item, index) => (index === currentIndex ? applyTrackLocation(item, nextLocation) : item)),
     );
@@ -943,6 +1029,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             saveProgress(false, true);
             setIsPlaying(false);
           }}
+          onSeeked={() => saveProgress(false, true)}
           onEnded={handleEnded}
           onError={tryNextLocation}
         />
