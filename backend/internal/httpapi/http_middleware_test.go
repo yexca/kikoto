@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -80,10 +81,11 @@ func TestDemoReadOnlyMiddlewareRejectsMutations(t *testing.T) {
 
 func TestDemoModeDoesNotDispatchOrRunQueuedJobs(t *testing.T) {
 	server := NewServer(nil, config.Config{Mode: config.ModeDemo})
-	if err := server.dispatchDueCustomWorkflowTrigger(t.Context()); err != nil {
+	ctx := context.Background()
+	if err := server.dispatchDueCustomWorkflowTrigger(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.runNextQueuedWorkflowJob(t.Context(), "demo-runner"); err != nil {
+	if err := server.runNextQueuedWorkflowJob(ctx, "demo-runner"); err != nil {
 		t.Fatal(err)
 	}
 }
