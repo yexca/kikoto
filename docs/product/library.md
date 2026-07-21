@@ -35,10 +35,11 @@ The Library is the main browsing surface for works.
   strip can be collapsed, and that preference is kept in the browser.
 - Provides database-oriented diagnostic scopes for works that do not currently
   appear in everyday source tabs.
-- When `KIKOTO_DEMO_MODE=true`, backend list, detail, and media responses admit
+- When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial
   metadata, where unknown metadata and temporary free promotions are excluded;
-  Remote Sources use their filtered search contract.
+  Remote Sources use their filtered search contract. Demo sessions can play
+  admitted full media but cannot mutate library, settings, or workflow state.
 
 Work cards use the same summary model on every collection surface, including
 voice credits when they are known. Compact cards show at most two voice names

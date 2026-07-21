@@ -489,7 +489,8 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cacheEnabled":            s.settingBool(r, "remote_cache_enabled", false),
-		"demoMode":                s.cfg.DemoMode,
+		"mode":                    s.cfg.RuntimeMode(),
+		"demoMode":                s.cfg.IsDemo(),
 		"directoryRoutingRules":   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		"recommendationThreshold": s.settingInt(r, "recommendation_threshold", 50),
 	})
@@ -883,7 +884,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := kikoeruClientForSource(source)
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
-	if s.cfg.DemoMode {
+	if s.cfg.IsDemo() {
 		includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
 		works, total, sortApplied, err := s.demoRemoteSourcePage(
 			r.Context(), userID, source.ID, client, source.SourceType, r.URL.Query().Get("q"), upstreamOrder, direction,
@@ -1006,7 +1007,7 @@ func (s *Server) remotePostFilteredPage(
 	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
 		var result kikoeru.WorksPage
 		var err error
-		if s.cfg.DemoMode {
+		if s.cfg.IsDemo() {
 			result, err = client.SearchWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
 		} else {
 			result, err = client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)

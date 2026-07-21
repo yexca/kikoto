@@ -31,7 +31,7 @@ func (s *Server) listRecentlyPlayedWorks(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit int) ([]libraryWorkSummary, error) {
 	demoWhere := ""
-	if s.cfg.DemoMode {
+	if s.cfg.IsDemo() {
 		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
 	rows, err := s.db.QueryContext(ctx, `
@@ -75,7 +75,7 @@ func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit in
 		args[index] = workID
 	}
 	where := fmt.Sprintf("work.id IN (%s)", strings.TrimSuffix(strings.Repeat("?,", len(workIDs)), ","))
-	rawWorks, err := s.libraryStore.ListMatching(ctx, userID, where, args, 1, len(workIDs), s.cfg.DemoMode)
+	rawWorks, err := s.libraryStore.ListMatching(ctx, userID, where, args, 1, len(workIDs), s.cfg.IsDemo())
 	if err != nil {
 		return nil, err
 	}

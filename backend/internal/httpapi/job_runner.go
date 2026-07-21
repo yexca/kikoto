@@ -28,6 +28,9 @@ type workflowJobRecord struct {
 }
 
 func (s *Server) StartJobRunner(ctx context.Context) {
+	if s.cfg.IsDemo() {
+		return
+	}
 	s.jobRunnerMu.Lock()
 	defer s.jobRunnerMu.Unlock()
 
@@ -53,6 +56,9 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 }
 
 func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) error {
+	if s.cfg.IsDemo() {
+		return nil
+	}
 	job, ok, err := s.claimNextQueuedWorkflowJob(ctx, runnerID)
 	if err != nil || !ok {
 		return err

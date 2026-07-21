@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CurrentUser } from "@/lib/api";
 
-export function SettingsPage({ user }: { user: CurrentUser }) {
+export function SettingsPage({ user, readOnly = false }: { user: CurrentUser; readOnly?: boolean }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => getStoredThemeAccent());
 
@@ -50,6 +50,11 @@ export function SettingsPage({ user }: { user: CurrentUser }) {
         <p className="text-sm font-medium text-muted-foreground">Personal preferences</p>
         <h2 className="mt-1 text-2xl font-semibold">Settings</h2>
       </section>
+      {readOnly && (
+        <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" role="status">
+          Demo mode is read-only. Appearance preferences remain visible but cannot be changed.
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <Card>
           <CardHeader>
@@ -72,7 +77,7 @@ export function SettingsPage({ user }: { user: CurrentUser }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-2" disabled={readOnly}>
               <legend className="text-sm font-medium">Display mode</legend>
               <div
                 className="inline-flex max-w-full gap-1 overflow-x-auto rounded-md border bg-muted/40 p-1"
@@ -97,7 +102,7 @@ export function SettingsPage({ user }: { user: CurrentUser }) {
                 ))}
               </div>
             </fieldset>
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-2" disabled={readOnly}>
               <legend className="text-sm font-medium">Accent color</legend>
               <AccentColorPicker value={themeAccent} onChange={updateAccent} />
             </fieldset>

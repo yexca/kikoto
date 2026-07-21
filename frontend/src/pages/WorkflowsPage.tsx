@@ -175,12 +175,14 @@ export function WorkflowsPage({
   canSyncMetadata,
   canTagWorks,
   canManageDownloads,
+  readOnly = false,
 }: {
   surface: Surface;
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
   canManageDownloads: boolean;
+  readOnly?: boolean;
 }) {
   const toast = useToast();
   const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
@@ -435,6 +437,7 @@ export function WorkflowsPage({
   };
 
   const systemActionAllowed = (kind: SystemRunKind) => {
+    if (readOnly) return false;
     if (kind === "metadata_sync") return canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks;
@@ -481,6 +484,12 @@ export function WorkflowsPage({
         </div>
       </div>
 
+      {readOnly && (
+        <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" role="status">
+          Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.
+        </div>
+      )}
+
       {surface === "workflows" ? (
         <>
           <SegmentedNav>
@@ -501,6 +510,7 @@ export function WorkflowsPage({
                   loading={isWorkflowMetaLoading}
                   onSelect={selectTrigger}
                   onCreate={() => setModalMode("create-trigger")}
+                  canCreate={!readOnly}
                 />
               }
               right={
@@ -509,7 +519,7 @@ export function WorkflowsPage({
                   trigger={selectedTrigger}
                   nodeTypes={nodeTypes}
                   readonly
-                  onEditTrigger={() => setModalMode("edit-trigger")}
+                  onEditTrigger={readOnly ? undefined : () => setModalMode("edit-trigger")}
                   onEditDefinition={() => undefined}
                   onEditNode={() => undefined}
                   emptyText="No scheduled workflow triggers exist yet."
@@ -522,7 +532,7 @@ export function WorkflowsPage({
                 <DefinitionSidebar
                   definitions={visibleDefinitions}
                   selectedId={selectedDefinition?.id ?? null}
-                  canCreate={workflowView === "definitions"}
+                  canCreate={workflowView === "definitions" && !readOnly}
                   loading={isWorkflowMetaLoading}
                   emptyText={definitionEmptyText}
                   onSelect={selectDefinition}
@@ -534,7 +544,7 @@ export function WorkflowsPage({
                   definition={selectedDefinition}
                   definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
                   nodeTypes={nodeTypes}
-                  readonly={!selectedDefinition?.editable}
+                  readonly={readOnly || !selectedDefinition?.editable}
                   systemRunKinds={selectedSystemRunKinds}
                   isSystemActionRunning={systemActionBusy}
                   canRunSystemAction={systemActionAllowed}
@@ -544,9 +554,9 @@ export function WorkflowsPage({
                   onRunDLsitePopular={runDLsitePopularCollection}
                   recentRuns={recentDefinitionRuns}
                   onOpenRun={openActivityRun}
-                  onRunDefinition={selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
+                  onRunDefinition={!readOnly && selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
                   emptyText={definitionEmptyText}
-                  onEditDefinition={() => setModalMode("edit-workflow")}
+                  onEditDefinition={readOnly ? undefined : () => setModalMode("edit-workflow")}
                   onEditNode={(index) => {
                     setEditingNodeIndex(index);
                     setModalMode("edit-node");
@@ -581,6 +591,7 @@ export function WorkflowsPage({
               refreshRuns(1, activityView, runQuery);
             }}
             onRecoverStale={recoverStaleRuns}
+            readOnly={readOnly}
           />
           {isRunsLoading && visibleRuns.length === 0 && selectedActivityRunID === null ? (
             <ActivityLoadingState />
@@ -606,7 +617,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} />}
+            right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} readOnly={readOnly} />}
           />}
         </>
       )}
@@ -809,19 +820,21 @@ function TriggerSidebar({
   loading,
   onSelect,
   onCreate,
+  canCreate,
 }: {
   triggers: WorkflowTrigger[];
   selectedId: number | null;
   loading?: boolean;
   onSelect: (trigger: WorkflowTrigger) => void;
   onCreate: () => void;
+  canCreate: boolean;
 }) {
   return (
     <Card>
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="text-sm font-semibold">Scheduled</div>
-          <Button size="sm" onClick={onCreate}>
+          <Button size="sm" onClick={onCreate} disabled={!canCreate}>
             <Plus className="h-4 w-4" />
             New
           </Button>
@@ -859,11 +872,13 @@ function ActivityToolbar({
   onQueryChange,
   onSearch,
   onRecoverStale,
+  readOnly,
 }: {
   query: string;
   onQueryChange: (value: string) => void;
   onSearch: () => void;
   onRecoverStale: () => Promise<void>;
+  readOnly: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3 border-b pb-3 md:flex-row md:items-center md:justify-between">
@@ -880,7 +895,7 @@ function ActivityToolbar({
         />
       </label>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground md:justify-end">
-        <Button size="sm" variant="outline" onClick={() => void onRecoverStale()}>
+        <Button size="sm" variant="outline" onClick={() => void onRecoverStale()} disabled={readOnly}>
           <RotateCcw className="h-3.5 w-3.5" />
           Recover stale
         </Button>
@@ -1082,7 +1097,7 @@ function WorkflowDetail({
   onOpenRun?: (run: WorkflowRun) => void;
   onRunDefinition?: () => void;
   emptyText?: string;
-  onEditDefinition: () => void;
+  onEditDefinition?: () => void;
   onEditTrigger?: () => void;
   onEditNode: (index: number) => void;
 }) {
@@ -1117,7 +1132,7 @@ function WorkflowDetail({
                 Edit trigger
               </Button>
             )}
-            {composerEditable && (
+            {composerEditable && onEditDefinition && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
                 Edit workflow
@@ -1483,6 +1498,7 @@ function RunDetail({
   onCandidateUpdate,
   onRunAction,
   onReviewRun,
+  readOnly,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
   events: WorkflowEvent[];
@@ -1492,6 +1508,7 @@ function RunDetail({
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
   onReviewRun: () => Promise<void>;
+  readOnly: boolean;
 }) {
   const recentlyStartedNodeRuns = useRecentWorkflowNodeStarts(run?.id ?? null, run?.status ?? "", events);
   if (!run) {
@@ -1542,8 +1559,8 @@ function RunDetail({
           </div>
           <div className="space-y-2">
             <RunMetrics run={run} />
-            <RunReviewAction run={run} onReviewRun={onReviewRun} />
-            <RunActions run={run} onRunAction={onRunAction} />
+            {!readOnly && <RunReviewAction run={run} onReviewRun={onReviewRun} />}
+            {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
           </div>
         </div>
         {loading ? <RunOverviewSkeleton /> : <RunOverview run={run} nodeRuns={nodeRuns} />}
@@ -1561,7 +1578,7 @@ function RunDetail({
             />
           ) : <EmptyPanel text="This run has no node detail yet." />}
         </section>
-        {loading ? <RunItemsSkeleton /> : <RunItems run={run} candidates={candidates} onCandidateUpdate={onCandidateUpdate} />}
+        {loading ? <RunItemsSkeleton /> : <RunItems run={run} candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />}
         {loading ? <RunLogsSkeleton /> : <ActivityNodeSections run={run} nodes={nodeRuns} events={events} />}
       </CardContent>
     </Card>
@@ -1727,10 +1744,12 @@ function RunItems({
   run,
   candidates,
   onCandidateUpdate,
+  readOnly,
 }: {
   run: WorkflowRunDetail | WorkflowRun;
   candidates: WorkflowCandidate[];
   onCandidateUpdate: () => Promise<void>;
+  readOnly: boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -1745,7 +1764,7 @@ function RunItems({
           <div className="text-sm font-semibold">Candidates</div>
           <div className="divide-y rounded-md border">
             {candidates.map((candidate) => (
-              <CandidateReviewCard key={candidate.id} candidate={candidate} onCandidateUpdate={onCandidateUpdate} />
+              <CandidateReviewCard key={candidate.id} candidate={candidate} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />
             ))}
           </div>
         </div>
@@ -1826,7 +1845,7 @@ function WorkflowEventRows({ events, empty }: { events: WorkflowEvent[]; empty: 
   );
 }
 
-function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: WorkflowCandidate; onCandidateUpdate: () => Promise<void> }) {
+function CandidateReviewCard({ candidate, onCandidateUpdate, readOnly }: { candidate: WorkflowCandidate; onCandidateUpdate: () => Promise<void>; readOnly: boolean }) {
   const [confirmDeleteOldFiles, setConfirmDeleteOldFiles] = useState(false);
   const [archiveDeleteStep, setArchiveDeleteStep] = useState<0 | 1 | 2>(0);
   const payload = parseJSONRecord(candidate.payloadJson);
@@ -1897,7 +1916,7 @@ function CandidateReviewCard({ candidate, onCandidateUpdate }: { candidate: Work
         <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />
       )}
       {hasNonEmptyJSON(candidate.decisionJson) && <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />}
-      {needsReview && (
+      {needsReview && !readOnly && (
         <div className="flex flex-wrap gap-2">
           {candidate.type === "local_fetch_merge_cleanup" && cleanupLocations.length > 0 && (
             <>

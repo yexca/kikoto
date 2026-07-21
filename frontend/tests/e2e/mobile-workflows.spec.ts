@@ -371,3 +371,20 @@ test("settings persists display mode and accent color together", async ({ page }
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
 });
+
+test("demo settings and scheduled workflows expose read-only controls", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/runtime-settings", (route) => route.fulfill({
+    json: { mode: "demo", demoMode: true, cacheEnabled: false, directoryRoutingRules: [] },
+  }));
+
+  await page.goto("/settings");
+  await expect(page.getByText("Demo mode is read-only. Appearance preferences remain visible but cannot be changed.")).toBeVisible();
+  for (const name of ["Light", "Dark", "System", "Pink", "Blue", "Green"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
+  }
+
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeDisabled();
+});

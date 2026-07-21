@@ -317,6 +317,7 @@ export type LibrarySource = {
 
 export type RuntimeSettings = {
   cacheEnabled: boolean;
+  mode: "development" | "production" | "demo";
   demoMode: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
@@ -833,6 +834,7 @@ export type CurrentUser = {
   role: "super_admin" | "admin" | "user";
   permissions: string[];
   devMode: boolean;
+  demoMode: boolean;
 };
 
 export type ManagedUser = {

@@ -44,12 +44,13 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (currentUser, error) {
-	if s.cfg.DevMode {
+	if s.cfg.IsDevelopment() || s.cfg.IsDemo() {
 		user, err := s.accountStore.LoadByUsername(ctx, s.cfg.RootUsername)
 		if err != nil {
 			return currentUser{}, err
 		}
-		user.DevMode = true
+		user.DevMode = s.cfg.IsDevelopment()
+		user.DemoMode = s.cfg.IsDemo()
 		return user, nil
 	}
 	if sessionID := bearerSessionID(r); sessionID != "" {

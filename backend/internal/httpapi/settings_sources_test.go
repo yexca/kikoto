@@ -30,6 +30,28 @@ func TestLegacyNumber178SourceTypeCannotBeCreated(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeDemo})
+	request := httptest.NewRequest(http.MethodGet, "/api/runtime-settings", nil)
+	response := httptest.NewRecorder()
+
+	server.getRuntimeSettings(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Mode     string `json:"mode"`
+		DemoMode bool   `json:"demoMode"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Mode != "demo" || !payload.DemoMode {
+		t.Fatalf("runtime mode = %q demo = %t", payload.Mode, payload.DemoMode)
+	}
+}
+
 func TestLegacyNumber178SourceTypesCannotBeSeededFromConfig(t *testing.T) {
 	for _, sourceType := range []string{"kikoeru_compatible_number178", "kikoeru_compilable_number178"} {
 		t.Run(sourceType, func(t *testing.T) {

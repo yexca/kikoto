@@ -223,7 +223,7 @@ export function HeaderActions({
             )}
             <div className="border-t p-2">
               {user ? (
-                !user.devMode && <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setMobileMenuOpen(false); onLogout(); }} />
+                !user.devMode && !user.demoMode && <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setMobileMenuOpen(false); onLogout(); }} />
               ) : (
                 <ActionItem icon={<LogIn className="h-4 w-4" />} label="Sign in" onClick={() => { setMobileMenuOpen(false); onOpenLogin(); }} />
               )}
@@ -495,7 +495,7 @@ export function HeaderActions({
                 </span>
                 <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
                   {user.role}
-                  {user.devMode ? " · dev" : ""}
+                  {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
                 </span>
               </span>
               <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
@@ -517,6 +517,7 @@ export function HeaderActions({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Badge variant="outline">{user.role}</Badge>
                 {user.devMode && <Badge variant="warning">dev mode</Badge>}
+                {user.demoMode && <Badge variant="secondary">demo mode</Badge>}
               </div>
             </div>
             <MenuList>
@@ -538,9 +539,9 @@ export function HeaderActions({
                   }}
                 />
               )}
-              {user.devMode ? (
+              {user.devMode || user.demoMode ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground">
-                  Dev mode session does not require sign out.
+                  {user.demoMode ? "Demo sessions are read-only." : "Dev mode session does not require sign out."}
                 </div>
               ) : (
                 <ActionItem

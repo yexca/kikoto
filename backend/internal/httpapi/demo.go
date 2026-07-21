@@ -16,8 +16,18 @@ import (
 
 const demoRemoteSourceFilterQuery = "$age:general$ $-price:1$"
 
+func (s *Server) demoReadOnlyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo mode is read-only", false)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) demoWorkEligible(ctx context.Context, workID int64) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	var primaryCode string
@@ -42,7 +52,7 @@ func (s *Server) demoWorkEligible(ctx context.Context, workID int64) (bool, erro
 }
 
 func (s *Server) demoWorkWhere(where string, alias string) string {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return where
 	}
 	return "(" + where + ") AND " + contentpolicy.DemoEligibleWorkSQL(alias)
@@ -55,7 +65,7 @@ func demoRemoteSourceQueryPlan(query string, sourceType string) remoteSourceQuer
 }
 
 func (s *Server) resolveRemoteWorkForAccess(ctx context.Context, client *kikoeru.Client, code string) (kikoeru.Work, json.RawMessage, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return s.resolveKikoeruWork(ctx, client, code)
 	}
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
@@ -77,7 +87,7 @@ func (s *Server) resolveRemoteWorkForAccess(ctx context.Context, client *kikoeru
 }
 
 func (s *Server) demoMediaLocationEligible(ctx context.Context, locationID int64) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	var workID int64
@@ -94,7 +104,7 @@ func (s *Server) demoMediaLocationEligible(ctx context.Context, locationID int64
 }
 
 func (s *Server) demoMediaItemEligible(ctx context.Context, mediaItemID int64) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	var workID int64
@@ -118,7 +128,7 @@ func (s *Server) requireDemoWork(w http.ResponseWriter, r *http.Request, workID 
 }
 
 func (s *Server) requireDemoWorkCode(w http.ResponseWriter, r *http.Request, code string) bool {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true
 	}
 	ref, err := s.canonicalWorkForCode(r.Context(), code)
@@ -134,7 +144,7 @@ func (s *Server) requireDemoWorkCode(w http.ResponseWriter, r *http.Request, cod
 }
 
 func (s *Server) demoWorkCodeEligible(ctx context.Context, code string) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	ref, err := s.canonicalWorkForCode(ctx, code)
@@ -161,7 +171,7 @@ func (s *Server) requireDemoMediaLocation(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) demoCoverEligible(ctx context.Context, relativePath string) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	filename := strings.TrimSpace(relativePath)
@@ -179,7 +189,7 @@ func (s *Server) demoCoverEligible(ctx context.Context, relativePath string) (bo
 }
 
 func (s *Server) demoManualAssetEligible(ctx context.Context, filename string) (bool, error) {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return true, nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
@@ -206,7 +216,7 @@ func (s *Server) demoManualAssetEligible(ctx context.Context, filename string) (
 }
 
 func (s *Server) demoContentMiddleware(next http.Handler) http.Handler {
-	if !s.cfg.DemoMode {
+	if !s.cfg.IsDemo() {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -227,13 +237,14 @@ func (s *Server) demoContentMiddleware(next http.Handler) http.Handler {
 					}
 				case "media":
 					isMediaItem := len(parts) >= 4 && parts[3] == "lyrics-preference"
+					isStream := len(parts) >= 4 && parts[3] == "stream"
 					if isMediaItem {
 						eligible, lookupErr := s.demoMediaItemEligible(r.Context(), id)
 						if lookupErr != nil || !eligible {
 							writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
 							return
 						}
-					} else if !s.requireDemoMediaLocation(w, r, id) {
+					} else if !isStream && !s.requireDemoMediaLocation(w, r, id) {
 						return
 					}
 				}

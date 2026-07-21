@@ -11,8 +11,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum local scan folder depth. |
-| `KIKOTO_DEV_MODE` | `false` | Authenticate every request as root in development. |
-| `KIKOTO_DEMO_MODE` | `false` | Restrict local work/media responses to normalized all-ages permanent-free metadata and Remote Sources to their equivalent filtered search. |
+| `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` exposes a read-only root session with all-ages permanently-free content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | `change-me` | Root administrator password. |
@@ -33,6 +32,10 @@ Remote sources can be seeded on first startup from a mounted file when
 configuration file, not in the repository.
 
 After first startup, Settings is the source of truth for configured sources.
+
+Demo mode does not recover or dispatch workflow jobs, and its HTTP API rejects
+all non-read methods. The frontend keeps administrative data inspectable while
+disabling settings, workflow, schedule, run, and review mutations.
 
 ## Source Control Boundary
 

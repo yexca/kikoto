@@ -46,6 +46,7 @@ type Server struct {
 	localMediaIndexes    map[string]*localMediaIndexCall
 	localMediaWriteSlot  chan struct{}
 	localDurationProbeMu sync.Mutex
+	mediaStreamCache     sync.Map
 }
 
 type localMediaIndexCall struct {
@@ -179,7 +180,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-popular", s.createDLsitePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
-	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.demoContentMiddleware(mux)), maxJSONRequestBytes))
+	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux))), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
 		return apiHandler
 	}
@@ -344,7 +345,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		s.listWorksPageFast(w, r, userID)
 		return
 	}
-	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID, s.cfg.DemoMode)
+	rawWorks, err := s.libraryStore.ListAll(r.Context(), userID, s.cfg.IsDemo())
 	if err != nil {
 		writeError(w, err)
 		return
@@ -433,7 +434,7 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
 		RandomSeed: int64(queryInt(r, "seed", 1)),
-		DemoOnly:   s.cfg.DemoMode,
+		DemoOnly:   s.cfg.IsDemo(),
 	})
 	if err != nil {
 		writeError(w, err)
@@ -1213,18 +1214,8 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
 		return
 	}
-	if !s.requireDemoMediaLocation(w, r, id) {
-		return
-	}
-
-	var locationType string
-	var relPath string
-	var availability string
-	if err := s.db.QueryRowContext(r.Context(), `
-		SELECT location_type, path, availability
-		FROM media_file_location
-		WHERE id = ?
-	`, id).Scan(&locationType, &relPath, &availability); err != nil {
+	target, cached, err := s.loadMediaStreamTarget(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location not found"})
 			return
@@ -1233,21 +1224,21 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if (locationType != "local" && locationType != "cache") || availability != "available" {
+	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location is not available"})
 		return
 	}
 
 	root := s.cfg.DataRoot
-	if locationType == "cache" {
+	if target.LocationType == "cache" {
 		root = s.cfg.CacheRoot
 	}
-	path, err := safeDataPath(root, relPath)
+	path, err := safeDataPath(root, target.RelativePath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return
 	}
-	if locationType == "cache" {
+	if target.LocationType == "cache" && !cached {
 		if _, statErr := os.Stat(path); statErr == nil {
 			_, _ = s.db.ExecContext(r.Context(), `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
 		}

@@ -272,7 +272,7 @@ func favoriteAvailabilityExists(locationTypes string, negated bool) string {
 func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, error) {
 	countExpression := "COUNT(item.work_id)"
 	workJoin := ""
-	if s.cfg.DemoMode {
+	if s.cfg.IsDemo() {
 		countExpression = "COUNT(CASE WHEN " + contentpolicy.DemoEligibleWorkSQL("work") + " THEN item.work_id END)"
 		workJoin = " LEFT JOIN work ON work.id = item.work_id"
 	}
@@ -519,7 +519,7 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 			writeError(w, err)
 			return
 		}
-		if s.cfg.DemoMode {
+		if s.cfg.IsDemo() {
 			eligible, err := s.demoWorkEligible(r.Context(), workID)
 			if err != nil {
 				writeError(w, err)

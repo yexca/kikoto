@@ -45,6 +45,7 @@ type DLsiteSyncResult struct {
 	SyncedWorks      int                     `json:"syncedWorks"`
 	SkippedWorks     int                     `json:"skippedWorks"`
 	FailedWorks      int                     `json:"failedWorks"`
+	UnavailableWorks int                     `json:"unavailableWorks"`
 	ReviewCandidates []DLsiteReviewCandidate `json:"reviewCandidates"`
 	Failures         []string                `json:"failures"`
 }
@@ -140,12 +141,11 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 		product, err := s.fetchProduct(ctx, target.PrimaryCode)
 		if err != nil {
 			if errors.Is(err, dlsite.ErrNoProduct) {
-				result.ReviewCandidates = append(result.ReviewCandidates, DLsiteReviewCandidate{
-					WorkID:  target.ID,
-					Code:    target.PrimaryCode,
-					Reason:  "dlsite_not_found",
-					Message: err.Error(),
-				})
+				if stateErr := s.markDLsiteProviderState(ctx, target.ID, "not_found", err.Error()); stateErr != nil {
+					result.Failures = append(result.Failures, fmt.Sprintf("%s: record provider status: %s", target.PrimaryCode, stateErr.Error()))
+					continue
+				}
+				result.UnavailableWorks++
 				continue
 			}
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
@@ -253,6 +253,13 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 		if err != nil {
 			if strings.EqualFold(code, requestedCode) && errors.Is(err, dlsite.ErrNoProduct) {
 				result.RequestedUnavailable = true
+				if workID, found, lookupErr := s.workIDForCode(ctx, code); lookupErr != nil {
+					return result, lookupErr
+				} else if found {
+					if stateErr := s.markDLsiteProviderState(ctx, workID, "not_found", err.Error()); stateErr != nil {
+						return result, stateErr
+					}
+				}
 			}
 			if !strings.EqualFold(code, requestedCode) && errors.Is(err, dlsite.ErrNoProduct) {
 				skipped[code] = true
@@ -453,6 +460,14 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context) ([]workTarget, error) {
 				WHERE edition.work_id = work.id
 			), '')
 		FROM work
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM work_metadata_provider_state AS provider_state
+			INNER JOIN metadata_provider AS state_provider ON state_provider.id = provider_state.provider_id
+			WHERE provider_state.work_id = work.id
+				AND state_provider.code = 'dlsite'
+				AND provider_state.status = 'not_found'
+		)
 		ORDER BY work.id ASC
 	`)
 	if err != nil {
@@ -518,7 +533,18 @@ func (s *DLsiteSyncer) hasDLsiteSnapshotForCode(ctx context.Context, code string
 }
 
 func (s *DLsiteSyncer) countSyncableWorks(ctx context.Context) (int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT primary_code FROM work`)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT work.primary_code
+		FROM work
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM work_metadata_provider_state AS provider_state
+			INNER JOIN metadata_provider AS provider ON provider.id = provider_state.provider_id
+			WHERE provider_state.work_id = work.id
+				AND provider.code = 'dlsite'
+				AND provider_state.status = 'not_found'
+		)
+	`)
 	if err != nil {
 		return 0, err
 	}
@@ -534,6 +560,42 @@ func (s *DLsiteSyncer) countSyncableWorks(ctx context.Context) (int, error) {
 		}
 	}
 	return total, rows.Err()
+}
+
+func (s *DLsiteSyncer) workIDForCode(ctx context.Context, code string) (int64, bool, error) {
+	var workID int64
+	err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return workID, true, nil
+}
+
+func (s *DLsiteSyncer) markDLsiteProviderState(ctx context.Context, workID int64, status string, message string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	providerID, err := ensureMetadataProvider(ctx, tx, "dlsite", "DLsite")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, provider_id) DO UPDATE SET
+			status = excluded.status,
+			message = excluded.message,
+			checked_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, providerID, status, strings.TrimSpace(message)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product dlsite.Product) error {
@@ -572,6 +634,17 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
 		VALUES (?, ?, ?, ?)
 	`, workID, providerID, product.WorkNo, string(raw)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message, checked_at, updated_at)
+		VALUES (?, ?, 'available', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(work_id, provider_id) DO UPDATE SET
+			status = 'available',
+			message = '',
+			checked_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+	`, workID, providerID); err != nil {
 		return err
 	}
 	if err := replaceDLsiteWorkTags(ctx, tx, workID, product.Genres, product.Language); err != nil {
@@ -705,6 +778,7 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 		"synced_works":      result.SyncedWorks,
 		"skipped_works":     result.SkippedWorks,
 		"failed_works":      result.FailedWorks,
+		"unavailable_works": result.UnavailableWorks,
 		"review_works":      len(result.ReviewCandidates),
 		"review_candidates": result.ReviewCandidates,
 		"failures":          result.Failures,
@@ -750,6 +824,7 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 			"synced_works":      result.SyncedWorks,
 			"skipped_works":     result.SkippedWorks,
 			"failed_works":      result.FailedWorks,
+			"unavailable_works": result.UnavailableWorks,
 			"review_works":      len(result.ReviewCandidates),
 			"review_candidates": result.ReviewCandidates,
 			"failures":          result.Failures,

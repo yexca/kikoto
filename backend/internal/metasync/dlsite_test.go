@@ -118,34 +118,50 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	}
 }
 
-func TestSyncAllRecordsNoProductReviewCandidate(t *testing.T) {
+func TestSyncAllRecordsNoProductProviderStateAndSkipsFutureRefreshes(t *testing.T) {
 	db := openTestDB(t)
+	calls := map[string]int{}
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		errors: map[string]error{
 			"RJ0123456": dlsite.ErrNoProduct,
 		},
+		calls: calls,
 	})
 
 	result, err := syncer.SyncAll(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "succeeded" || result.SyncedWorks != 0 || result.FailedWorks != 0 || len(result.ReviewCandidates) != 1 {
+	if result.Status != "succeeded" || result.SyncedWorks != 0 || result.FailedWorks != 0 || result.UnavailableWorks != 1 || len(result.ReviewCandidates) != 0 {
 		t.Fatalf("result = %+v", result)
 	}
 
-	var candidateType, externalKey, status, payload string
+	var status, message string
 	if err := db.QueryRow(`
-		SELECT candidate_type, external_key, status, payload_json
-		FROM workflow_candidate
-	`).Scan(&candidateType, &externalKey, &status, &payload); err != nil {
+		SELECT state.status, state.message
+		FROM work_metadata_provider_state AS state
+		INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
+		INNER JOIN work ON work.id = state.work_id
+		WHERE provider.code = 'dlsite' AND work.primary_code = 'RJ0123456'
+	`).Scan(&status, &message); err != nil {
 		t.Fatal(err)
 	}
-	if candidateType != "dlsite_unavailable_work" || externalKey != "RJ0123456" || status != "pending" {
-		t.Fatalf("candidate = %s/%s/%s", candidateType, externalKey, status)
+	if status != "not_found" || !strings.Contains(message, "not found") {
+		t.Fatalf("provider state = %q/%q", status, message)
 	}
-	if !strings.Contains(payload, `"reason":"dlsite_not_found"`) {
-		t.Fatalf("payload = %s", payload)
+	var candidateCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_candidate").Scan(&candidateCount); err != nil {
+		t.Fatal(err)
+	}
+	if candidateCount != 0 {
+		t.Fatalf("candidate count = %d, want 0", candidateCount)
+	}
+	second, err := syncer.SyncAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TargetWorks != 0 || calls["RJ0123456"] != 1 {
+		t.Fatalf("second sync = %+v calls = %d, want skipped without another provider call", second, calls["RJ0123456"])
 	}
 }
 
@@ -355,6 +371,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	schema := []string{
 		`CREATE TABLE metadata_provider (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE work (id INTEGER PRIMARY KEY, primary_code TEXT NOT NULL UNIQUE, work_type TEXT NOT NULL DEFAULT 'audio', title TEXT NOT NULL, title_kana TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', release_date TEXT, age_rating TEXT NOT NULL DEFAULT '', cover_asset_id INTEGER, duration_seconds INTEGER, rating_average REAL, sales_count INTEGER, regular_price INTEGER, current_price INTEGER, price_currency TEXT NOT NULL DEFAULT '', is_permanently_free INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE work_metadata_provider_state (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id) ON DELETE CASCADE, status TEXT NOT NULL CHECK(status IN ('available', 'not_found')), message TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(work_id, provider_id))`,
 		`CREATE TABLE logical_work (id INTEGER PRIMARY KEY, canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, canonical_code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, translation_kind TEXT NOT NULL DEFAULT 'unknown', classification_source TEXT NOT NULL DEFAULT '', maker_id TEXT NOT NULL DEFAULT '', origin_maker_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE UNIQUE INDEX idx_work_edition_provider_code ON work_edition(provider_id, primary_code)`,

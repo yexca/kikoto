@@ -827,7 +827,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				displayWorkID = ref.WorkID
 			}
 		}
-		if s.cfg.DemoMode {
+		if s.cfg.IsDemo() {
 			eligible, err := s.demoWorkEligible(ctx, displayWorkID)
 			if err != nil {
 				return nil, err
@@ -1039,7 +1039,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				client := kikoeruClientForSource(source)
 				var page kikoeru.WorksPage
 				var err error
-				if s.cfg.DemoMode {
+				if s.cfg.IsDemo() {
 					plan := demoRemoteSourceQueryPlan(keyword, source.SourceType)
 					page, err = client.SearchWorksSortedSeeded(sourceCtx, 1, voiceRemotePageSize, plan.PushdownQuery, "create_date", "desc", "")
 				} else {

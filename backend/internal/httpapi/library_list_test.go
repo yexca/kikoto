@@ -98,7 +98,7 @@ func TestDemoModeReturnsOnlyAllAgesPermanentlyFreeWorks(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(db, config.Config{DemoMode: true})
+	server := NewServer(db, config.Config{Mode: config.ModeDemo})
 
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/works?page=1&pageSize=10", nil)
 	listRecorder := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestDemoRemoteSourcePageUsesFilteredUpstreamPagination(t *testing.T) {
 	}))
 	defer remote.Close()
 
-	server := NewServer(openMigratedTestDB(t), config.Config{DemoMode: true})
+	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
 	works, total, sortApplied, err := server.demoRemoteSourcePage(
 		context.Background(), 0, 1, kikoeru.NewClient(remote.URL, remote.Client()), sourceTypeKikoeruCompatible,
 		`ambient $tag:Wanted$`, "dl_count", "asc", "42", 3, 17, "ja-jp", false,
@@ -177,7 +177,7 @@ func TestDemoRemoteWorkAccessUsesFilteredExactCodeSearch(t *testing.T) {
 	}))
 	defer remote.Close()
 
-	server := NewServer(openMigratedTestDB(t), config.Config{DemoMode: true})
+	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
 	work, _, err := server.resolveRemoteWorkForAccess(context.Background(), kikoeru.NewClient(remote.URL, remote.Client()), "rj02000011")
 	if err != nil {
 		t.Fatal(err)

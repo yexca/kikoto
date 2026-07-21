@@ -52,6 +52,8 @@ const persistedTrack = {
   locations: [{ locationId: 1, locationType: "local", streamUrl: "/api/media/1/stream", sourceId: 1, sourceName: "Local", availability: "available" }],
 };
 
+const persistedPlayerTracks = new WeakMap<Page, typeof persistedTrack[]>();
+
 type MockApplicationFixture = {
   work?: typeof work;
   recentWorks?: typeof work[];
@@ -173,7 +175,37 @@ async function mockApplication(
         await route.fulfill({ status: 503, json: { error: "database is busy; please retry", code: "database_busy", retryable: true } });
         return;
       }
-      await route.fulfill({ json: { workId: Number(mediaMatch[1]), mediaItems } });
+      const workId = Number(mediaMatch[1]);
+      const restoredTracks = mediaItems.length > 0
+        ? []
+        : (persistedPlayerTracks.get(page) ?? []).filter((track) => track.workId === workId);
+      const restoredMediaItems = restoredTracks.map((track) => ({
+        id: track.mediaItemId,
+        parentId: null,
+        kind: "audio",
+        title: track.title,
+        discNo: null,
+        trackNo: 1,
+        durationSeconds: null,
+        sizeBytes: track.sizeBytes,
+        progress: track.progress,
+        locations: track.locations.map((location) => ({
+          id: location.locationId,
+          fileSourceId: location.sourceId,
+          fileSourceCode: "test",
+          fileSourceName: location.sourceName,
+          locationType: location.locationType,
+          path: `${track.workCode}/${track.title}`,
+          streamUrl: location.streamUrl,
+          downloadUrl: "",
+          remoteHash: "",
+          sizeBytes: track.sizeBytes,
+          durationSeconds: null,
+          availability: location.availability,
+          lastCheckedAt: null,
+        })),
+      }));
+      await route.fulfill({ json: { workId, mediaItems: mediaItems.length > 0 ? mediaItems : restoredMediaItems } });
       return;
     }
     if (url.pathname === "/api/media/cleanup" && route.request().method() === "POST") {
@@ -211,6 +243,7 @@ async function mockApplication(
 }
 
 async function seedPlayer(page: Page, track = persistedTrack) {
+  persistedPlayerTracks.set(page, [track]);
   await page.addInitScript((track) => {
     localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({ version: 1, queue: [track], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
   }, track);
@@ -1034,6 +1067,7 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   await mockApplication(page);
   const longTitle = "A deliberately long track title that cannot fit inside the compact player or queue row";
   const secondTrack = { ...persistedTrack, queueItemId: "e2e-track-2", locationId: 2, title: "Second queued track" };
+  persistedPlayerTracks.set(page, [{ ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, secondTrack]);
   await page.addInitScript(({ first, second }) => {
     localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({ version: 1, queue: [first, second], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
   }, { first: { ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, second: secondTrack });
@@ -1230,6 +1264,7 @@ test("failed sources fall back automatically and the sleep timer survives a relo
 
   const restoredPage = await page.context().newPage();
   await mockApplication(restoredPage);
+  persistedPlayerTracks.set(restoredPage, [persistedTrack]);
   await restoredPage.goto("/");
   await expect.poll(() => restoredPage.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer?.deadline > Date.now())).toBe(true);
   await restoredPage.close();
@@ -1237,6 +1272,7 @@ test("failed sources fall back automatically and the sleep timer survives a relo
 
 test("legacy end-of-track sleep timers migrate without being discarded", async ({ page }) => {
   await mockApplication(page);
+  persistedPlayerTracks.set(page, [persistedTrack]);
   await page.addInitScript((track) => {
     localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({
       version: 1,

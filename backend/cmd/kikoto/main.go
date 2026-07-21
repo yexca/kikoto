@@ -15,7 +15,11 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -32,9 +36,11 @@ func main() {
 	}
 
 	server := httpapi.NewServer(db, cfg)
-	if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
-		slog.Error("recover interrupted workflows", "error", err)
-		os.Exit(1)
+	if !cfg.IsDemo() {
+		if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
+			slog.Error("recover interrupted workflows", "error", err)
+			os.Exit(1)
+		}
 	}
 	if err := server.BootstrapRoot(nil); err != nil {
 		slog.Error("bootstrap root user", "error", err)
@@ -44,16 +50,21 @@ func main() {
 		slog.Error("seed remote sources", "error", err)
 		os.Exit(1)
 	}
-	if cfg.DevMode {
+	if cfg.IsDevelopment() {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
 	}
+	if cfg.IsDemo() {
+		slog.Info("demo mode enabled; requests authenticate as a read-only root user")
+	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
-	go func() {
-		if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {
-			slog.Error("run startup workflows", "error", err)
-		}
-	}()
-	go server.StartJobRunner(ctx)
+	if !cfg.IsDemo() {
+		go func() {
+			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("run startup workflows", "error", err)
+			}
+		}()
+		go server.StartJobRunner(ctx)
+	}
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,

@@ -1212,7 +1212,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 		if item.WorkID == nil {
 			item.WorkID = nullableInt64(workID)
 		}
-		if s.cfg.DemoMode {
+		if s.cfg.IsDemo() {
 			if item.WorkID == nil {
 				continue
 			}
@@ -1436,7 +1436,7 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			return nil, err
 		}
 		item.WorkCodes = splitCatalogCodes(codes.String)
-		if s.cfg.DemoMode {
+		if s.cfg.IsDemo() {
 			filteredCodes := make([]string, 0, len(item.WorkCodes))
 			for _, code := range item.WorkCodes {
 				eligible, err := s.demoWorkCodeEligible(ctx, code)

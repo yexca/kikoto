@@ -57,7 +57,19 @@ const emptyRemoteSource = {
 
 type MaintenanceTab = "overview" | "routing" | "local" | "remote" | "cache" | "metadata" | "users" | "system";
 
-export function MaintenancePage({ canManageSources, canManageUsers, currentUserId, isSuperAdmin }: { canManageSources: boolean; canManageUsers: boolean; currentUserId: number; isSuperAdmin: boolean }) {
+export function MaintenancePage({
+  canManageSources,
+  canManageUsers,
+  currentUserId,
+  isSuperAdmin,
+  readOnly = false,
+}: {
+  canManageSources: boolean;
+  canManageUsers: boolean;
+  currentUserId: number;
+  isSuperAdmin: boolean;
+  readOnly?: boolean;
+}) {
   const toast = useToast();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
@@ -129,6 +141,7 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
   };
 
   const saveRuntimeSettings = async () => {
+    if (readOnly) return;
     if (saveSuffixError) {
       toast.warning(saveSuffixError);
       return;
@@ -154,12 +167,14 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
   };
 
   const openCreateSource = () => {
+    if (readOnly) return;
     setDraftSource(emptyRemoteSource);
     setEditingSourceId(null);
     setIsSourceModalOpen(true);
   };
 
   const openEditSource = (source: FileSource) => {
+    if (readOnly) return;
     setDraftSource(source);
     setEditingSourceId(source.id);
     setIsSourceModalOpen(true);
@@ -172,6 +187,7 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
   };
 
   const saveSource = async () => {
+    if (readOnly) return;
     const payload = {
       displayName: draftSource.displayName,
       sourceType: draftSource.sourceType,
@@ -191,6 +207,7 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
   };
 
   const deleteSource = async (id: number) => {
+    if (readOnly) return;
     await api.deleteFileSource(id);
     await reload();
     toast.success("Source deleted.");
@@ -227,6 +244,12 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
         </div>
       </section>
 
+      {readOnly && (
+        <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" role="status">
+          Demo mode is read-only. Settings and sources remain visible but cannot be changed.
+        </div>
+      )}
+
       <div className="flex gap-2 overflow-x-auto rounded-lg border bg-card p-1">
         <SettingsTabButton active={activeTab === "overview"} onClick={() => selectTab("overview")} icon={<SlidersHorizontal className="h-4 w-4" />}>
           Overview
@@ -254,6 +277,7 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
         </SettingsTabButton>
       </div>
 
+      <fieldset disabled={readOnly} className="min-w-0 border-0 p-0">
       {isSettingsLoading ? (
         activeTab === "overview" ? (
           <SettingsOverviewSkeleton />
@@ -333,6 +357,7 @@ export function MaintenancePage({ canManageSources, canManageUsers, currentUserI
       ) : (
         <SystemPathsSettings settings={settings} saveTemplate={saveTemplate} />
       )}
+      </fieldset>
 
       {isSourceModalOpen && (
         <SourceModal

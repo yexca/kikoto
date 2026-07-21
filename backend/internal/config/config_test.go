@@ -13,9 +13,31 @@ func TestEnvListNormalizesAndDeduplicatesOrigins(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsToProductionMode(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RuntimeMode() != ModeProduction {
+		t.Fatalf("mode = %q, want production", cfg.RuntimeMode())
+	}
+}
+
 func TestLoadReadsDemoMode(t *testing.T) {
-	t.Setenv("KIKOTO_DEMO_MODE", "true")
-	if cfg := Load(); !cfg.DemoMode {
+	t.Setenv("KIKOTO_MODE", "demo")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.IsDemo() {
 		t.Fatal("Load() did not enable demo mode")
+	}
+}
+
+func TestLoadRejectsUnknownMode(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "staging")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an unknown runtime mode")
 	}
 }

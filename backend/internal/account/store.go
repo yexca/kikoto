@@ -24,6 +24,7 @@ type User struct {
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
 	DevMode     bool     `json:"devMode"`
+	DemoMode    bool     `json:"demoMode"`
 }
 
 type Session struct {

@@ -3884,7 +3884,6 @@ function DetailHero({
           loading={loading}
           entityResolver={entityResolver}
         />
-        {actions && <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
         <DetailMetadataContent
           layout="matrix"
           ratingLabel={ratingLabel}
@@ -3907,6 +3906,7 @@ function DetailHero({
           entityResolver={entityResolver}
           supplementary={personalTags}
         />
+        {actions && <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
       </div>
     </section>
   );

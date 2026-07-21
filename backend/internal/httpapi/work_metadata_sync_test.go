@@ -54,7 +54,7 @@ func TestWorkMetadataSyncQueuesOneRecoverableRunPerFamily(t *testing.T) {
 	}
 }
 
-func TestUnavailableRequestedProductBecomesReviewCandidate(t *testing.T) {
+func TestUnavailableRequestedProductCompletesWithoutReviewCandidate(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
 	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999993', 'Unavailable')`)
@@ -79,17 +79,46 @@ func TestUnavailableRequestedProductBecomesReviewCandidate(t *testing.T) {
 	if err := server.finishUnavailableWorkMetadataSyncJob(context.Background(), job, payload, family, "dlsite product not found"); err != nil {
 		t.Fatal(err)
 	}
-	var runStatus, jobStatus, candidateStatus, candidateType string
+	var runStatus, jobStatus, nodeStatus string
 	if err := db.QueryRow(`SELECT status FROM workflow_run WHERE id = ?`, run.RunID).Scan(&runStatus); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT status FROM workflow_job WHERE id = ?`, run.JobID).Scan(&jobStatus); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT candidate_type, status FROM workflow_candidate WHERE workflow_run_id = ?`, run.RunID).Scan(&candidateType, &candidateStatus); err != nil {
+	if err := db.QueryRow(`SELECT status FROM workflow_node_run WHERE id = ?`, nodeRunID).Scan(&nodeStatus); err != nil {
 		t.Fatal(err)
 	}
-	if runStatus != "skipped" || jobStatus != "succeeded" || candidateType != "dlsite_unavailable_work" || candidateStatus != "pending" {
-		t.Fatalf("review state = run %q job %q candidate %q/%q", runStatus, jobStatus, candidateType, candidateStatus)
+	var candidateCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_candidate WHERE workflow_run_id = ?`, run.RunID).Scan(&candidateCount); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "succeeded" || jobStatus != "succeeded" || nodeStatus != "succeeded" || candidateCount != 0 {
+		t.Fatalf("unavailable state = run %q job %q node %q candidates %d", runStatus, jobStatus, nodeStatus, candidateCount)
+	}
+}
+
+func TestUnavailableProviderStateSkipsDetailRefresh(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999994', 'Unavailable')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := result.LastInsertId()
+	if _, err := db.Exec(`INSERT OR IGNORE INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work_metadata_provider_state (work_id, provider_id, status, message)
+		SELECT ?, id, 'not_found', 'missing' FROM metadata_provider WHERE code = 'dlsite'`, workID); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := server.enqueueWorkMetadataSync(context.Background(), workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.RunID != 0 || run.JobID != 0 || run.Status != "unavailable" {
+		t.Fatalf("result = %+v, want unavailable without queued workflow", run)
 	}
 }

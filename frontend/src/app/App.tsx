@@ -1,5 +1,5 @@
 import { App as CapacitorApp } from "@capacitor/app";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Download, ExternalLink, Lock, PanelLeftClose, PanelLeftOpen, Server, WifiOff, X } from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
@@ -53,6 +53,10 @@ function AuthenticatedApp() {
   const toast = useToast();
   const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
+  const effectiveHasPermission = useCallback(
+    (permission: string) => !auth.demoMode && auth.hasPermission(permission),
+    [auth.demoMode, auth.hasPermission],
+  );
   const visibleNavItems = useMemo(
     () => visibleNavigationItems({ state: authState, hasPermission: auth.hasPermission }),
     [auth.hasPermission, authState],
@@ -225,7 +229,7 @@ function AuthenticatedApp() {
               </div>
               <HeaderActions
                 user={auth.user}
-                hasPermission={auth.hasPermission}
+                hasPermission={effectiveHasPermission}
                 onLogout={() => void auth.logout()}
                 onOpenLogin={() => setLoginOpen(true)}
                 onOpenPage={openPage}
@@ -255,10 +259,10 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
               {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} />}
-              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.hasPermission("sources:write")} canManageUsers={auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} />}
-              {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
-              {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} />}
+              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.hasPermission("sources:write")} canManageUsers={!auth.demoMode && auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
               {canAccessCurrentPage && page === "about" && <AboutPage />}
               {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />
@@ -290,7 +294,7 @@ function AuthenticatedApp() {
         <CommandPalette
           open={commandPaletteOpen}
           onOpenChange={setCommandPaletteOpen}
-          hasPermission={auth.hasPermission}
+          hasPermission={effectiveHasPermission}
           visibleNavItems={visibleNavItems}
           currentUserId={auth.user?.id ?? null}
           onBusyChange={setCommandPaletteBusy}

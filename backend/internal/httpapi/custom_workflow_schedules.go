@@ -117,6 +117,9 @@ func decodeStrictJSON(raw string, target any) error {
 }
 
 func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
+	if s.cfg.IsDemo() {
+		return nil
+	}
 	var triggerID int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT trigger.id

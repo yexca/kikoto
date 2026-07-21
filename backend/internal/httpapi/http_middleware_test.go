@@ -46,7 +46,7 @@ func TestCORSAllowsConfirmedSameOrigin(t *testing.T) {
 }
 
 func TestCORSAllowsLoopbackOnlyInDevMode(t *testing.T) {
-	server := NewServer(nil, config.Config{DevMode: true})
+	server := NewServer(nil, config.Config{Mode: config.ModeDevelopment})
 	handler := server.withCORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
 	request := httptest.NewRequest(http.MethodPost, "http://backend/api/works", nil)
 	request.Header.Set("Origin", "http://localhost:5173")
@@ -54,6 +54,37 @@ func TestCORSAllowsLoopbackOnlyInDevMode(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("response = %d", response.Code)
+	}
+}
+
+func TestDemoReadOnlyMiddlewareRejectsMutations(t *testing.T) {
+	server := NewServer(nil, config.Config{Mode: config.ModeDemo})
+	called := false
+	handler := server.demoReadOnlyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	mutation := httptest.NewRecorder()
+	handler.ServeHTTP(mutation, httptest.NewRequest(http.MethodPatch, "/api/settings", nil))
+	if called || mutation.Code != http.StatusForbidden || !strings.Contains(mutation.Body.String(), `"code":"demo_read_only"`) {
+		t.Fatalf("mutation called = %v, status = %d, body = %s", called, mutation.Code, mutation.Body.String())
+	}
+
+	read := httptest.NewRecorder()
+	handler.ServeHTTP(read, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	if !called || read.Code != http.StatusOK {
+		t.Fatalf("read called = %v, status = %d", called, read.Code)
+	}
+}
+
+func TestDemoModeDoesNotDispatchOrRunQueuedJobs(t *testing.T) {
+	server := NewServer(nil, config.Config{Mode: config.ModeDemo})
+	if err := server.dispatchDueCustomWorkflowTrigger(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.runNextQueuedWorkflowJob(t.Context(), "demo-runner"); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -156,7 +156,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !allowed[origin] && !requestOriginMatches(r, origin) && !isMobileAppOrigin(origin) && !(s.cfg.DevMode && isLoopbackOrigin(origin)) {
+		if !allowed[origin] && !requestOriginMatches(r, origin) && !isMobileAppOrigin(origin) && !(s.cfg.IsDevelopment() && isLoopbackOrigin(origin)) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
 			return
 		}

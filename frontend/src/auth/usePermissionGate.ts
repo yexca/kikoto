@@ -9,6 +9,10 @@ export function usePermissionGate(permission: string) {
   const toast = useToast();
 
   return useCallback(() => {
+    if (auth.demoMode) {
+      toast.warning("Demo mode is read-only.");
+      return false;
+    }
     if (!auth.user) {
       window.dispatchEvent(new Event(LOGIN_REQUEST_EVENT));
       return false;

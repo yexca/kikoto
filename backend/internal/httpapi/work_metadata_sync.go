@@ -46,7 +46,11 @@ func (s *Server) createWorkMetadataSyncRun(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, result)
+	status := http.StatusAccepted
+	if result.RunID == 0 && result.Status == "unavailable" {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, result)
 }
 
 func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (workMetadataSyncRunResult, error) {
@@ -54,19 +58,33 @@ func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (wor
 	defer s.metadataSyncMu.Unlock()
 
 	var payload workMetadataSyncPayload
+	var providerUnavailable bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT work.id, work.primary_code,
-			COALESCE(NULLIF(logical.canonical_code, ''), work.primary_code)
+			COALESCE(NULLIF(logical.canonical_code, ''), work.primary_code),
+			EXISTS (
+				SELECT 1
+				FROM work_metadata_provider_state AS provider_state
+				INNER JOIN metadata_provider AS provider ON provider.id = provider_state.provider_id
+				WHERE provider_state.work_id = work.id
+					AND provider.code = 'dlsite'
+					AND provider_state.status = 'not_found'
+			)
 		FROM work
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE work.id = ?
-	`, workID).Scan(&payload.WorkID, &payload.PrimaryCode, &payload.FamilyCode)
+	`, workID).Scan(&payload.WorkID, &payload.PrimaryCode, &payload.FamilyCode, &providerUnavailable)
 	if err != nil {
 		return workMetadataSyncRunResult{}, err
 	}
 	payload.PrimaryCode = strings.ToUpper(strings.TrimSpace(payload.PrimaryCode))
 	payload.FamilyCode = strings.ToUpper(strings.TrimSpace(payload.FamilyCode))
+	if providerUnavailable {
+		return workMetadataSyncRunResult{
+			WorkID: payload.WorkID, PrimaryCode: payload.PrimaryCode, Status: "unavailable",
+		}, nil
+	}
 	if existing, ok, err := s.activeWorkMetadataSync(ctx, payload); err != nil {
 		return workMetadataSyncRunResult{}, err
 	} else if ok {
@@ -195,9 +213,9 @@ func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job w
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_node_run
-		SET status = 'skipped', output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP
+		SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, mustJSON(summary), message, job.NodeRunID); err != nil {
+	`, mustJSON(summary), job.NodeRunID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -205,27 +223,21 @@ func (s *Server) finishUnavailableWorkMetadataSyncJob(ctx context.Context, job w
 		SET status = 'succeeded', progress_current = 1, progress_total = 1,
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, mustJSON(map[string]any{"phase": "review", "detail": summary, "progressCurrent": 1, "progressTotal": 1}), job.ID); err != nil {
+	`, mustJSON(map[string]any{"phase": "unavailable", "detail": summary, "progressCurrent": 1, "progressTotal": 1}), job.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_run SET status = 'skipped', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
+		UPDATE workflow_run SET status = 'succeeded', summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
 	`, mustJSON(summary), job.RunID); err != nil {
 		return err
 	}
-	candidatePayload := map[string]any{
+	eventDetail := map[string]any{
 		"work_id": payload.WorkID, "code": payload.PrimaryCode, "provider": "dlsite",
 		"reason": "dlsite_not_found", "message": message,
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
-		VALUES (?, ?, 'dlsite_unavailable_work', ?, 'pending', ?)
-	`, job.RunID, job.NodeRunID, payload.PrimaryCode, mustJSON(candidatePayload)); err != nil {
-		return err
-	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "warn", Type: "metadata.product_unavailable",
-		Message: "DLsite did not return the requested product", Detail: candidatePayload,
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: "info", Type: "metadata.product_unavailable",
+		Message: "DLsite did not return the requested product; future refreshes will skip it", Detail: eventDetail,
 	}); err != nil {
 		return err
 	}

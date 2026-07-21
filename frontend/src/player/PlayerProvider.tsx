@@ -39,6 +39,7 @@ import {
   updateNativeMedia,
 } from "@/lib/nativeMedia";
 import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
+import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -265,6 +266,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<PlayMode>(restoredQueueRef.current.mode);
   const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueueRef.current.sleepTimer);
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
+  const queueRef = useRef(queue);
+  const currentIndexRef = useRef(currentIndex);
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<{ mediaItemId: number; position: number; at: number } | null>(null);
   const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
@@ -283,6 +286,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seekTo: (_seconds: number) => {},
   });
   const currentTrack = queue[currentIndex] ?? null;
+  queueRef.current = queue;
+  currentIndexRef.current = currentIndex;
+
+  useEffect(() => {
+    const restored = restoredQueueRef.current.queue;
+    if (restored.length === 0) return;
+    let cancelled = false;
+    void revalidatePersistedQueue(restored, async (workID) => (await api.getWorkMedia(workID)).mediaItems).then((validated) => {
+      if (cancelled) return;
+      const current = queueRef.current;
+      if (current.length !== restored.length || current.some((track, index) => track.queueItemId !== restored[index]?.queueItemId)) return;
+      const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
+      setQueue(validated);
+      setCurrentIndex(Math.max(0, validated.findIndex((track) => track.queueItemId === currentQueueItemID)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -342,7 +364,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [currentTrack?.locationId]);
 
   useEffect(() => {
-    if (!currentTrack || currentTrack.locationType !== "remote_stream") return;
+    if (auth.demoMode || !currentTrack || currentTrack.locationType !== "remote_stream") return;
     const cacheKey = remoteCacheKey(currentTrack);
     if (cacheRequestedRef.current.has(cacheKey)) return;
     cacheRequestedRef.current.add(cacheKey);
@@ -370,6 +392,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     currentTrack?.remoteSourceId,
     currentTrack?.remoteWorkCode,
     currentTrack?.remotePath,
+    auth.demoMode,
   ]);
 
   useEffect(() => {
@@ -454,7 +477,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const saveProgress = (completed: boolean, force = false) => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
-    if (!auth.user) return;
+    if (!auth.user || auth.demoMode) return;
     if (!currentTrack.progressRecordable) return;
     if (currentTrack.mediaItemId <= 0) return;
     const position = completed ? audio.duration || audio.currentTime : audio.currentTime;

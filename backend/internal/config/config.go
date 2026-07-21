@@ -1,9 +1,19 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
+)
+
+// Mode is development (root auth bypass), production (normal auth), or demo (read-only root).
+type Mode string
+
+const (
+	ModeDevelopment Mode = "development"
+	ModeProduction  Mode = "production"
+	ModeDemo        Mode = "demo"
 )
 
 type Config struct {
@@ -13,8 +23,7 @@ type Config struct {
 	CacheRoot           string
 	StaticDir           string
 	LocalScanDepth      int
-	DevMode             bool
-	DemoMode            bool
+	Mode                Mode
 	SessionCookieSecure bool
 	AllowedOrigins      []string
 	RootUsername        string
@@ -33,7 +42,11 @@ type RemoteSourceSeed struct {
 	Enabled         bool
 }
 
-func Load() Config {
+func Load() (Config, error) {
+	mode, err := parseMode(os.Getenv("KIKOTO_MODE"))
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
@@ -41,13 +54,38 @@ func Load() Config {
 		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
 		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
-		DevMode:             envBool("KIKOTO_DEV_MODE", false),
-		DemoMode:            envBool("KIKOTO_DEMO_MODE", false),
+		Mode:                mode,
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
 		RootPassword:        env("KIKOTO_ROOT_PASSWORD", "change-me"),
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
+	}, nil
+}
+
+func (c Config) IsDevelopment() bool {
+	return c.Mode == ModeDevelopment
+}
+
+func (c Config) IsDemo() bool {
+	return c.Mode == ModeDemo
+}
+
+func (c Config) RuntimeMode() Mode {
+	if c.Mode == "" {
+		return ModeProduction
+	}
+	return c.Mode
+}
+
+func parseMode(value string) (Mode, error) {
+	switch mode := Mode(strings.ToLower(strings.TrimSpace(value))); mode {
+	case "", ModeProduction:
+		return ModeProduction, nil
+	case ModeDevelopment, ModeDemo:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("invalid KIKOTO_MODE %q: expected development, production, or demo", value)
 	}
 }
 
