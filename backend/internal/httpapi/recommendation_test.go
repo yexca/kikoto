@@ -36,7 +36,7 @@ func TestWorkRecommendationScoreUsesPositiveTagHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if score != 60 {
-		t.Fatalf("score = %d, want 60", score)
+	if score != 40 {
+		t.Fatalf("score = %d, want 40", score)
 	}
 }

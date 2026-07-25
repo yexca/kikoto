@@ -326,6 +326,107 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	if len(page.Works) != 3 || page.Works[0].PrimaryCode != "RJ09999102" {
 		t.Fatalf("recommend order = %#v, want candidate first", page.Works)
 	}
+	store := library.NewStore(db)
+	candidateScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ09999102"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	likedScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ09999101"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidateScore != 40 || likedScore != 10 {
+		t.Fatalf("recommend scores = candidate %d liked %d, want 40 and 10", candidateScore, likedScore)
+	}
+}
+
+func TestStoreListPageRecommendSortIsStableForSeededTies(t *testing.T) {
+	db := openMigratedTestDB(t, "recommend-seed.db")
+	for index := 1; index <= 12; index++ {
+		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", fmt.Sprintf("RJ0998%04d", index), fmt.Sprintf("Work %d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	load := func(seed int64) []string {
+		codes := []string{}
+		for pageNumber := 1; pageNumber <= 3; pageNumber++ {
+			page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{
+				Page: pageNumber, PageSize: 4, Sort: "recommend", Direction: "desc", RandomSeed: seed,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, work := range page.Works {
+				codes = append(codes, work.PrimaryCode)
+			}
+		}
+		return codes
+	}
+	first := load(17)
+	second := load(17)
+	different := load(41)
+	if fmt.Sprint(first) != fmt.Sprint(second) {
+		t.Fatalf("same recommendation seed changed order: %v != %v", first, second)
+	}
+	if fmt.Sprint(first) == fmt.Sprint(different) {
+		t.Fatalf("different recommendation seeds produced the same order: %v", first)
+	}
+	seen := map[string]bool{}
+	for _, code := range first {
+		seen[code] = true
+	}
+	if len(seen) != 12 {
+		t.Fatalf("recommend pagination returned %d unique works, want 12: %v", len(seen), first)
+	}
+}
+
+func TestRecommendationScoreDoesNotUseCandidateAsItsOwnTasteHistory(t *testing.T) {
+	db := openMigratedTestDB(t, "recommend-self.db")
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('self-score-user', 'Self Score User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09998001', 'Only liked work')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := workResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (?, ?, 'relisten', 1)", userID, workID); err != nil {
+		t.Fatal(err)
+	}
+	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'self-test', 'Self test')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagID, _ := tagResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'dlsite')", workID, tagID); err != nil {
+		t.Fatal(err)
+	}
+	personResult, err := db.Exec("INSERT INTO person (display_name) VALUES ('Self test voice')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	personID, _ := personResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_credit (work_id, person_id, role) VALUES (?, ?, 'voice_actor')", workID, personID); err != nil {
+		t.Fatal(err)
+	}
+	partyResult, err := db.Exec("INSERT INTO party (display_name) VALUES ('Self test circle')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	partyID, _ := partyResult.LastInsertId()
+	if _, err := db.Exec("INSERT INTO work_party (work_id, party_id, role) VALUES (?, ?, 'circle')", workID, partyID); err != nil {
+		t.Fatal(err)
+	}
+
+	score, err := library.NewStore(db).RecommendationScore(context.Background(), userID, workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score != 20 {
+		t.Fatalf("self-only recommendation score = %d, want relisten 10 + favorite 10", score)
+	}
 }
 
 func TestStoreListPageNormalizesPagination(t *testing.T) {

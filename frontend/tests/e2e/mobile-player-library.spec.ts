@@ -738,6 +738,25 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
 });
 
+test("recommended sorting refreshes its stable seed", async ({ page }) => {
+  const requestedSeeds: string[] = [];
+  await mockApplication(page, (url) => requestedSeeds.push(url.searchParams.get("seed") ?? ""), false, 8);
+  await page.goto("/");
+
+  const refresh = page.getByRole("button", { name: "Refresh recommendations", exact: true });
+  await expect(refresh).toBeVisible();
+  await expect(refresh).toBeEnabled();
+  await expect.poll(() => requestedSeeds.length).toBeGreaterThan(0);
+  const initialSeed = requestedSeeds.at(-1);
+
+  await refresh.click();
+
+  await expect.poll(() => requestedSeeds.at(-1)).not.toBe(initialSeed);
+  await expect.poll(() => new URL(page.url()).searchParams.get("seed")).toBe(requestedSeeds.at(-1));
+  await expect(page.getByRole("button", { name: "Sort: Recommended", exact: true })).toBeVisible();
+  await expect(refresh).toBeEnabled();
+});
+
 test("cards show complete tags and age rating in grid and masonry", async ({ page }) => {
   const tags = Array.from({ length: 14 }, (_, index) => `Long metadata tag ${index + 1}`);
   const userTags = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, name: `Personal tag ${index + 1}`, color: "" }));

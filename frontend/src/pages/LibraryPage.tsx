@@ -1169,9 +1169,15 @@ export function LibraryPage() {
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
-		  <IconButton title={librarySort === "recommend" ? "Recommendation badges are included in recommendation sorting" : recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"} disabled={librarySort === "recommend"} onClick={toggleRecommendBadges}>
-			<Sparkles className={`h-4 w-4 ${recommendBadgesEnabled && librarySort !== "recommend" ? "fill-current text-primary" : ""}`} />
-		  </IconButton>
+		  {librarySort === "recommend" ? (
+			<IconButton title="Refresh recommendations" disabled={isLibraryLoading} onClick={reshuffle}>
+			  <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
+			</IconButton>
+		  ) : (
+			<IconButton title={recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"} onClick={toggleRecommendBadges}>
+			  <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
+			</IconButton>
+		  )}
 		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} onReshuffle={reshuffle} />
 		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
           <div ref={databaseMenuRef} className="relative">

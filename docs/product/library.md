@@ -28,7 +28,11 @@ The Library is the main browsing surface for works.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
 - Defaults new Library views to personalized recommendation ordering while
-  preserving explicit URL and session-restored browse choices.
+  preserving explicit URL and session-restored browse choices. Recommendation
+  scores use bounded personal listening, favorite, tag, voice, and circle
+  signals without treating the candidate itself as taste history. Equal-score
+  works use the same stable browse seed for pagination-safe variety, and the
+  toolbar refresh action creates a new recommendation seed.
 - Shows a compact, horizontally scrollable recently-played strip above the
   Library controls. It is ordered per user, deduplicated by work, and includes
   the latest track position without replacing the full work-card grid. The

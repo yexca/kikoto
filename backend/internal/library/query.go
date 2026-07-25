@@ -186,18 +186,9 @@ func listOrderBy(sortKey string, direction string, randomSeed int64) string {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
-		return "recommend_score " + direction + ", created_at DESC, id DESC"
+		return "recommend_score " + direction + ", " + seededOrderBy("id", randomSeed)
 	case "random":
-		seed := randomSeed % 2147483647
-		if seed < 0 {
-			seed = -seed
-		}
-		multiplier := (seed*1103515245 + 12345) % 2147483647
-		if multiplier == 0 {
-			multiplier = 1
-		}
-		offset := (seed * 12345) % 2147483647
-		return fmt.Sprintf("((work.id * %d + %d) %% 2147483647) ASC, work.id ASC", multiplier, offset)
+		return seededOrderBy("work.id", randomSeed)
 	case "release":
 		return "work.release_date IS NULL ASC, work.release_date " + direction + ", work.created_at " + direction + ", work.id " + direction
 	case "code":
@@ -211,6 +202,19 @@ func listOrderBy(sortKey string, direction string, randomSeed int64) string {
 	default:
 		return "work.created_at " + direction + ", work.id " + direction
 	}
+}
+
+func seededOrderBy(idExpression string, randomSeed int64) string {
+	seed := randomSeed % 2147483647
+	if seed < 0 {
+		seed = -seed
+	}
+	multiplier := (seed*1103515245 + 12345) % 2147483647
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	offset := (seed * 12345) % 2147483647
+	return fmt.Sprintf("((%s * %d + %d) %% 2147483647) ASC, %s ASC", idExpression, multiplier, offset, idExpression)
 }
 
 func normalizeSort(sortKey string, direction string) (string, string) {
@@ -578,28 +582,7 @@ func listSelectSQL(where string, sortKey string, direction string, randomSeed in
 func listBaseSelectSQL(where string, includeRecommendation bool) string {
 	recommendationSortColumn := ""
 	if includeRecommendation {
-		recommendationSortColumn = `,
-			(CASE COALESCE(user_work_state.listening_status, 'none') WHEN 'none' THEN 35 WHEN 'want_to_listen' THEN 12 WHEN 'listening' THEN 8 WHEN 'finished' THEN 4 WHEN 'relisten' THEN 6 WHEN 'paused' THEN -55 ELSE 0 END
-			+ CASE WHEN EXISTS (
-				SELECT 1 FROM work_tag candidate_tag
-				INNER JOIN work_tag liked_tag ON liked_tag.tag_id = candidate_tag.tag_id
-				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_tag.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
-				WHERE candidate_tag.work_id = work.id AND liked_state.listening_status IN ('finished', 'relisten')
-			) THEN 25 ELSE 0 END
-			+ CASE WHEN EXISTS (
-				SELECT 1 FROM work_credit candidate_credit
-				INNER JOIN work_credit liked_credit ON liked_credit.person_id = candidate_credit.person_id AND liked_credit.role = candidate_credit.role
-				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_credit.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
-				WHERE candidate_credit.work_id = work.id AND candidate_credit.role = 'voice_actor' AND liked_state.listening_status IN ('finished', 'relisten')
-			) THEN 20 ELSE 0 END
-			+ CASE WHEN EXISTS (
-				SELECT 1 FROM work_party candidate_party
-				INNER JOIN work_party liked_party ON liked_party.party_id = candidate_party.party_id AND liked_party.role = 'circle'
-				INNER JOIN user_work_state liked_state ON liked_state.work_id = liked_party.work_id AND liked_state.user_id = COALESCE(user_work_state.user_id, ?)
-				WHERE candidate_party.work_id = work.id AND candidate_party.role = 'circle' AND liked_state.listening_status IN ('finished', 'relisten')
-			) THEN 20 ELSE 0 END
-			+ CASE WHEN COALESCE(user_work_state.favorite, 0) = 1 THEN 10 ELSE 0 END
-			) AS recommend_score`
+		recommendationSortColumn = `, ` + recommendationScoreExpression + ` AS recommend_score`
 	}
 	return `SELECT
 		work.id, work.primary_code, work.title, work.age_rating,
