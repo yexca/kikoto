@@ -106,6 +106,17 @@ import {
   type LocalWorkPageSize,
 } from "@/pages/libraryBrowseState";
 import {
+  compileLibrarySearchQuery,
+  editableSearchClauseKinds,
+  formatRemoteSearchQuery,
+  formatSearchClause,
+  normalizeSearchClauseDraft,
+  parseSearchClauses,
+  type SearchClause,
+  type SearchClauseDraft,
+  type SearchClauseKind,
+} from "@/pages/librarySearchClauses";
+import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
@@ -125,6 +136,7 @@ import {
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { useLibraryPlayer } from "@/player/PlayerProvider";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
@@ -260,40 +272,6 @@ const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
-type SearchClauseKind =
-  | "text"
-  | "code"
-  | "circle"
-  | "voice_actor"
-  | "tag"
-  | "exclude_tag"
-  | "user_tag"
-  | "exclude_user_tag"
-  | "rating_min"
-  | "sales_min"
-  | "duration_min"
-  | "duration_max"
-  | "age"
-  | "language";
-type SearchClause = { kind: SearchClauseKind; value: string };
-type SearchClauseDraft = { kind: SearchClauseKind; value: string };
-const editableSearchClauseKinds: { value: SearchClauseKind; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "code", label: "Code" },
-  { value: "circle", label: "Circle" },
-  { value: "voice_actor", label: "Voice actor" },
-  { value: "tag", label: "Tag" },
-  { value: "exclude_tag", label: "Not tag" },
-  { value: "user_tag", label: "My tag" },
-  { value: "exclude_user_tag", label: "Not my tag" },
-  { value: "rating_min", label: "Rating >=" },
-  { value: "sales_min", label: "Sales >=" },
-  { value: "duration_min", label: "Duration >=" },
-  { value: "duration_max", label: "Duration <=" },
-  { value: "age", label: "Age" },
-  { value: "language", label: "Language" },
-];
-
 type RemoteFetchDecisions = Record<string, RemoteFetchFileDecision>;
 
 function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
@@ -642,6 +620,12 @@ export function LibraryPage() {
 			window.history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}${nextSearch}`);
 		}
 	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
+
+  useEffect(() => {
+    if (activeTab.kind === "source" || isLibraryLoading) return;
+    const lastPage = Math.max(1, Math.ceil(workTotal / workPageSize));
+    if (workPage > lastPage) setWorkPage(lastPage);
+  }, [activeTab.kind, isLibraryLoading, workPage, workPageSize, workTotal]);
 
 	useEffect(() => {
 		if (selectedCode !== null || selectedRemoteTarget !== null) return;
@@ -1121,7 +1105,7 @@ export function LibraryPage() {
       onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
   };
   const localTopPagination = (
-    <WorkPagination
+    <WorkCollectionPagination
       {...localPaginationProps}
       placement="top"
     />
@@ -1353,7 +1337,7 @@ export function LibraryPage() {
               ))}
             </section>
           )}
-          {!libraryLoadError && <WorkPagination {...localPaginationProps} placement="bottom" />}
+          {!libraryLoadError && <WorkCollectionPagination {...localPaginationProps} placement="bottom" />}
         </div>
       )}
       {untrackTarget && (
@@ -1579,7 +1563,7 @@ function RemoteSourcePanel({
     onPageSizeChange,
   };
   const remoteTopPagination = (
-    <WorkPagination
+    <WorkCollectionPagination
       {...remotePaginationProps}
       placement="top"
     />
@@ -1588,6 +1572,11 @@ function RemoteSourcePanel({
   useEffect(() => {
     setBulkCodes((current) => new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))));
   }, [visibleWorks]);
+
+  useEffect(() => {
+    if (loading || page <= totalPages) return;
+    onPageChange(totalPages);
+  }, [loading, onPageChange, page, totalPages]);
 
   const toggleBulkCode = (code: string, checked: boolean) => {
     setBulkCodes((current) => {
@@ -1844,7 +1833,7 @@ function RemoteSourcePanel({
           </section>
         </div>
       )}
-      <WorkPagination {...remotePaginationProps} placement="bottom" />
+      <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />
       {saveConfirm && (
         <SaveConfirmModal
           count={saveConfirm.codes.length}
@@ -2439,102 +2428,6 @@ function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibra
   );
 }
 
-function WorkPagination({
-  placement,
-  page,
-  pageSize,
-  totalItems,
-  totalPages,
-  pageSizeOptions,
-  onPageChange,
-  onPageSizeChange,
-}: {
-  placement: "top" | "bottom";
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-  pageSizeOptions: readonly number[];
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: number) => void;
-}) {
-  const [jumpPage, setJumpPage] = useState(String(page));
-
-  useEffect(() => {
-    setJumpPage(String(page));
-  }, [page]);
-
-  const goToJumpPage = () => {
-    const next = Math.min(totalPages, Math.max(1, Number(jumpPage) || page));
-    onPageChange(next);
-    setJumpPage(String(next));
-  };
-
-  const controls = (
-    <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-      {placement === "top" && (
-        <select
-          className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          aria-label="Works per page"
-        >
-          {pageSizeOptions.map((value) => (
-            <option key={value} value={value}>
-              {value} / page
-            </option>
-          ))}
-        </select>
-      )}
-      <IconButton title="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>
-        <ChevronLeft className="h-4 w-4" />
-      </IconButton>
-      {placement === "bottom" && (
-        <div className="min-w-20 text-center text-xs text-muted-foreground">
-          {page} / {totalPages}
-        </div>
-      )}
-      <IconButton title="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}>
-        <ChevronRight className="h-4 w-4" />
-      </IconButton>
-      <input
-        className="h-8 w-16 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-        type="number"
-        min={1}
-        max={totalPages}
-        value={jumpPage}
-        onChange={(event) => setJumpPage(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") goToJumpPage();
-        }}
-        aria-label="Jump to page"
-      />
-      <Button variant="outline" size="sm" onClick={goToJumpPage}>
-        Go
-      </Button>
-    </div>
-  );
-
-  if (placement === "bottom") {
-    return (
-      <div className="flex justify-center">
-        <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-2 text-sm">
-          {controls}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="text-xs text-muted-foreground">
-        Page {page} / {totalPages} · {totalItems} works
-      </div>
-      {controls}
-    </div>
-  );
-}
-
 function SearchClauseEditor({
   editor,
   onChange,
@@ -2552,7 +2445,10 @@ function SearchClauseEditor({
       <select
         className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-40"
         value={editor.draft.kind}
-        onChange={(event) => onChange({ ...editor.draft, kind: event.target.value as SearchClauseKind })}
+        onChange={(event) => {
+          const kind = event.target.value as SearchClauseKind;
+          onChange({ kind, value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value });
+        }}
         aria-label="Search clause type"
       >
         {editableSearchClauseKinds.map((kind) => (
@@ -2561,16 +2457,28 @@ function SearchClauseEditor({
           </option>
         ))}
       </select>
-      <input
-        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
-        value={value}
-        onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") onSave();
-          if (event.key === "Escape") onCancel();
-        }}
-        placeholder="Value"
-      />
+      {editor.draft.kind === "shelf" ? (
+        <select
+          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          value={value === "false" ? "false" : "true"}
+          onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
+          aria-label="Shelf membership"
+        >
+          <option value="true">Included</option>
+          <option value="false">Not included</option>
+        </select>
+      ) : (
+        <input
+          className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+          value={value}
+          onChange={(event) => onChange({ ...editor.draft, value: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onSave();
+            if (event.key === "Escape") onCancel();
+          }}
+          placeholder="Value"
+        />
+      )}
       <div className="flex gap-2">
         <Button size="sm" disabled={!value.trim()} onClick={onSave}>
           <Check className="h-4 w-4" />
@@ -3339,8 +3247,11 @@ function WorkDetailView({
     setMessage("");
     try {
       const result = await api.refreshWorkLocalFiles(target.id, selectedSource.fileSourceId);
+      invalidateCachedWorkMedia(target.id);
+      if (result.workId !== target.id) invalidateCachedWorkMedia(result.workId);
       const refreshed = await api.getWork(result.workId);
       if (activeEdition || result.workId !== work?.id) {
+        setCachedWorkMedia(refreshed.id, refreshed.mediaItems);
         setActiveEdition(refreshed);
         setActiveEditionCode(refreshed.primaryCode);
       } else {
@@ -7571,62 +7482,6 @@ function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
-function parseSearchClauses(query: string): SearchClause[] {
-  const clauses: SearchClause[] = [];
-  let rest = query;
-  const wrappedPattern = /\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$/gi;
-  rest = rest.replace(wrappedPattern, (_match, key: string, value: string) => {
-    const clause = searchClauseFromKeyValue(key, value);
-    if (clause) clauses.push(clause);
-    return " ";
-  });
-  const parts = splitSearchParts(rest);
-  for (let index = 0; index < parts.length; index++) {
-    const rawPart = parts[index];
-    const part = rawPart.trim();
-    if (!part) continue;
-    const pendingPrefix = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):$/i);
-    if (pendingPrefix && index + 1 < parts.length) {
-      const clause = searchClauseFromKeyValue(pendingPrefix[1], parts[index + 1]);
-      if (clause) {
-        clauses.push(clause);
-        index += 1;
-        continue;
-      }
-    }
-    const prefixed = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language):(.+)$/i);
-    if (prefixed) {
-      const clause = searchClauseFromKeyValue(prefixed[1], prefixed[2]);
-      if (clause) {
-        clauses.push(clause);
-        continue;
-      }
-    }
-    if (/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(part)) {
-      clauses.push({ kind: "code", value: part.toUpperCase() });
-    } else {
-      clauses.push({ kind: "text", value: part });
-    }
-  }
-  return clauses.filter((clause) => clause.value.trim() !== "");
-}
-
-function splitSearchParts(value: string) {
-  const parts: string[] = [];
-  const pattern = /(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(value)) !== null) {
-    if (match[1]) {
-      parts.push(`${match[1]}:${match[2]}`);
-    } else if (match[3]) {
-      parts.push(`${match[3]}:${match[4]}`);
-    } else {
-      parts.push(match[5] ?? match[6] ?? match[7] ?? "");
-    }
-  }
-  return parts;
-}
-
 function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <Card className="border-destructive/35">
@@ -7642,128 +7497,6 @@ function LibraryLoadErrorCard({ message, onRetry }: { message: string; onRetry: 
       </CardContent>
     </Card>
   );
-}
-
-function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause | null {
-  const normalizedKey = key.trim().toLowerCase();
-  const value = rawValue.trim();
-  if (!value) return null;
-  switch (normalizedKey) {
-    case "circle":
-      return { kind: "circle", value };
-    case "-circle":
-      return { kind: "text", value: `-${value}` };
-    case "va":
-    case "-va":
-    case "voice":
-    case "creator":
-      return { kind: "voice_actor", value };
-    case "tag":
-    case "tagw":
-      return { kind: "tag", value };
-    case "-tag":
-    case "-tagw":
-      return { kind: "exclude_tag", value };
-    case "mytag":
-      return { kind: "user_tag", value };
-    case "-mytag":
-      return { kind: "exclude_user_tag", value };
-    case "rate":
-    case "rating":
-      return { kind: "rating_min", value };
-    case "sell":
-    case "sales":
-      return { kind: "sales_min", value };
-    case "duration":
-      return { kind: "duration_min", value };
-    case "-duration":
-      return { kind: "duration_max", value };
-    case "age":
-      return { kind: "age", value };
-    case "lang":
-    case "language":
-      return { kind: "language", value };
-    default:
-      return null;
-  }
-}
-
-function normalizeSearchClauseDraft(draft: SearchClauseDraft): SearchClause | null {
-  const value = draft.value.trim();
-  if (!value) return null;
-  if (draft.kind === "code") {
-    return { kind: "code", value: value.toUpperCase() };
-  }
-  return { kind: draft.kind, value };
-}
-
-function compileLibrarySearchQuery(clauses: SearchClause[]) {
-  return clauses.map((clause) => {
-    switch (clause.kind) {
-      case "code":
-      case "text":
-        return clause.value;
-      case "circle":
-        return `$circle:${clause.value}$`;
-      case "voice_actor":
-        return `$va:${clause.value}$`;
-      case "tag":
-        return `$tag:${clause.value}$`;
-      case "exclude_tag":
-        return `$-tag:${clause.value}$`;
-      case "user_tag":
-        return `$mytag:${clause.value}$`;
-      case "exclude_user_tag":
-        return `$-mytag:${clause.value}$`;
-      case "rating_min":
-        return `rating:${clause.value}`;
-      case "sales_min":
-        return `sales:${clause.value}`;
-      case "duration_min":
-        return `$duration:${clause.value}$`;
-      case "duration_max":
-        return `$-duration:${clause.value}$`;
-      case "age":
-        return `$age:${clause.value}$`;
-      case "language":
-        return `$lang:${clause.value}$`;
-      default:
-        return clause.value;
-    }
-  }).join(" ");
-}
-
-function formatRemoteSearchQuery(clauses: SearchClause[]) {
-  return clauses
-    .map(formatRemoteSearchClause)
-    .join(" ");
-}
-
-function formatRemoteSearchClause(clause: SearchClause) {
-  switch (clause.kind) {
-    case "circle":
-      return `$circle:${clause.value}$`;
-    case "voice_actor":
-      return `$va:${clause.value}$`;
-    case "tag":
-      return `$tag:${clause.value}$`;
-    case "exclude_tag":
-      return `$-tag:${clause.value}$`;
-    case "duration_min":
-      return `$duration:${clause.value}$`;
-    case "duration_max":
-      return `$-duration:${clause.value}$`;
-    case "rating_min":
-      return `$rate:${clause.value}$`;
-    case "sales_min":
-      return `$sell:${clause.value}$`;
-    case "age":
-      return `$age:${clause.value}$`;
-    case "language":
-      return `$lang:${clause.value}$`;
-    default:
-      return formatSearchClause(clause);
-  }
 }
 
 function workMatchesSearch(work: Work, clauses: SearchClause[]) {
@@ -7800,6 +7533,10 @@ function workMatchesClause(work: Work, clause: SearchClause) {
     case "duration_min":
     case "duration_max":
       return true;
+    case "shelf":
+      return clause.value === "false"
+        ? !work.favorite && work.listeningStatus === "none" && !work.progress.mediaItemId
+        : work.favorite || work.listeningStatus !== "none" || Boolean(work.progress.mediaItemId);
     case "text":
     default:
       return workMatchesText(
@@ -7841,6 +7578,7 @@ function remoteWorkMatchesClause(work: RemoteWork, clause: SearchClause) {
     case "language":
     case "duration_min":
     case "duration_max":
+    case "shelf":
       return true;
     case "text":
     default:
@@ -7881,6 +7619,8 @@ function searchClauseLabel(clause: SearchClause) {
       return `Age: ${clause.value}`;
     case "language":
       return `Language: ${clause.value}`;
+    case "shelf":
+      return clause.value === "false" ? "Shelf: Not included" : "Shelf: Included";
     case "text":
     default:
       return `Text: ${clause.value}`;
@@ -7889,45 +7629,6 @@ function searchClauseLabel(clause: SearchClause) {
 
 function searchQueryWithoutClause(clauses: SearchClause[], removeIndex: number) {
   return clauses.filter((_clause, index) => index !== removeIndex).map(formatSearchClause).join(" ");
-}
-
-function formatSearchClause(clause: SearchClause) {
-  const value = formatSearchValue(clause.value);
-  switch (clause.kind) {
-    case "code":
-    case "text":
-      return value;
-    case "circle":
-      return `circle:${value}`;
-    case "voice_actor":
-      return `va:${value}`;
-    case "tag":
-      return `tag:${value}`;
-    case "exclude_tag":
-      return `-tag:${value}`;
-    case "user_tag":
-      return `mytag:${value}`;
-    case "exclude_user_tag":
-      return `-mytag:${value}`;
-    case "rating_min":
-      return `rating:${clause.value}`;
-    case "sales_min":
-      return `sales:${clause.value}`;
-    case "duration_min":
-      return `duration:${clause.value}`;
-    case "duration_max":
-      return `-duration:${clause.value}`;
-    case "age":
-      return `age:${value}`;
-    case "language":
-      return `lang:${value}`;
-    default:
-      return value;
-  }
-}
-
-function formatSearchValue(value: string) {
-  return /\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value;
 }
 
 function codeFromPath(path: string) {

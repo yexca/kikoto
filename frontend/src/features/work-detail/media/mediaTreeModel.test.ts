@@ -122,6 +122,46 @@ describe("mediaTreeModel", () => {
     });
   });
 
+  it("hides items whose selected source only has missing locations", () => {
+    const item = {
+      id: 11,
+      title: "01.mp3",
+      kind: "audio",
+      fingerprint: "fingerprint",
+      durationSeconds: 90,
+      progress: null,
+      locations: [
+        {
+          id: 21,
+          fileSourceId: 1,
+          fileSourceName: "Missing local",
+          locationType: "local",
+          path: "library/RJ09999995/audio/01.mp3",
+          streamUrl: "",
+          downloadUrl: "",
+          availability: "missing",
+          sizeBytes: 1024,
+          durationSeconds: 90,
+        },
+        {
+          id: 31,
+          fileSourceId: 2,
+          fileSourceName: "Available local",
+          locationType: "local",
+          path: "backup/RJ09999995/audio/01.mp3",
+          streamUrl: "/api/media/31/stream",
+          downloadUrl: "",
+          availability: "available",
+          sizeBytes: 1024,
+          durationSeconds: 90,
+        },
+      ],
+    } as MediaItem;
+
+    expect(treeStats(buildTree([item], 1, "RJ09999995")).files).toBe(0);
+    expect(flattenTracks(buildTree([item], null, "RJ09999995"))[0]).toMatchObject({ locationId: 31 });
+  });
+
   it("builds remote preview paths without turning folders into playable tracks", () => {
     const remoteTracks = [{
       type: "folder",

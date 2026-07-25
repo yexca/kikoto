@@ -1,4 +1,4 @@
-import type { ListeningStatus } from "@/lib/api";
+import type { FavoriteSort, ListeningStatus, SortDirection } from "@/lib/api";
 
 export type FavoriteEntity = "works" | "circles" | "voices";
 export type FavoriteAvailability = "all" | "local" | "cache" | "remote" | "missing";
@@ -11,6 +11,9 @@ export type FavoritesBrowseState = {
   list: "all" | number;
   page: number;
   pageSize: 24 | 48;
+  sort: FavoriteSort;
+  direction: SortDirection;
+  randomSeed: number;
 };
 
 export const defaultFavoritesBrowseState: FavoritesBrowseState = {
@@ -21,11 +24,15 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
   list: "all",
   page: 1,
   pageSize: 24,
+  sort: "activity",
+  direction: "desc",
+  randomSeed: 1,
 };
 
 const entities: FavoriteEntity[] = ["works", "circles", "voices"];
 const statuses: Array<ListeningStatus | "all"> = ["all", "none", "want_to_listen", "listening", "finished", "relisten", "paused"];
 const availabilities: FavoriteAvailability[] = ["all", "local", "cache", "remote", "missing"];
+const sorts: FavoriteSort[] = ["activity", "added", "release", "code", "title", "rating", "sales", "random"];
 
 export function favoritesBrowseStateFromSearch(search: string, fallback = defaultFavoritesBrowseState): FavoritesBrowseState {
   const params = new URLSearchParams(search);
@@ -36,6 +43,8 @@ export function favoritesBrowseStateFromSearch(search: string, fallback = defaul
   const listID = Number(rawList);
   const page = Number(params.get("page"));
   const pageSize = Number(params.get("pageSize"));
+  const sort = params.get("sort");
+  const randomSeed = Number(params.get("seed"));
   return {
     entity: entities.includes(entity as FavoriteEntity) ? entity as FavoriteEntity : fallback.entity,
     query: params.has("q") ? params.get("q") ?? "" : fallback.query,
@@ -44,6 +53,11 @@ export function favoritesBrowseStateFromSearch(search: string, fallback = defaul
     list: rawList === "all" || rawList === null ? fallback.list : Number.isInteger(listID) && listID > 0 ? listID : fallback.list,
     page: Number.isInteger(page) && page > 0 ? page : fallback.page,
     pageSize: pageSize === 48 ? 48 : pageSize === 24 ? 24 : fallback.pageSize,
+    sort: sorts.includes(sort as FavoriteSort) ? sort as FavoriteSort : fallback.sort,
+    direction: params.get("direction") === "asc" || params.get("direction") === "desc"
+      ? params.get("direction") as SortDirection
+      : fallback.direction,
+    randomSeed: Number.isInteger(randomSeed) && randomSeed >= 1 && randomSeed <= 2147483646 ? randomSeed : fallback.randomSeed,
   };
 }
 
@@ -56,6 +70,9 @@ export function favoritesBrowseSearch(state: FavoritesBrowseState) {
   params.set("list", String(state.list));
   params.set("page", String(state.page));
   params.set("pageSize", String(state.pageSize));
+  params.set("sort", state.sort);
+  params.set("direction", state.direction);
+  params.set("seed", String(state.randomSeed));
   return `?${params.toString()}`;
 }
 

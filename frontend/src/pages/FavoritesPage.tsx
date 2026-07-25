@@ -1,8 +1,8 @@
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
   ArrowLeft,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
   Filter,
   Heart,
@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Star,
   Trash2,
@@ -51,7 +52,18 @@ import {
   type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, assetURL, type CircleSummary, type FavoriteList, type ListeningStatus, type VoiceSummary, type Work } from "@/lib/api";
+import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import {
+  api,
+  assetURL,
+  type CircleSummary,
+  type FavoriteList,
+  type FavoriteSort,
+  type ListeningStatus,
+  type SortDirection,
+  type VoiceSummary,
+  type Work,
+} from "@/lib/api";
 import { openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openCircleRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
@@ -63,6 +75,7 @@ import {
   type FavoriteAvailability,
   type FavoriteEntity,
 } from "@/pages/favoritesBrowseState";
+import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -91,6 +104,21 @@ const availabilityFilters = [
 ] as const;
 
 const pageSizeOptions = [24, 48] as const;
+const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
+  { value: "activity", label: "Shelf activity" },
+  { value: "added", label: "Added to list" },
+  { value: "release", label: "Release date" },
+  { value: "code", label: "DLsite code" },
+  { value: "title", label: "Title" },
+  { value: "rating", label: "Rating" },
+  { value: "sales", label: "Sales" },
+  { value: "random", label: "Random" },
+];
+
+function createFavoriteRandomSeed() {
+  return window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
+}
+
 type PageSize = (typeof pageSizeOptions)[number];
 type AvailabilityFilter = FavoriteAvailability;
 
@@ -117,6 +145,9 @@ export function FavoritesPage() {
   const [activeList, setActiveList] = useState<"all" | number>(initialBrowseState.list);
   const [page, setPage] = useState(initialBrowseState.page);
   const [pageSize, setPageSize] = useState<PageSize>(initialBrowseState.pageSize);
+  const [sort, setSort] = useState<FavoriteSort>(initialBrowseState.sort);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
+  const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
   const [totalWorks, setTotalWorks] = useState(0);
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
@@ -187,7 +218,7 @@ export function FavoritesPage() {
     }
     const seq = ++requestSeq.current;
     setIsLoading(true);
-    api.listFavoriteWorksPage(page, pageSize, query, activeList, statusFilter, availabilityFilter)
+    api.listFavoriteWorksPage(page, pageSize, "", activeList, statusFilter, availabilityFilter, sort, sortDirection, randomSeed)
       .then((result) => {
         if (seq !== requestSeq.current) return;
         setWorks(result.works);
@@ -205,7 +236,7 @@ export function FavoritesPage() {
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
       });
-  }, [activeList, availabilityFilter, auth.user, page, pageSize, query, statusFilter]);
+  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, statusFilter]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -222,13 +253,16 @@ export function FavoritesPage() {
       list: activeList,
       page,
       pageSize,
+      sort,
+      direction: sortDirection,
+      randomSeed,
     });
     const state = {
       ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
     };
     window.history.replaceState(state, "", `/favorites${search}`);
-  }, [activeList, availabilityFilter, favoriteEntity, page, pageSize, query, selectedWorkIDs, selectionMode, statusFilter]);
+  }, [activeList, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, statusFilter]);
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
@@ -245,13 +279,19 @@ export function FavoritesPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const hasActiveFilters = query.trim() || statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all";
+  const hasActiveFilters = favoriteEntity === "works"
+    ? statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all"
+    : Boolean(query.trim());
   const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
+
+  useEffect(() => {
+    if (!isLoading && page > totalPages) setPage(totalPages);
+  }, [isLoading, page, totalPages]);
 
   if (!auth.user) {
     return (
@@ -272,6 +312,9 @@ export function FavoritesPage() {
       list: activeList,
       page,
       pageSize,
+      sort,
+      direction: sortDirection,
+      randomSeed,
     };
     const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${work.id}"]`);
     const anchor = { workID: work.id, viewportOffset: target?.getBoundingClientRect().top ?? 0 };
@@ -298,15 +341,23 @@ export function FavoritesPage() {
     setPage(1);
   };
 
-  const filterByUserTag = (tag: string) => {
-    setQuery(personalTagSearch(tag));
-    setPage(1);
+  const openShelfUserTag = (tag: string) => {
+    const tagClause = personalTagSearch(tag);
+    const target = libraryLocation("/library", {
+      ...defaultLibraryBrowseState,
+      query: ["shelf:true", tagClause].filter(Boolean).join(" "),
+      view: viewMode,
+      mobileColumns,
+      desktopColumns,
+    });
+    window.history.pushState({}, "", target);
+    window.dispatchEvent(new Event("kikoto:navigation"));
   };
 
   const reloadFavoriteLists = async () => {
     const lists = await api.listFavoriteLists();
     setFavoriteLists(lists);
-    const result = await api.listFavoriteWorksPage(currentPage, pageSize, query, activeList, statusFilter, availabilityFilter);
+    const result = await api.listFavoriteWorksPage(currentPage, pageSize, "", activeList, statusFilter, availabilityFilter, sort, sortDirection, randomSeed);
     setWorks(result.works);
     setTotalWorks(result.total);
     setShelfTotal(result.shelfTotal);
@@ -400,42 +451,24 @@ export function FavoritesPage() {
           <p className="text-sm text-muted-foreground">Favorite lists and quick marks across the unified library</p>
           <h2 className="text-xl font-semibold">Personal Shelf</h2>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[minmax(220px,360px)_auto] sm:items-center">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-              placeholder="Search title, code, circle, tag"
-            />
-          </label>
-          <div className="flex items-center gap-2">
-            {favoriteEntity === "works" && <select
-              className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={availabilityFilter}
-              onChange={(event) => {
-                setAvailabilityFilter(event.target.value as AvailabilityFilter);
-                setPage(1);
-              }}
-              aria-label="Availability filter"
-            >
-              {availabilityFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>}
-            {hasActiveFilters && (
-              <Button variant="outline" size="icon" onClick={clearFilters} aria-label="Clear filters">
+        {favoriteEntity !== "works" && (
+          <div className="flex w-full items-center gap-2 sm:max-w-sm">
+            <label className="relative block min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+              />
+            </label>
+            {query.trim() && (
+              <Button variant="outline" size="icon" onClick={() => setQuery("")} aria-label="Clear search">
                 <X className="h-4 w-4" />
               </Button>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <div className="border-b" role="tablist" aria-label="Favorite categories">
@@ -542,45 +575,77 @@ export function FavoritesPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Filter className="h-4 w-4" />
-          Showing {totalWorks} of {shelfTotal} shelf works
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
-            setSelectionMode((value) => {
-              if (value) setSelectedWorkIDs(new Set());
-              return !value;
-            });
-          }}>
-            Select
-          </Button>
-          <WorkCollectionLayoutPicker
-            viewMode={viewMode}
-            mobileColumns={mobileColumns}
-            desktopColumns={desktopColumns}
-            onViewModeChange={setViewMode}
-            onMobileColumnsChange={setMobileColumns}
-            onDesktopColumnsChange={setDesktopColumns}
-          />
-          <span className="text-xs text-muted-foreground">Page size</span>
-          <select
-            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-            value={pageSize}
-            onChange={(event) => {
-              setPageSize(Number(event.target.value) as PageSize);
-              setPage(1);
-            }}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <WorkCollectionPagination
+        placement="top"
+        page={currentPage}
+        pageSize={pageSize}
+        totalItems={totalWorks}
+        totalPages={totalPages}
+        pageSizeOptions={pageSizeOptions}
+        onPageChange={setPage}
+        onPageSizeChange={(value) => {
+          setPageSize(value as PageSize);
+          setPage(1);
+        }}
+        leadingControls={(
+          <>
+            <select
+              className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+              value={availabilityFilter}
+              onChange={(event) => {
+                setAvailabilityFilter(event.target.value as AvailabilityFilter);
+                setPage(1);
+              }}
+              aria-label="Availability filter"
+            >
+              {availabilityFilters.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+            {hasActiveFilters && (
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearFilters} aria-label="Clear shelf filters" title="Clear shelf filters">
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+            <Button variant={selectionMode ? "default" : "outline"} size="sm" className="h-8" onClick={() => {
+              setSelectionMode((value) => {
+                if (value) setSelectedWorkIDs(new Set());
+                return !value;
+              });
+            }}>
+              Select
+            </Button>
+            <WorkCollectionLayoutPicker
+              viewMode={viewMode}
+              mobileColumns={mobileColumns}
+              desktopColumns={desktopColumns}
+              onViewModeChange={setViewMode}
+              onMobileColumnsChange={setMobileColumns}
+              onDesktopColumnsChange={setDesktopColumns}
+            />
+            <FavoriteSortControls
+              value={sort}
+              direction={sortDirection}
+              disabled={isLoading}
+              onChange={(value) => {
+                setSort(value);
+                if (value === "random") setRandomSeed(createFavoriteRandomSeed());
+                setPage(1);
+              }}
+              onDirectionChange={(value) => {
+                setSortDirection(value);
+                setPage(1);
+              }}
+              onReshuffle={() => {
+                setRandomSeed(createFavoriteRandomSeed());
+                setPage(1);
+              }}
+            />
+          </>
+        )}
+      />
 
       {selectionMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
@@ -639,20 +704,20 @@ export function FavoritesPage() {
                     toast.success(`Updated list membership for ${work.primaryCode}.`);
                   }}
                   onOpen={() => openWork(work)}
-                  onUserTagOpen={filterByUserTag}
+                  onUserTagOpen={openShelfUserTag}
                   onStatusChange={updateWorkStatus}
                 />
               </div>
             ))}
           </div>
-          {totalPages > 1 && (
-            <Pagination
-              page={currentPage}
-              totalPages={totalPages}
-              totalItems={totalWorks}
-              onPageChange={setPage}
-            />
-          )}
+          <WorkCollectionPagination
+            placement="bottom"
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={totalWorks}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </>
       ) : (
         <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
@@ -967,32 +1032,52 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
   };
 }
 
-function Pagination({
-  page,
-  totalPages,
-  totalItems,
-  onPageChange,
+function FavoriteSortControls({
+  value,
+  direction,
+  disabled,
+  onChange,
+  onDirectionChange,
+  onReshuffle,
 }: {
-  page: number;
-  totalPages: number;
-  totalItems: number;
-  onPageChange: (page: number) => void;
+  value: FavoriteSort;
+  direction: SortDirection;
+  disabled: boolean;
+  onChange: (value: FavoriteSort) => void;
+  onDirectionChange: (value: SortDirection) => void;
+  onReshuffle: () => void;
 }) {
+  const directionTitle = value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="text-xs text-muted-foreground">
-        Page {page} / {totalPages} · {totalItems} works
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          <ChevronLeft className="h-4 w-4" />
-          Prev
-        </Button>
-        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-          Next
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
+      <select
+        className="h-7 max-w-36 rounded-l-md bg-transparent px-2 text-xs outline-none disabled:opacity-50"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as FavoriteSort)}
+        aria-label="Sort shelf works"
+      >
+        {favoriteSortOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-8 rounded-l-none border-l"
+        disabled={disabled}
+        onClick={() => value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc")}
+        aria-label={directionTitle}
+        title={directionTitle}
+      >
+        {value === "random"
+          ? <RefreshCw className="h-4 w-4" />
+          : direction === "asc"
+            ? <ArrowDownAZ className="h-4 w-4" />
+            : <ArrowDownZA className="h-4 w-4" />}
+      </Button>
     </div>
   );
 }

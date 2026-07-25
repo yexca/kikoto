@@ -36,6 +36,21 @@ func TestParseSearchClausesSupportsPersonalTags(t *testing.T) {
 	}
 }
 
+func TestParseSearchClausesSupportsShelfMembership(t *testing.T) {
+	want := []SearchClause{{Kind: "shelf", Value: "true"}}
+	if got := ParseSearchClauses(`shelf:true`); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+
+	where, args := SearchWhereForUser(`shelf:true`, 42)
+	if !strings.Contains(where, "user_media_progress") || !strings.Contains(where, "user_work_state.favorite") {
+		t.Fatalf("shelf predicate = %s", where)
+	}
+	if !reflect.DeepEqual(args, []any{int64(42)}) {
+		t.Fatalf("shelf args = %#v, want [42]", args)
+	}
+}
+
 func TestNumericClauseValueIgnoresUnits(t *testing.T) {
 	if got := NumericClauseValue("4.75 stars"); got != 4.75 {
 		t.Fatalf("NumericClauseValue() = %v, want 4.75", got)

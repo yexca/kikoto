@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 type workUserStateResponse struct {
@@ -150,6 +151,15 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		}
 		listID = parsed
 	}
+	sortKey := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
+	if sortKey == "" {
+		sortKey = "activity"
+	}
+	direction := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+	if direction != "asc" {
+		direction = "desc"
+	}
+	randomSeed := int64(queryInt(r, "seed", 1))
 	where, args := favoriteWorksWhere(
 		strings.TrimSpace(r.URL.Query().Get("status")),
 		strings.TrimSpace(r.URL.Query().Get("availability")),
@@ -174,7 +184,9 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	rawWorks, err := s.libraryStore.ListMatching(r.Context(), user.ID, where, args, page, pageSize, false)
+	rawWorks, err := s.libraryStore.ListMatchingSorted(r.Context(), where, args, library.MatchingListOptions{
+		UserID: user.ID, Page: page, PageSize: pageSize, Sort: sortKey, Direction: direction, RandomSeed: randomSeed, ListID: listID,
+	})
 	if err != nil {
 		writeError(w, err)
 		return

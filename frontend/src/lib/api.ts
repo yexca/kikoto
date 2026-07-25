@@ -70,6 +70,7 @@ export type FavoriteWorksPage = WorksPage & {
 };
 
 export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random" | "recommend";
+export type FavoriteSort = "activity" | "added" | "release" | "code" | "title" | "rating" | "sales" | "random";
 export type SortDirection = "asc" | "desc";
 
 export type WorkDetail = {
@@ -1435,9 +1436,12 @@ export const api = {
     listId: number | "all" = "all",
     status = "all",
     availability = "all",
+    sort: FavoriteSort = "activity",
+    direction: SortDirection = "desc",
+    seed = 1,
   ) =>
     getJSON<FavoriteWorksPage>(
-      `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
     ),
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   listRecentlyPlayedWorks: (limit = 10) =>

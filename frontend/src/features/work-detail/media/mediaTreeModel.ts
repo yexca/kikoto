@@ -53,7 +53,8 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
   const root = emptyTree();
   for (const item of items) {
     const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
-    const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ?? sourceLocations[0];
+    const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl)
+      ?? sourceLocations.find((candidate) => candidate.availability === "remote" && candidate.streamUrl);
     if (!location) continue;
     const cacheLocation = sourceLocations.find((candidate) => candidate.locationType === "cache" && candidate.availability === "available");
     const localLocation = sourceLocations.find((candidate) => candidate.locationType === "local" && candidate.availability === "available");

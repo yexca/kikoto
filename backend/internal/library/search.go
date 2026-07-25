@@ -11,7 +11,7 @@ type SearchClause struct {
 	Value string
 }
 
-var wrappedSearchPattern = regexp.MustCompile(`(?i)\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang):([^$]+)\$`)
+var wrappedSearchPattern = regexp.MustCompile(`(?i)\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang|shelf):([^$]+)\$`)
 var splitSearchPattern = regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)`)
 var workCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`)
 var numericSearchPattern = regexp.MustCompile(`[^0-9.]`)
@@ -115,6 +115,12 @@ func searchClauseFromKey(key string, value string) (SearchClause, bool) {
 		return SearchClause{Kind: "age", Value: value}, true
 	case "lang", "language":
 		return SearchClause{Kind: "language", Value: value}, true
+	case "shelf":
+		normalized := strings.ToLower(value)
+		if normalized != "true" && normalized != "false" {
+			return SearchClause{}, false
+		}
+		return SearchClause{Kind: "shelf", Value: normalized}, true
 	default:
 		return SearchClause{}, false
 	}

@@ -98,9 +98,10 @@ async function mockFavorites(page: Page) {
 
 test("favorites detail return restores browse state, selection, anchor, and work tags", async ({ page }) => {
   await mockFavorites(page);
-  await page.goto("/favorites?entity=works&q=focus&status=listening&availability=local&list=2&page=2&pageSize=24");
+  await page.goto("/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159");
   await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("class", /bg-primary/);
-  await expect(page.getByPlaceholder("Search title, code, circle, tag")).toHaveValue("focus");
+  await expect(page.getByLabel("Sort shelf works")).toHaveValue("sales");
+  await expect(page.getByRole("textbox")).toHaveCount(0);
   await page.getByRole("button", { name: "Select", exact: true }).click();
   await page.locator('[aria-label="Select work"]').nth(17).click();
   const target = page.getByText("Favorite work 18", { exact: true });
@@ -119,7 +120,7 @@ test("favorites detail return restores browse state, selection, anchor, and work
 
   await page.getByRole("button", { name: "Back to favorites" }).click();
   await expect(page).toHaveURL(/\/favorites\?/);
-  await expect(page.getByPlaceholder("Search title, code, circle, tag")).toHaveValue("focus");
+  await expect(page.getByLabel("Sort shelf works")).toHaveValue("sales");
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 100);
   const params = new URL(page.url()).searchParams;
@@ -127,4 +128,7 @@ test("favorites detail return restores browse state, selection, anchor, and work
   expect(params.get("availability")).toBe("local");
   expect(params.get("list")).toBe("2");
   expect(params.get("page")).toBe("2");
+  expect(params.get("sort")).toBe("sales");
+  expect(params.get("direction")).toBe("asc");
+  expect(params.get("seed")).toBe("314159");
 });

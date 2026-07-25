@@ -37,6 +37,17 @@ type RawPage struct {
 	Total    int
 }
 
+type MatchingListOptions struct {
+	UserID     int64
+	Page       int
+	PageSize   int
+	Sort       string
+	Direction  string
+	RandomSeed int64
+	ListID     int64
+	DemoOnly   bool
+}
+
 type RawWork struct {
 	ID                     int64
 	PrimaryCode            string
@@ -103,16 +114,76 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 // ListMatching materializes the common Library projection for a predicate
 // owned by an adjacent feature, such as a user's favorite shelf.
 func (s *Store) ListMatching(ctx context.Context, userID int64, where string, args []any, page int, pageSize int, demoOnly bool) ([]RawWork, error) {
-	if demoOnly {
+	return s.ListMatchingSorted(ctx, where, args, MatchingListOptions{
+		UserID: userID, Page: page, PageSize: pageSize, Sort: "recent", Direction: "desc", DemoOnly: demoOnly,
+	})
+}
+
+func (s *Store) ListMatchingSorted(ctx context.Context, where string, args []any, options MatchingListOptions) ([]RawWork, error) {
+	if options.Page < 1 {
+		options.Page = 1
+	}
+	if options.PageSize < 1 || options.PageSize > 100 {
+		options.PageSize = 24
+	}
+	if options.DemoOnly {
 		where = "(" + where + ") AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
-	queryArgs := append([]any{userID}, args...)
-	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, "recent", "desc", 0)+" LIMIT ? OFFSET ?", queryArgs...)
+	selectSQL, prefixArgs := matchingListSelectSQL(where, options)
+	queryArgs := append(prefixArgs, options.UserID)
+	queryArgs = append(queryArgs, args...)
+	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
+	rows, err := s.db.QueryContext(ctx, selectSQL+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		return nil, err
 	}
 	return ScanRows(rows)
+}
+
+func matchingListSelectSQL(where string, options MatchingListOptions) (string, []any) {
+	sortKey := strings.ToLower(strings.TrimSpace(options.Sort))
+	_, direction := normalizeSort("recent", options.Direction)
+	outerProjection := `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (`
+	switch sortKey {
+	case "activity":
+		expression := `MAX(
+			COALESCE(user_work_state.updated_at, ''),
+			COALESCE((
+				SELECT MAX(shelf_progress.updated_at)
+				FROM user_media_progress AS shelf_progress
+				INNER JOIN media_item AS shelf_item ON shelf_item.id = shelf_progress.media_item_id
+				WHERE shelf_progress.user_id = ? AND shelf_item.work_id = work.id
+			), ''),
+			COALESCE((
+				SELECT MAX(shelf_list_item.created_at)
+				FROM favorite_list_item AS shelf_list_item
+				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
+				WHERE shelf_list.user_id = ? AND shelf_list_item.work_id = work.id
+			), ''),
+			work.created_at
+		)`
+		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value ` + direction + `, id ` + direction
+		return query, []any{options.UserID, options.UserID}
+	case "added":
+		expression := `(
+			SELECT MAX(shelf_list_item.created_at)
+			FROM favorite_list_item AS shelf_list_item
+			INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
+			WHERE shelf_list.user_id = ? AND shelf_list_item.work_id = work.id`
+		prefixArgs := []any{options.UserID}
+		if options.ListID > 0 {
+			expression += ` AND shelf_list.id = ?`
+			prefixArgs = append(prefixArgs, options.ListID)
+		}
+		expression += `)`
+		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
+		return query, prefixArgs
+	case "release", "code", "title", "rating", "sales", "random", "recent":
+		return listSelectSQL(where, sortKey, direction, options.RandomSeed), nil
+	default:
+		options.Sort = "activity"
+		return matchingListSelectSQL(where, options)
+	}
 }
 
 // ScanRows owns rows and closes it after fully materializing the common
@@ -372,6 +443,9 @@ func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 		case "language":
 			clauses = append(clauses, familyEditionLanguageLikeClause())
 			args = append(args, like, like, like, like)
+		case "shelf":
+			clauses = append(clauses, userShelfClause(strings.EqualFold(needle, "false")))
+			args = append(args, userID)
 		default:
 			personalTag := ""
 			if userID > 0 {
@@ -544,6 +618,21 @@ func userTagLikeClause(negated bool) string {
 	return prefix + ` (SELECT 1 FROM user_work_tag AS search_user_work_tag INNER JOIN user_tag AS search_user_tag ON search_user_tag.id = search_user_work_tag.user_tag_id WHERE search_user_work_tag.work_id = work.id AND search_user_work_tag.user_id = ? AND LOWER(search_user_tag.name) LIKE ?)`
 }
 
+func userShelfClause(negated bool) string {
+	prefix := ""
+	if negated {
+		prefix = "NOT "
+	}
+	return prefix + `(COALESCE(user_work_state.favorite, 0) = 1
+		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
+		OR EXISTS (
+			SELECT 1
+			FROM user_media_progress AS search_shelf_progress
+			INNER JOIN media_item AS search_shelf_item ON search_shelf_item.id = search_shelf_progress.media_item_id
+			WHERE search_shelf_progress.user_id = ? AND search_shelf_item.work_id = work.id
+		))`
+}
+
 func manualOverrideAnyLikeClause(fields ...string) string {
 	quoted := make([]string, 0, len(fields))
 	for _, field := range fields {
@@ -580,6 +669,10 @@ func listSelectSQL(where string, sortKey string, direction string, randomSeed in
 }
 
 func listBaseSelectSQL(where string, includeRecommendation bool) string {
+	return listBaseSelectSQLWithExtra(where, includeRecommendation, "")
+}
+
+func listBaseSelectSQLWithExtra(where string, includeRecommendation bool, extraSelect string) string {
 	recommendationSortColumn := ""
 	if includeRecommendation {
 		recommendationSortColumn = `, ` + recommendationScoreExpression + ` AS recommend_score`
@@ -595,7 +688,7 @@ func listBaseSelectSQL(where string, includeRecommendation bool) string {
 		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,
 		(SELECT party.display_name || '|' || external.external_id FROM work_party AS relation INNER JOIN party ON party.id = relation.party_id LEFT JOIN party_external_id AS external ON external.party_id = party.id AND external.is_primary = 1 WHERE relation.work_id = work.id AND relation.role = 'circle' ORDER BY relation.updated_at DESC LIMIT 1) AS party_link,
 		COALESCE(user_work_state.listening_status, 'none') AS listening_status,
-		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + `
+		COALESCE(user_work_state.favorite, 0) AS favorite` + recommendationSortColumn + extraSelect + `
 	FROM work
 	LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 	WHERE ` + where

@@ -18,12 +18,15 @@ describe("favorites browse state", () => {
       list: 42,
       page: 3,
       pageSize: 48 as const,
+      sort: "sales" as const,
+      direction: "asc" as const,
+      randomSeed: 314159,
     };
     expect(favoritesBrowseStateFromSearch(favoritesBrowseSearch(state))).toEqual(state);
   });
 
   it("normalizes invalid values", () => {
-    expect(favoritesBrowseStateFromSearch("?entity=nope&page=-1&pageSize=96&list=bad")).toEqual(defaultFavoritesBrowseState);
+    expect(favoritesBrowseStateFromSearch("?entity=nope&page=-1&pageSize=96&list=bad&sort=nope&direction=sideways&seed=0")).toEqual(defaultFavoritesBrowseState);
   });
 
   it("quotes personal tag filters", () => {
