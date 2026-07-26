@@ -32,13 +32,21 @@ workflow_definition
 ## Popular Collections
 
 Remote popular collection reads the configured compatible file source's own
-recommendations and may track or fetch those remote works.
+recommendations and may track or fetch those remote works when run manually.
+Startup and interval triggers retain a bounded Track configuration and expand
+their tag template when each run is dispatched. Automatic Fetch remains in the
+typed custom-workflow path where file, byte, known-size, and disk-reserve bounds
+are explicit.
 
 DLsite popular voice collection reads the provider ranking for 24 hours, 7
 days, 30 days, or a selected year. Non-annual runs may be limited to works
 released within 30 days. The recoverable worker synchronizes metadata and
 appends a run-specific tag owned by the user who started the run. It does not
 create remote file-source presence or fetch media.
+
+Configurable built-in triggers retain the configuring user for user-owned tag
+effects and revalidate that user's permissions when dispatching. Triggered runs
+store both their trigger reference and the final resolved input.
 
 ## Source Availability
 

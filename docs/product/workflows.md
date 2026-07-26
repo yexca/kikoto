@@ -4,8 +4,8 @@ Workflows make backend actions inspectable.
 
 ## User Surfaces
 
-- Workflows: runnable built-in definitions, custom definition drafts, and
-  scheduled triggers.
+- Workflows: built-in and custom definitions with their triggers managed in the
+  selected definition.
 - Activity: mutually exclusive running, review, failed, and completed views.
 
 ## Current Behavior
@@ -18,8 +18,14 @@ Workflows make backend actions inspectable.
   decisions.
 - Acknowledged informational runs leave Review, appear in Completed with a
   `Reviewed` badge, and retain their original execution status.
-- Definitions puts manually runnable built-ins ahead of custom drafts. Internal
-  system definitions that have no manual action are omitted from this surface.
+- Definitions groups Built-in workflows and Custom definitions. Each list item
+  shows one execution status: Scheduled takes precedence over Startup, while a
+  definition without either persisted trigger shows Manual.
+- Built-in local scan, metadata sync, library refresh, remote popular, and
+  DLsite popular workflows support editable Startup and interval triggers.
+- Remote popular automation stores source, action, limit, and a tag template.
+  The template is expanded for each run; automatic collection is Track-only so
+  it cannot bypass Fetch size and disk-reserve safeguards.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
   annual runs select an explicit year. Runs synchronize metadata and append the

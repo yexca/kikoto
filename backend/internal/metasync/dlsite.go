@@ -35,6 +35,7 @@ type DLsiteSyncer struct {
 	maxBackoff    time.Duration
 	triggerType   string
 	triggerReason string
+	triggerID     int64
 }
 
 type DLsiteSyncResult struct {
@@ -116,6 +117,13 @@ func (s *DLsiteSyncer) WithTrigger(triggerType string, triggerReason string) *DL
 	}
 	s.triggerType = triggerType
 	s.triggerReason = triggerReason
+	return s
+}
+
+func (s *DLsiteSyncer) WithTriggerID(triggerID int64) *DLsiteSyncer {
+	if triggerID > 0 {
+		s.triggerID = triggerID
+	}
 	return s
 }
 
@@ -796,6 +804,11 @@ func (s *DLsiteSyncer) recordWorkflow(ctx context.Context, result DLsiteSyncResu
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", result.Status, s.triggerType, s.triggerReason, map[string]any{}, summary)
 	if err != nil {
 		return 0, 0, err
+	}
+	if s.triggerID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", s.triggerID, runID); err != nil {
+			return 0, 0, err
+		}
 	}
 
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{

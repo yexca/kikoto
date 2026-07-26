@@ -533,7 +533,7 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
-	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
+	prepared, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC(), nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -553,7 +553,7 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 			next_run_at
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, payload.ConfigJSON, nextRunAt)
+	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.ConfigJSON, prepared.NextRunAt)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -619,7 +619,7 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
-	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
+	prepared, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC(), &current)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -639,7 +639,7 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 			next_run_at = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, payload.ConfigJSON, nextRunAt, id)
+	`, payload.WorkflowDefinitionID, payload.TriggerType, payload.DisplayName, enabled, payload.ScheduleJSON, prepared.ConfigJSON, prepared.NextRunAt, id)
 	if err != nil {
 		writeError(w, err)
 		return

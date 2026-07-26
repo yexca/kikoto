@@ -179,6 +179,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/local-cleanup", s.cleanupLocalWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/archived-root-review", s.reviewArchivedFetchRoots)
+	mux.HandleFunc("POST /api/workflow-runs/startup-library-refresh", s.createStartupLibraryRefreshRun)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
@@ -3833,6 +3834,21 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+func (s *Server) createStartupLibraryRefreshRun(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+		return
+	}
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	result, err := s.runStartupLibraryRefresh(r.Context(), "manual", "manual", 0)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
 func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
@@ -4333,39 +4349,8 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureStartupLibraryRefreshTrigger(ctx); err != nil {
+	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
 		return err
-	}
-	var triggerID int64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT trigger.id
-		FROM workflow_trigger AS trigger
-		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		WHERE definition.code = 'startup_library_refresh'
-			AND trigger.trigger_type = 'startup'
-			AND trigger.enabled = 1
-		ORDER BY trigger.id
-		LIMIT 1
-	`).Scan(&triggerID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if triggerID > 0 {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", triggerID)
-		result, runErr := s.runStartupLibraryRefresh(ctx, "startup", "system_startup", triggerID)
-		if runErr != nil {
-			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), triggerID)
-			return runErr
-		}
-		if result.Status == "succeeded" {
-			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", triggerID)
-		} else {
-			message := strings.Join(result.Failures, "; ")
-			if message == "" {
-				message = "workflow completed with status " + result.Status
-			}
-			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, triggerID)
-		}
 	}
 	if err := s.dispatchStartupCustomWorkflowTriggers(ctx); err != nil {
 		return err
@@ -4378,53 +4363,6 @@ func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
 		return err
 	}
 	return s.reconcileRemoteFetchManifests(ctx)
-}
-
-func (s *Server) ensureStartupLibraryRefreshTrigger(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_trigger
-		SET enabled = 0,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE trigger_type = 'startup'
-			AND workflow_definition_id IN (
-				SELECT id FROM workflow_definition WHERE code = 'local_library_scan'
-			)
-	`); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO workflow_trigger (
-			workflow_definition_id,
-			trigger_type,
-			display_name,
-			enabled,
-			schedule_json,
-			config_json
-		)
-		SELECT
-			id,
-			'startup',
-			'Startup library refresh',
-			1,
-			'{"type":"startup"}',
-			'{"reason":"system_startup","children":["local_library_scan","metadata_sync"]}'
-		FROM workflow_definition
-		WHERE code = 'startup_library_refresh'
-			AND NOT EXISTS (
-				SELECT 1
-				FROM workflow_trigger AS trigger
-				WHERE trigger.workflow_definition_id = workflow_definition.id
-					AND trigger.trigger_type = 'startup'
-			)
-	`); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
@@ -4441,6 +4379,10 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string) (metasync.DLsiteSyncResult, error) {
+	return s.runDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, 0)
+}
+
+func (s *Server) runDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (metasync.DLsiteSyncResult, error) {
 	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
 	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
 		WithCacheRoot(s.cfg.CacheRoot).
@@ -4450,7 +4392,8 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
 		).
-		WithTrigger(triggerType, triggerReason)
+		WithTrigger(triggerType, triggerReason).
+		WithTriggerID(triggerID)
 	result, err := syncer.SyncAll(ctx)
 	if err != nil {
 		return result, err
@@ -4489,6 +4432,10 @@ type localScanResult struct {
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
+	return s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, 0)
+}
+
+func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
 
 	workFolders, scanSummary, err := localfs.DiscoverFolders(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
@@ -4530,6 +4477,11 @@ func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerRe
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", triggerType, triggerReason, runInput, runSummary)
 	if err != nil {
 		return localScanResult{}, err
+	}
+	if triggerID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", triggerID, runID); err != nil {
+			return localScanResult{}, err
+		}
 	}
 
 	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, scanDepth)

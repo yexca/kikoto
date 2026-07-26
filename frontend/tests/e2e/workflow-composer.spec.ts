@@ -111,10 +111,9 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await page.screenshot({ path: testInfo.outputPath("workflow-composer.png"), fullPage: true });
   await page.getByRole("button", { name: "Close workflow composer" }).click();
 
-  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await expect(page.getByText("New scheduled trigger", { exact: true })).toBeVisible();
-  await expect(page.getByText("Disable Require preview in the workflow before scheduling it.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  await expect(page.getByText("New schedule", { exact: true })).toBeVisible();
+  await expect(page.getByText("Disable Require preview in the workflow before automating it.", { exact: true })).toBeVisible();
   await expect(page.getByText("Provide required inputs: Circle.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Close", exact: true }).click();

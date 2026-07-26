@@ -191,7 +191,7 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByText("Ready to run", { exact: true })).toBeVisible();
+  await expect(page.getByText("Built-in workflows", { exact: true })).toBeVisible();
   await expect(page.getByText("Custom definitions", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Cache media/ })).toHaveCount(0);
@@ -201,14 +201,23 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await expect(page.getByText("Ranking period", { exact: true })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText(/-DL-24h-r30d-popular$/)).toBeVisible();
+  await expect(page.getByLabel("User tag")).toHaveValue(/-DL-24h-r30d-popular$/);
   await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
+  await expect(scheduleDialog).toBeVisible();
+  await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
+  await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("");
+  await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
+  await expect(scheduleDialog.getByText(/Preview: .*_DL_24h_all_popular$/)).toBeVisible();
+  await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Year", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
   await page.getByLabel("Ranking year").selectOption("2025");
-  await expect(page.getByText(/-DL-year-2025-popular$/)).toBeVisible();
+  await expect(page.getByLabel("User tag")).toHaveValue(/-DL-year-2025-popular$/);
   await page.getByRole("button", { name: "Run collection" }).click();
   await expect(page.getByText(/run #31 queued/)).toBeVisible();
 
@@ -379,12 +388,14 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
   }));
 
   await page.goto("/settings");
-  await expect(page.getByText("Demo mode is read-only. Appearance preferences remain visible but cannot be changed.")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Demo mode is read-only.");
   for (const name of ["Light", "Dark", "System", "Pink", "Blue", "Green"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
   }
 
   await page.goto("/workflows");
-  await page.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await expect(page.getByRole("button", { name: "New", exact: true })).toBeDisabled();
+  await expect(page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
 });

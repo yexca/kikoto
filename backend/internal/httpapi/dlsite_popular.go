@@ -135,6 +135,10 @@ func defaultDLsitePopularTag(payload dlsitePopularRunRequest, now time.Time) str
 }
 
 func (s *Server) enqueueDLsitePopularCollection(ctx context.Context, userID int64, payload dlsitePopularRunRequest) (dlsitePopularRunResult, error) {
+	return s.enqueueDLsitePopularCollectionWithTrigger(ctx, userID, payload, workflowRunTrigger{Type: "manual", Reason: payload.Period})
+}
+
+func (s *Server) enqueueDLsitePopularCollectionWithTrigger(ctx context.Context, userID int64, payload dlsitePopularRunRequest, trigger workflowRunTrigger) (dlsitePopularRunResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return dlsitePopularRunResult{}, err
@@ -164,9 +168,14 @@ func (s *Server) enqueueDLsitePopularCollection(ctx context.Context, userID int6
 		return dlsitePopularRunResult{}, err
 	}
 	input := map[string]any{"period": payload.Period, "release_window": payload.ReleaseWindow, "year": payload.Year, "tag_name": payload.TagName, "user_id": userID}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "dlsite_popular_collection", "Collect DLsite popular voice works", "queued", "manual", payload.Period, input, map[string]any{"tag_name": payload.TagName})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "dlsite_popular_collection", "Collect DLsite popular voice works", "queued", trigger.Type, trigger.Reason, input, map[string]any{"tag_name": payload.TagName})
 	if err != nil {
 		return dlsitePopularRunResult{}, err
+	}
+	if trigger.ID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", trigger.ID, runID); err != nil {
+			return dlsitePopularRunResult{}, err
+		}
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "configure", NodeType: "select_ranking", DisplayName: "Configure ranking", Position: 1, Status: "succeeded", Input: input, Output: input}); err != nil {
 		return dlsitePopularRunResult{}, err
@@ -333,6 +342,13 @@ func (s *Server) finishDLsitePopularCollection(ctx context.Context, job workflow
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(result), job.RunID); err != nil {
+		return err
+	}
+	if result.Status == "succeeded" {
+		if err := updateCustomWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
+			return err
+		}
+	} else if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, strings.Join(result.Failures, "; ")); err != nil {
 		return err
 	}
 	return tx.Commit()

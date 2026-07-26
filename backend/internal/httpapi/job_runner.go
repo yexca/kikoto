@@ -329,6 +329,9 @@ func (s *Server) failClaimedWorkflowJob(ctx context.Context, job workflowJobReco
 	`, mustJSON(map[string]any{"error": message}), job.RunID); err != nil {
 		return err
 	}
+	if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, message); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

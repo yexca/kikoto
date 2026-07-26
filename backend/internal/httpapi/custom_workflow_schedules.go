@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -24,18 +26,42 @@ type customWorkflowScheduleConfig struct {
 	Inputs map[string]any `json:"inputs"`
 }
 
-func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time) (any, error) {
+type preparedWorkflowTrigger struct {
+	NextRunAt  any
+	ConfigJSON string
+}
+
+type workflowRunTrigger struct {
+	Type   string
+	Reason string
+	ID     int64
+}
+
+type systemWorkflowTriggerConfig struct {
+	UserID          int64  `json:"userId,omitempty"`
+	SourceID        int64  `json:"sourceId,omitempty"`
+	Action          string `json:"action,omitempty"`
+	Limit           int    `json:"limit,omitempty"`
+	Period          string `json:"period,omitempty"`
+	ReleaseWindow   string `json:"releaseWindow,omitempty"`
+	Year            int    `json:"year,omitempty"`
+	TagNameTemplate string `json:"tagNameTemplate,omitempty"`
+}
+
+var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
+
+func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
 	var probe struct {
 		SchemaVersion int `json:"schemaVersion"`
 	}
 	if json.Unmarshal([]byte(definition.DefinitionJSON), &probe) != nil || probe.SchemaVersion != customWorkflowSchemaVersion {
-		return prepareSystemWorkflowTrigger(definition, payload, now)
+		return s.prepareSystemWorkflowTrigger(ctx, actor, definition, payload, now, existing)
 	}
 	if definition.Scope != "user" || !definition.Editable {
-		return nil, fmt.Errorf("automated DAG must be an editable user workflow")
+		return preparedWorkflowTrigger{}, fmt.Errorf("automated DAG must be an editable user workflow")
 	}
 	if payload.TriggerType != "schedule" && payload.TriggerType != "startup" {
-		return nil, fmt.Errorf("custom workflow DAGs support startup and interval schedule triggers only")
+		return preparedWorkflowTrigger{}, fmt.Errorf("custom workflow DAGs support startup and interval schedule triggers only")
 	}
 	var graph customWorkflowGraph
 	var schedule customWorkflowSchedule
@@ -46,39 +72,212 @@ func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, 
 		graph, _, err = validateCustomWorkflowAutomation(definition, payload.ConfigJSON)
 	}
 	if err != nil {
-		return nil, err
+		return preparedWorkflowTrigger{}, err
 	}
 	if missing := missingCustomWorkflowPermission(actor.Permissions, customWorkflowRequiredPermissions(graph)); missing != "" {
-		return nil, fmt.Errorf("automated workflow requires permission %s", missing)
+		return preparedWorkflowTrigger{}, fmt.Errorf("automated workflow requires permission %s", missing)
 	}
+	prepared := preparedWorkflowTrigger{ConfigJSON: payload.ConfigJSON}
 	if payload.TriggerType == "startup" {
-		return nil, nil
+		return prepared, nil
 	}
 	if payload.Enabled != nil && !*payload.Enabled {
-		return nil, nil
+		return prepared, nil
 	}
-	return formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute)), nil
+	prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
+	return prepared, nil
 }
 
-func prepareSystemWorkflowTrigger(definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time) (any, error) {
-	if definition.Scope != "system" || definition.Code != "startup_library_refresh" {
-		return nil, fmt.Errorf("this workflow does not support configurable triggers")
+func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
+	if definition.Scope != "system" || !systemWorkflowSupportsConfigurableTriggers(definition.Code) {
+		return preparedWorkflowTrigger{}, fmt.Errorf("this workflow does not support configurable triggers")
 	}
+	prepared := preparedWorkflowTrigger{ConfigJSON: "{}"}
 	switch payload.TriggerType {
 	case "startup":
-		return nil, nil
 	case "schedule":
 		schedule, err := validateWorkflowIntervalSchedule(payload.ScheduleJSON)
 		if err != nil {
-			return nil, err
+			return preparedWorkflowTrigger{}, err
 		}
 		if payload.Enabled != nil && !*payload.Enabled {
-			return nil, nil
+			break
 		}
-		return formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute)), nil
+		prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
 	default:
-		return nil, fmt.Errorf("startup library refresh supports startup and interval schedule triggers only")
+		return preparedWorkflowTrigger{}, fmt.Errorf("built-in workflows support startup and interval schedule triggers only")
 	}
+
+	requiredPermissions := []string{"workflows:run"}
+	switch definition.Code {
+	case "startup_library_refresh", "metadata_sync":
+		requiredPermissions = append(requiredPermissions, "metadata:sync")
+	case "remote_popular_collection":
+		config, err := s.normalizeRemotePopularTriggerConfig(ctx, actor, payload.ConfigJSON, existing, now)
+		if err != nil {
+			return preparedWorkflowTrigger{}, err
+		}
+		requiredPermissions = append(requiredPermissions, "tags:write")
+		prepared.ConfigJSON = mustJSON(config)
+	case "dlsite_popular_collection":
+		config, err := normalizeDLsitePopularTriggerConfig(actor, payload.ConfigJSON, existing, now)
+		if err != nil {
+			return preparedWorkflowTrigger{}, err
+		}
+		requiredPermissions = append(requiredPermissions, "metadata:sync", "tags:write")
+		prepared.ConfigJSON = mustJSON(config)
+	}
+	if missing := missingCustomWorkflowPermission(actor.Permissions, requiredPermissions); missing != "" {
+		return preparedWorkflowTrigger{}, fmt.Errorf("automated workflow requires permission %s", missing)
+	}
+	return prepared, nil
+}
+
+func systemWorkflowSupportsConfigurableTriggers(code string) bool {
+	switch code {
+	case "startup_library_refresh", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+		return true
+	default:
+		return false
+	}
+}
+
+func workflowTriggerOwnerID(actor currentUser, existing *workflowTriggerRecord) int64 {
+	if existing == nil {
+		return actor.ID
+	}
+	var config systemWorkflowTriggerConfig
+	if json.Unmarshal([]byte(existing.ConfigJSON), &config) == nil && config.UserID > 0 {
+		return config.UserID
+	}
+	return actor.ID
+}
+
+func (s *Server) normalizeRemotePopularTriggerConfig(ctx context.Context, actor currentUser, raw string, existing *workflowTriggerRecord, now time.Time) (systemWorkflowTriggerConfig, error) {
+	config := systemWorkflowTriggerConfig{}
+	if err := decodeStrictJSON(raw, &config); err != nil {
+		return config, fmt.Errorf("remote popular trigger config is invalid")
+	}
+	config.UserID = workflowTriggerOwnerID(actor, existing)
+	config.Action = normalizeRemoteCollectionAction(config.Action)
+	if config.SourceID <= 0 {
+		return config, fmt.Errorf("sourceId is required")
+	}
+	if config.Action == "" {
+		return config, fmt.Errorf("action must be track or fetch")
+	}
+	if config.Action == "fetch" {
+		return config, fmt.Errorf("automated remote popular collection supports track only")
+	}
+	if config.Limit <= 0 || config.Limit > 100 {
+		return config, fmt.Errorf("limit must be between 1 and 100")
+	}
+	source, err := s.remoteCollectionSource(ctx, config.SourceID)
+	if err != nil {
+		return config, err
+	}
+	if !source.Enabled || !isKikoeruSourceType(source.SourceType) {
+		return config, fmt.Errorf("source is not an enabled compatible remote source")
+	}
+	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		return config, fmt.Errorf("source has no API endpoint")
+	}
+	if strings.TrimSpace(config.TagNameTemplate) == "" {
+		config.TagNameTemplate = "{date}_{remote_name}_popular"
+	}
+	_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
+		"date": now.UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
+		"source_code": workflowTagFragment(source.Code), "action": config.Action,
+	})
+	return config, err
+}
+
+func normalizeDLsitePopularTriggerConfig(actor currentUser, raw string, existing *workflowTriggerRecord, now time.Time) (systemWorkflowTriggerConfig, error) {
+	config := systemWorkflowTriggerConfig{}
+	if err := decodeStrictJSON(raw, &config); err != nil {
+		return config, fmt.Errorf("DLsite popular trigger config is invalid")
+	}
+	config.UserID = workflowTriggerOwnerID(actor, existing)
+	normalized, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
+		Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: "preview",
+	}, now)
+	if err != nil {
+		return config, err
+	}
+	config.Period = normalized.Period
+	config.ReleaseWindow = normalized.ReleaseWindow
+	config.Year = normalized.Year
+	if strings.TrimSpace(config.TagNameTemplate) == "" {
+		if config.Period == "year" {
+			config.TagNameTemplate = "{date}_DL_year_{year}_popular"
+		} else {
+			config.TagNameTemplate = "{date}_DL_{period}_{release_window}_popular"
+		}
+	}
+	_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
+	return config, err
+}
+
+func dlsitePopularTemplateValues(config systemWorkflowTriggerConfig, now time.Time) map[string]string {
+	period := map[string]string{"day": "24h", "week": "7d", "month": "30d", "year": "year"}[config.Period]
+	releaseWindow := "all"
+	if config.ReleaseWindow == "30d" {
+		releaseWindow = "r30d"
+	}
+	return map[string]string{
+		"date": now.UTC().Format("060102"), "period": period, "release_window": releaseWindow,
+		"year": fmt.Sprint(config.Year),
+	}
+}
+
+func renderWorkflowTagNameTemplate(template string, values map[string]string) (string, error) {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return "", fmt.Errorf("tagNameTemplate is required")
+	}
+	if len([]rune(template)) > 160 {
+		return "", fmt.Errorf("tagNameTemplate must be at most 160 characters")
+	}
+	var renderErr error
+	rendered := workflowTagTemplateTokenPattern.ReplaceAllStringFunc(template, func(token string) string {
+		key := strings.TrimSuffix(strings.TrimPrefix(token, "{"), "}")
+		value, ok := values[key]
+		if !ok {
+			renderErr = fmt.Errorf("unsupported tagNameTemplate token: %s", token)
+			return ""
+		}
+		return value
+	})
+	if renderErr != nil {
+		return "", renderErr
+	}
+	if strings.ContainsAny(rendered, "{}") {
+		return "", fmt.Errorf("tagNameTemplate contains an invalid token")
+	}
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		return "", fmt.Errorf("tagNameTemplate produces an empty tag")
+	}
+	if runes := []rune(rendered); len(runes) > 40 {
+		rendered = string(runes[:40])
+	}
+	return rendered, nil
+}
+
+func workflowTagFragment(value string) string {
+	var builder strings.Builder
+	separator := false
+	for _, r := range strings.TrimSpace(value) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_':
+			builder.WriteRune(r)
+			separator = false
+		case !separator:
+			builder.WriteRune('_')
+			separator = true
+		}
+	}
+	return strings.Trim(builder.String(), "_- ")
 }
 
 func validateCustomWorkflowAutomation(definition workflowDefinitionRecord, configJSON string) (customWorkflowGraph, map[string]any, error) {
@@ -185,7 +384,10 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 			AND trigger.next_run_at <= CURRENT_TIMESTAMP
 			AND (
 				(definition.scope = 'user' AND json_extract(definition.definition_json, '$.schemaVersion') = ?)
-				OR (definition.scope = 'system' AND definition.code = 'startup_library_refresh')
+				OR (definition.scope = 'system' AND definition.code IN (
+					'startup_library_refresh', 'local_library_scan', 'metadata_sync',
+					'remote_popular_collection', 'dlsite_popular_collection'
+				))
 			)
 		ORDER BY trigger.next_run_at ASC, trigger.id ASC
 		LIMIT 1
@@ -257,7 +459,7 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 }
 
 func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
-	if definition.Code != "startup_library_refresh" {
+	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) {
 		return s.disableInvalidCustomWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
 	}
 	schedule, err := validateWorkflowIntervalSchedule(trigger.ScheduleJSON)
@@ -286,27 +488,194 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 		return err
 	}
 	go func() {
-		_ = s.executeScheduledSystemWorkflow(ctx, trigger.ID)
+		_ = s.executeSystemWorkflowTrigger(ctx, definition, trigger, "schedule", "scheduled_interval")
 	}()
 	return nil
 }
 
-func (s *Server) executeScheduledSystemWorkflow(ctx context.Context, triggerID int64) error {
-	result, err := s.runStartupLibraryRefresh(ctx, "schedule", "scheduled_interval", triggerID)
-	if err != nil {
-		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", err.Error(), triggerID)
-		return err
+func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) error {
+	var status = "succeeded"
+	var failures []string
+	var runErr error
+	switch definition.Code {
+	case "startup_library_refresh":
+		result, err := s.runStartupLibraryRefresh(ctx, triggerType, triggerReason, trigger.ID)
+		status, failures, runErr = result.Status, result.Failures, err
+	case "local_library_scan":
+		_, runErr = s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+	case "metadata_sync":
+		result, err := s.runDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		status, failures, runErr = result.Status, result.Failures, err
+	case "remote_popular_collection":
+		config, owner, err := s.loadRemotePopularTriggerExecution(ctx, trigger)
+		if err != nil {
+			runErr = err
+			break
+		}
+		source, err := s.remoteCollectionSource(ctx, config.SourceID)
+		if err != nil {
+			runErr = err
+			break
+		}
+		tagName, err := renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
+			"date": time.Now().UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
+			"source_code": workflowTagFragment(source.Code), "action": config.Action,
+		})
+		if err != nil {
+			runErr = err
+			break
+		}
+		_, runErr = s.runRemotePopularWorkflowWithTrigger(ctx, owner.ID, remoteCollectionRunRequest{
+			SourceID: config.SourceID, Action: config.Action, Limit: config.Limit, TagName: tagName,
+		}, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
+	case "dlsite_popular_collection":
+		config, owner, err := s.loadDLsitePopularTriggerExecution(ctx, trigger)
+		if err != nil {
+			runErr = err
+			break
+		}
+		tagName, err := renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, time.Now()))
+		if err != nil {
+			runErr = err
+			break
+		}
+		request, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
+			Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: tagName,
+		}, time.Now())
+		if err != nil {
+			runErr = err
+			break
+		}
+		_, runErr = s.enqueueDLsitePopularCollectionWithTrigger(ctx, owner.ID, request, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
+	default:
+		runErr = fmt.Errorf("system workflow trigger is not supported")
 	}
-	if result.Status == "succeeded" {
-		_, err = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", triggerID)
-		return err
+	if runErr != nil {
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), trigger.ID)
+		return runErr
 	}
-	message := strings.Join(result.Failures, "; ")
+	if definition.Code == "remote_popular_collection" || definition.Code == "dlsite_popular_collection" {
+		return nil
+	}
+	if status == "succeeded" || status == "" {
+		_, runErr = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", trigger.ID)
+		return runErr
+	}
+	message := strings.Join(failures, "; ")
 	if message == "" {
-		message = "workflow completed with status " + result.Status
+		message = "workflow completed with status " + status
 	}
-	_, err = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, triggerID)
-	return err
+	_, runErr = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, trigger.ID)
+	return runErr
+}
+
+func (s *Server) loadRemotePopularTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
+	var config systemWorkflowTriggerConfig
+	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
+		return config, currentUser{}, fmt.Errorf("remote popular trigger config is invalid")
+	}
+	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "tags:write"})
+	if err != nil {
+		return config, currentUser{}, err
+	}
+	if config.Action != "track" {
+		return config, currentUser{}, fmt.Errorf("automated remote popular collection supports track only")
+	}
+	return config, owner, nil
+}
+
+func (s *Server) loadDLsitePopularTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
+	var config systemWorkflowTriggerConfig
+	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
+		return config, currentUser{}, fmt.Errorf("DLsite popular trigger config is invalid")
+	}
+	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "metadata:sync", "tags:write"})
+	return config, owner, err
+}
+
+func (s *Server) loadSystemWorkflowTriggerOwner(ctx context.Context, userID int64, permissions []string) (currentUser, error) {
+	if userID <= 0 {
+		return currentUser{}, fmt.Errorf("trigger owner is unavailable")
+	}
+	owner, err := s.accountStore.LoadByID(ctx, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return currentUser{}, fmt.Errorf("trigger owner is unavailable")
+	}
+	if err != nil {
+		return currentUser{}, err
+	}
+	if missing := missingCustomWorkflowPermission(owner.Permissions, permissions); missing != "" {
+		return currentUser{}, fmt.Errorf("trigger owner no longer has required permission %s", missing)
+	}
+	return owner, nil
+}
+
+func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT trigger.id
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE trigger.enabled = 1
+			AND trigger.trigger_type = 'startup'
+			AND definition.scope = 'system'
+			AND definition.code IN (
+				'startup_library_refresh', 'local_library_scan', 'metadata_sync',
+				'remote_popular_collection', 'dlsite_popular_collection'
+			)
+		ORDER BY trigger.id
+	`)
+	if err != nil {
+		return err
+	}
+	var triggerIDs []int64
+	for rows.Next() {
+		var triggerID int64
+		if err := rows.Scan(&triggerID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		triggerIDs = append(triggerIDs, triggerID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	var firstErr error
+	for _, triggerID := range triggerIDs {
+		trigger, err := s.loadWorkflowTrigger(ctx, triggerID)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		definition, err := s.loadWorkflowDefinition(ctx, trigger.WorkflowDefinitionID)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		var active int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run WHERE trigger_id = ? AND status IN ('queued', 'running')", trigger.ID).Scan(&active); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if active > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", trigger.ID); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := s.executeSystemWorkflowTrigger(ctx, definition, trigger, "startup", "application_startup"); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func (s *Server) dispatchStartupCustomWorkflowTriggers(ctx context.Context) error {

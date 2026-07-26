@@ -2498,6 +2498,10 @@ func (s *Server) cacheLocationsForWorkSource(ctx context.Context, workID int64, 
 }
 
 func (s *Server) runRemotePopularWorkflow(ctx context.Context, userID int64, payload remoteCollectionRunRequest) (remoteCollectionRunResult, error) {
+	return s.runRemotePopularWorkflowWithTrigger(ctx, userID, payload, workflowRunTrigger{Type: "manual", Reason: normalizeRemoteCollectionAction(payload.Action)})
+}
+
+func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID int64, payload remoteCollectionRunRequest, trigger workflowRunTrigger) (remoteCollectionRunResult, error) {
 	action := normalizeRemoteCollectionAction(payload.Action)
 	if action == "" {
 		return remoteCollectionRunResult{}, fmt.Errorf("action must be track or fetch")
@@ -2536,9 +2540,14 @@ func (s *Server) runRemotePopularWorkflow(ctx context.Context, userID int64, pay
 		return remoteCollectionRunResult{}, err
 	}
 	input := map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "limit": payload.Limit, "tag_name": payload.TagName, "user_id": userID}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_popular_collection", "Collect popular remote works", "queued", "manual", action, input, map[string]any{"source_id": source.ID, "action": action, "limit": payload.Limit, "tag_name": payload.TagName})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_popular_collection", "Collect popular remote works", "queued", trigger.Type, trigger.Reason, input, map[string]any{"source_id": source.ID, "action": action, "limit": payload.Limit, "tag_name": payload.TagName})
 	if err != nil {
 		return remoteCollectionRunResult{}, err
+	}
+	if trigger.ID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", trigger.ID, runID); err != nil {
+			return remoteCollectionRunResult{}, err
+		}
 	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "configure", NodeType: "select_remote_source", DisplayName: "Configure remote collection", Position: 1, Status: "succeeded",
@@ -2740,6 +2749,13 @@ func (s *Server) finishRemotePopularCollectionJob(ctx context.Context, job workf
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", result.Status, mustJSON(result), job.RunID); err != nil {
+		return err
+	}
+	if result.Status == "succeeded" {
+		if err := updateCustomWorkflowTriggerSuccess(ctx, tx, job.RunID); err != nil {
+			return err
+		}
+	} else if err := updateCustomWorkflowTriggerFailure(ctx, tx, job.RunID, strings.Join(result.Failures, "; ")); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -312,7 +312,7 @@ func TestCustomWorkflowScheduleAcceptsBoundedDAG(t *testing.T) {
 	server := NewServer(db, config.Config{})
 	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Custom schedule","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":5}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusCreated {
@@ -421,16 +421,13 @@ func TestStartupLibraryRefreshAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.ensureStartupLibraryRefreshTrigger(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 	var definitionID int64
 	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'").Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusCreated {
@@ -442,6 +439,118 @@ func TestStartupLibraryRefreshAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	}
 	if triggerCount != 2 || startupCount != 1 || scheduleCount != 1 {
 		t.Fatalf("system triggers = total %d startup %d schedule %d", triggerCount, startupCount, scheduleCount)
+	}
+}
+
+func TestRunStartupWorkflowsDoesNotRecreateDeletedBuiltInTrigger(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		DELETE FROM workflow_trigger
+		WHERE workflow_definition_id = (
+			SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	if err := server.RunStartupWorkflows(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var triggerCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'startup_library_refresh'
+	`).Scan(&triggerCount); err != nil {
+		t.Fatal(err)
+	}
+	if triggerCount != 0 {
+		t.Fatalf("startup refresh triggers = %d, want 0", triggerCount)
+	}
+}
+
+func TestRemotePopularSchedulePersistsTemplateAndResolvesItPerRun(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ownerID := insertCustomWorkflowAPIUser(t, db, "remote-popular-schedule-owner")
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (91, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (91, 'https://example.invalid', 'https://example.invalid/api')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var definitionID int64
+	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'remote_popular_collection'").Scan(&definitionID); err != nil {
+		t.Fatal(err)
+	}
+	configJSON := mustJSON(map[string]any{
+		"sourceId": 91, "action": "track", "limit": 25, "tagNameTemplate": "{date}_{remote_name}_popular",
+	})
+	body := mustJSON(map[string]any{
+		"workflowDefinitionId": definitionID, "displayName": "Daily remote popular", "triggerType": "schedule", "enabled": true,
+		"scheduleJson": `{"intervalMinutes":1440}`, "configJson": configJSON,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "tags:write"}}))
+	response := httptest.NewRecorder()
+	server.createWorkflowTrigger(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("remote popular schedule response = %d, %s", response.Code, response.Body.String())
+	}
+	var trigger workflowTriggerRecord
+	if err := json.Unmarshal(response.Body.Bytes(), &trigger); err != nil {
+		t.Fatal(err)
+	}
+	var storedConfig systemWorkflowTriggerConfig
+	if err := json.Unmarshal([]byte(trigger.ConfigJSON), &storedConfig); err != nil {
+		t.Fatal(err)
+	}
+	if storedConfig.UserID != ownerID || storedConfig.TagNameTemplate != "{date}_{remote_name}_popular" {
+		t.Fatalf("stored schedule config = %+v", storedConfig)
+	}
+	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.executeSystemWorkflowTrigger(context.Background(), definition, trigger, "schedule", "scheduled_interval"); err != nil {
+		t.Fatal(err)
+	}
+	var runTriggerID sql.NullInt64
+	var triggerType, triggerReason, inputJSON string
+	if err := db.QueryRow(`SELECT trigger_id, trigger_type, trigger_reason, input_json FROM workflow_run WHERE workflow_definition_id = ? ORDER BY id DESC LIMIT 1`, definitionID).Scan(&runTriggerID, &triggerType, &triggerReason, &inputJSON); err != nil {
+		t.Fatal(err)
+	}
+	if !runTriggerID.Valid || runTriggerID.Int64 != trigger.ID || triggerType != "schedule" || triggerReason != "scheduled_interval" {
+		t.Fatalf("scheduled run = trigger %#v type %s reason %s", runTriggerID, triggerType, triggerReason)
+	}
+	var input map[string]any
+	if err := json.Unmarshal([]byte(inputJSON), &input); err != nil {
+		t.Fatal(err)
+	}
+	tagName := fmt.Sprint(input["tag_name"])
+	if strings.Contains(tagName, "{") || !strings.HasSuffix(tagName, "_Example_Remote_popular") {
+		t.Fatalf("resolved scheduled tag = %q", tagName)
+	}
+}
+
+func TestWorkflowTagNameTemplateRejectsUnknownTokensAndChangesByDate(t *testing.T) {
+	first, err := renderWorkflowTagNameTemplate("{date}_{remote_name}_popular", map[string]string{"date": "260725", "remote_name": "Example_Remote"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := renderWorkflowTagNameTemplate("{date}_{remote_name}_popular", map[string]string{"date": "260726", "remote_name": "Example_Remote"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "260725_Example_Remote_popular" || second != "260726_Example_Remote_popular" || first == second {
+		t.Fatalf("rendered tags = %q and %q", first, second)
+	}
+	if _, err := renderWorkflowTagNameTemplate("{unknown}_popular", map[string]string{"date": "260726"}); err == nil {
+		t.Fatal("unknown token should fail")
 	}
 }
 

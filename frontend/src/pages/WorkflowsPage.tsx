@@ -126,7 +126,7 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
+type SystemRunKind = "startup_refresh" | "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
 
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 
@@ -144,12 +144,25 @@ type RemotePopularRunOptions = {
   tagName: string;
 };
 
+type SystemWorkflowTriggerConfig = {
+  sourceId: number;
+  action: "track" | "fetch";
+  limit: number;
+  period: DLsitePopularPeriod;
+  releaseWindow: "30d" | "";
+  year: number;
+  tagNameTemplate: string;
+};
+
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
+  startup_library_refresh: ["startup_refresh"],
   local_library_scan: ["local_scan"],
   metadata_sync: ["metadata_sync"],
   remote_popular_collection: ["remote_popular"],
   dlsite_popular_collection: ["dlsite_popular"],
 };
+
+const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));
 
 const sortDefinitionsForSidebar = (definitions: WorkflowDefinition[], systemMode: boolean) => {
   if (!systemMode) {
@@ -256,7 +269,7 @@ export function WorkflowsPage({
   }, [surface]);
 
   const visibleDefinitions = useMemo(() => {
-    return definitions.filter((definition) => definition.scope === "user" || definition.triggerCount > 0 || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
+    return definitions.filter((definition) => definition.scope === "user" || configurableSystemWorkflowCodes.has(definition.code));
   }, [definitions]);
   const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
   const activityTotals = runsPage.viewTotals ?? emptyRunViewTotals;
@@ -387,6 +400,19 @@ export function WorkflowsPage({
   };
 
   const runSystemAction = async (kind: SystemRunKind) => {
+    if (kind === "startup_refresh") {
+      setRunningSystemAction(kind);
+      try {
+        await api.runStartupLibraryRefresh();
+        refresh();
+        setActivityView("completed");
+        setRunPage(1);
+        refreshRuns(1, "completed", runQuery);
+      } finally {
+        setRunningSystemAction(null);
+      }
+      return;
+    }
     if (kind === "local_scan") return runLocalScan();
     if (kind === "metadata_sync") return runMetadataSync();
     if (kind === "remote_popular") return;
@@ -401,7 +427,7 @@ export function WorkflowsPage({
 
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (readOnly) return false;
-    if (kind === "metadata_sync") return canSyncMetadata;
+    if (kind === "startup_refresh" || kind === "metadata_sync") return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks;
     return canRun;
@@ -488,6 +514,7 @@ export function WorkflowsPage({
           left={
             <DefinitionSidebar
               definitions={visibleDefinitions}
+              triggers={triggers}
               selectedId={selectedDefinition?.id ?? null}
               canCreate={!readOnly}
               loading={isWorkflowMetaLoading}
@@ -682,6 +709,7 @@ function SkeletonLine({ className = "" }: { className?: string }) {
 
 function DefinitionSidebar({
   definitions,
+  triggers,
   selectedId,
   canCreate,
   loading,
@@ -690,6 +718,7 @@ function DefinitionSidebar({
   onCreate,
 }: {
   definitions: WorkflowDefinition[];
+  triggers: WorkflowTrigger[];
   selectedId: number | null;
   canCreate: boolean;
   loading?: boolean;
@@ -697,13 +726,10 @@ function DefinitionSidebar({
   onSelect: (definition: WorkflowDefinition) => void;
   onCreate: () => void;
 }) {
-  const readyDefinitions = sortDefinitionsForSidebar(
-    definitions.filter((definition) => definition.scope === "system" && Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length)),
+  const builtInDefinitions = sortDefinitionsForSidebar(
+    definitions.filter((definition) => definition.scope === "system"),
     true,
   );
-  const automatedDefinitions = definitions
-    .filter((definition) => definition.scope === "system" && !manuallyRunnableSystemWorkflows[definition.code]?.length && definition.triggerCount > 0)
-    .sort((left, right) => left.displayName.localeCompare(right.displayName));
   const customDefinitions = definitions
     .filter((definition) => definition.scope === "user")
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
@@ -728,18 +754,13 @@ function DefinitionSidebar({
             <SidebarSkeletonRows count={6} />
           ) : (
             <>
-              {readyDefinitions.length > 0 && (
-                <DefinitionGroup label="Ready to run">
-                  {readyDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
-                </DefinitionGroup>
-              )}
-              {automatedDefinitions.length > 0 && (
-                <DefinitionGroup label="Automated">
-                  {automatedDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
+              {builtInDefinitions.length > 0 && (
+                <DefinitionGroup label="Built-in workflows">
+                  {builtInDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
                 </DefinitionGroup>
               )}
               <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
-                {customDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
+                {customDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
               </DefinitionGroup>
             </>
           )}
@@ -762,8 +783,8 @@ function DefinitionGroup({ label, action, children }: { label: string; action?: 
   );
 }
 
-function DefinitionListItem({ definition, selected, onSelect }: { definition: WorkflowDefinition; selected: boolean; onSelect: (definition: WorkflowDefinition) => void }) {
-  const hasManualAction = Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length);
+function DefinitionListItem({ definition, triggers, selected, onSelect }: { definition: WorkflowDefinition; triggers: WorkflowTrigger[]; selected: boolean; onSelect: (definition: WorkflowDefinition) => void }) {
+  const automationStatus = workflowDefinitionAutomationStatus(triggers);
   return (
     <button
       className={`w-full rounded-md border p-3 text-left transition-colors ${selected ? "border-primary bg-secondary" : "bg-card hover:bg-muted"}`}
@@ -774,10 +795,7 @@ function DefinitionListItem({ definition, selected, onSelect }: { definition: Wo
           <div className="truncate text-sm font-semibold">{definition.displayName}</div>
           <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-1">
-          <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope === "system" ? "Built-in" : "Custom"}</Badge>
-          {hasManualAction && <Badge>Manual</Badge>}
-        </div>
+        <Badge variant={automationStatus === "manual" ? "outline" : "secondary"} className="shrink-0 capitalize">{automationStatus}</Badge>
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
@@ -1141,6 +1159,8 @@ function WorkflowDetail({
 
 function systemRunKindLabel(kind: SystemRunKind) {
   switch (kind) {
+    case "startup_refresh":
+      return "Run library refresh";
     case "local_scan":
       return "Run local scan";
     case "metadata_sync":
@@ -2237,9 +2257,15 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
 }
 
 function supportedAutomationTriggerTypes(definition: WorkflowDefinition): AutomationTriggerType[] {
-  if (definition.code === "startup_library_refresh") return automationTriggerTypes;
+  if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code)) return automationTriggerTypes;
   if (definition.scope !== "user" || !definition.editable) return [];
   return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
+}
+
+function workflowDefinitionAutomationStatus(triggers: WorkflowTrigger[]): "manual" | "startup" | "scheduled" {
+  if (triggers.some((trigger) => trigger.triggerType === "schedule")) return "scheduled";
+  if (triggers.some((trigger) => trigger.triggerType === "startup")) return "startup";
+  return "manual";
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {
@@ -2555,6 +2581,7 @@ function TriggerModal({
   const triggerType: AutomationTriggerType = trigger?.triggerType === "startup" ? "startup" : initialTriggerType;
   const selectedParsed = parseWorkflowDefinition(definition.definitionJson);
   const dagDocument = selectedParsed.kind === "v2" ? selectedParsed.document : null;
+	const [systemConfig, setSystemConfig] = useState<SystemWorkflowTriggerConfig>(() => workflowSystemTriggerConfig(definition.code, trigger));
   const [displayName, setDisplayName] = useState(trigger?.displayName ?? (triggerType === "startup" ? "Run at startup" : "Scheduled workflow"));
   const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
   const [intervalMinutes, setIntervalMinutes] = useState(() => {
@@ -2571,10 +2598,12 @@ function TriggerModal({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const missingScheduledInputs = dagDocument?.inputs.filter((input) => input.required && !(scheduledInputs[input.key]?.trim())) ?? [];
+	const systemConfigBlockers = workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   const automationBlockers = [
     ...(dagDocument?.policy.requirePreview ? ["Disable Require preview in the workflow before automating it."] : []),
     ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080) ? ["Interval must be between 5 and 10080 minutes."] : []),
     ...(missingScheduledInputs.length > 0 ? [`Provide required inputs: ${missingScheduledInputs.map((input) => input.label).join(", ")}.`] : []),
+		...systemConfigBlockers,
   ];
 
   const save = async () => {
@@ -2592,7 +2621,9 @@ function TriggerModal({
         triggerType,
         enabled,
         scheduleJson: triggerType === "schedule" ? JSON.stringify({ intervalMinutes }) : trigger?.scheduleJson ?? JSON.stringify({ type: "startup" }),
-        configJson: dagDocument ? JSON.stringify({ inputs: resolvedInputs }) : trigger?.configJson ?? "{}",
+			configJson: dagDocument
+				? JSON.stringify({ inputs: resolvedInputs })
+				: JSON.stringify(workflowSystemTriggerConfigPayload(definition.code, systemConfig)),
         nextRunAt: null,
       };
       const saved = trigger ? await api.updateWorkflowTrigger(trigger.id, payload) : await api.createWorkflowTrigger(payload);
@@ -2652,6 +2683,7 @@ function TriggerModal({
               )}
             </Field>
           ))}</div>}
+		<SystemWorkflowTriggerFields definitionCode={definition.code} value={systemConfig} onChange={setSystemConfig} />
         {automationBlockers.length > 0 && (
           <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-muted-foreground">
             {automationBlockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
@@ -2673,6 +2705,192 @@ function TriggerModal({
       </div>
     </Modal>
   );
+}
+
+function workflowSystemTriggerConfig(definitionCode: string, trigger: WorkflowTrigger | null): SystemWorkflowTriggerConfig {
+  const record = parseJSONRecord(trigger?.configJson ?? "");
+  const period = ["day", "week", "month", "year"].includes(String(record.period)) ? record.period as DLsitePopularPeriod : "day";
+  const defaultTemplate = definitionCode === "dlsite_popular_collection"
+    ? "{date}_DL_{period}_{release_window}_popular"
+    : "{date}_{remote_name}_popular";
+  return {
+    sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
+    action: record.action === "fetch" ? "fetch" : "track",
+    limit: typeof record.limit === "number" ? record.limit : 25,
+    period,
+    releaseWindow: record.releaseWindow === "30d" ? "30d" : "",
+    year: typeof record.year === "number" ? record.year : new Date().getUTCFullYear(),
+    tagNameTemplate: typeof record.tagNameTemplate === "string" && record.tagNameTemplate.trim() ? record.tagNameTemplate : defaultTemplate,
+  };
+}
+
+function workflowSystemTriggerConfigPayload(definitionCode: string, value: SystemWorkflowTriggerConfig) {
+  if (definitionCode === "remote_popular_collection") {
+    return { sourceId: value.sourceId, action: value.action, limit: value.limit, tagNameTemplate: value.tagNameTemplate.trim() };
+  }
+  if (definitionCode === "dlsite_popular_collection") {
+    return {
+      period: value.period,
+      releaseWindow: value.period === "year" ? "" : value.releaseWindow,
+      year: value.period === "year" ? value.year : 0,
+      tagNameTemplate: value.tagNameTemplate.trim(),
+    };
+  }
+  return {};
+}
+
+function workflowSystemTriggerConfigBlockers(definitionCode: string, value: SystemWorkflowTriggerConfig) {
+  if (definitionCode === "remote_popular_collection") {
+    return [
+      ...(value.sourceId <= 0 ? ["Select a remote source."] : []),
+			...(value.action === "fetch" ? ["Automated remote collection supports Track only."] : []),
+      ...(value.limit <= 0 || value.limit > 100 ? ["Work limit must be between 1 and 100."] : []),
+      ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "remote_name", "source_code", "action"]),
+    ];
+  }
+  if (definitionCode === "dlsite_popular_collection") {
+    return [
+      ...(value.period === "year" && (value.year < 2000 || value.year > new Date().getUTCFullYear()) ? [`Year must be between 2000 and ${new Date().getUTCFullYear()}.`] : []),
+      ...workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "period", "release_window", "year"]),
+    ];
+  }
+  return [];
+}
+
+function workflowTagTemplateBlockers(template: string, tokens: string[]) {
+  if (!template.trim()) return ["Tag template is required."];
+  if ([...template].length > 160) return ["Tag template must be at most 160 characters."];
+  const matches = template.match(/\{[a-z_]+\}/g) ?? [];
+  const unsupported = matches.find((token) => !tokens.includes(token.slice(1, -1)));
+  if (unsupported) return [`Unsupported tag template token: ${unsupported}.`];
+  if (/[{}]/.test(template.replace(/\{[a-z_]+\}/g, ""))) return ["Tag template contains an invalid token."];
+  return [];
+}
+
+function SystemWorkflowTriggerFields({ definitionCode, value, onChange }: { definitionCode: string; value: SystemWorkflowTriggerConfig; onChange: (value: SystemWorkflowTriggerConfig) => void }) {
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [loadingSources, setLoadingSources] = useState(definitionCode === "remote_popular_collection");
+  const compatibleSources = useMemo(
+    () => sources.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType)),
+    [sources],
+  );
+
+  useEffect(() => {
+    if (definitionCode !== "remote_popular_collection") return;
+    let active = true;
+    api.listLibrarySources()
+      .then((items) => {
+        if (!active) return;
+        setSources(items);
+        const compatible = items.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType));
+        if (value.sourceId <= 0 && compatible[0]) onChange({ ...value, sourceId: compatible[0].id });
+      })
+      .catch(() => { if (active) setSources([]); })
+      .finally(() => { if (active) setLoadingSources(false); });
+    return () => { active = false; };
+  }, [definitionCode]);
+
+  if (definitionCode === "remote_popular_collection") {
+    const selectedSource = compatibleSources.find((source) => source.id === value.sourceId);
+    const preview = workflowTagTemplatePreview(value.tagNameTemplate, {
+      date: utcShortDate(new Date()),
+      remote_name: workflowTagFragmentPreview(selectedSource?.displayName ?? "remote"),
+      source_code: workflowTagFragmentPreview(selectedSource?.code ?? "remote"),
+      action: value.action,
+    });
+    return (
+      <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
+        <Field label="Remote source">
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.sourceId} disabled={loadingSources || compatibleSources.length === 0} onChange={(event) => onChange({ ...value, sourceId: Number(event.target.value) })}>
+            {compatibleSources.length === 0 && <option value={0}>{loadingSources ? "Loading sources" : "No compatible source"}</option>}
+            {compatibleSources.map((source) => <option key={source.id} value={source.id}>{source.displayName}</option>)}
+          </select>
+        </Field>
+        <Field label="Action">
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.action} onChange={(event) => onChange({ ...value, action: event.target.value === "fetch" ? "fetch" : "track" })}>
+            <option value="track">Track</option>
+						<option value="fetch" disabled>Fetch (manual only)</option>
+          </select>
+        </Field>
+        <Field label="Work limit">
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.limit} onChange={(event) => onChange({ ...value, limit: Number(event.target.value) })}>
+            {[10, 25, 50, 100].map((limit) => <option key={limit} value={limit}>{limit} works</option>)}
+          </select>
+        </Field>
+        <TagTemplateField value={value.tagNameTemplate} tokens={["date", "remote_name", "source_code", "action"]} preview={preview} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
+      </div>
+    );
+  }
+
+  if (definitionCode === "dlsite_popular_collection") {
+    const preview = workflowTagTemplatePreview(value.tagNameTemplate, {
+      date: utcShortDate(new Date()),
+      period: value.period === "day" ? "24h" : value.period === "week" ? "7d" : value.period === "month" ? "30d" : "year",
+      release_window: value.releaseWindow === "30d" ? "r30d" : "all",
+      year: String(value.year),
+    });
+    return (
+      <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
+        <Field label="Ranking period">
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.period} onChange={(event) => onChange({ ...value, period: event.target.value as DLsitePopularPeriod })}>
+            <option value="day">24 hours</option>
+            <option value="week">7 days</option>
+            <option value="month">30 days</option>
+            <option value="year">Annual</option>
+          </select>
+        </Field>
+        {value.period === "year" ? (
+          <Field label="Ranking year">
+            <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" type="number" min={2000} max={new Date().getUTCFullYear()} value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) })} />
+          </Field>
+        ) : (
+          <Field label="Release window">
+            <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.releaseWindow} onChange={(event) => onChange({ ...value, releaseWindow: event.target.value === "30d" ? "30d" : "" })}>
+              <option value="30d">Released in 30 days</option>
+              <option value="">All releases</option>
+            </select>
+          </Field>
+        )}
+        <TagTemplateField value={value.tagNameTemplate} tokens={["date", "period", "release_window", "year"]} preview={preview} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function TagTemplateField({ value, tokens, preview, onChange }: { value: string; tokens: string[]; preview: string; onChange: (value: string) => void }) {
+  return (
+    <div className="grid gap-1 md:col-span-2">
+      <div className="flex items-end gap-2">
+        <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
+          <span className="font-medium">Tag template</span>
+          <input className="h-9 w-full rounded-md border bg-card px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" value={value} maxLength={160} onChange={(event) => onChange(event.target.value)} />
+        </label>
+        <select className="h-9 w-36 shrink-0 rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring" aria-label="Insert tag template token" defaultValue="" onChange={(event) => {
+          if (event.target.value) onChange(value + `{${event.target.value}}`);
+          event.currentTarget.value = "";
+        }}>
+          <option value="" disabled>Insert token</option>
+          {tokens.map((token) => <option key={token} value={token}>{`{${token}}`}</option>)}
+        </select>
+      </div>
+      <div className="truncate text-xs text-muted-foreground">Preview: <span className="font-mono text-foreground">{preview || "-"}</span></div>
+    </div>
+  );
+}
+
+function workflowTagTemplatePreview(template: string, values: Record<string, string>) {
+  const rendered = template.replace(/\{[a-z_]+\}/g, (token) => values[token.slice(1, -1)] ?? "").trim();
+  return [...rendered].slice(0, 40).join("");
+}
+
+function workflowTagFragmentPreview(value: string) {
+  return value.trim().replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^[_-]+|[_-]+$/g, "");
+}
+
+function utcShortDate(value: Date) {
+  return `${String(value.getUTCFullYear()).slice(-2)}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
 function NodeInlineEditor({
@@ -2859,7 +3077,7 @@ function WorkflowHints({ nodes, nodeTypes, compact = false }: { nodes: WorkflowN
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm">
-      <div className="app-scroll max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl">
+      <div className="app-scroll max-h-[86vh] w-full max-w-3xl overflow-auto rounded-lg border bg-card shadow-xl" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-4 py-3">
           <div className="font-semibold">{title}</div>
           <Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}>
