@@ -6,7 +6,6 @@ import {
   Download,
   Folder,
   Gauge,
-  Globe2,
   GripVertical,
   HardDrive,
   PlayCircle,
@@ -262,23 +261,9 @@ export function MaintenancePage({
   return (
     <div className="space-y-5">
       <section className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Instance administration</p>
-            <h2 className="mt-1 text-2xl font-semibold">Maintenance</h2>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-            {isSettingsLoading ? (
-              <SettingsMetricSkeletons />
-            ) : (
-              <>
-                <SettingsMetric label="Sources" value={String(remoteSources.length)} />
-                <SettingsMetric label="Cache" value={cacheEnabled ? "On" : "Off"} />
-                <SettingsMetric label="Scan" value={`${localScanDepth} levels`} />
-              </>
-            )}
-          </div>
-        </div>
+        <p className="text-sm font-medium text-muted-foreground">Instance administration</p>
+        <h2 className="mt-1 text-2xl font-semibold">Maintenance</h2>
+        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Configure library sources, routing, caching, metadata, users, and resolved runtime paths.</p>
       </section>
 
       {readOnly && (
@@ -548,8 +533,8 @@ function PlaybackSettings({
   onRulesChange: (rules: DirectoryRoutingRule[]) => void;
   onSave: () => Promise<void>;
 }) {
-  const [draggedRuleIndex, setDraggedRuleIndex] = useState<number | null>(null);
-  const draggedRuleIndexRef = useRef<number | null>(null);
+  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
+  const draggedRuleIdRef = useRef<string | null>(null);
   const applyRules = (next: DirectoryRoutingRule[]) => onRulesChange(reweightDirectoryRoutingRules(next));
   const patchRule = (index: number, patch: Partial<DirectoryRoutingRule>) => {
     onRulesChange(rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch, enabled: true } : rule));
@@ -576,6 +561,27 @@ function PlaybackSettings({
     ]);
   };
   const removeRule = (index: number) => applyRules(rules.filter((_, ruleIndex) => ruleIndex !== index));
+  const finishDrag = () => {
+    draggedRuleIdRef.current = null;
+    setDraggedRuleId(null);
+  };
+
+  useEffect(() => {
+    if (draggedRuleId === null) return;
+    const finish = () => {
+      draggedRuleIdRef.current = null;
+      setDraggedRuleId(null);
+    };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("blur", finish);
+    };
+  }, [draggedRuleId]);
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
@@ -594,11 +600,6 @@ function PlaybackSettings({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <StatusPanel icon={<Folder className="h-4 w-4" />} label="Directory routing" value={rules.length > 0 ? `${rules.length} preferences` : "No rules"} />
-            <StatusPanel icon={<SlidersHorizontal className="h-4 w-4" />} label="Match model" value="Ordered preferences" />
-            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Fallback" value="Most audio" />
-          </div>
           <div className="relative space-y-2 before:absolute before:bottom-5 before:left-5 before:top-5 before:w-px before:bg-border">
             {rules.map((rule, index) => (
               <DirectoryRuleEditor
@@ -610,23 +611,19 @@ function PlaybackSettings({
                 onPatch={(patch) => patchRule(index, patch)}
                 onMove={moveRule}
                 onDragStart={() => {
-                  draggedRuleIndexRef.current = index;
-                  setDraggedRuleIndex(index);
+                  draggedRuleIdRef.current = rule.id;
+                  setDraggedRuleId(rule.id);
                 }}
                 onDragMove={(clientX, clientY) => {
-                  const source = draggedRuleIndexRef.current;
+                  const sourceId = draggedRuleIdRef.current;
+                  const source = rules.findIndex((candidate) => candidate.id === sourceId);
                   const target = Number(document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-routing-rule-index]")?.dataset.routingRuleIndex);
-                  if (source !== null && Number.isInteger(target) && source !== target) {
+                  if (source >= 0 && Number.isInteger(target) && source !== target) {
                     moveRuleTo(source, target);
-                    draggedRuleIndexRef.current = target;
-                    setDraggedRuleIndex(target);
                   }
                 }}
-                onDragEnd={() => {
-                  draggedRuleIndexRef.current = null;
-                  setDraggedRuleIndex(null);
-                }}
-                dragging={draggedRuleIndex === index}
+                onDragEnd={finishDrag}
+                dragging={draggedRuleId === rule.id}
                 onRemove={() => removeRule(index)}
               />
             ))}
@@ -674,6 +671,7 @@ function DirectoryRuleEditor({
   return (
     <div
       data-routing-rule-index={index}
+      data-routing-rule-id={rule.id}
       className={`relative flex min-w-0 gap-3 ${dragging ? "opacity-55" : ""}`}
     >
       <div className="relative z-[1] flex w-10 shrink-0 flex-col items-center gap-1.5">
@@ -683,6 +681,7 @@ function DirectoryRuleEditor({
           aria-label={`Drag ${rule.label}`}
           onPointerDown={(event) => {
             if (!event.isPrimary || event.button !== 0) return;
+            event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             onDragStart();
           }}
@@ -694,6 +693,7 @@ function DirectoryRuleEditor({
             onDragEnd();
           }}
           onPointerCancel={onDragEnd}
+          onLostPointerCapture={onDragEnd}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -760,30 +760,8 @@ function TagListInput({ label, value, onChange }: { label: string; value: string
   );
 }
 
-function SettingsMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 truncate font-semibold">{value}</div>
-    </div>
-  );
-}
-
 function SettingsSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function SettingsMetricSkeletons() {
-  return (
-    <>
-      {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="rounded-md border bg-background px-3 py-2">
-          <SettingsSkeletonLine className="h-3 w-14" />
-          <SettingsSkeletonLine className="mt-2 h-5 w-12" />
-        </div>
-      ))}
-    </>
-  );
 }
 
 function SettingsOverviewSkeleton() {
@@ -920,11 +898,6 @@ function MetadataSettings({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatusPanel icon={<Globe2 className="h-4 w-4" />} label="Metadata language" value={languageName(dlsiteMetadataLanguage)} />
-          <StatusPanel icon={<RefreshCw className="h-4 w-4" />} label="Circle refresh" value={circleAutoRefreshDays === 0 ? "Manual" : `${circleAutoRefreshDays} days`} />
-          <StatusPanel icon={<Database className="h-4 w-4" />} label="Provider" value="DLsite" />
-        </div>
         <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <label className="grid gap-1 text-sm">
             <span className="font-medium">DLsite title/tag language</span>
@@ -1272,11 +1245,6 @@ function LocalLibrarySettings({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Source" value={localSource?.displayName ?? "Main local library"} />
-            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Scan depth" value={`${localScanDepth} levels`} />
-            <StatusPanel icon={<Shield className="h-4 w-4" />} label="State" value={localSource?.enabled ? "Enabled" : "Not scanned"} />
-          </div>
           <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Scan depth</span>
@@ -1321,6 +1289,9 @@ function RemoteSourcesSettings({
   onCheckSource: (id: number) => Promise<void>;
 }) {
   const enabledSources = remoteSources.filter((source) => source.enabled).length;
+  const attentionSources = remoteSources.filter(
+    (source) => source.enabled && ["error", "unavailable"].includes(source.healthStatus),
+  ).length;
   return (
     <div className="space-y-4">
       <section id="remote-sources" className="rounded-lg border bg-card p-4">
@@ -1337,7 +1308,7 @@ function RemoteSourcesSettings({
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <StatusPanel icon={<Cloud className="h-4 w-4" />} label="Configured" value={String(remoteSources.length)} />
           <StatusPanel icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledSources)} />
-          <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Priority model" value="Per source" />
+          <StatusPanel icon={<RefreshCw className="h-4 w-4" />} label="Needs attention" value={String(attentionSources)} />
         </div>
       </section>
 
@@ -1483,6 +1454,108 @@ function CacheFetchSettings({
 
   return (
     <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+              <Download className="h-4 w-4" />
+            </span>
+            Cache & fetch
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
+              <span className="font-medium">Cache remote playback</span>
+              <Switch checked={cacheEnabled} onCheckedChange={onCacheEnabledChange} aria-label="Cache remote playback" />
+            </div>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Total limit GB</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                value={cacheLimitGb}
+                onChange={(event) => onCacheLimitChange(Number(event.target.value))}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Delay base sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={0.1}
+                value={remoteDelayBase}
+                onChange={(event) => onRemoteDelayBaseChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Delay random sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={0.1}
+                value={remoteDelayRandom}
+                onChange={(event) => onRemoteDelayRandomChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">429 backoff sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={1}
+                value={remoteBackoff}
+                onChange={(event) => onRemoteBackoffChange(Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Max backoff sec</span>
+              <input
+                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
+                type="number"
+                min={0}
+                step={1}
+                value={remoteMaxBackoff}
+                onChange={(event) => onRemoteMaxBackoffChange(Number(event.target.value))}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-1 text-sm">
+            <span className="font-medium">Save path template</span>
+            <div className="flex min-h-9 overflow-hidden rounded-md border bg-card">
+              <div className="flex items-center border-r bg-muted px-3 text-muted-foreground">{DATA_PREFIX}</div>
+              <input
+                className="min-w-0 flex-1 bg-transparent px-3 outline-none focus:ring-2 focus:ring-ring"
+                value={saveSuffix}
+                onChange={(event) => onSaveSuffixChange(event.target.value)}
+                placeholder={DEFAULT_SAVE_SUFFIX}
+              />
+            </div>
+            <div className={saveSuffixError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+              {saveSuffixError || saveTemplate}
+            </div>
+          </div>
+
+          <div className="grid gap-2 text-sm md:grid-cols-2">
+            <ReadonlyField label="Remote cache root" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
+            <ReadonlyField label="Remote fetch root" value={saveTemplate} />
+          </div>
+
+          <Button size="sm" onClick={() => void onSave()} disabled={Boolean(saveSuffixError)}>
+            <Save className="h-4 w-4" />
+            Save cache & fetch settings
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -1601,112 +1674,6 @@ function CacheFetchSettings({
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
-              <Download className="h-4 w-4" />
-            </span>
-            Cache & fetch
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <StatusPanel icon={<Database className="h-4 w-4" />} label="Playback cache" value={cacheEnabled ? "Enabled" : "Disabled"} />
-            <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Cache limit" value={`${cacheLimitGb} GB`} />
-            <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Backoff max" value={`${remoteMaxBackoff}s`} />
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Cache remote playback</span>
-              <Switch checked={cacheEnabled} onCheckedChange={onCacheEnabledChange} aria-label="Cache remote playback" />
-            </div>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Total limit GB</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                value={cacheLimitGb}
-                onChange={(event) => onCacheLimitChange(Number(event.target.value))}
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Delay base sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                step={0.1}
-                value={remoteDelayBase}
-                onChange={(event) => onRemoteDelayBaseChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Delay random sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                step={0.1}
-                value={remoteDelayRandom}
-                onChange={(event) => onRemoteDelayRandomChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">429 backoff sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                step={1}
-                value={remoteBackoff}
-                onChange={(event) => onRemoteBackoffChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Max backoff sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                step={1}
-                value={remoteMaxBackoff}
-                onChange={(event) => onRemoteMaxBackoffChange(Number(event.target.value))}
-              />
-            </label>
-          </div>
-
-          <div className="grid gap-1 text-sm">
-            <span className="font-medium">Save path template</span>
-            <div className="flex min-h-9 overflow-hidden rounded-md border bg-card">
-              <div className="flex items-center border-r bg-muted px-3 text-muted-foreground">{DATA_PREFIX}</div>
-              <input
-                className="min-w-0 flex-1 bg-transparent px-3 outline-none focus:ring-2 focus:ring-ring"
-                value={saveSuffix}
-                onChange={(event) => onSaveSuffixChange(event.target.value)}
-                placeholder={DEFAULT_SAVE_SUFFIX}
-              />
-            </div>
-            <div className={saveSuffixError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-              {saveSuffixError || saveTemplate}
-            </div>
-          </div>
-
-          <div className="grid gap-2 text-sm md:grid-cols-2">
-            <ReadonlyField label="Remote cache root" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
-            <ReadonlyField label="Remote fetch root" value={saveTemplate} />
-          </div>
-
-          <Button size="sm" onClick={() => void onSave()} disabled={Boolean(saveSuffixError)}>
-            <Save className="h-4 w-4" />
-            Save cache & fetch settings
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -1930,11 +1897,6 @@ function PathsSettings({ settings, remoteSources }: { settings: AppSettings | nu
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">These resolved paths are displayed for verification. Changes are made through the owning runtime or source settings.</p>
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Data root" value={settings?.dataRoot ?? "/data"} />
-          <StatusPanel icon={<Database className="h-4 w-4" />} label="Cache root" value={settings?.cacheRoot ?? "/cache"} />
-          <StatusPanel icon={<Download className="h-4 w-4" />} label="Default fetch template" value={settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`} />
-        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
           <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />

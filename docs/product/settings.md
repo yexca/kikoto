@@ -29,6 +29,10 @@ Demo mode renders Settings read-only.
 
 ## Maintenance Organization
 
+- Maintenance opens with a concise administration description instead of
+  repeating editable configuration values as summary statistics. Detail tabs
+  retain only operational metrics such as source health, recommendation
+  telemetry, and managed-cache usage.
 - Library combines the local scan settings and configured remote sources.
 - Each enabled remote source has an explicit health-check action. The result is
   persisted through the same source health state used by automatic probes.
@@ -36,6 +40,8 @@ Demo mode renders Settings read-only.
   internal priority; disabled and numeric-weight controls are not exposed.
 - Recommendation starts with named common profiles and keeps the full scoring
   priors, weights, and caps under Advanced scoring.
+- Cache & Fetch presents editable policy first, followed by managed-media usage
+  and cleanup controls.
 - Paths is read-only and shows the resolved data root, cache root, default
   Fetch template, and per-source Fetch templates. Path changes remain owned by
   their runtime or source configuration rather than this overview.

@@ -179,6 +179,10 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await page.goto("/maintenance?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
+  const cacheSections = await page
+    .getByText(/^(Cache & fetch|Managed media cache)$/)
+    .allTextContents();
+  expect(cacheSections).toEqual(["Cache & fetch", "Managed media cache"]);
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("RJ09990001", { exact: true })).toBeVisible();
@@ -227,6 +231,10 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(page.getByText("Local library", { exact: true })).toBeVisible();
   await expect(page.getByText("Remote sources", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sources", exact: true })).toHaveCount(0);
+  const maintenanceHeader = page.getByRole("heading", { name: "Maintenance", exact: true }).locator("..");
+  await expect(maintenanceHeader.getByText("Sources", { exact: true })).toHaveCount(0);
+  await expect(maintenanceHeader.getByText("Cache", { exact: true })).toHaveCount(0);
+  await expect(maintenanceHeader.getByText("Scan", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Check health", exact: true }).click();
   await expect.poll(() => healthChecks).toBe(1);
   await expect(page.getByText("healthy", { exact: true })).toBeVisible();
@@ -245,6 +253,7 @@ test("routing drag order becomes the saved internal priority", async ({ page }) 
   await expect(page.getByText("Weight", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Enabled", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Drag Main story" }).dragTo(page.getByRole("button", { name: "Drag MP3" }));
+  await expect(page.locator('[data-routing-rule-id="main"]')).not.toHaveClass(/opacity-55/);
   await page.getByRole("button", { name: "Save playback settings" }).click();
 
   await expect.poll(() => settingsPayloads.length).toBe(1);

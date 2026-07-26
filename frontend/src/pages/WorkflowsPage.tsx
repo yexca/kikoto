@@ -1249,7 +1249,7 @@ function RemotePopularRunPanel({
   const canSubmit = allowed && sourceId > 0 && !tagError && tagPreview.value.length > 0 && (action !== "fetch" || canFetch);
   return (
     <section>
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
+      <div className="grid gap-4">
         <div className="space-y-4">
           <label className="grid gap-2 text-sm font-medium">
             Remote source
@@ -1290,7 +1290,7 @@ function RemotePopularRunPanel({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1 2xl:border-l 2xl:pl-4 2xl:pt-0">
+        <div className="grid min-w-0 gap-4 pt-1">
           <TagTemplateField
             id="remote-popular-tag-template"
             value={tagNameTemplate}
@@ -1298,6 +1298,7 @@ function RemotePopularRunPanel({
             tokens={tagTokens}
             preview={tagPreview}
             error={tagError}
+            spanColumns={false}
             onChange={setTagNameTemplate}
           />
           <Button className="w-full" disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagNameTemplate: tagNameTemplate.trim() })}>
@@ -1336,7 +1337,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
 
   return (
     <section>
-      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
+      <div className="grid gap-4">
         <div className="space-y-4">
           <div>
             <div className="text-sm font-medium">Ranking period</div>
@@ -1372,7 +1373,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
           )}
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1 2xl:border-l 2xl:pl-4 2xl:pt-0">
+        <div className="grid min-w-0 gap-4 pt-1">
           <TagTemplateField
             id="dlsite-popular-tag-template"
             value={tagNameTemplate}
@@ -1380,6 +1381,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
             tokens={tagTokens}
             preview={tagPreview}
             error={tagError}
+            spanColumns={false}
             onChange={(next) => {
               setTagCustomized(next !== defaultTagTemplate);
               setTagNameTemplate(next);
@@ -2828,6 +2830,7 @@ function TagTemplateField({
   tokens,
   preview,
   error,
+  spanColumns = true,
   onChange,
 }: {
   id: string;
@@ -2836,6 +2839,7 @@ function TagTemplateField({
   tokens: WorkflowTagTemplateToken[];
   preview: WorkflowTagTemplatePreview;
   error?: string;
+  spanColumns?: boolean;
   onChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -2852,7 +2856,7 @@ function TagTemplateField({
   };
 
   return (
-    <div className="grid min-w-0 gap-3 md:col-span-2" data-testid={`${id}-field`}>
+    <div className={`grid min-w-0 gap-3 ${spanColumns ? "md:col-span-2" : ""}`} data-testid={`${id}-field`}>
       <div className="grid min-w-0 gap-1.5 text-sm">
         <div className="flex items-center justify-between gap-2 font-medium">
           <label className="flex items-center gap-1.5" htmlFor={id}><Tag className="h-3.5 w-3.5" />Tag template</label>
