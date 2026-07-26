@@ -42,6 +42,39 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 	}
 }
 
+func TestBootstrapRootDoesNotReplaceChangedPassword(t *testing.T) {
+	db := openMigratedTestDB(t, "account-root-password.db")
+	store := account.NewStore(db)
+	ctx := context.Background()
+	if err := store.BootstrapRoot(ctx, "root", "initial-password"); err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.Authenticate(ctx, "root", "initial-password", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := store.LoadByUsername(ctx, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateOwnAccount(ctx, account.UpdateOwnAccountInput{
+		ID: root.ID, DisplayName: root.DisplayName, CurrentPassword: "initial-password",
+		NewPassword: "changed-password", CurrentSessionID: session.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.BootstrapRoot(ctx, "root", "replacement-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, "root", "changed-password", time.Now()); err != nil {
+		t.Fatalf("changed password was not preserved: %v", err)
+	}
+	if _, err := store.Authenticate(ctx, "root", "replacement-password", time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("replacement bootstrap password error = %v, want sql.ErrNoRows", err)
+	}
+}
+
 func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	db := openMigratedTestDB(t, "account-users.db")
 	store := account.NewStore(db)
@@ -59,6 +92,10 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	if err := store.EnsureAnotherEnabledSuperAdmin(ctx, root.ID); err == nil {
 		t.Fatal("EnsureAnotherEnabledSuperAdmin() accepted the last super administrator")
 	}
+	oldSession, err := store.Authenticate(ctx, created.Username, "listener-password", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	updated, err := store.UpdateManagedUser(ctx, account.UpdateUserInput{
 		ID: created.ID, DisplayName: created.DisplayName, Role: "super_admin", Password: "new-listener-password", Enabled: true, ActorUserID: root.ID,
 	})
@@ -73,6 +110,9 @@ func TestStoreManagesUsersAndProtectsLastSuperAdmin(t *testing.T) {
 	}
 	if _, err := store.Authenticate(ctx, created.Username, "new-listener-password", time.Now()); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := store.UserForSession(ctx, oldSession.ID, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("administrator password reset left old session active: %v", err)
 	}
 	if err := store.DeleteManagedUser(ctx, root.ID, created.ID); err != nil {
 		t.Fatal(err)

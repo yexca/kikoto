@@ -68,6 +68,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /api/auth/me", s.getCurrentUser)
+	mux.HandleFunc("PATCH /api/auth/me", s.updateCurrentUser)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/users", s.listUsers)

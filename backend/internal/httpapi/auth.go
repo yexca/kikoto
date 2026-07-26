@@ -75,6 +75,17 @@ func bearerSessionID(r *http.Request) string {
 	return strings.TrimSpace(value)
 }
 
+func currentSessionID(r *http.Request) string {
+	if sessionID := bearerSessionID(r); sessionID != "" {
+		return sessionID
+	}
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cookie.Value)
+}
+
 func isMobileAuthRequest(r *http.Request) bool {
 	return r.Header.Get(mobileAuthHeader) == "1"
 }
@@ -128,4 +139,57 @@ func parseLoginRequest(r *http.Request) (string, string, error) {
 		return "", "", errors.New("username and password are required")
 	}
 	return username, payload.Password, nil
+}
+
+func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
+	actor, ok := userFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
+		return
+	}
+	var payload struct {
+		DisplayName     *string `json:"displayName"`
+		CurrentPassword string  `json:"currentPassword"`
+		NewPassword     string  `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	displayName := actor.DisplayName
+	if payload.DisplayName != nil {
+		displayName = strings.TrimSpace(*payload.DisplayName)
+		if displayName == "" {
+			displayName = actor.Username
+		}
+	}
+	if payload.NewPassword == "" && payload.CurrentPassword != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "new password is required"})
+		return
+	}
+	if payload.NewPassword != "" {
+		if payload.CurrentPassword == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password is required"})
+			return
+		}
+		if len(payload.NewPassword) < 8 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 8 characters"})
+			return
+		}
+	}
+	updated, err := s.accountStore.UpdateOwnAccount(r.Context(), account.UpdateOwnAccountInput{
+		ID: actor.ID, DisplayName: displayName, CurrentPassword: payload.CurrentPassword,
+		NewPassword: payload.NewPassword, CurrentSessionID: currentSessionID(r),
+	})
+	if errors.Is(err, account.ErrInvalidCurrentPassword) || errors.Is(err, account.ErrPasswordUnchanged) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	updated.DevMode = actor.DevMode
+	updated.DemoMode = actor.DemoMode
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": updated})
 }

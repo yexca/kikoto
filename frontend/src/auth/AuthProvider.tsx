@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api, type AuthState, type CurrentUser, type RuntimeSettings } from "@/lib/api";
 
@@ -7,6 +7,7 @@ type AuthContextValue = {
   user: CurrentUser | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   runtimeMode: RuntimeSettings["mode"];
   demoMode: boolean;
@@ -19,17 +20,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [runtimeMode, setRuntimeMode] = useState<RuntimeSettings["mode"]>("production");
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const state = await api.me();
     setAuth(state);
-  };
+  }, []);
 
   useEffect(() => {
     Promise.all([
       refresh().catch(() => setAuth({ authenticated: false })),
       api.getRuntimeSettings().then((settings) => setRuntimeMode(settings.mode)).catch(() => setRuntimeMode("production")),
     ]).finally(() => setIsLoading(false));
-  }, []);
+  }, [refresh]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await api.logout();
         await refresh().catch(() => setAuth({ authenticated: false }));
       },
+      refresh,
       hasPermission: (permission) => {
         if (!auth?.authenticated) return false;
         return auth.user.permissions.includes(permission) || auth.user.permissions.includes("system:admin");
@@ -50,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       runtimeMode,
       demoMode: runtimeMode === "demo",
     }),
-    [auth, isLoading, runtimeMode],
+    [auth, isLoading, refresh, runtimeMode],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

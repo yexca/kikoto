@@ -1466,6 +1466,8 @@ export const api = {
     return response.json() as Promise<HealthStatus>;
   },
   me: () => getJSON<AuthState>("/api/auth/me"),
+  updateCurrentAccount: (payload: { displayName?: string; currentPassword?: string; newPassword?: string }) =>
+    patchJSONBody<AuthState>("/api/auth/me", payload),
   login,
   logout,
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),

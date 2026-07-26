@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -86,6 +87,120 @@ func TestAuthMiddlewareDoesNotTreatDatabaseFailureAsAnonymous(t *testing.T) {
 	if response.Code == http.StatusUnauthorized || response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500 and never 401", response.Code)
 	}
+}
+
+func TestUpdateCurrentUserChangesProfileAndPasswordAndKeepsCurrentSession(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
+	if err := server.BootstrapRoot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Routes()
+	currentCookie := loginTestSession(t, handler, "root", "old-password")
+	otherCookie := loginTestSession(t, handler, "root", "old-password")
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Updated Root","currentPassword":"old-password","newPassword":"new-password"}`))
+	request.AddCookie(currentCookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("update current user status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Authenticated bool        `json:"authenticated"`
+		User          currentUser `json:"user"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Authenticated || payload.User.DisplayName != "Updated Root" {
+		t.Fatalf("update response = %#v", payload)
+	}
+
+	var passwordHash string
+	if err := db.QueryRow(`SELECT password_hash FROM user_password_credential WHERE user_id = ?`, payload.User.ID).Scan(&passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	if verifyPassword("old-password", passwordHash) || !verifyPassword("new-password", passwordHash) {
+		t.Fatal("password credential was not replaced")
+	}
+	var currentSessions, otherSessions int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, currentCookie.Value).Scan(&currentSessions); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, otherCookie.Value).Scan(&otherSessions); err != nil {
+		t.Fatal(err)
+	}
+	if currentSessions != 1 || otherSessions != 0 {
+		t.Fatalf("session counts = current %d other %d", currentSessions, otherSessions)
+	}
+
+	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meRequest.AddCookie(currentCookie)
+	meResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meResponse, meRequest)
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), "Updated Root") {
+		t.Fatalf("current session after update = %d, body = %s", meResponse.Code, meResponse.Body.String())
+	}
+	var profileAudits, passwordAudits int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'user.profile_update'`).Scan(&profileAudits); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'user.password_change'`).Scan(&passwordAudits); err != nil {
+		t.Fatal(err)
+	}
+	if profileAudits != 1 || passwordAudits != 1 {
+		t.Fatalf("audit counts = profile %d password %d", profileAudits, passwordAudits)
+	}
+}
+
+func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
+	if err := server.BootstrapRoot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Routes()
+	cookie := loginTestSession(t, handler, "root", "old-password")
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Should Roll Back","currentPassword":"wrong-password","newPassword":"new-password"}`))
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "current password is incorrect") {
+		t.Fatalf("wrong password status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var displayName, passwordHash string
+	if err := db.QueryRow(`SELECT account.display_name, credential.password_hash FROM user_account AS account INNER JOIN user_password_credential AS credential ON credential.user_id = account.id WHERE account.username = 'root'`).Scan(&displayName, &passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	if displayName != "root" || !verifyPassword("old-password", passwordHash) {
+		t.Fatalf("failed update persisted display %q or changed password", displayName)
+	}
+	var sessionCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user_session WHERE id = ?`, cookie.Value).Scan(&sessionCount); err != nil {
+		t.Fatal(err)
+	}
+	if sessionCount != 1 {
+		t.Fatalf("current session count = %d", sessionCount)
+	}
+}
+
+func loginTestSession(t *testing.T, handler http.Handler, username string, password string) *http.Cookie {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"`+username+`","password":"`+password+`"}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d, body = %s", response.Code, response.Body.String())
+	}
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			return cookie
+		}
+	}
+	t.Fatal("login response did not set a session cookie")
+	return nil
 }
 
 func TestLocalMediaDeleteBlocksSymlinkAndCreatesReview(t *testing.T) {

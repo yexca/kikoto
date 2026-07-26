@@ -36,7 +36,19 @@ type UpdateUserInput struct {
 	ActorUserID int64
 }
 
-var ErrUsernameExists = errors.New("username already exists")
+type UpdateOwnAccountInput struct {
+	ID               int64
+	DisplayName      string
+	CurrentPassword  string
+	NewPassword      string
+	CurrentSessionID string
+}
+
+var (
+	ErrUsernameExists         = errors.New("username already exists")
+	ErrInvalidCurrentPassword = errors.New("current password is incorrect")
+	ErrPasswordUnchanged      = errors.New("new password must differ from current password")
+)
 
 func (s *Store) ListManagedUsers(ctx context.Context) ([]ManagedUser, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -119,6 +131,9 @@ func (s *Store) UpdateManagedUser(ctx context.Context, input UpdateUserInput) (M
 		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, passwordHash, input.ID); err != nil {
 			return ManagedUser{}, err
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
+			return ManagedUser{}, err
+		}
 	}
 	if err := insertAuditLog(ctx, tx, input.ActorUserID, "user.update", input.ID); err != nil {
 		return ManagedUser{}, err
@@ -127,6 +142,67 @@ func (s *Store) UpdateManagedUser(ctx context.Context, input UpdateUserInput) (M
 		return ManagedUser{}, err
 	}
 	return s.LoadManagedUser(ctx, input.ID)
+}
+
+func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInput) (User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+
+	var username, currentDisplayName string
+	if err := tx.QueryRowContext(ctx, `SELECT username, display_name FROM user_account WHERE id = ? AND enabled = 1`, input.ID).Scan(&username, &currentDisplayName); err != nil {
+		return User{}, err
+	}
+	displayName := strings.TrimSpace(input.DisplayName)
+	if displayName == "" {
+		displayName = username
+	}
+	if displayName != currentDisplayName {
+		if _, err := tx.ExecContext(ctx, `UPDATE user_account SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, displayName, input.ID); err != nil {
+			return User{}, err
+		}
+		if err := insertAuditLog(ctx, tx, input.ID, "user.profile_update", input.ID); err != nil {
+			return User{}, err
+		}
+	}
+
+	if input.NewPassword != "" {
+		var currentHash string
+		if err := tx.QueryRowContext(ctx, `SELECT password_hash FROM user_password_credential WHERE user_id = ?`, input.ID).Scan(&currentHash); err != nil {
+			return User{}, err
+		}
+		if !VerifyPassword(input.CurrentPassword, currentHash) {
+			return User{}, ErrInvalidCurrentPassword
+		}
+		if VerifyPassword(input.NewPassword, currentHash) {
+			return User{}, ErrPasswordUnchanged
+		}
+		passwordHash, err := HashPassword(input.NewPassword)
+		if err != nil {
+			return User{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, passwordHash, input.ID); err != nil {
+			return User{}, err
+		}
+		currentSessionID := strings.TrimSpace(input.CurrentSessionID)
+		if currentSessionID == "" {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ?`, input.ID); err != nil {
+				return User{}, err
+			}
+		} else if _, err := tx.ExecContext(ctx, `DELETE FROM user_session WHERE user_id = ? AND id <> ?`, input.ID, currentSessionID); err != nil {
+			return User{}, err
+		}
+		if err := insertAuditLog(ctx, tx, input.ID, "user.password_change", input.ID); err != nil {
+			return User{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+	return s.LoadByID(ctx, input.ID)
 }
 
 func (s *Store) DeleteManagedUser(ctx context.Context, actorUserID int64, userID int64) error {

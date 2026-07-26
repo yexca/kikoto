@@ -14,7 +14,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` exposes a read-only root session with all-ages permanently-free content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
-| `KIKOTO_ROOT_PASSWORD` | `change-me` | Root administrator password. |
+| `KIKOTO_ROOT_PASSWORD` | `change-me` | Initial root administrator password, used only until that account has a stored credential. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |
 | `KIKOTO_REMOTE_SOURCES_FILE` | `../config/remote-sources.yaml` | Remote source seed file. |
 

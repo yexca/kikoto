@@ -38,10 +38,6 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 	if username == "" {
 		username = "root"
 	}
-	hash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -58,11 +54,18 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", username).Scan(&userID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET password_hash = excluded.password_hash, updated_at = CURRENT_TIMESTAMP
-	`, userID, hash); err != nil {
+	var hasCredential bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM user_password_credential WHERE user_id = ?)", userID).Scan(&hasCredential); err != nil {
 		return err
+	}
+	if !hasCredential {
+		hash, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)", userID); err != nil {
 		return err

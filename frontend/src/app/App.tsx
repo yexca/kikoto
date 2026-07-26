@@ -259,7 +259,7 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
               {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />}
               {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.hasPermission("sources:write")} canManageUsers={!auth.demoMode && auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
               {canAccessCurrentPage && page === "workflows" && <WorkflowsPage surface="workflows" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
               {canAccessCurrentPage && page === "activity" && <WorkflowsPage surface="activity" canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}

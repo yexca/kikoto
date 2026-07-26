@@ -1,32 +1,32 @@
 # Settings
 
-Settings exposes administrator-managed runtime behavior.
+Settings exposes per-user account and appearance preferences. Instance and user
+administration remain in Maintenance.
 
 ## Current Settings
 
-- Local scan depth.
-- Remote cache behavior.
-- Cache limits.
-- Remote fetch path template.
-- Remote request delay and backoff.
-- DLsite metadata language.
-- Local and compatible remote file sources.
-- Circle auto-refresh threshold.
+- Update the authenticated user's display name.
+- Change the authenticated user's password after verifying the current
+  password and confirming the replacement.
+- Keep username and role visible but read-only.
+- Light, dark, and system appearance preferences.
+- Pink, blue, and green accent-color preferences.
 
-## Source Configuration
+## Account Boundaries
 
-Administrators can add, update, disable, and remove compatible remote sources.
-Creating or updating a source can trigger a batch availability check for recent
-local works, gated by source health.
+Changing a password preserves the current session and revokes the user's other
+sessions. An administrator password reset from Maintenance revokes every
+session for the target user. Role, enabled state, username, and user lifecycle
+management are not self-service account settings.
 
-## Runtime Versus Environment
+`KIKOTO_ROOT_PASSWORD` supplies the root credential only when one does not
+already exist. A password changed in Settings therefore remains authoritative
+after restart.
 
-Environment variables provide startup defaults. Settings stores administrator
-choices after startup and should remain the authority for configured sources
-once the database exists.
+Demo mode renders Settings read-only.
 
 ## Related Docs
 
 - [Configuration](../operations/configuration.md)
-- [Sources](sources.md)
 - [Security](../operations/security.md)
+- [Sources](sources.md)
