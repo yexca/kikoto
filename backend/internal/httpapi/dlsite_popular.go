@@ -18,10 +18,11 @@ import (
 var errDLsitePopularAlreadyActive = errors.New("a matching DLsite popular collection is already queued or running")
 
 type dlsitePopularRunRequest struct {
-	Period        string `json:"period"`
-	ReleaseWindow string `json:"releaseWindow"`
-	Year          int    `json:"year"`
-	TagName       string `json:"tagName"`
+	Period          string `json:"period"`
+	ReleaseWindow   string `json:"releaseWindow"`
+	Year            int    `json:"year"`
+	TagName         string `json:"tagName"`
+	TagNameTemplate string `json:"tagNameTemplate"`
 }
 
 type dlsitePopularJobPayload struct {
@@ -109,6 +110,16 @@ func normalizeDLsitePopularRequest(payload dlsitePopularRunRequest, now time.Tim
 		}
 	default:
 		return dlsitePopularRunRequest{}, fmt.Errorf("period must be day, week, month, or year")
+	}
+	payload.TagNameTemplate = strings.TrimSpace(payload.TagNameTemplate)
+	if payload.TagNameTemplate != "" {
+		var err error
+		payload.TagName, err = renderWorkflowTagNameTemplate(payload.TagNameTemplate, dlsitePopularTemplateValues(systemWorkflowTriggerConfig{
+			Period: payload.Period, ReleaseWindow: payload.ReleaseWindow, Year: payload.Year,
+		}, now))
+		if err != nil {
+			return dlsitePopularRunRequest{}, err
+		}
 	}
 	payload.TagName = strings.TrimSpace(payload.TagName)
 	if payload.TagName == "" {

@@ -309,10 +309,11 @@ type workSourceUntrackResult struct {
 }
 
 type remoteCollectionRunRequest struct {
-	SourceID int64  `json:"sourceId"`
-	Action   string `json:"action"`
-	Limit    int    `json:"limit"`
-	TagName  string `json:"tagName"`
+	SourceID        int64  `json:"sourceId"`
+	Action          string `json:"action"`
+	Limit           int    `json:"limit"`
+	TagName         string `json:"tagName"`
+	TagNameTemplate string `json:"tagNameTemplate"`
 }
 
 type remoteCollectionRunResult struct {
@@ -2512,13 +2513,6 @@ func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID
 	if payload.Limit <= 0 || payload.Limit > 100 {
 		return remoteCollectionRunResult{}, fmt.Errorf("limit must be between 1 and 100")
 	}
-	payload.TagName = strings.TrimSpace(payload.TagName)
-	if payload.TagName == "" {
-		return remoteCollectionRunResult{}, fmt.Errorf("tagName is required")
-	}
-	if runes := []rune(payload.TagName); len(runes) > 40 {
-		payload.TagName = string(runes[:40])
-	}
 	source, err := s.remoteCollectionSource(ctx, payload.SourceID)
 	if err != nil {
 		return remoteCollectionRunResult{}, err
@@ -2528,6 +2522,23 @@ func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return remoteCollectionRunResult{}, fmt.Errorf("source has no API endpoint")
+	}
+	payload.TagNameTemplate = strings.TrimSpace(payload.TagNameTemplate)
+	if payload.TagNameTemplate != "" {
+		payload.TagName, err = renderWorkflowTagNameTemplate(payload.TagNameTemplate, map[string]string{
+			"date": time.Now().UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
+			"source_code": workflowTagFragment(source.Code), "action": action,
+		})
+		if err != nil {
+			return remoteCollectionRunResult{}, err
+		}
+	}
+	payload.TagName = strings.TrimSpace(payload.TagName)
+	if payload.TagName == "" {
+		return remoteCollectionRunResult{}, fmt.Errorf("tagName or tagNameTemplate is required")
+	}
+	if runes := []rune(payload.TagName); len(runes) > 40 {
+		payload.TagName = string(runes[:40])
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

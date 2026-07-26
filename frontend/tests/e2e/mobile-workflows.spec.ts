@@ -165,8 +165,8 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-runs/dlsite-popular") {
-      const payload = route.request().postDataJSON() as { period: string; releaseWindow: string; year: number; tagName: string };
-      await route.fulfill({ json: { runId: 31, status: "queued", ...payload, discovered: 0, synced: 0, tagged: 0, failed: 0, failures: [] } });
+      const payload = route.request().postDataJSON() as { period: string; releaseWindow: string; year: number; tagNameTemplate: string };
+      await route.fulfill({ json: { runId: 31, status: "queued", ...payload, tagName: "resolved-dlsite-popular", discovered: 0, synced: 0, tagged: 0, failed: 0, failures: [] } });
       return;
     }
     if (url.pathname === "/api/library-sources") {
@@ -176,9 +176,9 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-runs/remote-popular") {
-      const payload = route.request().postDataJSON() as { sourceId: number; action: "track" | "fetch"; limit: number; tagName: string };
+      const payload = route.request().postDataJSON() as { sourceId: number; action: "track" | "fetch"; limit: number; tagNameTemplate: string };
       onRemotePopular?.(payload);
-      await route.fulfill({ json: { runId: 41, status: "queued", collectionKind: "popular", discovered: 0, accepted: 0, skipped: 0, tracked: 0, fetched: 0, tagged: 0, failed: 0, childRuns: [], failures: [], expectedMaximum: payload.limit, returnedCount: 0, ...payload } });
+      await route.fulfill({ json: { runId: 41, status: "queued", collectionKind: "popular", tagName: "resolved-remote-popular", discovered: 0, accepted: 0, skipped: 0, tracked: 0, fetched: 0, tagged: 0, failed: 0, childRuns: [], failures: [], expectedMaximum: payload.limit, returnedCount: 0, ...payload } });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
@@ -204,9 +204,12 @@ test("definitions foreground runnable presets and configure DLsite popular colle
 
   await page.getByRole("button", { name: /Collect DLsite popular voice works/ }).click();
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
-  await expect(page.getByText("Ranking period", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ranking period", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByLabel("User tag")).toHaveValue(/-DL-24h-r30d-popular$/);
+  const dlsiteTagField = page.getByTestId("dlsite-popular-tag-template-field");
+  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
+  await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
+  await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
@@ -216,14 +219,17 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
   await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("");
   await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
-  await expect(scheduleDialog.getByText(/Preview: .*_DL_24h_all_popular$/)).toBeVisible();
+  await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(/Preview.*_DL_24h_all_popular/);
   await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Year", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
   await page.getByLabel("Ranking year").selectOption("2025");
-  await expect(page.getByLabel("User tag")).toHaveValue(/-DL-year-2025-popular$/);
+  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_year_{year}_popular");
+  await expect(dlsiteTagField).toContainText(/Preview.*_DL_year_2025_popular/);
+  const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
   await page.getByRole("button", { name: "Run collection" }).click();
+  expect((await dlsiteRequest).postDataJSON()).toEqual({ period: "year", releaseWindow: "", year: 2025, tagNameTemplate: "{date}_DL_year_{year}_popular" });
   await expect(page.getByText(/run #31 queued/)).toBeVisible();
 
   await page.goto("/about");
@@ -322,11 +328,16 @@ test("remote popular collection requires an explicit source and queues configure
   await expect(page.getByLabel("Remote source")).toHaveValue("8");
   await page.getByRole("button", { name: "fetch", exact: true }).click();
   await page.getByLabel("Work limit").selectOption("50");
-  await page.getByLabel("User tag").fill("weekly-remote-picks");
+  const remoteTagField = page.getByTestId("remote-popular-tag-template-field");
+  await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();
+  await expect(remoteTagField.getByRole("button", { name: /\{source_code\}.*remote-test/ })).toBeVisible();
+  await expect(remoteTagField.getByRole("button", { name: /\{action\}.*fetch/ })).toBeVisible();
+  await remoteTagField.getByLabel("Tag template", { exact: true }).fill("weekly_{source_code}_{action}_popular");
+  await expect(remoteTagField).toContainText("weekly_remote-test_fetch_popular");
   await page.getByRole("button", { name: "Run collection" }).click();
 
   await expect.poll(() => payloads).toHaveLength(1);
-  expect(payloads[0]).toEqual({ sourceId: 8, action: "fetch", limit: 50, tagName: "weekly-remote-picks" });
+  expect(payloads[0]).toEqual({ sourceId: 8, action: "fetch", limit: 50, tagNameTemplate: "weekly_{source_code}_{action}_popular" });
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 

@@ -1891,9 +1891,9 @@ export const api = {
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
 	runStartupLibraryRefresh: () => postJSON<{ runId: number; status: string }>("/api/workflow-runs/startup-library-refresh"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
-  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId: number; limit: number; tagName: string }) =>
+  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId: number; limit: number; tagNameTemplate: string }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
-  runDLsitePopularCollection: (payload: { period: "day" | "week" | "month" | "year"; releaseWindow: "30d" | ""; year: number; tagName: string }) =>
+  runDLsitePopularCollection: (payload: { period: "day" | "week" | "month" | "year"; releaseWindow: "30d" | ""; year: number; tagNameTemplate: string }) =>
     postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
   recordRemoteBulkRun: (payload: {
     action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";

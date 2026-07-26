@@ -22,13 +22,17 @@ Workflows make backend actions inspectable.
   definition without either persisted trigger shows Manual.
 - Built-in local scan, metadata sync, library refresh, remote popular, and
   DLsite popular workflows support editable Startup and interval triggers.
-- Remote popular automation stores source, action, limit, and a tag template.
-  The template is expanded for each run; automatic collection is Track-only so
-  it cannot bypass Fetch size and disk-reserve safeguards.
+- Remote and DLsite popular collection surfaces edit tag templates with a
+  current-value preview, the complete workflow-specific variable list, and an
+  explicit warning when the rendered tag exceeds 40 characters. Manual runs
+  expand the template on request; automatic triggers store it unchanged and
+  expand it at dispatch. Remote automatic collection is Track-only so it
+  cannot bypass Fetch size and disk-reserve safeguards.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
-  annual runs select an explicit year. Runs synchronize metadata and append the
-  displayed user tag without replacing existing user tags.
+  annual runs select an explicit year and default to a template containing
+  `{year}`. Runs synchronize metadata and append the previewed user tag without
+  replacing existing user tags.
 
 ## Later Work
 

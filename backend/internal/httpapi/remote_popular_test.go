@@ -45,7 +45,7 @@ func TestRemotePopularWorkflowQueuesThenTracksAndTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/remote-popular", strings.NewReader(`{"sourceId":1,"action":"track","limit":25,"tagName":"remote-popular-test"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/remote-popular", strings.NewReader(`{"sourceId":1,"action":"track","limit":25,"tagNameTemplate":"{date}_{remote_name}_{action}_popular"}`))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "tags:write"}}))
 	response := httptest.NewRecorder()
 	server.createRemotePopularCollectionRun(response, request)
@@ -59,7 +59,7 @@ func TestRemotePopularWorkflowQueuesThenTracksAndTags(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &queued); err != nil {
 		t.Fatal(err)
 	}
-	if queued.RunID <= 0 || queued.Status != "queued" || queued.TagName != "remote-popular-test" {
+	if queued.RunID <= 0 || queued.Status != "queued" || strings.Contains(queued.TagName, "{") || !strings.HasSuffix(queued.TagName, "_Remote_Test_track_popular") {
 		t.Fatalf("queued = %+v", queued)
 	}
 

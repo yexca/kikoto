@@ -133,15 +133,31 @@ type DLsitePopularRunOptions = {
   period: DLsitePopularPeriod;
   releaseWindow: "30d" | "";
   year: number;
-  tagName: string;
+  tagNameTemplate: string;
 };
 
 type RemotePopularRunOptions = {
   sourceId: number;
   action: "track" | "fetch";
   limit: number;
-  tagName: string;
+  tagNameTemplate: string;
 };
+
+type WorkflowTagTemplateToken = {
+  name: string;
+  description: string;
+  value: string;
+};
+
+type WorkflowTagTemplatePreview = {
+  value: string;
+  renderedLength: number;
+  truncated: boolean;
+};
+
+const TAG_TEMPLATE_MAX_LENGTH = 160;
+const TAG_NAME_MAX_LENGTH = 40;
+const REMOTE_POPULAR_TAG_TEMPLATE = "{date}_{remote_name}_popular";
 
 type SystemWorkflowTriggerConfig = {
   sourceId: number;
@@ -1182,15 +1198,16 @@ function RemotePopularRunPanel({
   const [sourceId, setSourceId] = useState(0);
   const [action, setAction] = useState<"track" | "fetch">("track");
   const [limit, setLimit] = useState(25);
-  const [tagName, setTagName] = useState("");
-  const [tagCustomized, setTagCustomized] = useState(false);
+  const [tagNameTemplate, setTagNameTemplate] = useState(REMOTE_POPULAR_TAG_TEMPLATE);
   const [loadingSources, setLoadingSources] = useState(true);
   const compatibleSources = useMemo(
     () => sources.filter((source) => source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType)),
     [sources],
   );
   const selectedSource = compatibleSources.find((source) => source.id === sourceId) ?? null;
-  const generatedTag = remotePopularTagName(selectedSource?.code ?? "remote", action, new Date());
+  const tagTokens = remotePopularTagTemplateTokens(selectedSource, action, new Date());
+  const tagPreview = workflowTagTemplatePreview(tagNameTemplate, workflowTagTemplateTokenValues(tagTokens));
+  const tagError = workflowTagTemplateBlockers(tagNameTemplate, tagTokens.map((token) => token.name))[0];
 
   useEffect(() => {
     let active = true;
@@ -1210,11 +1227,7 @@ function RemotePopularRunPanel({
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    if (!tagCustomized) setTagName(generatedTag);
-  }, [generatedTag, tagCustomized]);
-
-  const canSubmit = allowed && sourceId > 0 && tagName.trim().length > 0 && (action !== "fetch" || canFetch);
+  const canSubmit = allowed && sourceId > 0 && !tagError && tagPreview.value.length > 0 && (action !== "fetch" || canFetch);
   return (
     <section className="pb-1 pt-4">
       <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
@@ -1259,23 +1272,17 @@ function RemotePopularRunPanel({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:pl-4 2xl:pt-0">
-          <label className="grid gap-2 text-sm font-medium">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Tag className="h-3.5 w-3.5" />
-              User tag
-            </span>
-            <input
-              className="h-9 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={tagName}
-              maxLength={40}
-              onChange={(event) => {
-                setTagCustomized(true);
-                setTagName(event.target.value);
-              }}
-            />
-          </label>
-          <Button className="sm:min-w-40 2xl:w-full" disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagName: tagName.trim() })}>
+        <div className="grid min-w-0 gap-4 pt-1 2xl:border-l 2xl:pl-4 2xl:pt-0">
+          <TagTemplateField
+            id="remote-popular-tag-template"
+            value={tagNameTemplate}
+            defaultValue={REMOTE_POPULAR_TAG_TEMPLATE}
+            tokens={tagTokens}
+            preview={tagPreview}
+            error={tagError}
+            onChange={setTagNameTemplate}
+          />
+          <Button className="w-full" disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagNameTemplate: tagNameTemplate.trim() })}>
             <Play className="h-4 w-4" />
             {running ? "Queueing" : "Run collection"}
           </Button>
@@ -1285,21 +1292,18 @@ function RemotePopularRunPanel({
   );
 }
 
-function remotePopularTagName(sourceCode: string, action: "track" | "fetch", now: Date) {
-  const date = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-  const source = sourceCode.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 12) || "remote";
-  return `${date}-${source}-${action}-popular`.slice(0, 40);
-}
-
 function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; allowed: boolean; onRun: (options: DLsitePopularRunOptions) => Promise<void> }) {
   const [period, setPeriod] = useState<DLsitePopularPeriod>("day");
   const [recentOnly, setRecentOnly] = useState(true);
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const releaseWindow: "30d" | "" = period === "year" ? "" : recentOnly ? "30d" : "";
-  const generatedTag = dlsitePopularTagName(period, releaseWindow, year, new Date());
-  const [tagName, setTagName] = useState(generatedTag);
+  const defaultTagTemplate = dlsitePopularDefaultTagTemplate(period);
+  const [tagNameTemplate, setTagNameTemplate] = useState(defaultTagTemplate);
   const [tagCustomized, setTagCustomized] = useState(false);
+  const tagTokens = dlsitePopularTagTemplateTokens(period, releaseWindow, year, new Date());
+  const tagPreview = workflowTagTemplatePreview(tagNameTemplate, workflowTagTemplateTokenValues(tagTokens));
+  const tagError = workflowTagTemplateBlockers(tagNameTemplate, tagTokens.map((token) => token.name))[0];
   const years = Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index);
   const periodOptions: { value: DLsitePopularPeriod; label: string }[] = [
     { value: "day", label: "24h" },
@@ -1309,8 +1313,8 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
   ];
 
   useEffect(() => {
-    if (!tagCustomized) setTagName(generatedTag);
-  }, [generatedTag, tagCustomized]);
+    if (!tagCustomized) setTagNameTemplate(defaultTagTemplate);
+  }, [defaultTagTemplate, tagCustomized]);
 
   return (
     <section className="pb-1 pt-4">
@@ -1351,40 +1355,20 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
           )}
         </div>
 
-        <div className="grid min-w-0 gap-4 pt-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:pl-4 2xl:pt-0">
-          <div className="grid gap-2 text-sm font-medium">
-            <span className="flex items-center justify-between gap-2">
-              <label htmlFor="dlsite-popular-tag" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Tag className="h-3.5 w-3.5" />
-                User tag
-              </label>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                disabled={!tagCustomized && tagName === generatedTag}
-                onClick={() => {
-                  setTagCustomized(false);
-                  setTagName(generatedTag);
-                }}
-                title="Reset to generated tag"
-                aria-label="Reset to generated tag"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </Button>
-            </span>
-            <input
-              id="dlsite-popular-tag"
-              className="h-9 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={tagName}
-              maxLength={40}
-              onChange={(event) => {
-                setTagCustomized(true);
-                setTagName(event.target.value);
-              }}
-            />
-          </div>
-          <Button className="sm:min-w-40 2xl:w-full" disabled={running || !allowed || !tagName.trim()} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName: tagName.trim() })}>
+        <div className="grid min-w-0 gap-4 pt-1 2xl:border-l 2xl:pl-4 2xl:pt-0">
+          <TagTemplateField
+            id="dlsite-popular-tag-template"
+            value={tagNameTemplate}
+            defaultValue={defaultTagTemplate}
+            tokens={tagTokens}
+            preview={tagPreview}
+            error={tagError}
+            onChange={(next) => {
+              setTagCustomized(next !== defaultTagTemplate);
+              setTagNameTemplate(next);
+            }}
+          />
+          <Button className="w-full" disabled={running || !allowed || Boolean(tagError) || !tagPreview.value} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagNameTemplate: tagNameTemplate.trim() })}>
             <Play className="h-4 w-4" />
             {running ? "Queueing" : "Run collection"}
           </Button>
@@ -1392,13 +1376,6 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
       </div>
     </section>
   );
-}
-
-function dlsitePopularTagName(period: DLsitePopularPeriod, releaseWindow: "30d" | "", year: number, now: Date) {
-  const date = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-  if (period === "year") return `${date}-DL-year-${year}-popular`;
-  const periodLabel = period === "day" ? "24h" : period === "week" ? "7d" : "30d";
-  return `${date}-DL-${periodLabel}-${releaseWindow === "30d" ? "r30d" : "all"}-popular`;
 }
 
 function useRecentWorkflowNodeStarts(runID: number | null, status: string, events: WorkflowEvent[]) {
@@ -2678,8 +2655,8 @@ function workflowSystemTriggerConfig(definitionCode: string, trigger: WorkflowTr
   const record = parseJSONRecord(trigger?.configJson ?? "");
   const period = ["day", "week", "month", "year"].includes(String(record.period)) ? record.period as DLsitePopularPeriod : "day";
   const defaultTemplate = definitionCode === "dlsite_popular_collection"
-    ? "{date}_DL_{period}_{release_window}_popular"
-    : "{date}_{remote_name}_popular";
+    ? dlsitePopularDefaultTagTemplate(period)
+    : REMOTE_POPULAR_TAG_TEMPLATE;
   return {
     sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
     action: record.action === "fetch" ? "fetch" : "track",
@@ -2726,7 +2703,7 @@ function workflowSystemTriggerConfigBlockers(definitionCode: string, value: Syst
 
 function workflowTagTemplateBlockers(template: string, tokens: string[]) {
   if (!template.trim()) return ["Tag template is required."];
-  if ([...template].length > 160) return ["Tag template must be at most 160 characters."];
+  if ([...template].length > TAG_TEMPLATE_MAX_LENGTH) return [`Tag template must be at most ${TAG_TEMPLATE_MAX_LENGTH} characters.`];
   const matches = template.match(/\{[a-z_]+\}/g) ?? [];
   const unsupported = matches.find((token) => !tokens.includes(token.slice(1, -1)));
   if (unsupported) return [`Unsupported tag template token: ${unsupported}.`];
@@ -2759,12 +2736,9 @@ function SystemWorkflowTriggerFields({ definitionCode, value, onChange }: { defi
 
   if (definitionCode === "remote_popular_collection") {
     const selectedSource = compatibleSources.find((source) => source.id === value.sourceId);
-    const preview = workflowTagTemplatePreview(value.tagNameTemplate, {
-      date: utcShortDate(new Date()),
-      remote_name: workflowTagFragmentPreview(selectedSource?.displayName ?? "remote"),
-      source_code: workflowTagFragmentPreview(selectedSource?.code ?? "remote"),
-      action: value.action,
-    });
+    const tokens = remotePopularTagTemplateTokens(selectedSource, value.action, new Date());
+    const preview = workflowTagTemplatePreview(value.tagNameTemplate, workflowTagTemplateTokenValues(tokens));
+    const error = workflowTagTemplateBlockers(value.tagNameTemplate, tokens.map((token) => token.name))[0];
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
         <Field label="Remote source">
@@ -2784,22 +2758,26 @@ function SystemWorkflowTriggerFields({ definitionCode, value, onChange }: { defi
             {[10, 25, 50, 100].map((limit) => <option key={limit} value={limit}>{limit} works</option>)}
           </select>
         </Field>
-        <TagTemplateField value={value.tagNameTemplate} tokens={["date", "remote_name", "source_code", "action"]} preview={preview} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
+        <TagTemplateField id="remote-trigger-tag-template" value={value.tagNameTemplate} defaultValue={REMOTE_POPULAR_TAG_TEMPLATE} tokens={tokens} preview={preview} error={error} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
       </div>
     );
   }
 
   if (definitionCode === "dlsite_popular_collection") {
-    const preview = workflowTagTemplatePreview(value.tagNameTemplate, {
-      date: utcShortDate(new Date()),
-      period: value.period === "day" ? "24h" : value.period === "week" ? "7d" : value.period === "month" ? "30d" : "year",
-      release_window: value.releaseWindow === "30d" ? "r30d" : "all",
-      year: String(value.year),
-    });
+    const defaultTemplate = dlsitePopularDefaultTagTemplate(value.period);
+    const tokens = dlsitePopularTagTemplateTokens(value.period, value.releaseWindow, value.year, new Date());
+    const preview = workflowTagTemplatePreview(value.tagNameTemplate, workflowTagTemplateTokenValues(tokens));
+    const error = workflowTagTemplateBlockers(value.tagNameTemplate, tokens.map((token) => token.name))[0];
     return (
       <div className="grid gap-3 border-t pt-3 md:grid-cols-2">
         <Field label="Ranking period">
-          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.period} onChange={(event) => onChange({ ...value, period: event.target.value as DLsitePopularPeriod })}>
+          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={value.period} onChange={(event) => {
+            const period = event.target.value as DLsitePopularPeriod;
+            const tagNameTemplate = value.tagNameTemplate === dlsitePopularDefaultTagTemplate(value.period)
+              ? dlsitePopularDefaultTagTemplate(period)
+              : value.tagNameTemplate;
+            onChange({ ...value, period, tagNameTemplate });
+          }}>
             <option value="day">24 hours</option>
             <option value="week">7 days</option>
             <option value="month">30 days</option>
@@ -2818,7 +2796,7 @@ function SystemWorkflowTriggerFields({ definitionCode, value, onChange }: { defi
             </select>
           </Field>
         )}
-        <TagTemplateField value={value.tagNameTemplate} tokens={["date", "period", "release_window", "year"]} preview={preview} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
+        <TagTemplateField id="dlsite-trigger-tag-template" value={value.tagNameTemplate} defaultValue={defaultTemplate} tokens={tokens} preview={preview} error={error} onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })} />
       </div>
     );
   }
@@ -2826,30 +2804,108 @@ function SystemWorkflowTriggerFields({ definitionCode, value, onChange }: { defi
   return null;
 }
 
-function TagTemplateField({ value, tokens, preview, onChange }: { value: string; tokens: string[]; preview: string; onChange: (value: string) => void }) {
+function TagTemplateField({
+  id,
+  value,
+  defaultValue,
+  tokens,
+  preview,
+  error,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  defaultValue: string;
+  tokens: WorkflowTagTemplateToken[];
+  preview: WorkflowTagTemplatePreview;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const insertToken = (name: string) => {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? value.length;
+    const end = input?.selectionEnd ?? start;
+    const token = `{${name}}`;
+    onChange(`${value.slice(0, start)}${token}${value.slice(end)}`);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
   return (
-    <div className="grid gap-1 md:col-span-2">
-      <div className="flex items-end gap-2">
-        <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
-          <span className="font-medium">Tag template</span>
-          <input className="h-9 w-full rounded-md border bg-card px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" value={value} maxLength={160} onChange={(event) => onChange(event.target.value)} />
-        </label>
-        <select className="h-9 w-36 shrink-0 rounded-md border bg-card px-2 text-sm outline-none focus:ring-2 focus:ring-ring" aria-label="Insert tag template token" defaultValue="" onChange={(event) => {
-          if (event.target.value) onChange(value + `{${event.target.value}}`);
-          event.currentTarget.value = "";
-        }}>
-          <option value="" disabled>Insert token</option>
-          {tokens.map((token) => <option key={token} value={token}>{`{${token}}`}</option>)}
-        </select>
+    <div className="grid min-w-0 gap-3 md:col-span-2" data-testid={`${id}-field`}>
+      <div className="grid min-w-0 gap-1.5 text-sm">
+        <div className="flex items-center justify-between gap-2 font-medium">
+          <label className="flex items-center gap-1.5" htmlFor={id}><Tag className="h-3.5 w-3.5" />Tag template</label>
+          <Button type="button" size="icon" variant="ghost" className="h-7 w-7" disabled={value === defaultValue} onClick={() => onChange(defaultValue)} title="Reset tag template" aria-label="Reset tag template">
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <input ref={inputRef} id={id} className="h-9 w-full rounded-md border bg-card px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" value={value} maxLength={TAG_TEMPLATE_MAX_LENGTH} aria-invalid={Boolean(error)} onChange={(event) => onChange(event.target.value)} />
       </div>
-      <div className="truncate text-xs text-muted-foreground">Preview: <span className="font-mono text-foreground">{preview || "-"}</span></div>
+
+      <div className="grid gap-1.5">
+        <div className="text-xs font-medium text-muted-foreground">Available variables</div>
+        <div className="divide-y rounded-md border">
+          {tokens.map((token) => (
+            <button key={token.name} type="button" className="grid w-full min-w-0 gap-0.5 px-2.5 py-2 text-left hover:bg-muted/50 sm:grid-cols-[minmax(135px,0.8fr)_minmax(0,1.2fr)_minmax(90px,0.7fr)] sm:items-center sm:gap-3" onClick={() => insertToken(token.name)} title={`Insert {${token.name}}`}>
+              <code className="text-xs font-semibold text-primary">{`{${token.name}}`}</code>
+              <span className="text-xs text-muted-foreground">{token.description}</span>
+              <code className="min-w-0 truncate text-xs text-foreground sm:text-right" title={token.value}>{token.value || "-"}</code>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-1 rounded-md bg-muted/35 px-3 py-2" aria-live="polite">
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>Preview</span>
+          <span>{Math.min(preview.renderedLength, TAG_NAME_MAX_LENGTH)}/{TAG_NAME_MAX_LENGTH}</span>
+        </div>
+        <code className="break-all text-xs text-foreground">{preview.value || "-"}</code>
+        {preview.truncated && <span className="text-xs text-yellow-600">The rendered tag exceeds {TAG_NAME_MAX_LENGTH} characters and will be truncated.</span>}
+      </div>
+      {error && <div className="text-xs text-destructive" role="alert">{error}</div>}
     </div>
   );
 }
 
-function workflowTagTemplatePreview(template: string, values: Record<string, string>) {
-  const rendered = template.replace(/\{[a-z_]+\}/g, (token) => values[token.slice(1, -1)] ?? "").trim();
-  return [...rendered].slice(0, 40).join("");
+function workflowTagTemplatePreview(template: string, values: Record<string, string>): WorkflowTagTemplatePreview {
+  const rendered = template.replace(/\{[a-z_]+\}/g, (token) => values[token.slice(1, -1)] ?? token).trim();
+  const runes = [...rendered];
+  return {
+    value: runes.slice(0, TAG_NAME_MAX_LENGTH).join(""),
+    renderedLength: runes.length,
+    truncated: runes.length > TAG_NAME_MAX_LENGTH,
+  };
+}
+
+function workflowTagTemplateTokenValues(tokens: WorkflowTagTemplateToken[]) {
+  return Object.fromEntries(tokens.map((token) => [token.name, token.value]));
+}
+
+function remotePopularTagTemplateTokens(source: LibrarySource | undefined | null, action: "track" | "fetch", now: Date): WorkflowTagTemplateToken[] {
+  return [
+    { name: "date", description: "UTC date (YYMMDD)", value: utcShortDate(now) },
+    { name: "remote_name", description: "Remote source display name", value: workflowTagFragmentPreview(source?.displayName ?? "remote") },
+    { name: "source_code", description: "Remote source code", value: workflowTagFragmentPreview(source?.code ?? "remote") },
+    { name: "action", description: "Collection action", value: action },
+  ];
+}
+
+function dlsitePopularTagTemplateTokens(period: DLsitePopularPeriod, releaseWindow: "30d" | "", year: number, now: Date): WorkflowTagTemplateToken[] {
+  return [
+    { name: "date", description: "UTC date (YYMMDD)", value: utcShortDate(now) },
+    { name: "period", description: "Ranking period", value: period === "day" ? "24h" : period === "week" ? "7d" : period === "month" ? "30d" : "year" },
+    { name: "release_window", description: "Release filter", value: releaseWindow === "30d" ? "r30d" : "all" },
+    { name: "year", description: "Ranking year (annual mode)", value: period === "year" ? String(year) : "0" },
+  ];
+}
+
+function dlsitePopularDefaultTagTemplate(period: DLsitePopularPeriod) {
+  return period === "year" ? "{date}_DL_year_{year}_popular" : "{date}_DL_{period}_{release_window}_popular";
 }
 
 function workflowTagFragmentPreview(value: string) {

@@ -44,6 +44,15 @@ func TestNormalizeDLsitePopularRequestUsesAnnualRules(t *testing.T) {
 	if result.ReleaseWindow != "" || result.TagName != "260714-DL-year-2025-popular" {
 		t.Fatalf("result = %+v", result)
 	}
+	templated, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
+		Period: "year", ReleaseWindow: "30d", Year: 2025, TagNameTemplate: "{date}_DL_{period}_{year}_popular",
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if templated.TagName != "260714_DL_year_2025_popular" {
+		t.Fatalf("templated = %+v", templated)
+	}
 }
 
 func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
@@ -54,7 +63,7 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 	}
 	userID, _ := userResult.LastInsertId()
 	server := NewServer(db, config.Config{})
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"day","releaseWindow":"30d","tagName":"260714-DL-24h-r30d-popular"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"day","releaseWindow":"30d","tagNameTemplate":"{date}_DL_{period}_{release_window}_popular"}`))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
 	response := httptest.NewRecorder()
 	server.createDLsitePopularCollectionRun(response, request)
@@ -65,7 +74,7 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &queued); err != nil {
 		t.Fatal(err)
 	}
-	if queued.RunID <= 0 || queued.Status != "queued" {
+	if queued.RunID <= 0 || queued.Status != "queued" || !strings.HasSuffix(queued.TagName, "_DL_24h_r30d_popular") {
 		t.Fatalf("queued = %+v", queued)
 	}
 	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"day","releaseWindow":"30d","tagName":"260714-DL-24h-r30d-popular"}`))
