@@ -1130,10 +1130,20 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   await expect(page.getByRole("menuitem", { name: "Remove" })).toBeHidden();
 
   await page.getByRole("button", { name: "Collapse player" }).click();
-  const compactMarquee = page.locator(".overflow-marquee--auto", { hasText: longTitle });
+  const compactMarquee = page.locator(".overflow-marquee-group", { hasText: longTitle });
   await expect(compactMarquee).toBeVisible();
-  await expect(compactMarquee.locator(".overflow-marquee__copy")).toHaveCount(2);
-  await expect(page.locator(".overflow-marquee--auto", { hasText: "Tagged mobile work with an extended display name" })).toBeVisible();
+  await expect(compactMarquee.locator(".overflow-marquee-group__copy")).toHaveCount(2);
+  await expect(compactMarquee.locator(".overflow-marquee-group__copy").first()).toContainText("Test circle");
+  await expect(compactMarquee).not.toContainText("Tagged mobile work with an extended display name");
+  const compactTrack = compactMarquee.locator(".overflow-marquee-group__track");
+  await expect(compactTrack).toHaveAttribute("data-marquee-pause-ms", "2500");
+  await expect.poll(() => compactTrack.evaluate((element) => element.getAnimations().length)).toBe(1);
+  const compactKeyframes = await compactTrack.evaluate((element) => (
+    (element.getAnimations()[0]?.effect as KeyframeEffect | null)?.getKeyframes().map((frame) => ({ offset: frame.offset, transform: frame.transform })) ?? []
+  ));
+  expect(compactKeyframes).toHaveLength(3);
+  expect(compactKeyframes[0].transform).toBe(compactKeyframes[1].transform);
+  expect(compactKeyframes[1].offset).toBeGreaterThan(0);
 });
 
 test("compact player supports relative drag seeking and global playback shortcuts", async ({ page }) => {
@@ -1161,9 +1171,13 @@ test("compact player supports relative drag seeking and global playback shortcut
   await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.75, box!.y + box!.height * 0.5, { steps: 4 });
-  await expect(page.getByText(/0:40\.00 \(0:43\.7\d\) \+3\.7\ds/)).toBeVisible();
+  const scrubOverlay = page.locator('[aria-live="polite"]');
+  await expect(scrubOverlay).toBeVisible();
+  const scrubDeltaText = await scrubOverlay.textContent();
+  const scrubDeltaSeconds = Number(/\+([\d.]+)s/.exec(scrubDeltaText ?? "")?.[1] ?? 0);
+  expect(scrubDeltaSeconds).toBeGreaterThan(4.5);
   await page.mouse.up();
-  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(43.6);
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(44.5);
   await expect(page.locator("section.fixed.inset-0")).toBeHidden();
 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());

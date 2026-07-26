@@ -55,26 +55,15 @@ func TestStoreLoadsWorkflowViews(t *testing.T) {
 	if _, err := db.ExecContext(ctx, "UPDATE workflow_candidate SET status = 'resolved' WHERE workflow_run_id = ?", runID); err != nil {
 		t.Fatal(err)
 	}
-	userResult, err := db.ExecContext(ctx, "INSERT INTO user_account (username, display_name, role) VALUES ('workflow-reviewer', 'Workflow Reviewer', 'admin')")
+	resolvedPage, err := store.ListRuns(ctx, workflow.ListRunsOptions{Page: 1, PageSize: 10, View: "review", Query: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	userID, err := userResult.LastInsertId()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(ctx, "INSERT INTO workflow_run_review (workflow_run_id, user_id, status, reviewed_at) VALUES (?, ?, 'reviewed', CURRENT_TIMESTAMP)", runID, userID); err != nil {
-		t.Fatal(err)
-	}
-	reviewedPage, err := store.ListRuns(ctx, workflow.ListRunsOptions{Page: 1, PageSize: 10, View: "review", Query: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reviewedPage.Total != 0 || reviewedPage.ViewTotals.Review != 0 || reviewedPage.ViewTotals.Completed != 1 {
-		t.Fatalf("reviewed ListRuns() = %#v", reviewedPage)
+	if resolvedPage.Total != 0 || resolvedPage.ViewTotals.Review != 0 || resolvedPage.ViewTotals.Completed != 1 {
+		t.Fatalf("resolved ListRuns() = %#v", resolvedPage)
 	}
 	completedPage, err := store.ListRuns(ctx, workflow.ListRunsOptions{Page: 1, PageSize: 10, View: "completed", Query: "test"})
-	if err != nil || completedPage.Total != 1 || len(completedPage.Runs) != 1 || completedPage.Runs[0].ReviewedAt == "" {
+	if err != nil || completedPage.Total != 1 || len(completedPage.Runs) != 1 || completedPage.Runs[0].Status != "partial" || completedPage.Runs[0].ReviewedAt != "" {
 		t.Fatalf("completed ListRuns() = %#v, %v", completedPage, err)
 	}
 	detail, err := store.LoadRunDetail(ctx, runID)

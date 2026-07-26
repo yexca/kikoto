@@ -159,13 +159,8 @@ func (s *Store) ListRuns(ctx context.Context, options ListRunsOptions) (RunsPage
 
 const runningRunCondition = `run.status IN ('queued', 'running')`
 const failedRunCondition = `run.status = 'failed'`
-const reviewRunCondition = `(run.status <> 'failed' AND (
-	EXISTS (SELECT 1 FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved'))
-	OR ((run.status IN ('partial', 'skipped')
-		OR EXISTS (SELECT 1 FROM workflow_node_run WHERE workflow_node_run.workflow_run_id = run.id AND workflow_node_run.status IN ('partial', 'skipped'))
-		OR EXISTS (SELECT 1 FROM workflow_job WHERE workflow_job.workflow_run_id = run.id AND workflow_job.status IN ('partial', 'skipped')))
-		AND NOT EXISTS (SELECT 1 FROM workflow_run_review WHERE workflow_run_review.workflow_run_id = run.id AND workflow_run_review.status = 'reviewed'))
-))`
+const reviewRunCondition = `(run.status NOT IN ('queued', 'running', 'failed') AND
+	EXISTS (SELECT 1 FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')))`
 const completedRunCondition = `(run.status NOT IN ('queued', 'running', 'failed') AND NOT ` + reviewRunCondition + `)`
 
 func appendRunViewCondition(conditions []string, view string) []string {

@@ -26,7 +26,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { OverflowMarquee } from "@/components/ui/overflow-marquee";
+import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT } from "@/app/events";
@@ -1441,7 +1441,7 @@ export function PlayerDock() {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
-    const maximumDelta = Math.min(120, Math.max(15, player.duration * 0.05));
+    const maximumDelta = Math.min(600, Math.max(20, player.duration * 0.2));
     const previewTime = Math.max(0, Math.min(player.duration, state.originTime + (deltaX / state.width) * maximumDelta));
     const next = { ...state, previewTime, dragging: true };
     compactScrubRef.current = next;
@@ -1630,10 +1630,13 @@ export function PlayerDock() {
               }}
             >
               <CoverImage track={track} className="h-12 w-16 rounded-xl shadow-sm" />
-              <div className="min-w-0 flex-1">
-                <OverflowMarquee text={track.title} className="text-sm font-semibold" />
-                <OverflowMarquee text={track.workTitle} className="text-xs text-muted-foreground" />
-              </div>
+              <OverflowMarqueeGroup
+                className="min-w-0 flex-1"
+                primaryText={track.title}
+                secondaryText={track.circle || track.workTitle}
+                primaryClassName="text-sm font-semibold"
+                secondaryClassName="text-xs text-muted-foreground"
+              />
             </button>
             <Button
               data-compact-control

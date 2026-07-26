@@ -548,7 +548,8 @@
       animation: none;
     }
 
-    .overflow-marquee__track {
+    .overflow-marquee__track,
+    .overflow-marquee-group__track {
       animation: none !important;
       transform: none !important;
     }

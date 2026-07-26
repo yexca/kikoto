@@ -14,10 +14,9 @@ Workflows make backend actions inspectable.
   cleanup, circle refresh, and bulk remote actions record workflow runs.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
-- Informational review runs can be acknowledged separately from candidate
-  decisions.
-- Acknowledged informational runs leave Review, appear in Completed with a
-  `Reviewed` badge, and retain their original execution status.
+- Review contains terminal runs with unresolved candidates that need a user
+  decision. Routine partial or skipped outcomes remain in Completed and keep
+  their warning status, summary, and events for inspection.
 - Definitions groups Built-in workflows and Custom definitions. Each list item
   shows one execution status: Scheduled takes precedence over Startup, while a
   definition without either persisted trigger shows Manual.

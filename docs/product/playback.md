@@ -18,8 +18,13 @@ Playback is handled by a global browser audio player.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom
   controls retain at least 44px touch height and additional home-indicator
   separation.
-- Compact metadata keeps the track title and work title visible. Overflowing
-  text scrolls with reduced-motion support.
+- Compact metadata keeps the track title and circle visible, falling back to
+  the work title when no circle is available. The two lines scroll as one
+  measured group and pause briefly at the origin between loops, with
+  reduced-motion support.
+- Compact relative drag seeking maps a full-width drag to 20% of the track,
+  bounded between 20 seconds and 10 minutes, then clamps the result to the
+  playable duration.
 - Queue rows place move-up, move-down, and remove inside an Options menu that
   closes after selection, on Escape, or on outside interaction. Overflowing
   queue titles scroll without resizing the player.

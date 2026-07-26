@@ -4,7 +4,6 @@ import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
   Clock3,
   Database,
   Edit3,
@@ -469,19 +468,6 @@ export function WorkflowsPage({
     refreshRuns(runPage, activityView, runQuery);
   };
 
-  const reviewSelectedRun = async () => {
-    const run = activityRun.run ?? selectedRunSummary;
-    if (!run) return;
-    try {
-      const next = await api.reviewWorkflowRun(run.id);
-      setRuns((items) => items.map((item) => (item.id === next.id ? { ...item, ...next } : item)));
-      toast.success(`Run #${next.id} marked reviewed.`);
-      await refreshSelectedRunReview();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Mark reviewed failed."));
-    }
-  };
-
   const recoverStaleRuns = async () => {
     try {
       const result = await api.recoverStaleWorkflowRuns();
@@ -603,7 +589,7 @@ export function WorkflowsPage({
                 }}
               />
             }
-            right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} onReviewRun={reviewSelectedRun} readOnly={readOnly} />}
+            right={<RunDetail run={activityRun.run ?? selectedRunSummary} events={activityRun.events} candidates={activityRun.candidates} nodeTypes={nodeTypes} loading={activityRun.loading && !activityRun.run} onCandidateUpdate={refreshSelectedRunReview} onRunAction={refreshSelectedRunReview} readOnly={readOnly} />}
           />}
         </>
       )}
@@ -949,7 +935,7 @@ function RunSidebar({
                 <span>{run.completedNodeRuns}/{run.nodeRunCount} nodes</span>
                 {run.failedNodeRuns > 0 && <span className="text-destructive">{run.failedNodeRuns} failed</span>}
                 {run.skippedNodeRuns > 0 && <span>{run.skippedNodeRuns} skipped</span>}
-                {reviewCount(run) > 0 && <span className="text-primary">{reviewCount(run)} review</span>}
+                {pendingReviewCount(run) > 0 && <span className="text-primary">{pendingReviewCount(run)} review</span>}
               </div>
             </button>
           ))}
@@ -1230,7 +1216,7 @@ function RemotePopularRunPanel({
 
   const canSubmit = allowed && sourceId > 0 && tagName.trim().length > 0 && (action !== "fetch" || canFetch);
   return (
-    <section className="border-y py-4">
+    <section className="pb-1 pt-4">
       <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
@@ -1273,7 +1259,7 @@ function RemotePopularRunPanel({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-4 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
+        <div className="grid min-w-0 gap-4 pt-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:pl-4 2xl:pt-0">
           <label className="grid gap-2 text-sm font-medium">
             <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Tag className="h-3.5 w-3.5" />
@@ -1327,7 +1313,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
   }, [generatedTag, tagCustomized]);
 
   return (
-    <section className="border-y py-4">
+    <section className="pb-1 pt-4">
       <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
@@ -1365,7 +1351,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
           )}
         </div>
 
-        <div className="grid min-w-0 gap-4 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
+        <div className="grid min-w-0 gap-4 pt-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:pl-4 2xl:pt-0">
           <div className="grid gap-2 text-sm font-medium">
             <span className="flex items-center justify-between gap-2">
               <label htmlFor="dlsite-popular-tag" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -1484,7 +1470,6 @@ function RunDetail({
   loading = false,
   onCandidateUpdate,
   onRunAction,
-  onReviewRun,
   readOnly,
 }: {
   run: WorkflowRunDetail | WorkflowRun | null;
@@ -1494,7 +1479,6 @@ function RunDetail({
   loading?: boolean;
   onCandidateUpdate: () => Promise<void>;
   onRunAction: () => Promise<void>;
-  onReviewRun: () => Promise<void>;
   readOnly: boolean;
 }) {
   const recentlyStartedNodeRuns = useRecentWorkflowNodeStarts(run?.id ?? null, run?.status ?? "", events);
@@ -1546,7 +1530,6 @@ function RunDetail({
           </div>
           <div className="space-y-2">
             <RunMetrics run={run} />
-            {!readOnly && <RunReviewAction run={run} onReviewRun={onReviewRun} />}
             {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
           </div>
         </div>
@@ -1676,35 +1659,6 @@ function RunLogsSkeleton() {
   );
 }
 
-function RunReviewAction({ run, onReviewRun }: { run: WorkflowRunDetail | WorkflowRun; onReviewRun: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const hasReviewSignal = reviewCount(run) > 0 || Boolean(run.reviewedAt);
-  if (!hasReviewSignal) return null;
-  const hasPendingCandidates = run.pendingCandidates > 0;
-  const reviewed = Boolean(run.reviewedAt);
-  return (
-    <div className="flex justify-end">
-      <Button
-        size="sm"
-        variant={reviewed ? "secondary" : "outline"}
-        disabled={busy || hasPendingCandidates || reviewed}
-        title={hasPendingCandidates ? "Resolve pending candidates before marking this run reviewed." : reviewed ? `Reviewed ${run.reviewedAt}` : "Mark this run reviewed"}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await onReviewRun();
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <CheckCircle2 className="h-4 w-4" />
-        {reviewed ? "Reviewed" : "Mark reviewed"}
-      </Button>
-    </div>
-  );
-}
-
 function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
@@ -1716,7 +1670,7 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
         <SummaryCell label="Started" value={run.startedAt || "not recorded"} />
         <SummaryCell label="Finished" value={run.finishedAt || "not finished"} />
         <SummaryCell label="Trigger" value={`${run.triggerType}${run.triggerReason ? ` · ${run.triggerReason}` : ""}`} />
-        <SummaryCell label="Review signals" value={`${reviewCount(run)} pending, ${run.skippedNodeRuns + run.skippedJobs} skipped`} />
+        <SummaryCell label="Run signals" value={`${pendingReviewCount(run)} pending review, ${run.skippedNodeRuns + run.skippedJobs} skipped`} />
       </div>
       {nodeRuns.some((node) => node.errorMessage) && (
         <div className="lg:col-span-2">
@@ -1742,7 +1696,7 @@ function RunItems({
     <div className="space-y-3">
       <div className="text-sm font-semibold">Items</div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <Metric icon={<FileJson className="h-3.5 w-3.5" />} label="pending review" value={`${reviewCount(run)}`} />
+        <Metric icon={<FileJson className="h-3.5 w-3.5" />} label="pending review" value={`${pendingReviewCount(run)}`} />
         <Metric icon={<AlertCircle className="h-3.5 w-3.5" />} label="failed items" value={`${run.failedNodeRuns + run.failedJobs}`} />
         <Metric icon={<Clock3 className="h-3.5 w-3.5" />} label="skipped items" value={`${run.skippedNodeRuns + run.skippedJobs}`} />
       </div>
@@ -2320,7 +2274,7 @@ function WorkflowAutomationPanel({
     return leftOrder - rightOrder || left.id - right.id;
   });
   return (
-    <section className="border-y py-4" aria-label="Workflow automations">
+    <section className="border-b pb-5 pt-4" aria-label="Workflow automations">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-sm font-semibold">Triggers</div>
@@ -2345,7 +2299,7 @@ function WorkflowAutomationPanel({
       </div>
 
       {orderedTriggers.length > 0 ? (
-        <div className="mt-3 divide-y border-y">
+        <div className="mt-3 divide-y">
           {orderedTriggers.map((trigger) => (
             <div key={trigger.id} className="grid gap-3 py-3 md:grid-cols-[minmax(180px,1fr)_minmax(0,1.6fr)_auto] md:items-center">
               <div className="flex min-w-0 items-center gap-3">
@@ -2377,7 +2331,7 @@ function WorkflowAutomationPanel({
           ))}
         </div>
       ) : (
-        <div className="mt-3 border-y py-3 text-sm text-muted-foreground">
+        <div className="mt-3 py-3 text-sm text-muted-foreground">
           {supportedTypes.length > 0 ? "No automatic triggers configured." : "This workflow has no configurable automatic triggers."}
         </div>
       )}
@@ -3136,7 +3090,7 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
     <div className="grid gap-2 sm:grid-cols-3">
       <Metric icon={<ListChecks className="h-3.5 w-3.5" />} label="nodes" value={`${run.completedNodeRuns}/${run.nodeRunCount}`} />
       <Metric icon={<Database className="h-3.5 w-3.5" />} label="jobs" value={`${run.completedJobs}/${run.jobCount}`} />
-      <Metric icon={<Activity className="h-3.5 w-3.5" />} label="review" value={`${reviewCount(run)}`} />
+      <Metric icon={<Activity className="h-3.5 w-3.5" />} label="review" value={`${pendingReviewCount(run)}`} />
     </div>
   );
 }
@@ -3384,8 +3338,8 @@ function activityViewFromLocation(): ActivityView {
   return activityViews.includes(value as ActivityView) ? value as ActivityView : "running";
 }
 
-function reviewCount(run: WorkflowRun) {
-  return run.pendingCandidates + run.skippedNodeRuns + run.skippedJobs + (run.status === "partial" || run.status === "skipped" ? 1 : 0);
+function pendingReviewCount(run: WorkflowRun) {
+  return run.pendingCandidates;
 }
 
 function candidateNeedsReview(candidate: WorkflowCandidate) {

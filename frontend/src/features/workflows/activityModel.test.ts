@@ -33,16 +33,18 @@ const baseRun = {
 } satisfies WorkflowRun;
 
 describe("activityViewForRun", () => {
-  it("moves an acknowledged partial run to completed without changing its status", () => {
-    expect(activityViewForRun({ ...baseRun, status: "partial", reviewedAt: "2026-01-02T00:00:00Z" })).toBe("completed");
+  it("keeps informational partial and skipped signals in completed", () => {
+    expect(activityViewForRun({ ...baseRun, status: "partial" })).toBe("completed");
+    expect(activityViewForRun({ ...baseRun, status: "skipped", skippedNodeRuns: 1 })).toBe("completed");
+    expect(activityViewForRun({ ...baseRun, skippedJobs: 1 })).toBe("completed");
   });
 
-  it("keeps pending and unacknowledged signals in review", () => {
+  it("keeps terminal runs with pending candidates in review", () => {
     expect(activityViewForRun({ ...baseRun, pendingCandidates: 1 })).toBe("review");
-    expect(activityViewForRun({ ...baseRun, skippedNodeRuns: 1 })).toBe("review");
   });
 
-  it("gives failed status precedence over review signals", () => {
+  it("gives active and failed statuses precedence over review candidates", () => {
+    expect(activityViewForRun({ ...baseRun, status: "running", pendingCandidates: 1 })).toBe("running");
     expect(activityViewForRun({ ...baseRun, status: "failed", pendingCandidates: 1 })).toBe("failed");
   });
 });
