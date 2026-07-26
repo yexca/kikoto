@@ -15,6 +15,9 @@ playback actions for one work.
 - Retains a known work id in card/history previews so Favorites and other
   collection routes cannot race Library loading against a redundant code
   resolution.
+- Uses one responsive page composer for persisted and remote-only identity
+  controllers. Both share Back, Hero, mobile Info/Directory, desktop Directory,
+  and modal placement without granting remote-only previews persisted state.
 - Lazily indexes local media files only when the media stage needs a concrete
   tree. A completed empty scan is remembered until a library scan invalidates
   that state.
@@ -46,6 +49,9 @@ playback actions for one work.
   actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
+- Keeps available non-playable files such as images and text in Directory while
+  counting audio and audio-bearing video together under the Playable source
+  metric.
 - Reserves bottom scroll space while the desktop Compact player is active so the
   final queue action remains reachable.
 

@@ -119,10 +119,6 @@ export function SettingsPage({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border bg-card p-4">
-        <p className="text-sm font-medium text-muted-foreground">Personal preferences</p>
-        <h2 className="mt-1 text-2xl font-semibold">Settings</h2>
-      </section>
       {readOnly && (
         <div
           className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground"

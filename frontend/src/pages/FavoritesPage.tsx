@@ -9,6 +9,7 @@ import {
   ListChecks,
   ListMusic,
   Mic2,
+  MoreHorizontal,
   Pencil,
   Pause,
   Play,
@@ -20,9 +21,10 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -68,11 +70,16 @@ import { openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { openCircleRoute } from "@/pages/CirclesPage";
 import { openVoiceRoute } from "@/pages/CreatorWorksPage";
 import {
+  defaultFavoritesBrowseState,
   favoritesBrowseSearch,
   favoritesBrowseStateFromSearch,
+  favoritesBrowseStateFromValue,
   favoritesLocation,
   personalTagSearch,
+  readFavoritesBrowseState,
+  writeFavoritesBrowseState,
   type FavoriteAvailability,
+  type FavoritesBrowseState,
   type FavoriteEntity,
 } from "@/pages/favoritesBrowseState";
 import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
@@ -81,18 +88,18 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
   { value: "want_to_listen", label: "Want" },
   { value: "listening", label: "Listening" },
-  { value: "paused", label: "Shelved" },
   { value: "finished", label: "Finished" },
   { value: "relisten", label: "Relisten" },
+  { value: "paused", label: "Shelved" },
 ];
 
 const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof Heart }[] = [
   { value: "all", label: "All", icon: Heart },
   { value: "want_to_listen", label: "Want", icon: Star },
   { value: "listening", label: "Listening", icon: Play },
-  { value: "paused", label: "Shelved", icon: Pause },
   { value: "finished", label: "Finished", icon: ListChecks },
   { value: "relisten", label: "Relisten", icon: Heart },
+  { value: "paused", label: "Shelved", icon: Pause },
 ];
 
 const availabilityFilters = [
@@ -123,6 +130,7 @@ type PageSize = (typeof pageSizeOptions)[number];
 type AvailabilityFilter = FavoriteAvailability;
 
 type FavoritesEntryState = {
+  favoritesBrowseState?: FavoritesBrowseState;
   favoritesSelection?: { active: boolean; workIDs: number[] };
   favoritesAnchor?: { workID: number; viewportOffset: number };
 };
@@ -130,11 +138,17 @@ type FavoritesEntryState = {
 export function FavoritesPage() {
   const toast = useToast();
   const auth = useAuth();
-  const initialBrowseState = useRef(favoritesBrowseStateFromSearch(window.location.search)).current;
   const initialEntryState = useRef(readFavoritesEntryState()).current;
+  const initialBrowseState = useRef(favoritesBrowseStateFromSearch(
+    window.location.search,
+    initialEntryState.favoritesBrowseState
+      ?? (auth.user ? readFavoritesBrowseState(auth.user.id) : null)
+      ?? defaultFavoritesBrowseState,
+  )).current;
   const pendingAnchor = useRef(initialEntryState.favoritesAnchor ?? null);
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
+  const [areFavoriteListsLoading, setAreFavoriteListsLoading] = useState(true);
   const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
@@ -160,20 +174,27 @@ export function FavoritesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
+  const [listActionsOpen, setListActionsOpen] = useState(false);
+  const listActionsRef = useRef<HTMLDivElement | null>(null);
   const requestSeq = useRef(0);
 
   useEffect(() => {
     if (!auth.user) {
       setFavoriteLists([]);
+      setAreFavoriteListsLoading(false);
       return;
     }
     let cancelled = false;
+    setAreFavoriteListsLoading(true);
     api.listFavoriteLists()
       .then((lists) => {
         if (!cancelled) setFavoriteLists(lists);
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "Favorite lists could not be loaded."));
+      })
+      .finally(() => {
+        if (!cancelled) setAreFavoriteListsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -248,7 +269,7 @@ export function FavoritesPage() {
 
   useEffect(() => {
     if (window.location.pathname !== "/favorites") return;
-    const search = favoritesBrowseSearch({
+    const browseState: FavoritesBrowseState = {
       entity: favoriteEntity,
       query,
       status: statusFilter,
@@ -259,13 +280,16 @@ export function FavoritesPage() {
       sort,
       direction: sortDirection,
       randomSeed,
-    });
+    };
+    const search = favoritesBrowseSearch(browseState);
+    if (auth.user) writeFavoritesBrowseState(auth.user.id, browseState);
     const state = {
       ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      favoritesBrowseState: browseState,
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
     };
     window.history.replaceState(state, "", `/favorites${search}`);
-  }, [activeList, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, statusFilter]);
+  }, [activeList, auth.user, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, statusFilter]);
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
@@ -295,6 +319,8 @@ export function FavoritesPage() {
   useEffect(() => {
     if (!isLoading && page > totalPages) setPage(totalPages);
   }, [isLoading, page, totalPages]);
+
+  useEffect(() => setListActionsOpen(false), [activeList]);
 
   if (!auth.user) {
     return (
@@ -449,12 +475,8 @@ export function FavoritesPage() {
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">Favorite lists and quick marks across the unified library</p>
-          <h2 className="text-xl font-semibold">Personal Shelf</h2>
-        </div>
-        {favoriteEntity !== "works" && (
+      {favoriteEntity !== "works" && (
+        <div className="flex justify-end">
           <div className="flex w-full items-center gap-2 sm:max-w-sm">
             <label className="relative block min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -471,8 +493,8 @@ export function FavoritesPage() {
               </Button>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="border-b" role="tablist" aria-label="Favorite categories">
         <div className="flex gap-6 overflow-x-auto">
@@ -498,7 +520,7 @@ export function FavoritesPage() {
       <>
       <div className="space-y-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
-        {isLoading ? <FavoriteListTabSkeletons /> : <button
+        {areFavoriteListsLoading ? <FavoriteListTabSkeletons /> : <button
           className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === "all" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
           onClick={() => {
             setActiveList("all");
@@ -524,35 +546,33 @@ export function FavoritesPage() {
             <span className="text-xs opacity-80">{listCounts[String(list.id)] ?? 0}</span>
           </button>
         ))}
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")} disabled={isLoading}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")} disabled={areFavoriteListsLoading}>
           <Plus className="h-4 w-4" />
           New list
         </Button>
-        {selectedList && (
-          <>
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor(selectedList)}>
-              <Pencil className="h-4 w-4" />
-              Rename
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" disabled={selectedListIndex <= 0} onClick={() => void moveFavoriteList(-1)} aria-label="Move list left">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1}
-              onClick={() => void moveFavoriteList(1)}
-              aria-label="Move list right"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setDeleteListTarget(selectedList)}>
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-          </>
-        )}
+        <div ref={listActionsRef} className="relative shrink-0">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={!selectedList || areFavoriteListsLoading}
+            onClick={() => setListActionsOpen((open) => !open)}
+            aria-label="List actions"
+            title={selectedList ? `Manage ${selectedList.name}` : "Select a custom list to manage it"}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+          <AnchoredPopover open={listActionsOpen && Boolean(selectedList)} anchorRef={listActionsRef} onOpenChange={setListActionsOpen} className="w-48 p-1 text-sm">
+            {selectedList && (
+              <>
+                <FavoriteListAction icon={<Pencil className="h-4 w-4" />} label="Rename list" onClick={() => { setListActionsOpen(false); setListEditor(selectedList); }} />
+                <FavoriteListAction icon={<ArrowLeft className="h-4 w-4" />} label="Move list left" disabled={selectedListIndex <= 0} onClick={() => { setListActionsOpen(false); void moveFavoriteList(-1); }} />
+                <FavoriteListAction icon={<ArrowRight className="h-4 w-4" />} label="Move list right" disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1} onClick={() => { setListActionsOpen(false); void moveFavoriteList(1); }} />
+                <FavoriteListAction icon={<Trash2 className="h-4 w-4" />} label="Delete list" destructive onClick={() => { setListActionsOpen(false); setDeleteListTarget(selectedList); }} />
+              </>
+            )}
+          </AnchoredPopover>
+        </div>
         </div>
 
         <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
@@ -889,6 +909,32 @@ function FavoriteListTabSkeletons() {
         <FavoriteSkeletonLine key={index} className="h-9 w-28 shrink-0" />
       ))}
     </>
+  );
+}
+
+function FavoriteListAction({
+  icon,
+  label,
+  disabled = false,
+  destructive = false,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  disabled?: boolean;
+  destructive?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left disabled:cursor-not-allowed disabled:opacity-45 ${destructive ? "text-destructive hover:bg-destructive/10" : "hover:bg-muted"}`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -1295,9 +1341,11 @@ function readFavoritesEntryState(): FavoritesEntryState {
   const value = window.history.state;
   if (!value || typeof value !== "object") return {};
   const state = value as FavoritesEntryState;
+  const browseState = favoritesBrowseStateFromValue(state.favoritesBrowseState, defaultFavoritesBrowseState);
   const selection = state.favoritesSelection;
   const anchor = state.favoritesAnchor;
   return {
+    favoritesBrowseState: state.favoritesBrowseState ? browseState : undefined,
     favoritesSelection: selection && Array.isArray(selection.workIDs)
       ? { active: Boolean(selection.active), workIDs: selection.workIDs.filter((id) => Number.isInteger(id) && id > 0) }
       : undefined,

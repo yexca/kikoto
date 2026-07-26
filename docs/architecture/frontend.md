@@ -3,6 +3,9 @@
 On mobile, the app header reserves fixed space for Search and a viewport-bounded
 overflow menu. Theme, Activity, account, and native connection actions remain
 available through that menu without widening the header.
+The header also owns the active page title and smaller description; compact
+layouts allow the description to wrap to two lines instead of repeating a
+heading in page content.
 
 The frontend is a React application focused on library browsing, work detail,
 remote source management, and playback.
@@ -52,7 +55,9 @@ remote source management, and playback.
   content has rendered. Retry only deep history restoration, and cancel pending
   retries as soon as the user expresses scroll intent. Page-level cleanup must
   not overwrite another entry's saved position.
-- For collection-to-detail navigation, persist shareable filters in the URL and
-  keep ephemeral selection/focus anchors in the originating history entry.
+- For collection-to-detail navigation, keep only shareable semantic filters in
+  the URL. Store complete browse state plus selection/focus anchors in the
+  originating history entry and use session state as a refresh/new-entry
+  fallback. Continue to parse legacy explicit browse parameters.
 - Reserve a directory-shaped skeleton with stable height while media is being
   indexed or loaded, then replace it in place without a separate loading card.

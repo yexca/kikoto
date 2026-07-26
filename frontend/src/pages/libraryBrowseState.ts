@@ -125,16 +125,9 @@ export function libraryBrowseStateFromValue(
 export function libraryBrowseSearch(state: LibraryBrowseState) {
   const params = new URLSearchParams();
   if (state.query.trim()) params.set("q", state.query);
-  params.set("page", String(state.page));
-  params.set("pageSize", String(state.pageSize));
-  params.set("sort", state.sort);
-  params.set("direction", state.direction);
-  params.set("seed", String(state.randomSeed));
-  params.set("status", state.status);
-  params.set("view", state.view);
-  params.set("mobileColumns", String(state.mobileColumns));
-  params.set("desktopColumns", String(state.desktopColumns));
-  return `?${params.toString()}`;
+  if (state.status !== "all") params.set("status", state.status);
+  const value = params.toString();
+  return value ? `?${value}` : "";
 }
 
 export function libraryLocation(path: string, state: LibraryBrowseState) {

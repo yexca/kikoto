@@ -162,6 +162,35 @@ describe("mediaTreeModel", () => {
     expect(flattenTracks(buildTree([item], null, "RJ09999995"))[0]).toMatchObject({ locationId: 31 });
   });
 
+  it("keeps available non-playable files in the directory tree", () => {
+    const item = {
+      id: 12,
+      title: "cover.jpg",
+      kind: "image",
+      fingerprint: "cover-fingerprint",
+      durationSeconds: null,
+      progress: null,
+      locations: [{
+        id: 24,
+        fileSourceId: 1,
+        fileSourceName: "Local",
+        locationType: "local",
+        path: "library/RJ09999995/cover.jpg",
+        streamUrl: "",
+        downloadUrl: "/api/media/24/download",
+        availability: "available",
+        sizeBytes: 2048,
+        durationSeconds: null,
+      }],
+    } as MediaItem;
+
+    const tree = buildTree([item], 1, "RJ09999995");
+
+    expect(treeStats(tree)).toMatchObject({ files: 1, playable: 0, sizeBytes: 2048 });
+    expect(tree.files[0]).toMatchObject({ kind: "image", locationId: 24, title: "cover.jpg" });
+    expect(flattenTracks(tree)).toHaveLength(0);
+  });
+
   it("builds remote preview paths without turning folders into playable tracks", () => {
     const remoteTracks = [{
       type: "folder",

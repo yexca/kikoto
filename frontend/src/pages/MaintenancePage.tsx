@@ -292,20 +292,13 @@ export function MaintenancePage({
   if (!canManageSources) {
     return (
       <section className="rounded-lg border bg-card p-5">
-        <h2 className="text-lg font-semibold">Maintenance</h2>
-        <p className="mt-2 text-sm text-muted-foreground">Instance maintenance requires administrator access.</p>
+        <p className="text-sm text-muted-foreground">Instance maintenance requires administrator access.</p>
       </section>
     );
   }
 
   return (
     <div className="space-y-5">
-      <section className="rounded-lg border bg-card p-4">
-        <p className="text-sm font-medium text-muted-foreground">Instance administration</p>
-        <h2 className="mt-1 text-2xl font-semibold">Maintenance</h2>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Configure library sources, routing, caching, metadata, users, and resolved runtime paths.</p>
-      </section>
-
       {readOnly && (
         <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" role="status">
           Demo mode is read-only. Settings and sources remain visible but cannot be changed.

@@ -222,10 +222,12 @@ function AuthenticatedApp() {
 
         <main className="app-main min-w-0">
           <header className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0" data-toast-avoid>
-            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">Personal audio library</p>
+            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 py-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
+              <div className="flex min-w-0 flex-col lg:flex-row lg:items-baseline lg:gap-3">
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">{page === "not-found" ? "Not found" : activeItem?.label ?? "Library"}</h1>
+                <p className="line-clamp-2 text-xs text-muted-foreground lg:line-clamp-1 lg:text-sm">
+                  {page === "not-found" ? "The requested page could not be found" : activeItem?.description ?? "Browse your audio library"}
+                </p>
               </div>
               <HeaderActions
                 user={auth.user}

@@ -30,7 +30,10 @@ const baseWork = {
   recommendScore: 0,
 };
 
-async function mockFavorites(page: Page) {
+async function mockFavorites(
+  page: Page,
+  delayedList?: { id: number; started: () => void; gate: Promise<void> },
+) {
   let savedTags = baseWork.userTags;
   const works = Array.from({ length: 24 }, (_, index) => ({
     ...baseWork,
@@ -51,6 +54,10 @@ async function mockFavorites(page: Page) {
       return;
     }
     if (url.pathname === "/api/favorite-works") {
+      if (url.searchParams.get("listId") === String(delayedList?.id)) {
+        delayedList.started();
+        await delayedList.gate;
+      }
       await route.fulfill({ json: { works, page: Number(url.searchParams.get("page") ?? 1), pageSize: 24, total: 48, shelfTotal: 48, listCounts: { "1": 24, "2": 24 }, statusCounts: { listening: 48 } } });
       return;
     }
@@ -127,16 +134,51 @@ test("favorites detail return restores browse state, selection, anchor, and work
   await expect(page.getByText("Night", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Back to favorites" }).click();
-  await expect(page).toHaveURL(/\/favorites\?/);
+  await expect(page).toHaveURL(/\/favorites$/);
   await expect(page.getByLabel("Sort shelf works")).toHaveValue("sales");
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 100);
   const params = new URL(page.url()).searchParams;
-  expect(params.get("status")).toBe("listening");
-  expect(params.get("availability")).toBe("local");
-  expect(params.get("list")).toBe("2");
-  expect(params.get("page")).toBe("2");
-  expect(params.get("sort")).toBe("sales");
-  expect(params.get("direction")).toBe("asc");
-  expect(params.get("seed")).toBe("314159");
+  expect(params.size).toBe(0);
+  const restoredState = await page.evaluate(() => window.history.state?.favoritesBrowseState);
+  expect(restoredState).toEqual(expect.objectContaining({
+    entity: "works",
+    status: "listening",
+    availability: "local",
+    list: 2,
+    page: 2,
+    pageSize: 24,
+    sort: "sales",
+    direction: "asc",
+    randomSeed: 314159,
+  }));
+});
+
+test("switching favorite lists keeps the entire playlist row stable while works load", async ({ page }) => {
+  let releaseListRequest = () => undefined;
+  const listRequestGate = new Promise<void>((resolve) => { releaseListRequest = resolve; });
+  let markListRequestStarted = () => undefined;
+  const listRequestStarted = new Promise<void>((resolve) => { markListRequestStarted = resolve; });
+  await mockFavorites(page, { id: 2, started: markListRequestStarted, gate: listRequestGate });
+  await page.goto("/favorites");
+
+  const playlistButtons = [
+    page.getByRole("button", { name: /All Shelf/ }),
+    page.getByRole("button", { name: /Favorites 24/ }),
+    page.getByRole("button", { name: /Study 24/ }),
+    page.getByRole("button", { name: "New list", exact: true }),
+    page.getByRole("button", { name: "List actions", exact: true }),
+  ];
+  await expect(playlistButtons[0]).toBeVisible();
+  const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
+
+  await playlistButtons[2].click();
+  await listRequestStarted;
+  await expect(playlistButtons[2]).toHaveClass(/bg-primary/);
+  for (const button of playlistButtons) await expect(button).toBeVisible();
+  const positionsWhileLoading = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
+  expect(positionsWhileLoading).toEqual(positionsBefore);
+
+  releaseListRequest();
+  await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
 });

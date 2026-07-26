@@ -33,6 +33,11 @@ Workflows make backend actions inspectable.
   inputs, tag preview, and final run action in one vertical column at every
   viewport width. Built-in workflows without run parameters continue to expose
   a direct run action.
+- Editable version-2 custom workflows with one simple declared input show that
+  input directly in the selected definition for repeated Quick Run previews.
+  Multi-input and work-code-list definitions still use Configure. The shortcut
+  uses the same server preview token, permission checks, and confirmation policy
+  as the full run dialog.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
   annual runs select an explicit year and default to a template containing

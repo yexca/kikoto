@@ -51,6 +51,28 @@ const foreignDefinition = {
   ownerUserId: 2,
 };
 
+test("custom workflow detail exposes its single input for repeated quick previews", async ({ page }) => {
+  const runRequests: unknown[] = [];
+  await mockComposer(page, runRequests);
+  await page.goto("/workflows");
+
+  const quickRun = page.getByRole("form", { name: "Quick run inputs" });
+  const circleInput = quickRun.getByRole("textbox", { name: /Circle/ });
+  await expect(quickRun).toBeVisible();
+  await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
+  await circleInput.fill("RG076543");
+  await quickRun.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect.poll(() => runRequests).toHaveLength(1);
+  expect(runRequests[0]).toEqual({ mode: "preview", inputs: { circle: "RG076543" } });
+  await expect(page.getByRole("dialog", { name: "Run Circle fetch demo" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  await circleInput.fill("RG076544");
+  await circleInput.press("Enter");
+  await expect.poll(() => runRequests).toHaveLength(2);
+  expect(runRequests[1]).toEqual({ mode: "preview", inputs: { circle: "RG076544" } });
+});
+
 test("composes a typed DAG and launches a slash command through preview", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const runRequests: unknown[] = [];

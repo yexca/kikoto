@@ -29,6 +29,8 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
   randomSeed: 1,
 };
 
+const storagePrefix = "kikoto:favorites-browse:v2:";
+
 const entities: FavoriteEntity[] = ["works", "circles", "voices"];
 const statuses: Array<ListeningStatus | "all"> = ["all", "none", "want_to_listen", "listening", "finished", "relisten", "paused"];
 const availabilities: FavoriteAvailability[] = ["all", "local", "cache", "remote", "missing"];
@@ -61,19 +63,54 @@ export function favoritesBrowseStateFromSearch(search: string, fallback = defaul
   };
 }
 
+export function favoritesBrowseStateFromValue(value: unknown, fallback = defaultFavoritesBrowseState): FavoritesBrowseState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const state = value as Partial<Record<keyof FavoritesBrowseState, unknown>>;
+  const entity = typeof state.entity === "string" ? state.entity : null;
+  const status = typeof state.status === "string" ? state.status : null;
+  const availability = typeof state.availability === "string" ? state.availability : null;
+  const listID = Number(state.list);
+  const page = Number(state.page);
+  const pageSize = Number(state.pageSize);
+  const sort = typeof state.sort === "string" ? state.sort : null;
+  const randomSeed = Number(state.randomSeed);
+  return {
+    entity: entities.includes(entity as FavoriteEntity) ? entity as FavoriteEntity : fallback.entity,
+    query: typeof state.query === "string" ? state.query : fallback.query,
+    status: statuses.includes(status as ListeningStatus | "all") ? status as ListeningStatus | "all" : fallback.status,
+    availability: availabilities.includes(availability as FavoriteAvailability) ? availability as FavoriteAvailability : fallback.availability,
+    list: state.list === "all" ? "all" : Number.isInteger(listID) && listID > 0 ? listID : fallback.list,
+    page: Number.isInteger(page) && page > 0 ? page : fallback.page,
+    pageSize: pageSize === 48 ? 48 : pageSize === 24 ? 24 : fallback.pageSize,
+    sort: sorts.includes(sort as FavoriteSort) ? sort as FavoriteSort : fallback.sort,
+    direction: state.direction === "asc" || state.direction === "desc" ? state.direction : fallback.direction,
+    randomSeed: Number.isInteger(randomSeed) && randomSeed >= 1 && randomSeed <= 2147483646 ? randomSeed : fallback.randomSeed,
+  };
+}
+
+export function readFavoritesBrowseState(userID: number) {
+  try {
+    const raw = window.sessionStorage.getItem(`${storagePrefix}${userID}`);
+    return raw ? favoritesBrowseStateFromValue(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeFavoritesBrowseState(userID: number, state: FavoritesBrowseState) {
+  try {
+    window.sessionStorage.setItem(`${storagePrefix}${userID}`, JSON.stringify(state));
+  } catch {
+    // Favorites remains usable when session storage is unavailable.
+  }
+}
+
 export function favoritesBrowseSearch(state: FavoritesBrowseState) {
   const params = new URLSearchParams();
-  params.set("entity", state.entity);
+  if (state.entity !== defaultFavoritesBrowseState.entity) params.set("entity", state.entity);
   if (state.query.trim()) params.set("q", state.query);
-  params.set("status", state.status);
-  params.set("availability", state.availability);
-  params.set("list", String(state.list));
-  params.set("page", String(state.page));
-  params.set("pageSize", String(state.pageSize));
-  params.set("sort", state.sort);
-  params.set("direction", state.direction);
-  params.set("seed", String(state.randomSeed));
-  return `?${params.toString()}`;
+  const value = params.toString();
+  return value ? `?${value}` : "";
 }
 
 export function favoritesLocation(state: FavoritesBrowseState) {

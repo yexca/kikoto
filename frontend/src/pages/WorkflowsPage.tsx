@@ -41,7 +41,7 @@ import { activityViewForRun, type ActivityView } from "@/features/workflows/acti
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
-import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount } from "@/features/workflows/definitionModel";
+import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount, type WorkflowInputDefinition } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import { workflowDataTypeColor, workflowEdgeClassName, type WorkflowEdgeVisualState } from "@/features/workflows/workflowVisuals";
@@ -231,7 +231,7 @@ export function WorkflowsPage({
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
   const [isRunsLoading, setIsRunsLoading] = useState(true);
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
-  const [launchDefinition, setLaunchDefinition] = useState<WorkflowDefinition | null>(null);
+  const [workflowLaunch, setWorkflowLaunch] = useState<{ definition: WorkflowDefinition; inputs: Record<string, unknown>; autoPreview: boolean } | null>(null);
 
   const refresh = () => {
     setIsWorkflowMetaLoading(true);
@@ -497,15 +497,6 @@ export function WorkflowsPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{surface === "activity" ? "Activity" : "Workflows"}</h2>
-          <p className="text-sm text-muted-foreground">
-            {surface === "activity" ? "Inspect runs by node state and failure point." : "Run built-in operations and manage workflow triggers or custom definitions."}
-          </p>
-        </div>
-      </div>
-
       {readOnly && (
         <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-muted-foreground" role="status">
           Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.
@@ -542,7 +533,7 @@ export function WorkflowsPage({
               onRunDLsitePopular={runDLsitePopularCollection}
               recentRuns={recentDefinitionRuns}
               onOpenRun={openActivityRun}
-              onRunDefinition={!readOnly && selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
+              onRunDefinition={!readOnly && selectedDefinition?.scope === "user" ? (inputs = {}, autoPreview = false) => setWorkflowLaunch({ definition: selectedDefinition, inputs, autoPreview }) : undefined}
               onCreateTrigger={createAutomationTrigger}
               onEditTrigger={editAutomationTrigger}
               onToggleTrigger={toggleAutomationTrigger}
@@ -687,12 +678,14 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {launchDefinition && (
+      {workflowLaunch && (
         <WorkflowRunDialog
-          definition={launchDefinition}
-          onClose={() => setLaunchDefinition(null)}
+          definition={workflowLaunch.definition}
+          initialInputs={workflowLaunch.inputs}
+          autoPreview={workflowLaunch.autoPreview}
+          onClose={() => setWorkflowLaunch(null)}
           onQueued={(runId) => {
-            setLaunchDefinition(null);
+            setWorkflowLaunch(null);
             window.history.pushState({}, "", `/activity?view=running&run=${runId}`);
             window.dispatchEvent(new Event("kikoto:navigation"));
           }}
@@ -1045,7 +1038,7 @@ function WorkflowDetail({
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
-  onRunDefinition?: () => void;
+  onRunDefinition?: (inputs?: Record<string, unknown>, autoPreview?: boolean) => void;
   emptyText?: string;
   onEditDefinition?: () => void;
   onCreateTrigger: (triggerType: AutomationTriggerType) => void;
@@ -1054,16 +1047,25 @@ function WorkflowDetail({
   onEditNode: (index: number) => void;
 }) {
   const [configuredSystemRun, setConfiguredSystemRun] = useState<"dlsite_popular" | "remote_popular" | null>(null);
+  const [quickRunValues, setQuickRunValues] = useState<Record<string, string>>({});
+  const definitionID = definition?.id ?? null;
+  const definitionJson = definition?.definitionJson ?? "";
 
   useEffect(() => {
     setConfiguredSystemRun(null);
-  }, [definition?.id]);
+    const parsed = definitionJson ? parseWorkflowDefinition(definitionJson) : null;
+    setQuickRunValues(parsed?.kind === "v2"
+      ? Object.fromEntries(parsed.document.inputs.map((input) => [input.key, input.defaultValue ?? ""]))
+      : {});
+  }, [definitionID, definitionJson]);
 
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
   const parsedDefinition = parseWorkflowDefinition(definition.definitionJson);
   const nodes = parsedDefinition.kind === "v2" ? parsedDefinition.document.nodes : parsedDefinition.nodes;
+  const workflowInputs = parsedDefinition.kind === "v2" ? parsedDefinition.document.inputs : [];
+  const quickRunInput = workflowInputs.length === 1 && workflowInputs[0].type !== "work_codes" ? workflowInputs[0] : null;
   const legacyUpgrade = parsedDefinition.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers) : null;
   const composerEditable = !readonly && parsedDefinition.kind === "v2";
   return (
@@ -1097,10 +1099,10 @@ function WorkflowDetail({
                 Upgrade workflow
               </Button>
             )}
-            {onRunDefinition && parsedDefinition.kind === "v2" && (
-              <Button size="sm" onClick={onRunDefinition}>
+            {onRunDefinition && parsedDefinition.kind === "v2" && !quickRunInput && (
+              <Button size="sm" onClick={() => onRunDefinition()}>
                 <Play className="h-4 w-4" />
-                Preview / Run
+                {workflowInputs.length > 0 ? "Configure" : "Preview / Run"}
               </Button>
             )}
             {definition.scope === "system" && systemRunKinds && onRunSystemAction && systemRunKinds.filter((kind) => kind !== "dlsite_popular" && kind !== "remote_popular").map((kind) => {
@@ -1125,6 +1127,15 @@ function WorkflowDetail({
             })}
           </div>
         </div>
+
+        {onRunDefinition && quickRunInput && (
+          <CustomWorkflowQuickRun
+            input={quickRunInput}
+            value={quickRunValues[quickRunInput.key] ?? ""}
+            onChange={(value) => setQuickRunValues((current) => ({ ...current, [quickRunInput.key]: value }))}
+            onPreview={() => onRunDefinition({ [quickRunInput.key]: quickRunValues[quickRunInput.key] ?? "" }, true)}
+          />
+        )}
 
         <WorkflowAutomationPanel
           definition={definition}
@@ -1185,6 +1196,64 @@ function WorkflowDetail({
       )}
     </Card>
   );
+}
+
+function CustomWorkflowQuickRun({
+  input,
+  value,
+  onChange,
+  onPreview,
+}: {
+  input: WorkflowInputDefinition;
+  value: string;
+  onChange: (value: string) => void;
+  onPreview: () => void;
+}) {
+  const missingRequiredValue = input.required && !value.trim();
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-md border bg-muted/25 p-3 sm:flex-row sm:items-end"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!missingRequiredValue) onPreview();
+      }}
+      aria-label="Quick run inputs"
+    >
+      <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
+        <span className="font-medium">
+          {input.label}
+          {input.required && <span className="text-destructive"> *</span>}
+        </span>
+        <input
+          className="h-9 w-full rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={workflowInputPlaceholder(input)}
+          autoCapitalize="off"
+          spellCheck={input.type === "text" || input.type === "voice_name"}
+        />
+      </label>
+      <Button type="submit" size="sm" className="h-9 shrink-0" disabled={missingRequiredValue}>
+        <Play className="h-4 w-4" />
+        Preview
+      </Button>
+    </form>
+  );
+}
+
+function workflowInputPlaceholder(input: WorkflowInputDefinition) {
+  switch (input.type) {
+    case "circle_id":
+      return "RG012345";
+    case "series_id":
+      return "SRI0000000000";
+    case "work_code":
+      return "RJ01234567";
+    case "voice_name":
+      return "Voice name";
+    default:
+      return input.label;
+  }
 }
 
 function systemRunKindLabel(kind: SystemRunKind) {

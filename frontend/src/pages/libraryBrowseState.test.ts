@@ -16,7 +16,7 @@ describe("library browse state", () => {
     expect(defaultLibraryBrowseState.desktopColumns).toBe("auto");
   });
 
-  it("round-trips shareable URL fields without including scroll position", () => {
+  it("keeps only semantic search fields in the canonical URL", () => {
     const state = {
       ...defaultLibraryBrowseState,
       query: "tag:耳かき",
@@ -31,9 +31,10 @@ describe("library browse state", () => {
       scrollY: 640,
     };
 
-    const restored = libraryBrowseStateFromSearch(libraryBrowseSearch(state), defaultLibraryBrowseState);
+    const restored = libraryBrowseStateFromSearch(libraryBrowseSearch(state), state);
 
-    expect(restored).toEqual({ ...state, scrollY: 0 });
+    expect(libraryBrowseSearch(state)).toBe("?q=tag%3A%E8%80%B3%E3%81%8B%E3%81%8D&status=listening");
+    expect(restored).toEqual(state);
   });
 
   it("uses fallback values for unsupported or unsafe persisted values", () => {
@@ -68,15 +69,33 @@ describe("library browse state", () => {
     expect(restored.desktopColumns).toBe(8);
   });
 
-  it("round-trips automatic columns", () => {
+  it("retains persisted columns when the canonical URL omits layout", () => {
     const restored = libraryBrowseStateFromSearch(libraryBrowseSearch(defaultLibraryBrowseState), {
       ...defaultLibraryBrowseState,
       mobileColumns: 1,
       desktopColumns: 5,
     });
 
-    expect(restored.mobileColumns).toBe("auto");
-    expect(restored.desktopColumns).toBe("auto");
+    expect(restored.mobileColumns).toBe(1);
+    expect(restored.desktopColumns).toBe(5);
+  });
+
+  it("continues to read legacy full-state URLs", () => {
+    const restored = libraryBrowseStateFromSearch(
+      "?page=4&pageSize=48&sort=sales&direction=asc&seed=99&status=finished&view=masonry&mobileColumns=2&desktopColumns=6",
+      defaultLibraryBrowseState,
+    );
+    expect(restored).toMatchObject({
+      page: 4,
+      pageSize: 48,
+      sort: "sales",
+      direction: "asc",
+      randomSeed: 99,
+      status: "finished",
+      view: "masonry",
+      mobileColumns: 2,
+      desktopColumns: 6,
+    });
   });
 
   it("shares a changed query while retaining source-specific browse preferences", () => {

@@ -28,7 +28,9 @@ The Library is the main browsing surface for works.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
 - Defaults new Library views to personalized recommendation ordering while
-  preserving explicit URL and session-restored browse choices. Recommendation
+  preserving history/session-restored browse choices. Canonical URLs retain
+  only the query and non-default listening status; legacy explicit browse
+  parameters remain readable. Recommendation
   scores use bounded personal listening, favorite, tag, voice, and circle
   signals without treating the candidate itself as taste history. Equal-score
   works use the same stable browse seed for pagination-safe variety, and the
@@ -50,9 +52,11 @@ voice credits when they are known. Compact cards show at most two voice names
 and summarize additional credits without allowing metadata to grow the card
 unboundedly.
 
-Favorites keeps its shelf filters and pagination in the URL. Returning from a
-work detail restores the current-page selection and the originating work
-anchor after that shelf page has rendered.
+Favorites keeps only entity/search intent in the canonical URL. Its selected
+list, shelf filters, ordering, seed, pagination, selection, and work anchor are
+restored from the current history entry with user-scoped session fallback.
+Switching lists keeps the full favorite-list row stable while results load, and
+Shelved is the final listening-state option.
 
 ## Identity
 

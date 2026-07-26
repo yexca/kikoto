@@ -418,7 +418,8 @@ test("remote source reuses library layout, source sorting, localized tags, and b
 
   await page.getByRole("button", { name: "View: Grid" }).click();
   await page.getByRole("button", { name: "Masonry", exact: true }).click();
-  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("masonry");
+  await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
+  await expect.poll(() => page.evaluate(() => window.history.state?.libraryBrowseState?.view)).toBe("masonry");
   await expect(page.locator("section[class*='column-count']")).toBeVisible();
 
   await page.getByTitle("Next page").last().click();
@@ -752,7 +753,8 @@ test("recommended sorting refreshes its stable seed", async ({ page }) => {
   await refresh.click();
 
   await expect.poll(() => requestedSeeds.at(-1)).not.toBe(initialSeed);
-  await expect.poll(() => new URL(page.url()).searchParams.get("seed")).toBe(requestedSeeds.at(-1));
+  await expect.poll(() => new URL(page.url()).searchParams.get("seed")).toBeNull();
+  await expect.poll(() => page.evaluate(() => String(window.history.state?.libraryBrowseState?.randomSeed ?? ""))).toBe(requestedSeeds.at(-1));
   await expect(page.getByRole("button", { name: "Sort: Recommended", exact: true })).toBeVisible();
   await expect(refresh).toBeEnabled();
 });
@@ -1016,7 +1018,7 @@ test("work detail groups DLsite and active source information", async ({ page })
   await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("Playable duration", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("1m", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("source-info-audio-row")).toContainText("Audio1Playable duration1m(All audio durations measured)");
+  await expect(page.getByTestId("source-info-audio-row")).toContainText("Playable1Playable duration1m(All playable durations measured)");
   await expect(page.getByTestId("source-info-files-row")).toContainText("Files1Size2.0 KB(All file sizes measured)");
   const sourcePrimaryMetrics = page.locator("[data-source-primary-metrics]");
   await expect(sourcePrimaryMetrics).toHaveCount(2);

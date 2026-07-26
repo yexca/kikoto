@@ -97,6 +97,7 @@ import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
   libraryBrowseStateFromSearch,
+  libraryBrowseStateFromValue,
   libraryLocation,
   localPageSize,
   localWorkPageSizeOptions,
@@ -282,11 +283,35 @@ function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
   return Object.values(decisions);
 }
 
+type LibraryHistoryState = {
+  libraryBrowseState?: unknown;
+};
+
+function readLibraryHistoryBrowseState(): LibraryBrowseState | null {
+  const historyState = window.history.state as LibraryHistoryState | null;
+  const value = historyState?.libraryBrowseState;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return libraryBrowseStateFromValue(
+    value as Partial<Record<keyof LibraryBrowseState, unknown>>,
+    defaultLibraryBrowseState,
+  );
+}
+
+function writeLibraryHistoryBrowseState(state: LibraryBrowseState) {
+  window.history.replaceState({
+    ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+    libraryBrowseState: state,
+  }, "");
+}
+
 export function LibraryPage() {
   const toast = useToast();
   const auth = useAuth();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
-	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
+	const initialBrowseState = useRef(libraryBrowseStateFromSearch(
+		window.location.search,
+		readLibraryHistoryBrowseState() ?? defaultLibraryBrowseState,
+	)).current;
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
@@ -514,7 +539,7 @@ export function LibraryPage() {
 	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
 	  const scope = localScopeFromPath(window.location.pathname);
 	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope));
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? defaultLibraryBrowseState), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState() ?? stored ?? defaultLibraryBrowseState), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
 	  setActiveTab(resolved);
       const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
       if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
@@ -635,7 +660,7 @@ export function LibraryPage() {
 	  const nextScope = localScopeFromPath(window.location.pathname);
 	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope));
 	  const nextCode = codeFromLocation(window.location.pathname, window.location.search);
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? defaultLibraryBrowseState), nextTab, nextCode === null);
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState() ?? stored ?? defaultLibraryBrowseState), nextTab, nextCode === null);
       setSelectedCode(nextCode);
       setSelectedWorkPreview(workPreviewFromHistory(nextCode));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
@@ -654,11 +679,13 @@ export function LibraryPage() {
 
 	useEffect(() => {
 		if (selectedCode !== null || selectedRemoteTarget !== null) return;
-		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+		const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
 		const nextSearch = libraryBrowseSearch(activeBrowseState);
-		if (window.location.search !== nextSearch) {
-			window.history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}${nextSearch}`);
-		}
+		window.history.replaceState({
+			...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+			libraryBrowseState: browseState,
+		}, "", `${window.location.pathname}${nextSearch}`);
 	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
@@ -673,7 +700,9 @@ export function LibraryPage() {
 		const flushScroll = () => {
 			if (pendingWrite !== null) window.clearTimeout(pendingWrite);
 			pendingWrite = null;
-			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+			const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
+			writeLibraryHistoryBrowseState(browseState);
 		};
 		const rememberScroll = () => {
 			if (pendingWrite !== null) return;
@@ -711,7 +740,9 @@ export function LibraryPage() {
 
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
 	recordWorkRecommendationEvent(work, "open");
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
+	writeLibraryHistoryBrowseState(browseState);
     const path = `/${work.primaryCode}?view=${sourceIntent}`;
 	setSelectedRemoteTarget(null);
 	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library", workPreview: work }, "", path);
@@ -732,7 +763,9 @@ export function LibraryPage() {
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
+	writeLibraryHistoryBrowseState(browseState);
     if (work.workId !== null && work.primaryCode) {
       const preview = remoteWorkPreview(work);
       setSelectedRemoteTarget(null);
@@ -760,14 +793,16 @@ export function LibraryPage() {
 	  return;
 	}
 	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
-    window.history.pushState({}, "", returnTarget.path);
+    window.history.pushState({ libraryBrowseState: activeBrowseState }, "", returnTarget.path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
   };
 
   const changeTab = (tab: LibraryTab) => {
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), currentState);
+	writeLibraryHistoryBrowseState(currentState);
 	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
 	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(tab, nextScope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab(tab);
@@ -777,13 +812,15 @@ export function LibraryPage() {
     setSelectedRemoteTarget(null);
 	const path = libraryLocation(pathForLibraryTab(tab), nextState);
 	if (`${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({}, "", path);
+	  window.history.pushState({ libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
 
   const changeLocalScope = (scope: LocalLibraryScope) => {
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
+	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), currentState);
+	writeLibraryHistoryBrowseState(currentState);
 	const nextTab: LibraryTab = { kind: "all" };
 	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(nextTab, scope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab({ kind: "all" });
@@ -793,7 +830,7 @@ export function LibraryPage() {
 	const basePath = pathForLocalScope(scope);
 	const path = basePath ? libraryLocation(basePath, nextState) : null;
 	if (path && `${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({}, "", path);
+	  window.history.pushState({ libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
@@ -1044,7 +1081,7 @@ export function LibraryPage() {
 
   if (selectedRemoteTarget !== null) {
     return (
-      <RemoteWorkDetailView
+      <RemoteOnlyWorkDetailController
         source={selectedRemoteTarget.source}
         code={selectedRemoteTarget.code}
         onBack={backToLibrary}
@@ -1076,7 +1113,7 @@ export function LibraryPage() {
       );
     }
     return (
-      <WorkDetailView
+      <PersistedWorkDetailController
         code={selectedCode}
         work={selectedWork}
         workPreview={selectedWorkPreview}
@@ -2681,7 +2718,7 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
   );
 }
 
-function RemoteWorkDetailView({
+function RemoteOnlyWorkDetailController({
   source,
   code,
   onBack,
@@ -3023,69 +3060,39 @@ function RemoteWorkDetailView({
       onAppendQueue={(track) => queueRemoteTrack(track, false)}
     />
   );
+  const presentation: UnifiedWorkDetailPresentation = {
+    coverUrl: detail.coverUrl,
+    fallbackCode: detail.primaryCode || detail.remoteId,
+    code: detail.primaryCode || detail.remoteId,
+    title: detail.title,
+    circle: detail.circle,
+    circleExternalId: detail.circleRef?.externalId ?? "",
+    series: "",
+    seriesTitleId: "",
+    seriesCircleExternalId: "",
+    ratingLabel: "Rating",
+    rating: detail.rating,
+    ratingCount: null,
+    sales: detail.sales,
+    dlsiteFetchedAt: "",
+    releaseDate: detail.releaseDate || "Unknown",
+    ageRating: detail.ageRating,
+    sourceInfo,
+    voiceActors: detail.voiceActors,
+    voiceCredits: [],
+    tags: detail.tags,
+  };
 
   return (
-    <div className="space-y-5">
-      <Button variant="outline" size="sm" onClick={onBack}>
-        <ChevronLeft className="h-4 w-4" />
-        {detailReturnTarget("library").label}
-      </Button>
-
-      {isCompactDetailLayout ? (
-        <MobileWorkDetailLayout
-          coverUrl={detail.coverUrl}
-          fallbackCode={detail.primaryCode || detail.remoteId}
-          code={detail.primaryCode || detail.remoteId}
-          title={detail.title}
-          circle={detail.circle}
-          circleExternalId={detail.circleRef?.externalId ?? ""}
-          series=""
-          seriesTitleId=""
-          seriesCircleExternalId=""
-          ratingLabel="Rating"
-          rating={detail.rating}
-          ratingCount={null}
-          sales={detail.sales}
-          dlsiteFetchedAt=""
-          releaseDate={detail.releaseDate || "Unknown"}
-          ageRating={detail.ageRating}
-          sourceInfo={sourceInfo}
-          voiceActors={detail.voiceActors}
-          voiceCredits={[]}
-          tags={detail.tags}
-          activeTab={mobileDetailTab}
-          onActiveTabChange={setMobileDetailTab}
-          actions={heroActions}
-          directory={directoryPanel}
-        />
-      ) : (
-        <>
-          <DetailHero
-            coverUrl={detail.coverUrl}
-            fallbackCode={detail.primaryCode || detail.remoteId}
-            code={detail.primaryCode || detail.remoteId}
-            title={detail.title}
-            circle={detail.circle}
-            circleExternalId={detail.circleRef?.externalId ?? ""}
-            ratingLabel="Rating"
-            rating={detail.rating}
-            ratingCount={null}
-            sales={detail.sales}
-            series=""
-            seriesTitleId=""
-            seriesCircleExternalId=""
-            dlsiteFetchedAt=""
-            releaseDate={detail.releaseDate || "Unknown"}
-            ageRating={detail.ageRating}
-            sourceInfo={sourceInfo}
-            voiceActors={detail.voiceActors}
-            voiceCredits={[]}
-            tags={detail.tags}
-            actions={heroActions}
-          />
-          {directoryPanel}
-        </>
-      )}
+    <UnifiedWorkDetailPage
+      presentation={presentation}
+      compact={isCompactDetailLayout}
+      mobileTab={mobileDetailTab}
+      onMobileTabChange={setMobileDetailTab}
+      actions={heroActions}
+      directory={directoryPanel}
+      onBack={onBack}
+    >
       {isManageOpen && (
         <DirectoryManagerModal
           root={tree}
@@ -3093,11 +3100,11 @@ function RemoteWorkDetailView({
           onClose={() => setIsManageOpen(false)}
         />
       )}
-    </div>
+    </UnifiedWorkDetailPage>
   );
 }
 
-function WorkDetailView({
+function PersistedWorkDetailController({
   code,
   work,
   workPreview,
@@ -3714,83 +3721,46 @@ function WorkDetailView({
       onPreview={setPreview}
     />
   );
+  const presentation: UnifiedWorkDetailPresentation = {
+    coverUrl: hero.coverUrl,
+    fallbackCode: hero.primaryCode,
+    code: hero.primaryCode,
+    title: hero.title,
+    circle: hero.circle,
+    circleExternalId: hero.circleExternalId,
+    series: hero.series,
+    seriesTitleId: work?.seriesTitleId ?? "",
+    seriesCircleExternalId: work?.seriesCircleExternalId ?? work?.circleExternalId ?? "",
+    ratingLabel: "DL rating",
+    rating: hero.rating,
+    ratingCount: hero.ratingCount,
+    sales: hero.sales,
+    baseCode: work?.baseCode,
+    metadataLanguage: work?.metadataLanguage,
+    translations: work?.translations ?? [],
+    activeVersionCode: activeEditionCode || hero.primaryCode,
+    onVersionSelect: (translation) => void selectEdition(translation),
+    dlsiteFetchedAt: hero.dlsiteFetchedAt,
+    releaseDate: hero.releaseDate ?? "Unknown",
+    ageRating: hero.ageRating,
+    sourceInfo,
+    voiceActors: hero.voiceActors,
+    voiceCredits: work?.voiceCredits ?? [],
+    tags: hero.tags,
+    personalTags,
+    loading: isDetailLoading,
+  };
 
   return (
-    <div className="space-y-5">
-      <Button variant="outline" size="sm" onClick={onBack}>
-        <ChevronLeft className="h-4 w-4" />
-        {detailReturnTarget("library").label}
-      </Button>
-
-      {isCompactDetailLayout ? (
-        <MobileWorkDetailLayout
-          coverUrl={hero.coverUrl}
-          fallbackCode={hero.primaryCode}
-          code={hero.primaryCode}
-          title={hero.title}
-          circle={hero.circle}
-          circleExternalId={hero.circleExternalId}
-          series={hero.series}
-          seriesTitleId={work?.seriesTitleId ?? ""}
-          seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
-          ratingLabel="DL rating"
-          rating={hero.rating}
-          ratingCount={hero.ratingCount}
-          sales={hero.sales}
-          baseCode={work?.baseCode}
-          metadataLanguage={work?.metadataLanguage}
-          translations={work?.translations ?? []}
-          activeVersionCode={activeEditionCode || hero.primaryCode}
-          onVersionSelect={(translation) => void selectEdition(translation)}
-          dlsiteFetchedAt={hero.dlsiteFetchedAt}
-          releaseDate={hero.releaseDate ?? "Unknown"}
-          ageRating={hero.ageRating}
-          sourceInfo={sourceInfo}
-          voiceActors={hero.voiceActors}
-          voiceCredits={work?.voiceCredits ?? []}
-          tags={hero.tags}
-          personalTags={personalTags}
-          loading={isDetailLoading}
-          activeTab={mobileDetailTab}
-          onActiveTabChange={setMobileDetailTab}
-          actions={heroActions}
-          directory={directoryPanel}
-        />
-      ) : (
-        <>
-          <DetailHero
-            coverUrl={hero.coverUrl}
-            fallbackCode={hero.primaryCode}
-            code={hero.primaryCode}
-            title={hero.title}
-            circle={hero.circle}
-            circleExternalId={hero.circleExternalId}
-            ratingLabel="DL rating"
-            rating={hero.rating}
-            ratingCount={hero.ratingCount}
-            sales={hero.sales}
-            series={hero.series}
-            seriesTitleId={work?.seriesTitleId ?? ""}
-            seriesCircleExternalId={work?.seriesCircleExternalId ?? work?.circleExternalId ?? ""}
-            baseCode={work?.baseCode}
-            metadataLanguage={work?.metadataLanguage}
-            translations={work?.translations ?? []}
-            activeVersionCode={activeEditionCode || hero.primaryCode}
-            onVersionSelect={(translation) => void selectEdition(translation)}
-            dlsiteFetchedAt={hero.dlsiteFetchedAt}
-            releaseDate={hero.releaseDate ?? "Unknown"}
-            ageRating={hero.ageRating}
-            sourceInfo={sourceInfo}
-            voiceActors={hero.voiceActors}
-            voiceCredits={work?.voiceCredits ?? []}
-            tags={hero.tags}
-            personalTags={personalTags}
-            loading={isDetailLoading}
-            actions={heroActions}
-          />
-          {directoryPanel}
-        </>
-      )}
+    <UnifiedWorkDetailPage
+      presentation={presentation}
+      compact={isCompactDetailLayout}
+      mobileTab={mobileDetailTab}
+      onMobileTabChange={setMobileDetailTab}
+      actions={heroActions}
+      directory={directoryPanel}
+      onBack={onBack}
+    >
       {preview && <FilePreviewModal
         preview={preview}
         onClose={() => setPreview(null)}
@@ -3840,6 +3810,81 @@ function WorkDetailView({
           }}
         />
       )}
+    </UnifiedWorkDetailPage>
+  );
+}
+
+type UnifiedWorkDetailPresentation = {
+  coverUrl: string;
+  fallbackCode: string;
+  code: string;
+  title: string;
+  circle: string;
+  circleExternalId: string;
+  series: string;
+  seriesTitleId: string;
+  seriesCircleExternalId: string;
+  ratingLabel: string;
+  rating: number | null;
+  ratingCount: number | null;
+  sales: number | null;
+  baseCode?: string;
+  metadataLanguage?: string;
+  translations?: WorkDetail["translations"];
+  activeVersionCode?: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  dlsiteFetchedAt: string;
+  releaseDate: string;
+  ageRating: string;
+  sourceInfo: ActiveSourceInfoModel;
+  voiceActors: string[];
+  voiceCredits: VoiceCredit[];
+  tags: string[];
+  personalTags?: ReactNode;
+  loading?: boolean;
+};
+
+function UnifiedWorkDetailPage({
+  presentation,
+  compact,
+  mobileTab,
+  onMobileTabChange,
+  actions,
+  directory,
+  onBack,
+  children,
+}: {
+  presentation: UnifiedWorkDetailPresentation;
+  compact: boolean;
+  mobileTab: "info" | "directory";
+  onMobileTabChange: (tab: "info" | "directory") => void;
+  actions: ReactNode;
+  directory: ReactNode;
+  onBack: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="space-y-5">
+      <Button variant="outline" size="sm" onClick={onBack}>
+        <ChevronLeft className="h-4 w-4" />
+        {detailReturnTarget("library").label}
+      </Button>
+
+      {compact ? (
+        <MobileWorkDetailLayout
+          {...presentation}
+          activeTab={mobileTab}
+          onActiveTabChange={onMobileTabChange}
+          actions={actions}
+          directory={directory}
+        />
+      ) : (
+        <>
+          <DetailHero {...presentation} actions={actions} />
+          {directory}
+        </>
+      )}
+      {children}
     </div>
   );
 }
