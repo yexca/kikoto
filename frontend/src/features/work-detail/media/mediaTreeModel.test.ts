@@ -187,4 +187,53 @@ describe("mediaTreeModel", () => {
     expect(flattenTracks(tree)).toHaveLength(1);
     expect(remoteSelectablePaths(tree)).toEqual(["Disc 1/01.mp3"]);
   });
+
+  it("includes video with audio in playback and excludes known silent video", () => {
+    const videoItem = (id: number, hasAudio: boolean) => ({
+      id,
+      title: `${id}.mp4`,
+      kind: "video",
+      hasAudio,
+      fingerprint: `video-${id}`,
+      durationSeconds: 45,
+      progress: null,
+      locations: [{
+        id: id + 100,
+        fileSourceId: 1,
+        fileSourceName: "Local",
+        locationType: "local",
+        path: `library/RJ09999995/${id}.mp4`,
+        streamUrl: `/api/media/${id + 100}/stream`,
+        downloadUrl: "",
+        availability: "available",
+        sizeBytes: 4096,
+        durationSeconds: 45,
+      }],
+    } as MediaItem);
+    const tree = buildTree([videoItem(1, true), videoItem(2, false)], 1, "RJ09999995");
+
+    expect(flattenTracks(tree).map((track) => track.mediaItemId)).toEqual([1]);
+    expect(treeStats(tree)).toMatchObject({ files: 2, video: 2, playable: 1, durationSeconds: 45 });
+  });
+
+  it("keeps remote video as video in the player queue", () => {
+    const tree = buildRemoteTree([{
+      type: "video",
+      title: "bonus.mp4",
+      hash: "video-hash",
+      streamUrl: "/remote/bonus",
+      downloadUrl: "",
+      sizeBytes: 2048,
+      durationSeconds: 30,
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+      children: [],
+    }] as RemoteTrack[]);
+
+    expect(flattenTracks(tree)).toMatchObject([{ kind: "video", hasAudio: null }]);
+  });
 });

@@ -44,6 +44,7 @@ export type WorkCardViewModel = {
   userTags?: WorkCardBadge[];
   sourceBadges: WorkCardBadge[];
   recommended?: boolean;
+  recommendationScore?: number;
 };
 
 export function WorkCardShell({
@@ -56,6 +57,7 @@ export function WorkCardShell({
   onVoiceOpen,
   onSeriesOpen,
   onTagOpen,
+  onRecommendationOpen,
 }: {
   work: WorkCardViewModel;
   selection?: ReactNode;
@@ -66,6 +68,7 @@ export function WorkCardShell({
   onVoiceOpen?: (name: string) => void;
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
+  onRecommendationOpen?: () => void;
 }) {
   const toast = useToast();
   const [resolvingEntity, setResolvingEntity] = useState<WorkEntityLink["kind"] | null>(null);
@@ -110,6 +113,8 @@ export function WorkCardShell({
         priceCurrency={work.priceCurrency}
         selection={selection}
         recommended={work.recommended}
+        recommendationScore={work.recommendationScore}
+        onRecommendationOpen={onRecommendationOpen}
       />
       <WorkCardBody work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} onSeriesOpen={seriesOpen} onTagOpen={onTagOpen} />
     </>
@@ -152,6 +157,8 @@ export function WorkCardMedia({
   priceCurrency,
   selection,
   recommended = false,
+  recommendationScore,
+  onRecommendationOpen,
 }: {
   coverUrl?: string;
   code: string;
@@ -161,6 +168,8 @@ export function WorkCardMedia({
   priceCurrency?: string;
   selection?: ReactNode;
   recommended?: boolean;
+  recommendationScore?: number;
+  onRecommendationOpen?: () => void;
 }) {
   const codeText = code || "Source";
   return (
@@ -173,9 +182,26 @@ export function WorkCardMedia({
       )}
       <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
       {recommended && (
-        <div className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground shadow-sm" title="Recommended for you" aria-label="Recommended for you">
-          <Star className="h-4 w-4 fill-current" />
-        </div>
+        onRecommendationOpen ? (
+          <button
+            type="button"
+            className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
+            title="Explain recommendation score"
+            aria-label={`Explain recommendation score ${recommendationScore ?? 0}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRecommendationOpen();
+            }}
+          >
+            <Star className="h-4 w-4 fill-current" />
+            {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
+          </button>
+        ) : (
+          <div className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm" title="Recommended for you" aria-label="Recommended for you">
+            <Star className="h-4 w-4 fill-current" />
+            {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
+          </div>
+        )
       )}
       {price !== null && (
         <div

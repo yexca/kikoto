@@ -72,6 +72,7 @@ export type PlayerTrack = {
   mediaItemId: number;
   locationId: number;
   title: string;
+  kind: "audio" | "video";
   folderPath: string;
   locationType: string;
   streamUrl: string;
@@ -126,6 +127,7 @@ type PlayerContextValue = {
   playQueue: (tracks: PlayerTrack[], locationId: number) => void;
   selectTrack: (index: number) => void;
   togglePlay: () => void;
+  pause: () => void;
   next: () => void;
   previous: () => void;
   seekBy: (seconds: number) => void;
@@ -258,6 +260,7 @@ function loadPersistedQueue(): {
     const queue = Array.isArray(parsed?.queue)
       ? parsed.queue
           .filter((track) => track && track.mediaItemId > 0 && track.streamUrl)
+          .map((track) => ({ ...track, kind: track.kind === "video" ? "video" as const : "audio" as const }))
           .map(withQueueIdentity)
           .map((track) => {
             const checkpoint = localProgress[String(track.mediaItemId)];
@@ -958,6 +961,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playQueue,
       selectTrack,
       togglePlay: () => setIsPlaying((value) => (currentTrack ? !value : false)),
+      pause: () => setIsPlaying(false),
       next,
       previous,
       seekBy,

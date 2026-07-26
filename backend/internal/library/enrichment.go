@@ -104,8 +104,8 @@ func (s *Store) LoadAvailability(ctx context.Context, workIDs []int64) (map[int6
 	result := map[int64]Availability{}
 	query, args := int64InQuery(`
 		SELECT work.id,
-			(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND media_item.kind = 'audio'),
-			(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_item.kind = 'audio' AND media_file_location.availability = 'available'),
+			(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))),
+			(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available'),
 			COALESCE((SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available'), '')
 		FROM work WHERE work.id IN (%s)
 	`, uniqueInt64s(workIDs))
@@ -180,7 +180,9 @@ func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64)
 			user_media_progress.last_played_at, user_media_progress.completed
 		FROM media_item
 		INNER JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
-		WHERE media_item.work_id IN (%s) AND media_item.kind = 'audio' AND user_media_progress.user_id = ?
+		WHERE media_item.work_id IN (%s)
+			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
+			AND user_media_progress.user_id = ?
 		ORDER BY media_item.work_id, user_media_progress.last_played_at DESC, user_media_progress.updated_at DESC, media_item.id DESC
 	`, uniqueInt64s(workIDs))
 	args = append(args, userID)

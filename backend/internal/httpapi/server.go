@@ -77,6 +77,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/recently-played-works", s.listRecentlyPlayedWorks)
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
+	mux.HandleFunc("GET /api/works/{id}/recommendation", s.getWorkRecommendation)
+	mux.HandleFunc("POST /api/recommendation-events", s.recordRecommendationEvents)
+	mux.HandleFunc("GET /api/recommendation-telemetry", s.getRecommendationTelemetry)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
 	mux.HandleFunc("POST /api/works/{id}/local-files/refresh", s.refreshWorkLocalFiles)
 	mux.HandleFunc("POST /api/works/{id}/metadata-sync", s.createWorkMetadataSyncRun)
@@ -367,7 +370,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			Rating:    row.Rating, Sales: row.Sales, RegularPrice: row.RegularPrice, Price: row.CurrentPrice,
 			PriceCurrency: row.PriceCurrency, PermanentlyFree: row.PermanentlyFree,
 			TrackCount: row.TrackCount, AvailableLocations: row.AvailableLocations,
-			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite,
+			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite, RecommendScore: row.RecommendScore,
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
 		metadata := parseDLsiteSnapshot(row.Snapshot)
@@ -401,13 +404,6 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		item.Tags = metadata.Tags
 		item.VoiceActors = metadata.VoiceActors
 		item.Series = metadata.Series
-		if len(includeRecommendation) > 0 && includeRecommendation[0] {
-			recommendScore, scoreErr := s.workRecommendationScore(ctx, userID, item.ID)
-			if scoreErr != nil {
-				return nil, scoreErr
-			}
-			item.RecommendScore = recommendScore
-		}
 		works = append(works, item)
 	}
 	if err := s.enrichLibraryWorkSummaries(ctx, userID, works); err != nil {
@@ -433,8 +429,9 @@ func (s *Server) listWorksPageFast(w http.ResponseWriter, r *http.Request, userI
 		Scope:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))),
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
 		Sort: strings.TrimSpace(r.URL.Query().Get("sort")), Direction: strings.TrimSpace(r.URL.Query().Get("direction")),
-		RandomSeed: int64(queryInt(r, "seed", 1)),
-		DemoOnly:   s.cfg.IsDemo(),
+		RandomSeed:            int64(queryInt(r, "seed", 1)),
+		IncludeRecommendation: strings.EqualFold(r.URL.Query().Get("recommendBadges"), "true"),
+		DemoOnly:              s.cfg.IsDemo(),
 	})
 	if err != nil {
 		writeError(w, err)
@@ -616,6 +613,7 @@ type mediaItemDetail struct {
 	DiscNo                     *int64               `json:"discNo"`
 	TrackNo                    *int64               `json:"trackNo"`
 	DurationSeconds            *int64               `json:"durationSeconds"`
+	HasAudio                   *bool                `json:"hasAudio"`
 	SizeBytes                  *int64               `json:"sizeBytes"`
 	Fingerprint                string               `json:"fingerprint"`
 	Progress                   *mediaProgressDetail `json:"progress"`
@@ -813,14 +811,14 @@ func (s *Server) workAvailabilityForCode(ctx context.Context, code string) (int6
 				SELECT COUNT(*)
 				FROM media_item
 				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
+					AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 			),
 			(
 				SELECT COUNT(*)
 				FROM media_file_location
 				INNER JOIN media_item ON media_item.id = media_file_location.media_item_id
 				WHERE media_item.work_id = work.id
-					AND media_item.kind = 'audio'
+					AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 					AND media_file_location.availability = 'available'
 			),
 			(
@@ -3017,6 +3015,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			media_item.disc_no,
 			media_item.track_no,
 			media_item.duration_seconds,
+			media_item.has_audio,
 			media_item.size_bytes,
 			media_item.fingerprint,
 			user_media_progress.position_seconds,
@@ -3050,6 +3049,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 		var discNo sql.NullInt64
 		var trackNo sql.NullInt64
 		var itemDurationSeconds sql.NullInt64
+		var hasAudio sql.NullBool
 		var sizeBytes sql.NullInt64
 		var progressPositionSeconds sql.NullFloat64
 		var progressDurationSeconds sql.NullFloat64
@@ -3064,6 +3064,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			&discNo,
 			&trackNo,
 			&itemDurationSeconds,
+			&hasAudio,
 			&sizeBytes,
 			&item.Fingerprint,
 			&progressPositionSeconds,
@@ -3079,6 +3080,7 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 		item.DiscNo = nullableInt64(discNo)
 		item.TrackNo = nullableInt64(trackNo)
 		item.DurationSeconds = nullableInt64(itemDurationSeconds)
+		item.HasAudio = nullableBool(hasAudio)
 		item.SizeBytes = nullableInt64(sizeBytes)
 		item.Progress = nullableMediaProgress(progressPositionSeconds, progressDurationSeconds, progressCompleted, progressLastPlayedAt)
 		item.PreferredLyricsMediaItemID = nullableInt64(preferredLyricsMediaItemID)
@@ -3339,15 +3341,19 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	audioTrackNo := 1
+	playableTrackNo := 1
 	seenPaths := map[string]bool{}
 	for _, file := range files {
 		seenPaths[file.RelPath] = true
 		kind := localFileKind(file.WorkRelPath)
 		trackNo := 0
+		if kind == "audio" || kind == "video" {
+			trackNo = playableTrackNo
+			playableTrackNo++
+		}
 		if kind == "audio" {
-			trackNo = audioTrackNo
-			audioTrackNo++
+			hasAudio := true
+			file.HasAudio = &hasAudio
 		}
 		mediaItemID, err := upsertDetectedMediaItem(ctx, tx, workID, folder, file, kind, trackNo)
 		if err != nil {
@@ -4721,16 +4727,23 @@ func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]an
 	return summaries
 }
 
-func probeLocalAudioDurations(ctx context.Context, folders []localfs.WorkFolder) {
+func probeLocalMediaMetadata(ctx context.Context, folders []localfs.WorkFolder) {
 	for folderIndex := range folders {
 		for fileIndex := range folders[folderIndex].Files {
 			file := &folders[folderIndex].Files[fileIndex]
-			if localFileKind(file.WorkRelPath) != "audio" {
+			kind := localFileKind(file.WorkRelPath)
+			if kind != "audio" && kind != "video" {
 				continue
 			}
-			duration, ok := probeAudioDurationSeconds(ctx, file.AbsPath)
+			duration, hasAudio, ok := probeMediaMetadataSeconds(ctx, file.AbsPath)
 			if ok {
-				file.DurationSeconds = &duration
+				if duration > 0 {
+					file.DurationSeconds = &duration
+				}
+				file.HasAudio = &hasAudio
+			} else if kind == "audio" {
+				hasAudio = true
+				file.HasAudio = &hasAudio
 			}
 		}
 	}
@@ -4740,20 +4753,24 @@ func (s *Server) probeLocalDurationsForFiles(ctx context.Context, fileSourceID i
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	for _, file := range files {
-		if localFileKind(file.WorkRelPath) != "audio" {
+		kind := localFileKind(file.WorkRelPath)
+		if kind != "audio" && kind != "video" {
 			continue
 		}
-		duration, ok := probeAudioDurationSeconds(probeCtx, file.AbsPath)
-		if !ok {
+		duration, hasAudio, ok := probeMediaMetadataSeconds(probeCtx, file.AbsPath)
+		if !ok && kind == "video" {
 			continue
 		}
-		if err := s.updateLocalDuration(probeCtx, fileSourceID, file, duration); err != nil {
+		if kind == "audio" {
+			hasAudio = true
+		}
+		if err := s.updateLocalMediaMetadata(probeCtx, fileSourceID, file, duration, hasAudio); err != nil {
 			return
 		}
 	}
 }
 
-func probeAudioDurationSeconds(ctx context.Context, path string) (int64, bool) {
+func probeMediaMetadataSeconds(ctx context.Context, path string) (int64, bool, bool) {
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(
@@ -4762,27 +4779,41 @@ func probeAudioDurationSeconds(ctx context.Context, path string) (int64, bool) {
 		"-v",
 		"error",
 		"-show_entries",
-		"format=duration",
+		"format=duration:stream=codec_type",
 		"-of",
 		"json",
 		path,
 	).Output()
 	if err != nil {
-		return 0, false
+		return 0, false, false
 	}
+	return parseMediaProbeOutput(output)
+}
+
+func parseMediaProbeOutput(output []byte) (int64, bool, bool) {
 	var payload struct {
 		Format struct {
 			Duration string `json:"duration"`
 		} `json:"format"`
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+		} `json:"streams"`
 	}
 	if err := json.Unmarshal(output, &payload); err != nil {
-		return 0, false
+		return 0, false, false
+	}
+	hasAudio := false
+	for _, stream := range payload.Streams {
+		if strings.EqualFold(strings.TrimSpace(stream.CodecType), "audio") {
+			hasAudio = true
+			break
+		}
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(payload.Format.Duration), 64)
 	if err != nil || seconds <= 0 {
-		return 0, false
+		return 0, hasAudio, true
 	}
-	return int64(seconds + 0.5), true
+	return int64(seconds + 0.5), hasAudio, true
 }
 
 func insertLocalDuplicateCandidates(ctx context.Context, tx *sql.Tx, runID int64, groups []localfs.DuplicateGroup) error {
@@ -4825,6 +4856,7 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 		trackNoValue = trackNo
 	}
 	durationValue := nullableDuration(file.DurationSeconds)
+	hasAudioValue := nullableBoolPointer(file.HasAudio)
 	var mediaItemID int64
 	err := tx.QueryRowContext(ctx, `
 		INSERT INTO media_item (
@@ -4833,15 +4865,16 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			title,
 			track_no,
 			duration_seconds,
+			has_audio,
 			size_bytes,
 			fingerprint
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
 		RETURNING id
-	`, workID, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint, fingerprint).Scan(&mediaItemID)
+	`, workID, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint, fingerprint).Scan(&mediaItemID)
 	if err == nil {
 		return mediaItemID, nil
 	}
@@ -4854,10 +4887,11 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			title = ?,
 			track_no = ?,
 			duration_seconds = COALESCE(?, duration_seconds),
+			has_audio = COALESCE(?, has_audio),
 			size_bytes = ?
 		WHERE fingerprint = ?
 		RETURNING id
-	`, kind, file.Title, trackNoValue, durationValue, file.SizeBytes, fingerprint).Scan(&mediaItemID)
+	`, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint).Scan(&mediaItemID)
 	if err != nil {
 		return 0, err
 	}
@@ -4947,9 +4981,10 @@ func refreshLocalDurationIfMissing(ctx context.Context, tx *sql.Tx, fileSourceID
 	return err
 }
 
-func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, file localfs.LocalFile, durationSeconds int64) error {
-	if durationSeconds <= 0 {
-		return nil
+func (s *Server) updateLocalMediaMetadata(ctx context.Context, fileSourceID int64, file localfs.LocalFile, durationSeconds int64, hasAudio bool) error {
+	var durationValue any
+	if durationSeconds > 0 {
+		durationValue = durationSeconds
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -4965,12 +5000,13 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 			AND size_bytes = ?
 			AND availability = 'available'
 			AND duration_seconds IS NULL
-	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
+	`, durationValue, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_item
-		SET duration_seconds = COALESCE(duration_seconds, ?)
+		SET duration_seconds = COALESCE(duration_seconds, ?),
+			has_audio = ?
 		WHERE id IN (
 			SELECT media_item_id
 			FROM media_file_location
@@ -4981,7 +5017,7 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 				AND availability = 'available'
 		)
 			AND duration_seconds IS NULL
-	`, durationSeconds, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
+	`, durationValue, hasAudio, fileSourceID, file.RelPath, file.SizeBytes); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -4989,6 +5025,13 @@ func (s *Server) updateLocalDuration(ctx context.Context, fileSourceID int64, fi
 
 func nullableDuration(value *int64) any {
 	if value == nil || *value <= 0 {
+		return nil
+	}
+	return *value
+}
+
+func nullableBoolPointer(value *bool) any {
+	if value == nil {
 		return nil
 	}
 	return *value
@@ -5136,6 +5179,8 @@ func localFileKind(path string) string {
 	switch extension {
 	case ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac":
 		return "audio"
+	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi":
+		return "video"
 	case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif":
 		return "image"
 	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml":
@@ -5196,6 +5241,13 @@ func nullableInt64(value sql.NullInt64) *int64 {
 		return nil
 	}
 	return &value.Int64
+}
+
+func nullableBool(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Bool
 }
 
 type dlsiteSnapshotMetadata struct {

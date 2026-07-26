@@ -32,6 +32,72 @@ export type Work = {
   recommendScore: number;
 };
 
+export type RecommendationConfig = {
+  nonePrior: number;
+  wantPrior: number;
+  listeningPrior: number;
+  finishedPrior: number;
+  relistenPrior: number;
+  pausedPrior: number;
+  tagWeight: number;
+  tagCap: number;
+  voiceWeight: number;
+  voiceCap: number;
+  circleWeight: number;
+  circleCap: number;
+  favoriteBonus: number;
+  negativeMinEvidence: number;
+  negativeTagWeight: number;
+  negativeTagCap: number;
+  negativeVoiceWeight: number;
+  negativeVoiceCap: number;
+  negativeCircleWeight: number;
+  negativeCircleCap: number;
+  negativeTotalCap: number;
+  jitterAmplitude: number;
+};
+
+export type RecommendationBreakdown = {
+  algorithmVersion: string;
+  score: number;
+  rawScore: number;
+  signals: {
+    listeningStatus: ListeningStatus;
+    favorite: boolean;
+    positiveTagMatches: number;
+    positiveVoiceMatches: number;
+    positiveCircleMatches: number;
+    negativeTagMatches: number;
+    negativeVoiceMatches: number;
+    negativeCircleMatches: number;
+  };
+  components: Array<{
+    key: string;
+    label: string;
+    matchCount: number;
+    contribution: number;
+    cap: number;
+  }>;
+};
+
+export type RecommendationEventInput = {
+  workId?: number;
+  eventType: "impression" | "open" | "play" | "positive_mark" | "paused_mark" | "reshuffle";
+  contextId?: string;
+  algorithmVersion?: string;
+  seed?: number;
+  rank?: number;
+  score?: number;
+};
+
+export type RecommendationTelemetrySummary = {
+  windowDays: number;
+  totalEvents: number;
+  eventCounts: Record<string, number>;
+  scoreBuckets: Record<string, number>;
+  generatedAt: string;
+};
+
 export type SourcePresenceItem = {
   type: string;
   availability: string;
@@ -254,6 +320,7 @@ export type MediaItem = {
   discNo: number | null;
   trackNo: number | null;
   durationSeconds: number | null;
+  hasAudio?: boolean | null;
   sizeBytes: number | null;
   fingerprint: string;
   progress: MediaProgress | null;
@@ -337,6 +404,8 @@ export type AppSettings = {
   dlsiteMetadataLanguage: string;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
+  recommendationConfig: RecommendationConfig;
+  recommendationDefaults: RecommendationConfig;
   dataRoot: string;
   cacheRoot: string;
   fileSources: FileSource[];
@@ -1413,6 +1482,9 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
+	getWorkRecommendation: (id: number) => getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation`),
+	recordRecommendationEvents: (events: RecommendationEventInput[]) => postJSONBody<{ recorded: number }>("/api/recommendation-events", { events }),
+	getRecommendationTelemetry: () => getJSON<RecommendationTelemetrySummary>("/api/recommendation-telemetry"),
   listWorksPage: (
     page = 1,
     pageSize = 24,
@@ -1673,6 +1745,7 @@ export const api = {
     dlsiteMetadataLanguage?: string;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
+    recommendationConfig?: RecommendationConfig;
   }) => patchJSONBody<AppSettings>("/api/settings", payload),
   createFileSource: (payload: {
     displayName: string;

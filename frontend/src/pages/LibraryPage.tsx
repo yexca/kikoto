@@ -17,6 +17,7 @@ import {
   Edit3,
   Trash2,
   FileAudio,
+  FileVideo,
   FileText,
   Filter,
   Folder,
@@ -44,7 +45,7 @@ import {
   X,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -79,6 +80,8 @@ import {
   type RemoteFetchResolution,
   type RemoteWorkSavePlan,
   type RemoteWorkSaveResult,
+  type RecommendationBreakdown,
+  type RecommendationEventInput,
   type SourceAvailabilitySource,
   type SourcePresenceItem,
   type SeriesSuggestion,
@@ -137,7 +140,7 @@ import {
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { useLibraryPlayer } from "@/player/PlayerProvider";
+import { useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
   availableForkSources,
@@ -181,6 +184,7 @@ import {
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { useWorkFetchWorkspace } from "@/features/work-detail/workflows/useWorkFetchWorkspace";
 import { usePermissionGate } from "@/auth/usePermissionGate";
+import { useAuth } from "@/auth/AuthProvider";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import {
   MediaContextActionBar,
@@ -280,6 +284,7 @@ function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
 
 export function LibraryPage() {
   const toast = useToast();
+  const auth = useAuth();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(window.location.search, defaultLibraryBrowseState)).current;
   const [works, setWorks] = useState<Work[]>([]);
@@ -295,6 +300,7 @@ export function LibraryPage() {
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
+  const [recommendationDialog, setRecommendationDialog] = useState<{ work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
@@ -328,6 +334,7 @@ export function LibraryPage() {
   const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
+  const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
   const databaseMenuRef = useRef<HTMLDivElement | null>(null);
@@ -402,6 +409,24 @@ export function LibraryPage() {
 	const queueResultsScroll = () => {
 		pendingResultsScroll.current = true;
 	};
+	const recordRecommendationEvents = useCallback((events: RecommendationEventInput[]) => {
+		if (!auth.user || auth.demoMode || events.length === 0) return;
+		void api.recordRecommendationEvents(events).catch(() => {});
+	}, [auth.demoMode, auth.user]);
+	const recordWorkRecommendationEvent = (work: Work, eventType: RecommendationEventInput["eventType"]) => {
+		const context = recommendationContextRef.current;
+		if (!context) return;
+		const rank = Math.max(0, worksRef.current.findIndex((candidate) => candidate.id === work.id) + 1);
+		recordRecommendationEvents([{
+			workId: work.id,
+			eventType,
+			contextId: context.id,
+			algorithmVersion: "heuristic-v2",
+			seed: context.seed,
+			rank,
+			score: work.recommendScore,
+		}]);
+	};
 
   useEffect(() => {
 	const timer = window.setTimeout(() => {
@@ -450,6 +475,21 @@ export function LibraryPage() {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
         setWorkTotal(page.total);
+		if (librarySort === "recommend") {
+			const context = { id: createRecommendationContextID(), seed: randomSeed };
+			recommendationContextRef.current = context;
+			recordRecommendationEvents(page.works.map((work, index) => ({
+				workId: work.id,
+				eventType: "impression",
+				contextId: context.id,
+				algorithmVersion: "heuristic-v2",
+				seed: randomSeed,
+				rank: (page.page - 1) * page.pageSize + index + 1,
+				score: work.recommendScore,
+			})));
+		} else {
+			recommendationContextRef.current = null;
+		}
         setLibraryLoadError("");
         setOptimisticLibrarySearchClauses(null);
 		completeResultsUpdate();
@@ -465,7 +505,7 @@ export function LibraryPage() {
 		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
 	  });
     return () => controller.abort();
-  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, sortDirection, workPage, workPageSize, workScope]);
+  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, recordRecommendationEvents, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
     api.listLibrarySources().then((items) => {
@@ -670,6 +710,7 @@ export function LibraryPage() {
   }, [isDatabaseMenuOpen]);
 
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
+	recordWorkRecommendationEvent(work, "open");
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), { ...activeBrowseState, scrollY: window.scrollY });
     const path = `/${work.primaryCode}?view=${sourceIntent}`;
 	setSelectedRemoteTarget(null);
@@ -677,6 +718,15 @@ export function LibraryPage() {
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
+  };
+
+  const openRecommendationExplanation = (work: Work) => {
+	setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
+	void api.getWorkRecommendation(work.id).then((breakdown) => {
+		setRecommendationDialog((current) => current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current);
+	}).catch((error) => {
+		setRecommendationDialog((current) => current?.work.id === work.id ? { ...current, loading: false, error: error instanceof Error ? error.message : "Recommendation explanation failed." } : current);
+	});
   };
 
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
@@ -760,6 +810,10 @@ export function LibraryPage() {
         items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
       );
       setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
+	  const work = worksRef.current.find((item) => item.id === workID);
+	  if (work && ["finished", "relisten", "paused"].includes(status)) {
+		recordWorkRecommendationEvent(work, status === "paused" ? "paused_mark" : "positive_mark");
+	  }
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
     }
@@ -1034,6 +1088,10 @@ export function LibraryPage() {
         initialRemoteCode={detailRemoteCodeFromLocation(window.location.search)}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
+        onPlay={() => {
+          const sourceWork = worksRef.current.find((candidate) => candidate.id === selectedWork?.id);
+          if (sourceWork) recordWorkRecommendationEvent(sourceWork, "play");
+        }}
         onWorkReload={async (workID, includeMedia = false) => {
           const detail = await api.getWorkSummary(workID);
           let mediaItems = getCachedWorkMedia(workID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
@@ -1079,6 +1137,10 @@ export function LibraryPage() {
 		});
 	};
 	const reshuffle = () => {
+		const context = recommendationContextRef.current;
+		if (librarySort === "recommend" && context) {
+			recordRecommendationEvents([{ eventType: "reshuffle", contextId: context.id, algorithmVersion: "heuristic-v2", seed: context.seed }]);
+		}
 		queueResultsScroll();
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
 		else setWorkPage(1);
@@ -1301,11 +1363,14 @@ export function LibraryPage() {
                 <div key={work.id} className="mb-4 [break-inside:avoid]">
                   <WorkCard
                     work={work}
+					showRecommendationScore={librarySort === "recommend"}
+					onRecommendationOpen={() => openRecommendationExplanation(work)}
                     onOpen={() => openWork(work)}
                     onStatusChange={updateWorkStatus}
                     onFavoriteSaved={(workID, favorite) => {
                       setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                       setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
+					  if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
                     }}
                     onTagOpen={addTagSearchClause}
                     onUserTagOpen={addUserTagSearchClause}
@@ -1322,11 +1387,14 @@ export function LibraryPage() {
                 <WorkCard
                   key={work.id}
                   work={work}
+				  showRecommendationScore={librarySort === "recommend"}
+				  onRecommendationOpen={() => openRecommendationExplanation(work)}
                   onOpen={() => openWork(work)}
                   onStatusChange={updateWorkStatus}
                   onFavoriteSaved={(workID, favorite) => {
                     setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                     setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
+					if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
                   }}
                   onTagOpen={addTagSearchClause}
                   onUserTagOpen={addUserTagSearchClause}
@@ -1351,6 +1419,7 @@ export function LibraryPage() {
           onConfirm={() => void untrackWorkSource()}
         />
       )}
+	  {recommendationDialog && <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />}
       {trackedFetchSelection && (
         <RemoteSaveSelectionPanel
           root={buildRemoteTree(trackedFetchSelection.detail.tracks)}
@@ -1944,6 +2013,8 @@ function recentWorkSourceIntent(work: Work): DetailSourceIntent {
 
 function WorkCard({
   work,
+  showRecommendationScore,
+  onRecommendationOpen,
   onOpen,
   onStatusChange,
   onFavoriteSaved,
@@ -1954,6 +2025,8 @@ function WorkCard({
   isFetchBusy,
 }: {
   work: Work;
+  showRecommendationScore: boolean;
+  onRecommendationOpen: () => void;
   onOpen: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onFavoriteSaved: (workID: number, favorite: boolean) => void;
@@ -1963,13 +2036,14 @@ function WorkCard({
   onFetch?: (source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
-  const view = libraryWorkCardView(work, onUserTagOpen);
+  const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore);
   const trackedSource = trackedSourceForWork(work);
 
   return (
     <WorkCardShell
       work={view}
       onOpen={onOpen}
+	  onRecommendationOpen={onRecommendationOpen}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
       onSeriesOpen={work.seriesTitleId && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
       onTagOpen={onTagOpen}
@@ -2172,7 +2246,56 @@ function UntrackConfirmModal({
   );
 }
 
-function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void): WorkCardViewModel {
+function createRecommendationContextID() {
+  const random = window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return `library:${Date.now().toString(36)}:${random}`.slice(0, 64);
+}
+
+function RecommendationExplanationModal({ state, onClose }: {
+  state: { work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string };
+  onClose: () => void;
+}) {
+  useEffect(() => {
+	const handleKeyDown = (event: KeyboardEvent) => {
+	  if (event.key === "Escape") onClose();
+	};
+	window.addEventListener("keydown", handleKeyDown);
+	return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+  const components = state.breakdown?.components.filter((component) => component.key === "state" || component.matchCount > 0 || component.contribution !== 0) ?? [];
+  return (
+	<div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" onMouseDown={onClose}>
+	  <div className="w-full max-w-md overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+		<div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
+		  <div className="min-w-0"><div className="truncate text-sm font-semibold">{state.work.title}</div><div className="text-xs text-muted-foreground">{state.work.primaryCode}</div></div>
+		  <IconButton title="Close recommendation explanation" onClick={onClose}><X className="h-4 w-4" /></IconButton>
+		</div>
+		<div className="space-y-4 p-4">
+		  {state.loading ? (
+			<div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground"><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Loading score</div>
+		  ) : state.error ? (
+			<div className="text-sm text-destructive">{state.error}</div>
+		  ) : state.breakdown ? (
+			<>
+			  <div className="flex items-end justify-between gap-4 border-b pb-3"><div><div className="text-xs text-muted-foreground">Recommendation score</div><div className="text-3xl font-semibold">{state.breakdown.score}</div></div><Badge variant="outline">{state.breakdown.algorithmVersion}</Badge></div>
+			  <div className="space-y-2">
+				{components.map((component) => (
+				  <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
+					<div className="min-w-0"><div className="font-medium">{component.label}</div>{component.matchCount > 0 && component.key !== "state" && <div className="text-xs text-muted-foreground">{component.matchCount} matched signal{component.matchCount === 1 ? "" : "s"}</div>}</div>
+					<span className={component.contribution < 0 ? "font-semibold text-destructive" : "font-semibold text-primary"}>{component.contribution > 0 ? "+" : ""}{component.contribution}</span>
+				  </div>
+				))}
+			  </div>
+			  {state.breakdown.rawScore !== state.breakdown.score && <div className="border-t pt-3 text-xs text-muted-foreground">Raw {state.breakdown.rawScore}, bounded to {state.breakdown.score}</div>}
+			</>
+		  ) : null}
+		</div>
+	  </div>
+	</div>
+  );
+}
+
+function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, showRecommendationScore = false): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
@@ -2192,7 +2315,8 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void):
     progress: work.progress,
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
 		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
-		recommended: recommendationBadgeVisible(work.recommendScore),
+		recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore),
+		recommendationScore: work.recommendScore,
   };
 }
 
@@ -2218,6 +2342,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     progress: null,
     userTags: [],
 		recommended: recommendationBadgeVisible(work.recommendScore),
+		recommendationScore: work.recommendScore,
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
       : [{ key: `source:remote:${source.id}:unavailable`, label: `${sourceLabel} unavailable`, variant: "warning" }],
@@ -2984,6 +3109,7 @@ function WorkDetailView({
   initialRemoteCode,
   onBack,
   onStatusChange,
+  onPlay,
   onWorkReload,
   onWorksChanged,
 }: {
@@ -2998,6 +3124,7 @@ function WorkDetailView({
   initialRemoteCode: string;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onPlay: () => void;
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
 }) {
@@ -3195,11 +3322,13 @@ function WorkDetailView({
 
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!localDirectoryWork || tracks.length === 0) return;
+    onPlay();
     player.playQueue(tracks.map((track) => toPlayerTrack(track, localDirectoryWork)), locationId);
   };
 
   const playWork = (startMediaItemId?: number) => {
     if (!localDirectoryWork || playbackTracks.length === 0) return;
+    onPlay();
     const queue = playbackTracks.map((track) => toPreferredPlayerTrack(track, localDirectoryWork));
     const start = startMediaItemId
       ? queue.find((track) => track.mediaItemId === startMediaItemId) ?? queue[0]
@@ -4611,7 +4740,7 @@ function DirectoryRouteSummary({ summary }: { summary: DirectoryRouteMatch }) {
           matched {summary.positiveMatches.join(" + ")}
         </span>
       ) : (
-        <span className="text-muted-foreground">fallback: most playable audio</span>
+        <span className="text-muted-foreground">fallback: most playable media</span>
       )}
       {summary.negativeMatches.length > 0 && (
         <span className="text-muted-foreground">excluded {summary.negativeMatches.join(" + ")}</span>
@@ -5180,15 +5309,15 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
   const sizeDetail = info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
     ? `${info.stats.knownSizeFiles}/${info.stats.files} files measured`
     : info.stats.knownSizeFiles > 0 ? "All file sizes measured" : "No measured file size";
-  const hasMeasuredDuration = info.stats.knownDurationAudio > 0;
+  const hasMeasuredDuration = info.stats.knownDurationMedia > 0;
   const durationValue = hasMeasuredDuration
     ? formatDuration(info.stats.durationSeconds)
     : info.metadataDurationSeconds ? formatDuration(info.metadataDurationSeconds) : noFilesValue;
   const durationLabel = hasMeasuredDuration ? "Playable duration" : "Metadata duration";
   const durationDetail = hasMeasuredDuration
-    ? info.stats.knownDurationAudio < info.stats.audio
-      ? `${info.stats.knownDurationAudio}/${info.stats.audio} audio files measured`
-      : "All audio durations measured"
+    ? info.stats.knownDurationMedia < info.stats.playable
+      ? `${info.stats.knownDurationMedia}/${info.stats.playable} playable files measured`
+      : "All playable durations measured"
     : info.metadataDurationSeconds ? "No measured source duration" : "No known duration";
 
   return (
@@ -5207,8 +5336,8 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
       <div className="space-y-2.5">
         <SourceInfoRow
           testId="source-info-audio-row"
-          firstLabel="Audio"
-          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.audio.toLocaleString()}
+          firstLabel="Playable"
+          firstValue={info.loading && info.stats.files === 0 ? "..." : info.stats.playable.toLocaleString()}
           secondLabel={durationLabel}
           secondValue={durationValue}
           detail={durationDetail}
@@ -5331,6 +5460,7 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
+  | { kind: "video"; title: string; url: string; locationId: number }
   | { kind: "text"; title: string; locationId: number };
 
 function DirectoryTree({
@@ -5741,7 +5871,7 @@ function RemoteFetchResultNodeView({ node, depth, decisions, onDecisionChange, i
         return (
           <div key={item.itemKey || item.targetPath} className="rounded hover:bg-muted/60" style={{ marginLeft: (depth + 1) * 14 + 8 }} title={item.targetPath}>
             <div className="flex min-h-8 items-center gap-2 px-2 text-xs">
-              {item.kind === "audio" ? <FileAudio className="h-3.5 w-3.5 text-primary" /> : item.kind === "image" ? <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" /> : <FileText className="h-3.5 w-3.5 text-muted-foreground" />}
+              {item.kind === "audio" ? <FileAudio className="h-3.5 w-3.5 text-primary" /> : item.kind === "video" ? <FileVideo className="h-3.5 w-3.5 text-primary" /> : item.kind === "image" ? <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" /> : <FileText className="h-3.5 w-3.5 text-muted-foreground" />}
               <span className="min-w-0 flex-1 truncate">{item.path}</span>
               <Badge variant={item.action === "skip" || item.targetConflict ? "outline" : "secondary"} className={item.targetConflict ? "border-destructive/40 text-destructive" : ""}>{fetchResultActionLabel(item.action)}</Badge>
             </div>
@@ -6311,17 +6441,21 @@ function TreeFile({
   const [queueMenuOpen, setQueueMenuOpen] = useState(false);
   const queueMenuRef = useRef<HTMLDivElement | null>(null);
   useDismissiblePopover(queueMenuOpen, queueMenuRef, () => setQueueMenuOpen(false));
-  const canPlay = Boolean(file.kind === "audio" && onPlayFolder && ["available", "remote"].includes(file.availability) && file.streamUrl);
+  const canPlay = Boolean(playableFiles([file]).length > 0 && onPlayFolder);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
   const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
   const canOpen = canPlay || canPreview || canDownload;
   const fileMeta = [
     fileKindLabel(file.kind),
-    file.kind === "audio" ? formatTrackDuration(file.durationSeconds) : "",
+    file.kind === "audio" || file.kind === "video" ? formatTrackDuration(file.durationSeconds) : "",
     file.sizeBytes === null ? "Unknown size" : formatBytes(file.sizeBytes),
   ].filter(Boolean).join(" · ");
   const openFile = () => {
+    if (preview && file.kind === "video") {
+      onPreview?.(preview);
+      return;
+    }
     if (canPlay) {
       onPlayFolder?.(files, file.locationId);
       return;
@@ -6364,7 +6498,7 @@ function TreeFile({
       </span>
       <span className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
-        {canPlay && (onPlayNext || onAppendQueue) && (
+        {canPlay && (file.kind === "video" || onPlayNext || onAppendQueue) && (
           <div ref={queueMenuRef} onClick={(event) => event.stopPropagation()}>
             <button
               className="grid h-11 w-11 place-items-center rounded-md hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
@@ -6375,6 +6509,15 @@ function TreeFile({
               <MoreHorizontal className="h-4 w-4" />
             </button>
             <AnchoredPopover open={queueMenuOpen} anchorRef={queueMenuRef} className="w-44 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl">
+              {file.kind === "video" && (
+                <button className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted" onClick={() => {
+                  onPlayFolder?.(files, file.locationId);
+                  setQueueMenuOpen(false);
+                }}>
+                  <Headphones className="h-4 w-4" />
+                  Play as audio
+                </button>
+              )}
               {onPlayNext && (
                 <button className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted" onClick={() => {
                   onPlayNext(file);
@@ -6745,7 +6888,7 @@ function ManagedFileRow({
   const toggleFile = () => {
     for (const target of targets) onToggleTarget(target, !checked);
   };
-  const fileMeta = [file.kind === "audio" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
+  const fileMeta = [file.kind === "audio" || file.kind === "video" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
   return (
     <div
       className="grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
@@ -7170,7 +7313,9 @@ function folderSummary(node: TreeNode) {
 }
 
 function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
-  const countLabel = directPlayableCount > 0 ? `${directPlayableCount} audio` : stats.files > 0 ? `${stats.files} files` : "";
+  const countLabel = directPlayableCount > 0
+    ? `${directPlayableCount} ${stats.video > 0 ? "playable" : "audio"}`
+    : stats.files > 0 ? `${stats.files} files` : "";
   const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
   return [countLabel, sizeLabel].filter(Boolean).join(" · ");
 }
@@ -7181,6 +7326,7 @@ function naturalCompare(a: string, b: string) {
 
 function fileIcon(file: TreeTrack) {
   if (file.kind === "audio") return <FileAudio className="h-4 w-4 text-muted-foreground" />;
+  if (file.kind === "video") return <FileVideo className="h-4 w-4 text-muted-foreground" />;
   if (file.kind === "image") return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
   if (file.kind === "text") return <FileText className="h-4 w-4 text-muted-foreground" />;
   return <FileText className="h-4 w-4 text-muted-foreground" />;
@@ -7188,6 +7334,7 @@ function fileIcon(file: TreeTrack) {
 
 function fileKindLabel(kind: string) {
   if (kind === "audio") return "Audio";
+  if (kind === "video") return "Video";
   if (kind === "image") return "Image";
   if (kind === "text") return "Text";
   return "File";
@@ -7197,6 +7344,9 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
   if (file.kind === "image" && file.assetUrl) {
     return { kind: "image", title: file.title, url: file.assetUrl, locationId: file.locationId, canSetCover: file.locationType === "local" && file.locationId > 0 };
   }
+  if (file.kind === "video" && file.streamUrl) {
+    return { kind: "video", title: file.title, url: file.streamUrl, locationId: file.locationId };
+  }
   if (file.kind === "text" && file.locationId > 0) {
     return { kind: "text", title: file.title, locationId: file.locationId };
   }
@@ -7204,6 +7354,8 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
 }
 
 function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePreviewState; onClose: () => void; onSetCover?: (locationId: number) => void | Promise<void> }) {
+  const player = usePlayer();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -7215,6 +7367,10 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
       setError(err instanceof Error ? err.message : "Text preview failed.");
     });
   }, [preview]);
+
+  useEffect(() => {
+    if (preview.kind === "video" && player.isPlaying) videoRef.current?.pause();
+  }, [player.isPlaying, preview.kind]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -7252,6 +7408,20 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
         <div className="app-scroll min-h-0 flex-1 overflow-auto bg-background p-4">
           {preview.kind === "image" ? (
             <img src={assetURL(preview.url)} alt="" className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain" />
+          ) : preview.kind === "video" ? (
+            <div className="grid min-h-[240px] place-items-center">
+              <video
+                ref={videoRef}
+                src={assetURL(preview.url)}
+                controls
+                playsInline
+                preload="metadata"
+                className="max-h-[72vh] w-full bg-black object-contain"
+                onPlay={player.pause}
+                onError={() => setError("This video format is not supported by the browser.")}
+              />
+              {error && <div className="mt-3 text-sm text-muted-foreground">{error}</div>}
+            </div>
           ) : error ? (
             <div className="text-sm text-muted-foreground">{error}</div>
           ) : text === null ? (

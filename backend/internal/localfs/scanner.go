@@ -27,6 +27,7 @@ type LocalFile struct {
 	Extension       string
 	SizeBytes       int64
 	DurationSeconds *int64
+	HasAudio        *bool
 }
 
 type Summary struct {

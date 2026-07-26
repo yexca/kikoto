@@ -9,6 +9,7 @@ const persistedTrack = {
   mediaItemId: 10,
   locationId: 100,
   title: "Track",
+  kind: "audio",
   folderPath: "",
   locationType: "local",
   streamUrl: "/api/media/100/stream",
@@ -36,6 +37,7 @@ describe("revalidatePersistedQueue", () => {
         discNo: null,
         trackNo: null,
         durationSeconds: 60,
+        hasAudio: true,
         sizeBytes: 1000,
         fingerprint: "",
         progress: null,
@@ -73,6 +75,7 @@ describe("revalidatePersistedQueue", () => {
     const localProgress = {
       positionSeconds: 42,
       durationSeconds: 60,
+      hasAudio: true,
       completed: false,
       lastPlayedAt: "2026-07-21T01:00:30.000Z",
     };

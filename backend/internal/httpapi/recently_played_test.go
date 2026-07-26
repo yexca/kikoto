@@ -16,21 +16,21 @@ func TestRecentlyPlayedWorksUsesLatestProgressPerWork(t *testing.T) {
 	}
 	userID, _ := user.LastInsertId()
 
-	insertWork := func(code string) (int64, int64) {
+	insertWork := func(code string, kind string) (int64, int64) {
 		result, insertErr := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", code, code)
 		if insertErr != nil {
 			t.Fatal(insertErr)
 		}
 		workID, _ := result.LastInsertId()
-		media, insertErr := db.Exec("INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (?, 'audio', 'Track', ?)", workID, code+"-track")
+		media, insertErr := db.Exec("INSERT INTO media_item (work_id, kind, title, fingerprint, has_audio) VALUES (?, ?, 'Track', ?, 1)", workID, kind, code+"-track")
 		if insertErr != nil {
 			t.Fatal(insertErr)
 		}
 		mediaID, _ := media.LastInsertId()
 		return workID, mediaID
 	}
-	olderWorkID, olderMediaID := insertWork("RJ09999301")
-	newerWorkID, newerMediaID := insertWork("RJ09999302")
+	olderWorkID, olderMediaID := insertWork("RJ09999301", "audio")
+	newerWorkID, newerMediaID := insertWork("RJ09999302", "video")
 	for _, item := range []struct {
 		mediaID int64
 		played  string

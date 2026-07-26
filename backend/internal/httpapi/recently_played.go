@@ -41,7 +41,7 @@ func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit in
 		INNER JOIN work ON work.id = media_item.work_id
 		WHERE progress.user_id = ?
 			AND progress.last_played_at IS NOT NULL
-			AND media_item.kind = 'audio'
+			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 			`+demoWhere+`
 		GROUP BY media_item.work_id
 		ORDER BY latest_played_at DESC, media_item.work_id DESC

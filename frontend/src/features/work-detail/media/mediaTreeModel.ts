@@ -24,6 +24,7 @@ export type TreeTrack = {
   assetUrl: string;
   sizeBytes: number | null;
   durationSeconds: number | null;
+  hasAudio: boolean | null;
   availability: string;
   cacheLocationId: number | null;
   cachePath: string;
@@ -39,10 +40,12 @@ export type TreeTrack = {
 export type TreeStats = {
   files: number;
   audio: number;
+  video: number;
+  playable: number;
   sizeBytes: number;
   knownSizeFiles: number;
   durationSeconds: number;
-  knownDurationAudio: number;
+  knownDurationMedia: number;
 };
 
 export function emptyTree(): TreeNode {
@@ -82,6 +85,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       assetUrl: location.locationType === "local" ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes) : location.downloadUrl,
       sizeBytes: location.sizeBytes,
       durationSeconds: location.durationSeconds ?? item.durationSeconds,
+      hasAudio: item.hasAudio ?? null,
       availability: location.availability,
       cacheLocationId: cacheLocation?.id ?? null,
       cachePath: cacheLocation?.path ?? "",
@@ -135,6 +139,7 @@ export function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
         sizeBytes: node.sizeBytes,
         durationSeconds: node.durationSeconds,
+        hasAudio: null,
         availability: hasCache ? "available" : node.streamUrl || node.downloadUrl ? "remote" : "metadata",
         cacheLocationId: node.cacheLocationId,
         cachePath: node.cachePath,
@@ -164,7 +169,11 @@ export function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
 }
 
 export function playableFiles(files: TreeTrack[]) {
-  return files.filter((file) => file.kind === "audio" && ["available", "remote"].includes(file.availability) && file.streamUrl);
+  return files.filter((file) =>
+    (file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false))
+      && ["available", "remote"].includes(file.availability)
+      && file.streamUrl,
+  );
 }
 
 export function flattenTracks(root: TreeNode) {
@@ -204,18 +213,20 @@ export function remoteSelectablePaths(root: TreeNode) {
 }
 
 export function treeStats(node: TreeNode): TreeStats {
-  const stats: TreeStats = { files: 0, audio: 0, sizeBytes: 0, knownSizeFiles: 0, durationSeconds: 0, knownDurationAudio: 0 };
+  const stats: TreeStats = { files: 0, audio: 0, video: 0, playable: 0, sizeBytes: 0, knownSizeFiles: 0, durationSeconds: 0, knownDurationMedia: 0 };
   const visit = (cursor: TreeNode) => {
     for (const file of cursor.files) {
       stats.files += 1;
       if (file.kind === "audio") stats.audio += 1;
+      if (file.kind === "video") stats.video += 1;
+      if (file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false)) stats.playable += 1;
       if (file.sizeBytes !== null && file.sizeBytes >= 0) {
         stats.sizeBytes += file.sizeBytes;
         stats.knownSizeFiles += 1;
       }
-      if (file.kind === "audio" && file.durationSeconds !== null && file.durationSeconds > 0) {
+      if ((file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false)) && file.durationSeconds !== null && file.durationSeconds > 0) {
         stats.durationSeconds += file.durationSeconds;
-        stats.knownDurationAudio += 1;
+        stats.knownDurationMedia += 1;
       }
     }
     for (const child of cursor.children.values()) visit(child);
@@ -226,9 +237,11 @@ export function treeStats(node: TreeNode): TreeStats {
 
 export function formatTreeStats(stats: TreeStats) {
   const parts = [
-    stats.audio > 0 ? `${stats.audio} audio` : stats.files > 0 ? `${stats.files} files` : "",
+    stats.audio > 0 ? `${stats.audio} audio` : "",
+    stats.video > 0 ? `${stats.video} video` : "",
+    stats.audio === 0 && stats.video === 0 && stats.files > 0 ? `${stats.files} files` : "",
     stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "",
-    stats.knownDurationAudio > 0 ? formatDuration(stats.durationSeconds) : "",
+    stats.knownDurationMedia > 0 ? formatDuration(stats.durationSeconds) : "",
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : "";
 }
@@ -266,6 +279,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
   const lyrics = lyricsChoices.find((choice) => choice.mediaItemId === audioItem?.preferredLyricsMediaItemId) ?? automaticLyrics;
   return {
     ...track,
+    kind: track.kind === "video" ? "video" : "audio",
     workId: work.id,
     workCode: work.primaryCode,
     workTitle: work.title,
@@ -290,6 +304,7 @@ export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): Play
 export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
   return {
     ...track,
+    kind: track.kind === "video" ? "video" : "audio",
     workId: detail.workId ?? 0,
     workCode: detail.primaryCode || detail.remoteId,
     workTitle: detail.title,

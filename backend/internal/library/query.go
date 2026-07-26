@@ -18,16 +18,17 @@ func NewStore(db *sql.DB) *Store {
 }
 
 type ListOptions struct {
-	UserID     int64
-	Page       int
-	PageSize   int
-	Scope      string
-	Status     string
-	Query      string
-	Sort       string
-	Direction  string
-	RandomSeed int64
-	DemoOnly   bool
+	UserID                int64
+	Page                  int
+	PageSize              int
+	Scope                 string
+	Status                string
+	Query                 string
+	Sort                  string
+	Direction             string
+	RandomSeed            int64
+	IncludeRecommendation bool
+	DemoOnly              bool
 }
 
 type RawPage struct {
@@ -68,6 +69,7 @@ type RawWork struct {
 	PartyLink              string
 	ListeningStatus        string
 	Favorite               bool
+	RecommendScore         int
 }
 
 func (s *Store) ListAll(ctx context.Context, userID int64, demoOnly bool) ([]RawWork, error) {
@@ -95,12 +97,16 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE "+where, countArgs...).Scan(&total); err != nil {
 		return RawPage{}, err
 	}
-	queryArgs := append([]any{options.UserID}, args...)
-	if strings.EqualFold(strings.TrimSpace(options.Sort), "recommend") {
-		queryArgs = append([]any{options.UserID, options.UserID, options.UserID, options.UserID}, queryArgs[1:]...)
+	config := s.LoadRecommendationConfig(ctx)
+	includeRecommendation := options.IncludeRecommendation || strings.EqualFold(strings.TrimSpace(options.Sort), "recommend")
+	queryArgs := []any{}
+	if includeRecommendation {
+		queryArgs = append(queryArgs, recommendationUserArgs(options.UserID)...)
 	}
+	queryArgs = append(queryArgs, options.UserID)
+	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
-	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed)+" LIMIT ? OFFSET ?", queryArgs...)
+	rows, err := s.db.QueryContext(ctx, listSelectSQL(where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation)+" LIMIT ? OFFSET ?", queryArgs...)
 	if err != nil {
 		return RawPage{}, err
 	}
@@ -143,7 +149,7 @@ func (s *Store) ListMatchingSorted(ctx context.Context, where string, args []any
 func matchingListSelectSQL(where string, options MatchingListOptions) (string, []any) {
 	sortKey := strings.ToLower(strings.TrimSpace(options.Sort))
 	_, direction := normalizeSort("recent", options.Direction)
-	outerProjection := `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (`
+	outerProjection := `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite, recommend_score FROM (`
 	switch sortKey {
 	case "activity":
 		expression := `MAX(
@@ -179,7 +185,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
 		return query, prefixArgs
 	case "release", "code", "title", "rating", "sales", "random", "recent":
-		return listSelectSQL(where, sortKey, direction, options.RandomSeed), nil
+		return listSelectSQL(where, sortKey, direction, options.RandomSeed, DefaultRecommendationConfig(), false), nil
 	default:
 		options.Sort = "activity"
 		return matchingListSelectSQL(where, options)
@@ -219,6 +225,7 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 			&partyLink,
 			&item.ListeningStatus,
 			&favorite,
+			&item.RecommendScore,
 		); err != nil {
 			return nil, err
 		}
@@ -253,11 +260,11 @@ func ScanRows(rows *sql.Rows) ([]RawWork, error) {
 	return works, nil
 }
 
-func listOrderBy(sortKey string, direction string, randomSeed int64) string {
+func listOrderBy(sortKey string, direction string, randomSeed int64, config RecommendationConfig) string {
 	sortKey, direction = normalizeSort(sortKey, direction)
 	switch sortKey {
 	case "recommend":
-		return "recommend_score " + direction + ", " + seededOrderBy("id", randomSeed)
+		return recommendationOrderBy("id", direction, randomSeed, config.JitterAmplitude)
 	case "random":
 		return seededOrderBy("work.id", randomSeed)
 	case "release":
@@ -276,6 +283,11 @@ func listOrderBy(sortKey string, direction string, randomSeed int64) string {
 }
 
 func seededOrderBy(idExpression string, randomSeed int64) string {
+	hash := seededHashExpression(idExpression, randomSeed)
+	return fmt.Sprintf("%s ASC, %s ASC", hash, idExpression)
+}
+
+func seededHashExpression(idExpression string, randomSeed int64) string {
 	seed := randomSeed % 2147483647
 	if seed < 0 {
 		seed = -seed
@@ -285,7 +297,15 @@ func seededOrderBy(idExpression string, randomSeed int64) string {
 		multiplier = 1
 	}
 	offset := (seed * 12345) % 2147483647
-	return fmt.Sprintf("((%s * %d + %d) %% 2147483647) ASC, %s ASC", idExpression, multiplier, offset, idExpression)
+	return fmt.Sprintf("((%s * %d + %d) %% 2147483647)", idExpression, multiplier, offset)
+}
+
+func recommendationOrderBy(idExpression string, direction string, randomSeed int64, amplitude int) string {
+	hash := seededHashExpression(idExpression, randomSeed)
+	if amplitude <= 0 {
+		return "recommend_score " + direction + ", " + seededOrderBy(idExpression, randomSeed)
+	}
+	return fmt.Sprintf("(recommend_score + (((%s / 2147483647.0) * 2.0 - 1.0) * %d)) %s, %s ASC, %s ASC", hash, amplitude, direction, hash, idExpression)
 }
 
 func normalizeSort(sortKey string, direction string) (string, string) {
@@ -659,30 +679,38 @@ func familyNumericClause(column string, operator string, value float64) string {
 	))`, column, column, operator, value, column, column, operator, value)
 }
 
-func listSelectSQL(where string, sortKey string, direction string, randomSeed int64) string {
+func listSelectSQL(where string, sortKey string, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool) string {
 	normalizedSort, _ := normalizeSort(sortKey, direction)
-	orderBy := listOrderBy(sortKey, direction, randomSeed)
+	orderBy := listOrderBy(sortKey, direction, randomSeed, config)
 	if normalizedSort == "recommend" {
-		return `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite FROM (` + listBaseSelectSQL(where, true) + `) AS library_rows ORDER BY ` + orderBy
+		return `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite, recommend_score FROM (` + listBaseSelectSQLWithConfig(where, true, config) + `) AS library_rows ORDER BY ` + orderBy
 	}
-	return listBaseSelectSQL(where, false) + " ORDER BY " + orderBy
+	return listBaseSelectSQLWithConfig(where, includeRecommendation, config) + " ORDER BY " + orderBy
 }
 
 func listBaseSelectSQL(where string, includeRecommendation bool) string {
-	return listBaseSelectSQLWithExtra(where, includeRecommendation, "")
+	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, DefaultRecommendationConfig(), "")
 }
 
 func listBaseSelectSQLWithExtra(where string, includeRecommendation bool, extraSelect string) string {
-	recommendationSortColumn := ""
+	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, DefaultRecommendationConfig(), extraSelect)
+}
+
+func listBaseSelectSQLWithConfig(where string, includeRecommendation bool, config RecommendationConfig) string {
+	return listBaseSelectSQLWithConfigAndExtra(where, includeRecommendation, config, "")
+}
+
+func listBaseSelectSQLWithConfigAndExtra(where string, includeRecommendation bool, config RecommendationConfig, extraSelect string) string {
+	recommendationSortColumn := ", 0 AS recommend_score"
 	if includeRecommendation {
-		recommendationSortColumn = `, ` + recommendationScoreExpression + ` AS recommend_score`
+		recommendationSortColumn = `, ` + recommendationScoreExpression(config) + ` AS recommend_score`
 	}
 	return `SELECT
 		work.id, work.primary_code, work.title, work.age_rating,
 		work.rating_average, work.sales_count, work.regular_price, work.current_price, work.price_currency, work.is_permanently_free,
 		work.created_at,
-		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND media_item.kind = 'audio') AS track_count,
-		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_item.kind = 'audio' AND media_file_location.availability = 'available') AS available_locations,
+		(SELECT COUNT(*) FROM media_item WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))) AS track_count,
+		(SELECT COUNT(*) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1)) AND media_file_location.availability = 'available') AS available_locations,
 		(SELECT GROUP_CONCAT(DISTINCT media_file_location.location_type) FROM media_file_location INNER JOIN media_item ON media_item.id = media_file_location.media_item_id WHERE media_item.work_id = work.id AND media_file_location.availability = 'available') AS available_location_types,
 		(SELECT GROUP_CONCAT(DISTINCT presence.presence_type || '|' || presence.availability || '|' || presence.file_source_id || '|' || COALESCE(source.code, '') || '|' || COALESCE(source.display_name, '') || '|' || COALESCE(presence.remote_id, '') || '|' || COALESCE(presence.source_url, '') || '|' || COALESCE(presence.remote_code, '')) FROM work_source_presence AS presence LEFT JOIN file_source AS source ON source.id = presence.file_source_id WHERE presence.work_id = work.id OR presence.work_id IN (SELECT sibling.work_id FROM work_edition AS current_edition INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id WHERE current_edition.work_id = work.id)) AS source_presence,
 		(SELECT snapshot_json FROM metadata_snapshot INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id WHERE metadata_snapshot.work_id = work.id AND metadata_provider.code = 'dlsite' ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC LIMIT 1) AS snapshot_json,

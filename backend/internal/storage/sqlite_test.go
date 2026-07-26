@@ -279,6 +279,9 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO file_source (code, display_name, source_type) VALUES ('legacy-number178', 'Legacy number178', 'kikoeru_compilable_number178')"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec("INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (?, 'file', 'Preview', 'local:RJ09999997:bonus/preview.mp4')", workID); err != nil {
+		t.Fatal(err)
+	}
 	if err := Migrate(db, migrationDir); err != nil {
 		t.Fatalf("upgrade v0.1.0 database: %v", err)
 	}
@@ -295,7 +298,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 10 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" {
+	if len(migrations) != 13 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var rating float64
@@ -310,6 +313,14 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if rating != 4.5 || sales != 321 || regularPrice != 0 || currentPrice != 0 || currency != "JPY" || !permanentlyFree {
 		t.Fatalf("commercial backfill = %v/%d/%d/%d/%q/%t", rating, sales, regularPrice, currentPrice, currency, permanentlyFree)
+	}
+	var videoKind string
+	var videoHasAudio sql.NullBool
+	if err := db.QueryRow("SELECT kind, has_audio FROM media_item WHERE fingerprint LIKE '%.mp4'").Scan(&videoKind, &videoHasAudio); err != nil {
+		t.Fatal(err)
+	}
+	if videoKind != "video" || videoHasAudio.Valid {
+		t.Fatalf("video backfill = kind %q, has_audio %v", videoKind, videoHasAudio)
 	}
 	var lyricsPreferenceTable int
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'user_media_lyrics_preference'").Scan(&lyricsPreferenceTable); err != nil {

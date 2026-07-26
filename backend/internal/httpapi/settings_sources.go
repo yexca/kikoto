@@ -20,6 +20,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -102,21 +103,23 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 }
 
 type appSettingsResponse struct {
-	LocalScanDepth          int                 `json:"localScanDepth"`
-	CacheEnabled            bool                `json:"cacheEnabled"`
-	CacheLimitGB            int                 `json:"cacheLimitGb"`
-	RemoteSaveTemplate      string              `json:"remoteSaveTemplate"`
-	RemoteDelayBase         float64             `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom       float64             `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff           float64             `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff        float64             `json:"remoteMaxBackoffSeconds"`
-	CircleAutoRefreshDays   int                 `json:"circleAutoRefreshDays"`
-	DLsiteMetadataLanguage  string              `json:"dlsiteMetadataLanguage"`
-	DirectoryRoutingRules   []directoryRule     `json:"directoryRoutingRules"`
-	RecommendationThreshold int                 `json:"recommendationThreshold"`
-	DataRoot                string              `json:"dataRoot"`
-	CacheRoot               string              `json:"cacheRoot"`
-	FileSources             []fileSourceSummary `json:"fileSources"`
+	LocalScanDepth          int                          `json:"localScanDepth"`
+	CacheEnabled            bool                         `json:"cacheEnabled"`
+	CacheLimitGB            int                          `json:"cacheLimitGb"`
+	RemoteSaveTemplate      string                       `json:"remoteSaveTemplate"`
+	RemoteDelayBase         float64                      `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom       float64                      `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff           float64                      `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff        float64                      `json:"remoteMaxBackoffSeconds"`
+	CircleAutoRefreshDays   int                          `json:"circleAutoRefreshDays"`
+	DLsiteMetadataLanguage  string                       `json:"dlsiteMetadataLanguage"`
+	DirectoryRoutingRules   []directoryRule              `json:"directoryRoutingRules"`
+	RecommendationThreshold int                          `json:"recommendationThreshold"`
+	RecommendationConfig    library.RecommendationConfig `json:"recommendationConfig"`
+	RecommendationDefaults  library.RecommendationConfig `json:"recommendationDefaults"`
+	DataRoot                string                       `json:"dataRoot"`
+	CacheRoot               string                       `json:"cacheRoot"`
+	FileSources             []fileSourceSummary          `json:"fileSources"`
 }
 
 type directoryRule struct {
@@ -501,18 +504,19 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		LocalScanDepth          *int             `json:"localScanDepth"`
-		CacheEnabled            *bool            `json:"cacheEnabled"`
-		CacheLimitGB            *int             `json:"cacheLimitGb"`
-		RemoteSaveTemplate      *string          `json:"remoteSaveTemplate"`
-		RemoteDelayBase         *float64         `json:"remoteDelayBaseSeconds"`
-		RemoteDelayRandom       *float64         `json:"remoteDelayRandomSeconds"`
-		RemoteBackoff           *float64         `json:"remoteBackoffSeconds"`
-		RemoteMaxBackoff        *float64         `json:"remoteMaxBackoffSeconds"`
-		CircleAutoRefreshDays   *int             `json:"circleAutoRefreshDays"`
-		DLsiteMetadataLanguage  *string          `json:"dlsiteMetadataLanguage"`
-		DirectoryRoutingRules   *[]directoryRule `json:"directoryRoutingRules"`
-		RecommendationThreshold *int             `json:"recommendationThreshold"`
+		LocalScanDepth          *int                          `json:"localScanDepth"`
+		CacheEnabled            *bool                         `json:"cacheEnabled"`
+		CacheLimitGB            *int                          `json:"cacheLimitGb"`
+		RemoteSaveTemplate      *string                       `json:"remoteSaveTemplate"`
+		RemoteDelayBase         *float64                      `json:"remoteDelayBaseSeconds"`
+		RemoteDelayRandom       *float64                      `json:"remoteDelayRandomSeconds"`
+		RemoteBackoff           *float64                      `json:"remoteBackoffSeconds"`
+		RemoteMaxBackoff        *float64                      `json:"remoteMaxBackoffSeconds"`
+		CircleAutoRefreshDays   *int                          `json:"circleAutoRefreshDays"`
+		DLsiteMetadataLanguage  *string                       `json:"dlsiteMetadataLanguage"`
+		DirectoryRoutingRules   *[]directoryRule              `json:"directoryRoutingRules"`
+		RecommendationThreshold *int                          `json:"recommendationThreshold"`
+		RecommendationConfig    *library.RecommendationConfig `json:"recommendationConfig"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -639,6 +643,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := upsertSetting(r, tx, "recommendation_threshold", *payload.RecommendationThreshold); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.RecommendationConfig != nil {
+		if err := library.ValidateRecommendationConfig(*payload.RecommendationConfig); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := upsertSetting(r, tx, "recommendation_config", *payload.RecommendationConfig); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -4056,7 +4070,7 @@ func flattenRemoteSaveFiles(tracks []kikoeru.Track) []remoteSaveFile {
 				title = fmt.Sprintf("Track %d", index+1)
 			}
 			path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
-			kind := remoteTrackKind(node.Type)
+			kind := remoteTrackKindForPath(node.Type, path)
 			if len(node.Children) > 0 || kind == "folder" {
 				walk(path, node.Children)
 				continue
@@ -4296,7 +4310,7 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 	`, mediaItemID, localSourceID, item.TargetPath, size, mediaItemID, localSourceID, item.TargetPath); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	if _, err = s.db.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			availability = 'available',
@@ -4305,8 +4319,29 @@ func (s *Server) upsertSavedLocalLocation(ctx context.Context, workID int64, loc
 			AND file_source_id = ?
 			AND location_type = 'local'
 			AND path = ?
-	`, size, mediaItemID, localSourceID, item.TargetPath)
-	return err
+	`, size, mediaItemID, localSourceID, item.TargetPath); err != nil {
+		return err
+	}
+	if item.Kind == "video" {
+		duration, hasAudio, ok := probeMediaMetadataSeconds(ctx, targetAbsPath)
+		if ok {
+			var durationValue any
+			if duration > 0 {
+				durationValue = duration
+			}
+			if _, err := s.db.ExecContext(ctx, `
+				UPDATE media_item SET duration_seconds = COALESCE(?, duration_seconds), has_audio = ? WHERE id = ?
+			`, durationValue, hasAudio, mediaItemID); err != nil {
+				return err
+			}
+			if _, err := s.db.ExecContext(ctx, `
+				UPDATE media_file_location SET duration_seconds = COALESCE(?, duration_seconds) WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
+			`, durationValue, mediaItemID, localSourceID, item.TargetPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSourceIDs []int64, localSourceID int64, workCode string) error {
@@ -4776,7 +4811,7 @@ func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Tra
 			size = &value
 		}
 		detail := remoteTrackDetail{
-			Type:            remoteTrackKind(track.Type),
+			Type:            remoteTrackKindForPath(track.Type, path),
 			Title:           title,
 			Hash:            track.Hash,
 			StreamURL:       firstNonEmpty(track.MediaStreamURL, track.StreamLowQualityURL),
@@ -4897,6 +4932,8 @@ func mediaKindFromPath(path string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac":
 		return "audio"
+	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi":
+		return "video"
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
 		return "image"
 	case ".txt", ".lrc", ".srt", ".vtt", ".ass":
@@ -5058,22 +5095,23 @@ func syncRemoteTrackTree(ctx context.Context, tx *sql.Tx, fileSourceID int64, wo
 				title = fmt.Sprintf("Track %d", index+1)
 			}
 			path := joinRemotePath(basePath, title)
-			kind := remoteTrackKind(node.Type)
+			kind := remoteTrackKindForPath(node.Type, path)
 			fingerprint := fmt.Sprintf("remote:%d:%s:%s", fileSourceID, workCode, path)
 			var parent any
 			if parentID != nil {
 				parent = *parentID
 			}
 			duration := nullableSeconds(node.Duration)
+			hasAudio := remoteMediaHasAudio(kind)
 			var size any
 			if node.Size > 0 {
 				size = node.Size
 			}
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO media_item (work_id, parent_id, kind, title, track_no, duration_seconds, size_bytes, fingerprint)
-				SELECT ?, ?, ?, ?, ?, ?, ?, ?
+				INSERT INTO media_item (work_id, parent_id, kind, title, track_no, duration_seconds, has_audio, size_bytes, fingerprint)
+				SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
 				WHERE NOT EXISTS (SELECT 1 FROM media_item WHERE fingerprint = ?)
-			`, workID, parent, kind, title, index+1, duration, size, fingerprint, fingerprint); err != nil {
+			`, workID, parent, kind, title, index+1, duration, hasAudio, size, fingerprint, fingerprint); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `
@@ -5083,9 +5121,10 @@ func syncRemoteTrackTree(ctx context.Context, tx *sql.Tx, fileSourceID int64, wo
 					title = ?,
 					track_no = ?,
 					duration_seconds = ?,
+					has_audio = COALESCE(?, has_audio),
 					size_bytes = ?
 				WHERE fingerprint = ?
-			`, parent, kind, title, index+1, duration, size, fingerprint); err != nil {
+			`, parent, kind, title, index+1, duration, hasAudio, size, fingerprint); err != nil {
 				return err
 			}
 			itemID, err := selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ?", fingerprint)
@@ -5218,11 +5257,26 @@ func remoteTrackKind(value string) string {
 		return "folder"
 	case "audio":
 		return "audio"
-	case "text", "image":
+	case "text", "image", "video":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return "file"
 	}
+}
+
+func remoteTrackKindForPath(value string, path string) string {
+	kind := remoteTrackKind(value)
+	if kind != "file" {
+		return kind
+	}
+	return mediaKindFromPath(path)
+}
+
+func remoteMediaHasAudio(kind string) any {
+	if kind == "audio" {
+		return true
+	}
+	return nil
 }
 
 func joinRemotePath(basePath string, name string) string {
@@ -5282,6 +5336,8 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		DLsiteMetadataLanguage:  normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp")),
 		DirectoryRoutingRules:   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
 		RecommendationThreshold: s.settingInt(r, "recommendation_threshold", 50),
+		RecommendationConfig:    s.libraryStore.LoadRecommendationConfig(r.Context()),
+		RecommendationDefaults:  library.DefaultRecommendationConfig(),
 		DataRoot:                s.cfg.DataRoot,
 		CacheRoot:               s.cfg.CacheRoot,
 		FileSources:             sources,

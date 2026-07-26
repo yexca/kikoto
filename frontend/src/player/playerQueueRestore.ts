@@ -50,6 +50,7 @@ export async function revalidatePersistedQueue(
     if (locations.length === 0) return [];
     const updated = {
       ...track,
+      kind: mediaItem.kind === "video" ? "video" as const : "audio" as const,
       durationSeconds: mediaItem.durationSeconds ?? track.durationSeconds,
       sizeBytes: mediaItem.sizeBytes ?? track.sizeBytes,
       progress: newestMediaProgress(mediaItem.progress, track.progress),

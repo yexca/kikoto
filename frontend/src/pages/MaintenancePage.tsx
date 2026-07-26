@@ -11,11 +11,13 @@ import {
   PlayCircle,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Server,
   Settings2,
   Shield,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -34,6 +36,8 @@ import {
   type CacheOverview,
   type DirectoryRoutingRule,
   type FileSource,
+  type RecommendationConfig,
+  type RecommendationTelemetrySummary,
 } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
@@ -55,7 +59,7 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type MaintenanceTab = "overview" | "routing" | "local" | "remote" | "cache" | "metadata" | "users" | "system";
+type MaintenanceTab = "overview" | "routing" | "recommendation" | "local" | "remote" | "cache" | "metadata" | "users" | "system";
 
 export function MaintenancePage({
   canManageSources,
@@ -85,6 +89,8 @@ export function MaintenancePage({
   const [dlsiteMetadataLanguage, setDlsiteMetadataLanguage] = useState("ja-jp");
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>([]);
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
+  const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
+  const [recommendationTelemetry, setRecommendationTelemetry] = useState<RecommendationTelemetrySummary | null>(null);
   const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
@@ -115,6 +121,7 @@ export function MaintenancePage({
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
         setDirectoryRoutingRules(next.directoryRoutingRules ?? []);
         setRecommendationThreshold(next.recommendationThreshold ?? 50);
+        setRecommendationConfig(next.recommendationConfig);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
@@ -127,6 +134,11 @@ export function MaintenancePage({
     }
     void reload();
   }, [canManageSources]);
+
+  useEffect(() => {
+    if (activeTab !== "recommendation" || !canManageSources) return;
+    void api.getRecommendationTelemetry().then(setRecommendationTelemetry).catch(() => setRecommendationTelemetry(null));
+  }, [activeTab, canManageSources]);
 
   useEffect(() => {
     if (activeTab === "users" && !canManageUsers) setActiveTab("overview");
@@ -159,9 +171,11 @@ export function MaintenancePage({
       dlsiteMetadataLanguage,
       directoryRoutingRules,
       recommendationThreshold,
+      ...(recommendationConfig ? { recommendationConfig } : {}),
     });
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
+    setRecommendationConfig(next.recommendationConfig);
     setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
     toast.success("Settings saved.");
   };
@@ -257,6 +271,9 @@ export function MaintenancePage({
         <SettingsTabButton active={activeTab === "routing"} onClick={() => selectTab("routing")} icon={<PlayCircle className="h-4 w-4" />}>
           Routing
         </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "recommendation"} onClick={() => selectTab("recommendation")} icon={<Sparkles className="h-4 w-4" />}>
+          Recommendation
+        </SettingsTabButton>
         <SettingsTabButton active={activeTab === "local"} onClick={() => selectTab("local")} icon={<Folder className="h-4 w-4" />}>
           Library
         </SettingsTabButton>
@@ -311,9 +328,17 @@ export function MaintenancePage({
           localScanDepth={localScanDepth}
           pathsOpen={isPathsOpen}
           onScanDepthChange={setLocalScanDepth}
-          recommendationThreshold={recommendationThreshold}
-          onRecommendationThresholdChange={setRecommendationThreshold}
           onPathsOpenChange={setIsPathsOpen}
+          onSave={saveRuntimeSettings}
+        />
+      ) : activeTab === "recommendation" ? (
+        <RecommendationSettings
+          config={recommendationConfig}
+          defaults={settings?.recommendationDefaults ?? null}
+          threshold={recommendationThreshold}
+          telemetry={recommendationTelemetry}
+          onConfigChange={setRecommendationConfig}
+          onThresholdChange={setRecommendationThreshold}
           onSave={saveRuntimeSettings}
         />
       ) : activeTab === "remote" ? (
@@ -882,14 +907,203 @@ function MetadataSettings({
   );
 }
 
+type RecommendationConfigKey = keyof RecommendationConfig;
+
+const recommendationStateFields: Array<{ key: RecommendationConfigKey; label: string }> = [
+  { key: "nonePrior", label: "Unmarked" },
+  { key: "wantPrior", label: "Want" },
+  { key: "listeningPrior", label: "Listening" },
+  { key: "finishedPrior", label: "Finished" },
+  { key: "relistenPrior", label: "Relisten" },
+  { key: "pausedPrior", label: "Shelved" },
+];
+
+const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
+  { key: "tagWeight", label: "Tag weight", max: 50 },
+  { key: "tagCap", label: "Tag cap", max: 100 },
+  { key: "voiceWeight", label: "Voice weight", max: 50 },
+  { key: "voiceCap", label: "Voice cap", max: 100 },
+  { key: "circleWeight", label: "Circle weight", max: 50 },
+  { key: "circleCap", label: "Circle cap", max: 100 },
+  { key: "favoriteBonus", label: "Favorite bonus", max: 50 },
+];
+
+const recommendationNegativeFields: Array<{ key: RecommendationConfigKey; label: string; min?: number; max: number }> = [
+  { key: "negativeMinEvidence", label: "Minimum evidence", min: 1, max: 10 },
+  { key: "negativeTagWeight", label: "Tag weight", max: 50 },
+  { key: "negativeTagCap", label: "Tag cap", max: 100 },
+  { key: "negativeVoiceWeight", label: "Voice weight", max: 50 },
+  { key: "negativeVoiceCap", label: "Voice cap", max: 100 },
+  { key: "negativeCircleWeight", label: "Circle weight", max: 50 },
+  { key: "negativeCircleCap", label: "Circle cap", max: 100 },
+  { key: "negativeTotalCap", label: "Total cap", max: 100 },
+];
+
+function RecommendationSettings({
+  config,
+  defaults,
+  threshold,
+  telemetry,
+  onConfigChange,
+  onThresholdChange,
+  onSave,
+}: {
+  config: RecommendationConfig | null;
+  defaults: RecommendationConfig | null;
+  threshold: number;
+  telemetry: RecommendationTelemetrySummary | null;
+  onConfigChange: (value: RecommendationConfig) => void;
+  onThresholdChange: (value: number) => void;
+  onSave: () => Promise<void>;
+}) {
+  if (!config) return <SettingsPanelSkeleton />;
+
+  const updateField = (key: RecommendationConfigKey, value: number) => {
+    onConfigChange({ ...config, [key]: value });
+  };
+  const impressions = telemetry?.eventCounts.impression ?? 0;
+  const scoreBuckets = ["0-19", "20-39", "40-59", "60-79", "80-100"];
+
+  return (
+    <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              Recommendation tuning
+            </span>
+            <Button type="button" variant="outline" size="sm" disabled={!defaults} onClick={() => {
+              if (!defaults) return;
+              onConfigChange({ ...defaults });
+              onThresholdChange(50);
+            }}>
+              <RotateCcw className="h-4 w-4" />
+              Restore defaults
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <RecommendationNumberField label="Badge threshold" value={threshold} min={1} max={100} onChange={onThresholdChange} />
+            <RecommendationNumberField label="Seed jitter" value={config.jitterAmplitude} min={0} max={10} onChange={(value) => updateField("jitterAmplitude", value)} />
+          </div>
+
+          <RecommendationFieldGroup title="Listening state priors">
+            {recommendationStateFields.map((field) => (
+              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={-100} max={100} onChange={(value) => updateField(field.key, value)} />
+            ))}
+          </RecommendationFieldGroup>
+
+          <RecommendationFieldGroup title="Positive signals">
+            {recommendationPositiveFields.map((field) => (
+              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={0} max={field.max} onChange={(value) => updateField(field.key, value)} />
+            ))}
+          </RecommendationFieldGroup>
+
+          <RecommendationFieldGroup title="Shelved similarity penalty">
+            {recommendationNegativeFields.map((field) => (
+              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={field.min ?? 0} max={field.max} onChange={(value) => updateField(field.key, value)} />
+            ))}
+          </RecommendationFieldGroup>
+
+          <Button size="sm" onClick={() => void onSave()}>
+            <Save className="h-4 w-4" />
+            Save recommendation settings
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+              <Gauge className="h-4 w-4" />
+            </span>
+            Local telemetry
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <StatusPanel icon={<Sparkles className="h-4 w-4" />} label="Impressions" value={String(impressions)} />
+            <StatusPanel icon={<Folder className="h-4 w-4" />} label="Opened" value={String(telemetry?.eventCounts.open ?? 0)} />
+            <StatusPanel icon={<PlayCircle className="h-4 w-4" />} label="Played" value={String(telemetry?.eventCounts.play ?? 0)} />
+            <StatusPanel icon={<ArrowUp className="h-4 w-4" />} label="Positive marks" value={String(telemetry?.eventCounts.positive_mark ?? 0)} />
+            <StatusPanel icon={<ArrowDown className="h-4 w-4" />} label="Shelved marks" value={String(telemetry?.eventCounts.paused_mark ?? 0)} />
+            <StatusPanel icon={<RefreshCw className="h-4 w-4" />} label="Reshuffles" value={String(telemetry?.eventCounts.reshuffle ?? 0)} />
+          </div>
+          <div>
+            <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium">Impression scores</span>
+              <span className="text-muted-foreground">{telemetry ? `${telemetry.windowDays} days` : "Unavailable"}</span>
+            </div>
+            <div className="space-y-2">
+              {scoreBuckets.map((bucket) => {
+                const count = telemetry?.scoreBuckets[bucket] ?? 0;
+                const width = impressions > 0 ? Math.max(2, Math.round((count / impressions) * 100)) : 0;
+                return (
+                  <div key={bucket} className="grid grid-cols-[52px_minmax(0,1fr)_40px] items-center gap-3 text-xs">
+                    <span className="text-muted-foreground">{bucket}</span>
+                    <div className="h-2 overflow-hidden rounded-sm bg-muted">
+                      <div className="h-full bg-primary" style={{ width: `${width}%` }} />
+                    </div>
+                    <span className="text-right tabular-nums">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RecommendationFieldGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-t pt-5">
+      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+    </section>
+  );
+}
+
+function RecommendationNumberField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="grid gap-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <input
+        className="h-9 min-w-0 rounded-md border bg-card px-3 tabular-nums outline-none focus:ring-2 focus:ring-ring"
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
+  );
+}
+
 function LocalLibrarySettings({
   settings,
   localSource,
   localScanDepth,
   pathsOpen,
   onScanDepthChange,
-  recommendationThreshold,
-  onRecommendationThresholdChange,
   onPathsOpenChange,
   onSave,
 }: {
@@ -898,8 +1112,6 @@ function LocalLibrarySettings({
   localScanDepth: number;
   pathsOpen: boolean;
   onScanDepthChange: (value: number) => void;
-  recommendationThreshold: number;
-  onRecommendationThresholdChange: (value: number) => void;
   onPathsOpenChange: (value: boolean) => void;
   onSave: () => Promise<void>;
 }) {
@@ -937,10 +1149,6 @@ function LocalLibrarySettings({
               <Badge variant="outline">{localSource?.enabled ? "enabled" : "not scanned"}</Badge>
             </div>
           </div>
-          <label className="grid max-w-[220px] gap-1 text-sm">
-            <span className="font-medium">Recommendation badge threshold</span>
-            <input className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring" type="number" min={1} max={100} value={recommendationThreshold} onChange={(event) => onRecommendationThresholdChange(Number(event.target.value))} />
-          </label>
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
             Save local settings
@@ -1657,7 +1865,7 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
 function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
-  const tabs: MaintenanceTab[] = ["overview", "routing", "local", "remote", "cache", "metadata", "users", "system"];
+  const tabs: MaintenanceTab[] = ["overview", "routing", "recommendation", "local", "remote", "cache", "metadata", "users", "system"];
   if (value && tabs.includes(value as MaintenanceTab) && (value !== "users" || canManageUsers)) return value as MaintenanceTab;
   return "overview";
 }

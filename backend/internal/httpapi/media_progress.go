@@ -156,7 +156,7 @@ func (s *Server) workProgressSummary(ctx context.Context, userID int64, workID i
 		FROM media_item
 		INNER JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
 		WHERE media_item.work_id = ?
-			AND media_item.kind = 'audio'
+			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 			AND user_media_progress.user_id = ?
 		ORDER BY user_media_progress.last_played_at DESC, user_media_progress.updated_at DESC, media_item.id DESC
 		LIMIT 1
