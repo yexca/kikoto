@@ -1,9 +1,12 @@
 import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/api";
+import {
+  isWorkCollectionColumnCount,
+  type WorkCollectionColumnSetting,
+} from "../components/work-collection/workCollectionLayoutModel";
 
 export const localWorkPageSizeOptions = [24, 48] as const;
 export type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
-export const columnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
-export type LibraryColumnCount = (typeof columnOptions)[number];
+export type LibraryColumnSetting = WorkCollectionColumnSetting;
 export type LibraryViewMode = "grid" | "masonry";
 
 export type LibraryBrowseState = {
@@ -15,8 +18,8 @@ export type LibraryBrowseState = {
   direction: SortDirection;
   randomSeed: number;
   view: LibraryViewMode;
-  mobileColumns: LibraryColumnCount;
-  desktopColumns: LibraryColumnCount;
+  mobileColumns: LibraryColumnSetting;
+  desktopColumns: LibraryColumnSetting;
   scrollY: number;
 };
 
@@ -29,8 +32,8 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   direction: "desc",
   randomSeed: 1,
   view: "grid",
-  mobileColumns: 1,
-  desktopColumns: 5,
+  mobileColumns: "auto",
+  desktopColumns: "auto",
   scrollY: 0,
 };
 
@@ -67,8 +70,12 @@ export function libraryBrowseStateFromSearch(search: string, fallback: LibraryBr
       direction: params.has("direction") ? params.get("direction") : fallback.direction,
       randomSeed: params.has("seed") ? Number(params.get("seed")) : fallback.randomSeed,
       view: params.has("view") ? params.get("view") : fallback.view,
-      mobileColumns: params.has("mobileColumns") ? Number(params.get("mobileColumns")) : fallback.mobileColumns,
-      desktopColumns: params.has("desktopColumns") ? Number(params.get("desktopColumns")) : fallback.desktopColumns,
+      mobileColumns: params.has("mobileColumns")
+        ? parseColumnSearchValue(params.get("mobileColumns"))
+        : fallback.mobileColumns,
+      desktopColumns: params.has("desktopColumns")
+        ? parseColumnSearchValue(params.get("desktopColumns"))
+        : fallback.desktopColumns,
       scrollY: fallback.scrollY,
     },
     fallback,
@@ -81,8 +88,8 @@ export function libraryBrowseStateFromValue(
 ): LibraryBrowseState {
   const page = Number(value.page);
   const pageSize = Number(value.pageSize);
-  const mobileColumns = Number(value.mobileColumns);
-  const desktopColumns = Number(value.desktopColumns);
+  const mobileColumns = value.mobileColumns === "auto" ? "auto" : Number(value.mobileColumns);
+  const desktopColumns = value.desktopColumns === "auto" ? "auto" : Number(value.desktopColumns);
   const scrollY = Number(value.scrollY);
   const randomSeed = Number(value.randomSeed);
   const status =
@@ -105,12 +112,12 @@ export function libraryBrowseStateFromValue(
         ? Math.floor(randomSeed)
         : fallback.randomSeed,
     view: value.view === "grid" || value.view === "masonry" ? value.view : fallback.view,
-    mobileColumns: columnOptions.includes(mobileColumns as LibraryColumnCount)
-      ? (mobileColumns as LibraryColumnCount)
-      : fallback.mobileColumns,
-    desktopColumns: columnOptions.includes(desktopColumns as LibraryColumnCount)
-      ? (desktopColumns as LibraryColumnCount)
-      : fallback.desktopColumns,
+    mobileColumns:
+      mobileColumns === "auto" || isWorkCollectionColumnCount(mobileColumns) ? mobileColumns : fallback.mobileColumns,
+    desktopColumns:
+      desktopColumns === "auto" || isWorkCollectionColumnCount(desktopColumns)
+        ? desktopColumns
+        : fallback.desktopColumns,
     scrollY: Number.isFinite(scrollY) && scrollY >= 0 ? scrollY : fallback.scrollY,
   };
 }
@@ -141,4 +148,8 @@ export function withSharedLibraryQuery(state: LibraryBrowseState, query: string)
 
 export function localPageSize(value: number): LocalWorkPageSize {
   return value === 48 ? 48 : 24;
+}
+
+function parseColumnSearchValue(value: string | null) {
+  return value === "auto" ? "auto" : Number(value);
 }

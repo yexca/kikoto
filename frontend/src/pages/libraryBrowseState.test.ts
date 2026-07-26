@@ -12,7 +12,8 @@ describe("library browse state", () => {
   it("defaults new library views to recommendation ordering", () => {
     expect(defaultLibraryBrowseState.sort).toBe("recommend");
     expect(defaultLibraryBrowseState.direction).toBe("desc");
-    expect(defaultLibraryBrowseState.desktopColumns).toBe(5);
+    expect(defaultLibraryBrowseState.mobileColumns).toBe("auto");
+    expect(defaultLibraryBrowseState.desktopColumns).toBe("auto");
   });
 
   it("round-trips shareable URL fields without including scroll position", () => {
@@ -65,6 +66,17 @@ describe("library browse state", () => {
     expect(restored.pageSize).toBe(48);
     expect(restored.mobileColumns).toBe(3);
     expect(restored.desktopColumns).toBe(8);
+  });
+
+  it("round-trips automatic columns", () => {
+    const restored = libraryBrowseStateFromSearch(libraryBrowseSearch(defaultLibraryBrowseState), {
+      ...defaultLibraryBrowseState,
+      mobileColumns: 1,
+      desktopColumns: 5,
+    });
+
+    expect(restored.mobileColumns).toBe("auto");
+    expect(restored.desktopColumns).toBe("auto");
   });
 
   it("shares a changed query while retaining source-specific browse preferences", () => {

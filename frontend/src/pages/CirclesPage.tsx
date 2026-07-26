@@ -41,7 +41,6 @@ import {
   workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
-  type WorkCollectionColumnCount,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";

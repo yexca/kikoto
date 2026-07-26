@@ -1,22 +1,38 @@
 import { Columns3, LayoutGrid, PanelsTopLeft } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import {
+  isWorkCollectionColumnCount,
+  workCollectionColumnOptions,
+  type WorkCollectionColumnSetting,
+  type WorkCollectionViewMode,
+} from "@/components/work-collection/workCollectionLayoutModel";
 
-export const workCollectionColumnOptions = [1, 2, 3, 4, 5, 6, 7, 8] as const;
-export type WorkCollectionColumnCount = (typeof workCollectionColumnOptions)[number];
-export type WorkCollectionViewMode = "grid" | "masonry";
+export {
+  workCollectionClassName,
+  workCollectionColumnOptions,
+  workCollectionItemClassName,
+  workCollectionStyle,
+} from "@/components/work-collection/workCollectionLayoutModel";
+export type {
+  WorkCollectionColumnCount,
+  WorkCollectionColumnSetting,
+  WorkCollectionViewMode,
+} from "@/components/work-collection/workCollectionLayoutModel";
 
 const layoutStorageKey = "kikoto:work-collection-layout";
 const layoutChangeEvent = "kikoto:work-collection-layout-change";
 
 type StoredWorkCollectionLayout = {
   viewMode: WorkCollectionViewMode;
-  mobileColumns: WorkCollectionColumnCount;
-  desktopColumns: WorkCollectionColumnCount;
+  mobileColumns: WorkCollectionColumnSetting;
+  desktopColumns: WorkCollectionColumnSetting;
 };
 
-export function useWorkCollectionLayout(initial: StoredWorkCollectionLayout = { viewMode: "grid", mobileColumns: 2, desktopColumns: 5 }) {
+export function useWorkCollectionLayout(
+  initial: StoredWorkCollectionLayout = { viewMode: "grid", mobileColumns: "auto", desktopColumns: "auto" },
+) {
   const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
   useEffect(() => {
     const sync = () => setLayout(readStoredLayout(initial));
@@ -38,8 +54,8 @@ export function useWorkCollectionLayout(initial: StoredWorkCollectionLayout = { 
   return {
     ...layout,
     setViewMode: (viewMode: WorkCollectionViewMode) => update({ viewMode }),
-    setMobileColumns: (mobileColumns: WorkCollectionColumnCount) => update({ mobileColumns }),
-    setDesktopColumns: (desktopColumns: WorkCollectionColumnCount) => update({ desktopColumns }),
+    setMobileColumns: (mobileColumns: WorkCollectionColumnSetting) => update({ mobileColumns }),
+    setDesktopColumns: (desktopColumns: WorkCollectionColumnSetting) => update({ desktopColumns }),
   };
 }
 
@@ -52,11 +68,11 @@ export function WorkCollectionLayoutPicker({
   onDesktopColumnsChange,
 }: {
   viewMode: WorkCollectionViewMode;
-  mobileColumns: WorkCollectionColumnCount;
-  desktopColumns: WorkCollectionColumnCount;
+  mobileColumns: WorkCollectionColumnSetting;
+  desktopColumns: WorkCollectionColumnSetting;
   onViewModeChange: (value: WorkCollectionViewMode) => void;
-  onMobileColumnsChange: (value: WorkCollectionColumnCount) => void;
-  onDesktopColumnsChange: (value: WorkCollectionColumnCount) => void;
+  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
   const [viewOpen, setViewOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -67,9 +83,11 @@ export function WorkCollectionLayoutPicker({
     setColumnsOpen(false);
   });
   const currentValue = isWide ? desktopColumns : mobileColumns;
-  const options = isWide ? workCollectionColumnOptions : ([1, 2] as const);
+  const options: readonly WorkCollectionColumnSetting[] = isWide
+    ? ["auto", ...workCollectionColumnOptions]
+    : ["auto", 1, 2];
   const ActiveViewIcon = viewMode === "masonry" ? PanelsTopLeft : LayoutGrid;
-  const setColumns = (value: WorkCollectionColumnCount) => {
+  const setColumns = (value: WorkCollectionColumnSetting) => {
     if (isWide) onDesktopColumnsChange(value);
     else onMobileColumnsChange(value);
     setColumnsOpen(false);
@@ -82,6 +100,7 @@ export function WorkCollectionLayoutPicker({
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-l-md text-muted-foreground hover:bg-muted hover:text-foreground"
           title={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
           aria-label={`View: ${viewMode === "masonry" ? "Masonry" : "Grid"}`}
+          type="button"
           onClick={() => {
             setViewOpen((current) => !current);
             setColumnsOpen(false);
@@ -91,8 +110,9 @@ export function WorkCollectionLayoutPicker({
         </button>
         <button
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground"
-          title={`Columns: ${currentValue}`}
-          aria-label={`Columns: ${currentValue}`}
+          title={`Columns: ${columnSettingLabel(currentValue)}`}
+          aria-label={`Columns: ${columnSettingLabel(currentValue)}`}
+          type="button"
           onClick={() => {
             setColumnsOpen((current) => !current);
             setViewOpen(false);
@@ -102,12 +122,13 @@ export function WorkCollectionLayoutPicker({
         </button>
       </div>
       <AnchoredPopover open={viewOpen} anchorRef={popoverRef} onOpenChange={setViewOpen} className="w-36 p-1 text-sm">
-        {([
+        {[
           { value: "grid" as const, label: "Grid", icon: LayoutGrid },
           { value: "masonry" as const, label: "Masonry", icon: PanelsTopLeft },
-        ]).map((option) => (
+        ].map((option) => (
           <button
             key={option.value}
+            type="button"
             className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted ${viewMode === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
             aria-pressed={viewMode === option.value}
             onClick={() => {
@@ -120,39 +141,28 @@ export function WorkCollectionLayoutPicker({
           </button>
         ))}
       </AnchoredPopover>
-      <AnchoredPopover open={columnsOpen} anchorRef={popoverRef} onOpenChange={setColumnsOpen} className="flex w-10 flex-col gap-1 p-1 text-sm">
+      <AnchoredPopover
+        open={columnsOpen}
+        anchorRef={popoverRef}
+        onOpenChange={setColumnsOpen}
+        className="flex w-16 flex-col gap-1 p-1 text-sm"
+      >
         {options.map((option) => (
           <button
             key={option}
+            type="button"
             className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
             aria-pressed={currentValue === option}
-            title={`${option} ${option === 1 ? "column" : "columns"}`}
-            aria-label={`${option} ${option === 1 ? "column" : "columns"}`}
+            title={columnOptionLabel(option)}
+            aria-label={columnOptionLabel(option)}
             onClick={() => setColumns(option)}
           >
-            {option}
+            {columnSettingLabel(option)}
           </button>
         ))}
       </AnchoredPopover>
     </div>
   );
-}
-
-export function workCollectionClassName(viewMode: WorkCollectionViewMode) {
-  return viewMode === "masonry"
-    ? "[column-count:var(--mobile-columns)] [column-gap:1rem] lg:[column-count:var(--desktop-columns)]"
-    : "grid gap-4 [grid-template-columns:repeat(var(--mobile-columns),minmax(0,1fr))] lg:[grid-template-columns:repeat(var(--desktop-columns),minmax(0,1fr))]";
-}
-
-export function workCollectionStyle(mobileColumns: WorkCollectionColumnCount, desktopColumns: WorkCollectionColumnCount) {
-  return {
-    "--mobile-columns": mobileColumns,
-    "--desktop-columns": desktopColumns,
-  } as CSSProperties;
-}
-
-export function workCollectionItemClassName(viewMode: WorkCollectionViewMode) {
-  return viewMode === "masonry" ? "mb-4 [break-inside:avoid]" : "";
 }
 
 function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>, onClose: () => void) {
@@ -184,15 +194,28 @@ function useIsWideLayout() {
   return wide;
 }
 
+function columnSettingLabel(setting: WorkCollectionColumnSetting) {
+  return setting === "auto" ? "Auto" : String(setting);
+}
+
+function columnOptionLabel(setting: WorkCollectionColumnSetting) {
+  if (setting === "auto") return "Automatic columns";
+  return `${setting} ${setting === 1 ? "column" : "columns"}`;
+}
+
 function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkCollectionLayout {
   try {
     const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? "{}") as Partial<StoredWorkCollectionLayout>;
     return {
       viewMode: value.viewMode === "masonry" ? "masonry" : value.viewMode === "grid" ? "grid" : fallback.viewMode,
-      mobileColumns: value.mobileColumns === 1 || value.mobileColumns === 2 ? value.mobileColumns : fallback.mobileColumns,
-      desktopColumns: workCollectionColumnOptions.includes(value.desktopColumns as WorkCollectionColumnCount)
-        ? value.desktopColumns as WorkCollectionColumnCount
-        : fallback.desktopColumns,
+      mobileColumns:
+        value.mobileColumns === "auto" || value.mobileColumns === 1 || value.mobileColumns === 2
+          ? value.mobileColumns
+          : fallback.mobileColumns,
+      desktopColumns:
+        value.desktopColumns === "auto" || isWorkCollectionColumnCount(value.desktopColumns)
+          ? value.desktopColumns
+          : fallback.desktopColumns,
     };
   } catch {
     return fallback;

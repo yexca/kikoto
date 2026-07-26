@@ -104,7 +104,7 @@ import {
   withSharedLibraryQuery,
   writeLibraryBrowseState,
   type LibraryBrowseState,
-  type LibraryColumnCount,
+  type LibraryColumnSetting,
   type LibraryViewMode,
   type LocalWorkPageSize,
 } from "@/pages/libraryBrowseState";
@@ -1569,8 +1569,8 @@ function RemoteSourcePanel({
   viewState: RemoteSourceViewState;
   searchClauses: SearchClause[];
 	viewMode: LibraryViewMode;
-	mobileColumns: LibraryColumnCount;
-	desktopColumns: LibraryColumnCount;
+	mobileColumns: LibraryColumnSetting;
+	desktopColumns: LibraryColumnSetting;
 	onClearSearch: () => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
@@ -2172,8 +2172,8 @@ function RemoteWorkGridSkeleton({
   desktopColumns,
 }: {
   viewMode: LibraryViewMode;
-  mobileColumns: LibraryColumnCount;
-  desktopColumns: LibraryColumnCount;
+  mobileColumns: LibraryColumnSetting;
+  desktopColumns: LibraryColumnSetting;
 }) {
   return (
     <section

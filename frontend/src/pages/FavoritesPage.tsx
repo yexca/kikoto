@@ -49,7 +49,7 @@ import {
   workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
-  type WorkCollectionColumnCount,
+  type WorkCollectionColumnSetting,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
@@ -919,7 +919,7 @@ function FavoriteListTabSkeletons() {
   );
 }
 
-function FavoriteWorkGridSkeleton({ viewMode, mobileColumns, desktopColumns }: { viewMode: WorkCollectionViewMode; mobileColumns: WorkCollectionColumnCount; desktopColumns: WorkCollectionColumnCount }) {
+function FavoriteWorkGridSkeleton({ viewMode, mobileColumns, desktopColumns }: { viewMode: WorkCollectionViewMode; mobileColumns: WorkCollectionColumnSetting; desktopColumns: WorkCollectionColumnSetting }) {
   return (
     <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
       {Array.from({ length: 12 }, (_, index) => (
