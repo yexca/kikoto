@@ -30,6 +30,7 @@ async function mockCacheSettings(
   onCleanup: (payload: unknown) => void,
   onSettings: (payload: Record<string, unknown>) => void = () => undefined,
   onHealthCheck: () => void = () => undefined,
+  onSourceUpdate: (payload: Record<string, unknown>) => void = () => undefined,
 ) {
   let currentSettings = {
     localScanDepth: 4,
@@ -123,6 +124,21 @@ async function mockCacheSettings(
       await route.fulfill({ json: { healthy: true, healthStatus: source.healthStatus, lastCheckedAt: source.lastCheckedAt, elapsedMs: 24 } });
       return;
     }
+    if (url.pathname === "/api/file-sources/8" && route.request().method() === "PATCH") {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      onSourceUpdate(payload);
+      const source = {
+        ...currentSettings.fileSources[1],
+        ...payload,
+        config: {
+          ...currentSettings.fileSources[1].config,
+          ...(payload.config as Record<string, unknown>),
+        },
+      };
+      currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
+      await route.fulfill({ json: source });
+      return;
+    }
     if (url.pathname === "/api/users") {
       await route.fulfill({ json: [{ id: 1, username: "admin", displayName: "Admin", role: "admin", enabled: true, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }] });
       return;
@@ -180,7 +196,8 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await page.goto("/maintenance?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "768px");
+  await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
+  await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
   const cacheSections = await page
     .getByText(/^(Configuration|Managed media cache)$/)
     .allTextContents();
@@ -238,7 +255,14 @@ test("personal settings stay separate from administrator maintenance", async ({ 
 
 test("maintenance combines library sources and exposes read-only paths with health checks", async ({ page }) => {
   let healthChecks = 0;
-  await mockCacheSettings(page, () => undefined, () => undefined, () => { healthChecks += 1; });
+  const sourceUpdates: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    () => undefined,
+    () => { healthChecks += 1; },
+    (payload) => sourceUpdates.push(payload),
+  );
   await page.goto("/maintenance?tab=library");
 
   await expect(page.getByText("Local library", { exact: true })).toBeVisible();
@@ -252,11 +276,24 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect.poll(() => healthChecks).toBe(1);
   await expect(page.getByText("healthy", { exact: true })).toBeVisible();
 
+  const sourceCacheSwitch = page.getByRole("switch", { name: "Cache Example Remote", exact: true });
+  await expect(sourceCacheSwitch).toHaveAttribute("aria-checked", "false");
+  await sourceCacheSwitch.click();
+  await expect.poll(() => sourceUpdates.length).toBe(1);
+  expect(sourceUpdates[0]?.config).toEqual(expect.objectContaining({ cacheEnabled: true }));
+  await expect(sourceCacheSwitch).toHaveAttribute("aria-checked", "true");
+
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ01234567");
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
   await sourceDialog.getByRole("button", { name: "Close source modal" }).click();
+
+  await page.getByRole("button", { name: "Delete source", exact: true }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete remote source" });
+  await expect(deleteDialog.getByText("Example Remote", { exact: true })).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(deleteDialog).toBeHidden();
 
   await page.getByRole("button", { name: "Paths", exact: true }).click();
   await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();

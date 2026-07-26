@@ -63,18 +63,8 @@ const emptyRemoteSource = {
 
 type MaintenanceTab = "overview" | "routing" | "recommendation" | "library" | "cache" | "metadata" | "users" | "paths";
 
-function maintenancePanelWidthClass(tab: MaintenanceTab) {
-  switch (tab) {
-    case "routing":
-      return "max-w-4xl";
-    case "recommendation":
-    case "paths":
-      return "max-w-5xl";
-    case "metadata":
-      return "max-w-3xl";
-    default:
-      return "";
-  }
+function maintenanceContentWidthClass(tab: MaintenanceTab) {
+  return tab === "overview" || tab === "users" ? "w-full" : "w-full max-w-4xl";
 }
 
 export function MaintenancePage({
@@ -111,6 +101,9 @@ export function MaintenancePage({
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
   const [checkingSourceId, setCheckingSourceId] = useState<number | null>(null);
+  const [updatingSourceId, setUpdatingSourceId] = useState<number | null>(null);
+  const [sourcePendingDelete, setSourcePendingDelete] = useState<FileSource | null>(null);
+  const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -226,11 +219,52 @@ export function MaintenancePage({
     toast.success("Source saved.");
   };
 
-  const deleteSource = async (id: number) => {
+  const updateSourceCache = async (source: FileSource, cacheEnabled: boolean) => {
     if (readOnly) return;
-    await api.deleteFileSource(id);
-    await reload();
-    toast.success("Source deleted.");
+    setUpdatingSourceId(source.id);
+    try {
+      const updated = await api.updateFileSource(source.id, {
+        displayName: source.displayName,
+        sourceType: source.sourceType,
+        priority: source.priority,
+        enabled: source.enabled,
+        config: { ...source.config, cacheEnabled },
+        endpoint: source.endpoint,
+      });
+      setSettings((current) => current ? {
+        ...current,
+        fileSources: current.fileSources.map((candidate) => candidate.id === updated.id ? updated : candidate),
+      } : current);
+      toast.success(cacheEnabled ? "Source cache enabled." : "Source cache disabled.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Source cache setting could not be saved."));
+    } finally {
+      setUpdatingSourceId(null);
+    }
+  };
+
+  const requestDeleteSource = (source: FileSource) => {
+    if (readOnly) return;
+    setSourcePendingDelete(source);
+  };
+
+  const deleteSource = async () => {
+    if (readOnly || !sourcePendingDelete) return;
+    const source = sourcePendingDelete;
+    setDeletingSourceId(source.id);
+    try {
+      await api.deleteFileSource(source.id);
+      setSettings((current) => current ? {
+        ...current,
+        fileSources: current.fileSources.filter((candidate) => candidate.id !== source.id),
+      } : current);
+      setSourcePendingDelete(null);
+      toast.success("Source deleted.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Source could not be deleted."));
+    } finally {
+      setDeletingSourceId(null);
+    }
   };
 
   const checkSourceHealth = async (id: number) => {
@@ -305,14 +339,14 @@ export function MaintenancePage({
         </SettingsTabButton>
       </div>
 
-      <fieldset disabled={readOnly} className="min-w-0 border-0 p-0">
+      <fieldset data-testid="maintenance-content" disabled={readOnly} className={`min-w-0 border-0 p-0 ${maintenanceContentWidthClass(activeTab)}`}>
       {isSettingsLoading ? (
         activeTab === "overview" ? (
           <SettingsOverviewSkeleton />
         ) : activeTab === "library" ? (
           <RemoteSourcesSettingsSkeleton />
         ) : (
-          <SettingsPanelSkeleton className={maintenancePanelWidthClass(activeTab)} />
+          <SettingsPanelSkeleton />
         )
       ) : activeTab === "overview" ? (
         <SettingsOverview
@@ -342,10 +376,12 @@ export function MaintenancePage({
           <RemoteSourcesSettings
             remoteSources={remoteSources}
             checkingSourceId={checkingSourceId}
+            updatingSourceId={updatingSourceId}
             onCreateSource={openCreateSource}
             onEditSource={openEditSource}
-            onDeleteSource={deleteSource}
+            onDeleteSource={requestDeleteSource}
             onCheckSource={checkSourceHealth}
+            onCacheEnabledChange={updateSourceCache}
           />
         </div>
       ) : activeTab === "recommendation" ? (
@@ -397,6 +433,14 @@ export function MaintenancePage({
           onChange={setDraftSource}
           onSave={saveSource}
           onClose={closeSourceModal}
+        />
+      )}
+      {sourcePendingDelete && (
+        <SourceDeleteDialog
+          source={sourcePendingDelete}
+          deleting={deletingSourceId === sourcePendingDelete.id}
+          onConfirm={deleteSource}
+          onClose={() => setSourcePendingDelete(null)}
         />
       )}
     </div>
@@ -582,7 +626,7 @@ function PlaybackSettings({
   }, [draggedRuleId]);
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
@@ -788,9 +832,9 @@ function SettingsOverviewSkeleton() {
   );
 }
 
-function SettingsPanelSkeleton({ className = "" }: { className?: string }) {
+function SettingsPanelSkeleton() {
   return (
-    <Card className={`overflow-hidden ${className}`}>
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
@@ -821,55 +865,38 @@ function SettingsPanelSkeleton({ className = "" }: { className?: string }) {
 
 function RemoteSourcesSettingsSkeleton() {
   return (
-    <div className="space-y-4">
-      <section className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card className="overflow-hidden">
+      <CardHeader className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <SettingsSkeletonLine className="h-5 w-36" />
             <SettingsSkeletonLine className="h-4 w-72 max-w-full" />
           </div>
-          <SettingsSkeletonLine className="h-9 w-28 rounded-md" />
+          <SettingsSkeletonLine className="h-8 w-28 rounded-md" />
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="flex gap-2">
+          <SettingsSkeletonLine className="h-5 w-24 rounded-full" />
+          <SettingsSkeletonLine className="h-5 w-20 rounded-full" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]">
           {Array.from({ length: 3 }, (_, index) => (
-            <div key={index} className="flex items-center gap-3 rounded-lg border bg-background p-3">
-              <SettingsSkeletonLine className="h-9 w-9 rounded-md" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <SettingsSkeletonLine className="h-3 w-20" />
-                <SettingsSkeletonLine className="h-4 w-16" />
+            <div key={index} className="space-y-3 rounded-lg border bg-background p-3">
+              <div className="flex items-center justify-between gap-3">
+                <SettingsSkeletonLine className="h-4 w-32" />
+                <div className="flex gap-1">
+                  <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
+                  <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
+                </div>
               </div>
+              <SettingsSkeletonLine className="h-8 w-full rounded-md" />
+              <SettingsSkeletonLine className="h-9 w-full rounded-md" />
             </div>
           ))}
         </div>
-      </section>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Card key={index} className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-start justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2">
-                  <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
-                  <SettingsSkeletonLine className="h-5 w-40" />
-                </span>
-                <SettingsSkeletonLine className="h-5 w-16 rounded-full" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-2 sm:grid-cols-3">
-                <SettingsSkeletonLine className="h-14 w-full" />
-                <SettingsSkeletonLine className="h-14 w-full" />
-                <SettingsSkeletonLine className="h-14 w-full" />
-              </div>
-              <SettingsSkeletonLine className="h-14 w-full" />
-              <div className="flex gap-2">
-                <SettingsSkeletonLine className="h-9 flex-1 rounded-md" />
-                <SettingsSkeletonLine className="h-9 w-9 rounded-md" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -887,7 +914,7 @@ function MetadataSettings({
   onSave: () => Promise<void>;
 }) {
   return (
-    <Card className="max-w-3xl overflow-hidden">
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
@@ -1002,7 +1029,7 @@ function RecommendationSettings({
   onThresholdChange: (value: number) => void;
   onSave: () => Promise<void>;
 }) {
-  if (!config) return <SettingsPanelSkeleton className="max-w-5xl" />;
+  if (!config) return <SettingsPanelSkeleton />;
 
   const updateField = (key: RecommendationConfigKey, value: number) => {
     onConfigChange({ ...config, [key]: value });
@@ -1020,7 +1047,7 @@ function RecommendationSettings({
   ));
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center justify-between gap-3">
@@ -1233,7 +1260,7 @@ function LocalLibrarySettings({
   onSave: () => Promise<void>;
 }) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1275,88 +1302,125 @@ function LocalLibrarySettings({
 function RemoteSourcesSettings({
   remoteSources,
   checkingSourceId,
+  updatingSourceId,
   onCreateSource,
   onEditSource,
   onDeleteSource,
   onCheckSource,
+  onCacheEnabledChange,
 }: {
   remoteSources: FileSource[];
   checkingSourceId: number | null;
+  updatingSourceId: number | null;
   onCreateSource: () => void;
   onEditSource: (source: FileSource) => void;
-  onDeleteSource: (id: number) => Promise<void>;
+  onDeleteSource: (source: FileSource) => void;
   onCheckSource: (id: number) => Promise<void>;
+  onCacheEnabledChange: (source: FileSource, enabled: boolean) => Promise<void>;
 }) {
   const enabledSources = remoteSources.filter((source) => source.enabled).length;
   const attentionSources = remoteSources.filter(
     (source) => source.enabled && ["error", "unavailable"].includes(source.healthStatus),
   ).length;
   return (
-    <div className="space-y-4">
-      <section id="remote-sources" className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Remote sources</h2>
-            <p className="text-sm text-muted-foreground">Configure source endpoints without making them separate work libraries.</p>
+    <Card id="remote-sources" className="overflow-hidden">
+      <CardHeader className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                <Database className="h-4 w-4" />
+              </span>
+              Remote sources
+            </CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">Configure source endpoints without making them separate work libraries.</p>
           </div>
           <Button variant="outline" size="sm" onClick={onCreateSource}>
             <Plus className="h-4 w-4" />
             Add source
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <StatusPanel icon={<Cloud className="h-4 w-4" />} label="Configured" value={String(remoteSources.length)} />
-          <StatusPanel icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledSources)} />
-          <StatusPanel icon={<RefreshCw className="h-4 w-4" />} label="Needs attention" value={String(attentionSources)} />
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">{remoteSources.length} configured</Badge>
+          <Badge variant="outline">{enabledSources} enabled</Badge>
+          {attentionSources > 0 && <Badge variant="warning">{attentionSources} need attention</Badge>}
         </div>
-      </section>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(17rem,1fr))]">
+          {remoteSources.map((source) => {
+            const endpoint = source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured";
+            const health = source.enabled ? source.healthStatus || "unknown" : "disabled";
+            const unhealthy = source.enabled && ["error", "unavailable"].includes(source.healthStatus);
+            return (
+              <article key={source.id} className="min-w-0 space-y-3 rounded-lg border bg-background p-3">
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0 pt-1">
+                    <div className="truncate text-sm font-semibold" title={source.displayName}>{source.displayName}</div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Configure" title="Configure" onClick={() => onEditSource(source)}>
+                      <Settings2 className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label="Delete source" title="Delete source" onClick={() => onDeleteSource(source)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        {remoteSources.map((source) => (
-          <Card key={source.id} className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-start justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                    <Database className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 truncate">{source.displayName}</span>
-                </span>
-                <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-2 sm:grid-cols-3">
-                <SourceFact label="Health" value={source.healthStatus} />
-                <SourceFact label="Priority" value={String(source.priority)} />
-                <SourceFact label="Cache" value={source.config.cacheEnabled ? "On" : "Off"} />
-              </div>
-              <div className="rounded-md border bg-background px-3 py-2">
-                <div className="text-xs font-medium text-muted-foreground">Endpoint</div>
-                <div className="mt-1 truncate text-sm">{source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured"}</div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => void onCheckSource(source.id)} disabled={!source.enabled || checkingSourceId !== null}>
-                  <RefreshCw className={`h-4 w-4 ${checkingSourceId === source.id ? "animate-spin" : ""}`} />
-                  {checkingSourceId === source.id ? "Checking" : "Check health"}
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => onEditSource(source)}>
-                  Configure
-                </Button>
-                <Button variant="outline" size="icon" aria-label="Delete source" onClick={() => void onDeleteSource(source.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {remoteSources.length === 0 && (
-          <Card>
-            <CardContent className="p-5 text-sm text-muted-foreground">No remote sources configured yet.</CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
+                <div className="flex items-center justify-between gap-3 border-y py-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Badge
+                      variant={source.enabled ? "outline" : "warning"}
+                      className={`max-w-28 truncate ${unhealthy ? "border-destructive/30 bg-destructive/10 text-destructive" : ""}`}
+                      title={health}
+                    >
+                      {health}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label="Check health"
+                      title="Check health"
+                      onClick={() => void onCheckSource(source.id)}
+                      disabled={!source.enabled || checkingSourceId !== null}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${checkingSourceId === source.id ? "animate-spin" : ""}`} />
+                    </Button>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-xs font-medium">
+                    Cache
+                    <Switch
+                      checked={source.config.cacheEnabled ?? false}
+                      onCheckedChange={(enabled) => void onCacheEnabledChange(source, enabled)}
+                      disabled={updatingSourceId !== null}
+                      aria-label={`Cache ${source.displayName}`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-medium text-muted-foreground">Endpoint</div>
+                    <div className="truncate text-xs" title={endpoint}>{endpoint}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] font-medium text-muted-foreground">Priority</div>
+                    <div className="text-xs font-semibold">{source.priority}</div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+          {remoteSources.length === 0 && (
+            <div className="rounded-lg border border-dashed bg-background px-4 py-6 text-center text-sm text-muted-foreground sm:col-span-full">
+              No remote sources configured yet.
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1472,7 +1536,7 @@ function CacheFetchSettings({
 
   return (
     <div className="space-y-4">
-      <Card className="max-w-3xl overflow-hidden" data-testid="cache-configuration-card">
+      <Card className="overflow-hidden" data-testid="cache-configuration-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
@@ -2027,9 +2091,65 @@ function SourceModal({
   );
 }
 
+function SourceDeleteDialog({
+  source,
+  deleting,
+  onConfirm,
+  onClose,
+}: {
+  source: FileSource;
+  deleting: boolean;
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deleting) onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleting, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-label="Delete remote source"
+      aria-modal="true"
+      onMouseDown={() => {
+        if (!deleting) onClose();
+      }}
+    >
+      <Card className="w-full max-w-md" onMouseDown={(event) => event.stopPropagation()}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
+              <Trash2 className="h-4 w-4" />
+            </span>
+            Delete remote source
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border bg-muted/25 px-3 py-3">
+            <div className="truncate text-sm font-semibold" title={source.displayName}>{source.displayName}</div>
+            <p className="mt-1 text-xs text-muted-foreground">This removes the source configuration. Managed media cache is not cleaned automatically.</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={deleting} onClick={onClose}>Cancel</Button>
+            <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void onConfirm()}>
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting..." : "Delete source"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function PathsSettings({ settings, remoteSources }: { settings: AppSettings | null; remoteSources: FileSource[] }) {
   return (
-    <Card className="max-w-5xl overflow-hidden">
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
@@ -2073,15 +2193,6 @@ function StatusPanel({ icon, label, value }: { icon: ReactNode; label: string; v
         <div className="text-xs text-muted-foreground">{label}</div>
         <div className="truncate text-sm font-semibold">{value || "Unknown"}</div>
       </div>
-    </div>
-  );
-}
-
-function SourceFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold">{value || "Unknown"}</div>
     </div>
   );
 }
