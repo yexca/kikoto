@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
@@ -89,17 +90,18 @@ func TestAuthMiddlewareDoesNotTreatDatabaseFailureAsAnonymous(t *testing.T) {
 	}
 }
 
-func TestUpdateCurrentUserChangesProfileAndPasswordAndKeepsCurrentSession(t *testing.T) {
+func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrentSession(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
 	if err := server.BootstrapRoot(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	createAccountManagedTestUser(t, server, "listener", "listener-password")
 	handler := server.Routes()
-	currentCookie := loginTestSession(t, handler, "root", "old-password")
-	otherCookie := loginTestSession(t, handler, "root", "old-password")
+	currentCookie := loginTestSession(t, handler, "listener", "listener-password")
+	otherCookie := loginTestSession(t, handler, "listener", "listener-password")
 
-	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Updated Root","currentPassword":"old-password","newPassword":"new-password"}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Updated Listener","currentPassword":"listener-password","newPassword":"new-password"}`))
 	request.AddCookie(currentCookie)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -113,7 +115,7 @@ func TestUpdateCurrentUserChangesProfileAndPasswordAndKeepsCurrentSession(t *tes
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.Authenticated || payload.User.DisplayName != "Updated Root" {
+	if !payload.Authenticated || payload.User.DisplayName != "Updated Listener" || payload.User.PasswordManagedBy != "account" {
 		t.Fatalf("update response = %#v", payload)
 	}
 
@@ -121,7 +123,7 @@ func TestUpdateCurrentUserChangesProfileAndPasswordAndKeepsCurrentSession(t *tes
 	if err := db.QueryRow(`SELECT password_hash FROM user_password_credential WHERE user_id = ?`, payload.User.ID).Scan(&passwordHash); err != nil {
 		t.Fatal(err)
 	}
-	if verifyPassword("old-password", passwordHash) || !verifyPassword("new-password", passwordHash) {
+	if verifyPassword("listener-password", passwordHash) || !verifyPassword("new-password", passwordHash) {
 		t.Fatal("password credential was not replaced")
 	}
 	var currentSessions, otherSessions int
@@ -139,7 +141,7 @@ func TestUpdateCurrentUserChangesProfileAndPasswordAndKeepsCurrentSession(t *tes
 	meRequest.AddCookie(currentCookie)
 	meResponse := httptest.NewRecorder()
 	handler.ServeHTTP(meResponse, meRequest)
-	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), "Updated Root") {
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), "Updated Listener") {
 		t.Fatalf("current session after update = %d, body = %s", meResponse.Code, meResponse.Body.String())
 	}
 	var profileAudits, passwordAudits int
@@ -160,8 +162,9 @@ func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T)
 	if err := server.BootstrapRoot(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	createAccountManagedTestUser(t, server, "listener", "listener-password")
 	handler := server.Routes()
-	cookie := loginTestSession(t, handler, "root", "old-password")
+	cookie := loginTestSession(t, handler, "listener", "listener-password")
 
 	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Should Roll Back","currentPassword":"wrong-password","newPassword":"new-password"}`))
 	request.AddCookie(cookie)
@@ -171,10 +174,10 @@ func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T)
 		t.Fatalf("wrong password status = %d, body = %s", response.Code, response.Body.String())
 	}
 	var displayName, passwordHash string
-	if err := db.QueryRow(`SELECT account.display_name, credential.password_hash FROM user_account AS account INNER JOIN user_password_credential AS credential ON credential.user_id = account.id WHERE account.username = 'root'`).Scan(&displayName, &passwordHash); err != nil {
+	if err := db.QueryRow(`SELECT account.display_name, credential.password_hash FROM user_account AS account INNER JOIN user_password_credential AS credential ON credential.user_id = account.id WHERE account.username = 'listener'`).Scan(&displayName, &passwordHash); err != nil {
 		t.Fatal(err)
 	}
-	if displayName != "root" || !verifyPassword("old-password", passwordHash) {
+	if displayName != "listener" || !verifyPassword("listener-password", passwordHash) {
 		t.Fatalf("failed update persisted display %q or changed password", displayName)
 	}
 	var sessionCount int
@@ -183,6 +186,52 @@ func TestUpdateCurrentUserRejectsWrongPasswordWithoutPartialUpdate(t *testing.T)
 	}
 	if sessionCount != 1 {
 		t.Fatalf("current session count = %d", sessionCount)
+	}
+}
+
+func TestUpdateCurrentUserRejectsEnvironmentManagedRootPassword(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "configured-root", RootPassword: "environment-password"})
+	if err := server.BootstrapRoot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Routes()
+	cookie := loginTestSession(t, handler, "configured-root", "environment-password")
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me", strings.NewReader(`{"displayName":"Should Not Persist","currentPassword":"environment-password","newPassword":"new-password"}`))
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "KIKOTO_ROOT_PASSWORD") {
+		t.Fatalf("root password update status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meRequest.AddCookie(cookie)
+	meResponse := httptest.NewRecorder()
+	handler.ServeHTTP(meResponse, meRequest)
+	if meResponse.Code != http.StatusOK || !strings.Contains(meResponse.Body.String(), `"passwordManagedBy":"environment"`) {
+		t.Fatalf("root account response = %d, body = %s", meResponse.Code, meResponse.Body.String())
+	}
+	var displayName string
+	if err := db.QueryRow("SELECT display_name FROM user_account WHERE username = 'configured-root'").Scan(&displayName); err != nil {
+		t.Fatal(err)
+	}
+	if displayName != "configured-root" {
+		t.Fatalf("rejected root update persisted display name %q", displayName)
+	}
+}
+
+func createAccountManagedTestUser(t *testing.T, server *Server, username string, password string) {
+	t.Helper()
+	root, err := server.accountStore.LoadByUsername(context.Background(), server.cfg.RootUsername)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.accountStore.CreateManagedUser(context.Background(), account.CreateUserInput{
+		Username: username, DisplayName: username, Role: "user", Password: password, Enabled: true, ActorUserID: root.ID,
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

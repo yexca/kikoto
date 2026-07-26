@@ -7,10 +7,21 @@ Kikoto is designed to run locally with Docker Compose.
 The production Compose file uses the published Docker Hub image and does not
 require the source tree or a local image build:
 
+Create a `.env` file beside `docker-compose.yml` with an explicit root
+password:
+
+```dotenv
+KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
+```
+
 ```sh
 docker compose pull
 docker compose up -d
 ```
+
+The production service uses `restart: unless-stopped`, so Docker restarts it
+after process failures and host or daemon restarts unless it was explicitly
+stopped.
 
 It defaults to `yexca/kikoto:latest`. Override `KIKOTO_IMAGE` to use a pinned
 release or GitHub Container Registry:

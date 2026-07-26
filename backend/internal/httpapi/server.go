@@ -273,7 +273,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-	payload := map[string]any{"authenticated": true, "user": session.User}
+	payload := map[string]any{"authenticated": true, "user": s.withPasswordManagement(session.User)}
 	if isMobileAuthRequest(r) {
 		payload["sessionToken"] = session.ID
 	}

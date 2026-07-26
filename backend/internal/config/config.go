@@ -47,6 +47,16 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	rootPassword := strings.TrimSpace(os.Getenv("KIKOTO_ROOT_PASSWORD"))
+	if rootPassword == "" {
+		if mode == ModeProduction {
+			return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD is required in production mode")
+		}
+		rootPassword = "change-me"
+	}
+	if mode == ModeProduction && rootPassword == "change-me" {
+		return Config{}, fmt.Errorf("KIKOTO_ROOT_PASSWORD must not use the default value in production mode")
+	}
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        env("KIKOTO_DB_PATH", "../config/kikoto.db"),
@@ -58,7 +68,7 @@ func Load() (Config, error) {
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),
 		RootUsername:        env("KIKOTO_ROOT_USERNAME", "root"),
-		RootPassword:        env("KIKOTO_ROOT_PASSWORD", "change-me"),
+		RootPassword:        rootPassword,
 		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
 	}, nil
 }

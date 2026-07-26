@@ -784,22 +784,29 @@ function DefinitionGroup({ label, action, children }: { label: string; action?: 
 }
 
 function DefinitionListItem({ definition, triggers, selected, onSelect }: { definition: WorkflowDefinition; triggers: WorkflowTrigger[]; selected: boolean; onSelect: (definition: WorkflowDefinition) => void }) {
-  const automationStatus = workflowDefinitionAutomationStatus(triggers);
+  const automationModes = workflowDefinitionAutomationModes(triggers);
   return (
     <button
       className={`w-full rounded-md border p-3 text-left transition-colors ${selected ? "border-primary bg-secondary" : "bg-card hover:bg-muted"}`}
       onClick={() => onSelect(definition)}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{definition.displayName}</div>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-sm font-semibold">{definition.displayName}</div>
           <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
         </div>
-        <Badge variant={automationStatus === "manual" ? "outline" : "secondary"} className="shrink-0 capitalize">{automationStatus}</Badge>
+        {definition.scope === "system" && <Badge variant="outline" className="shrink-0">Built-in</Badge>}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
-        <span>{definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}</span>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
+          <span>{definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap justify-end gap-1">
+          {automationModes.map((mode) => (
+            <Badge key={mode} variant={mode === "manual" ? "outline" : "secondary"} className="capitalize">{mode}</Badge>
+          ))}
+        </div>
       </div>
     </button>
   );
@@ -1057,7 +1064,9 @@ function WorkflowDetail({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{definition.displayName}</h3>
-              <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
+              <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>
+                {definition.scope === "system" ? "Built-in" : "Custom"}
+              </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -1221,8 +1230,9 @@ function RemotePopularRunPanel({
 
   const canSubmit = allowed && sourceId > 0 && tagName.trim().length > 0 && (action !== "fetch" || canFetch);
   return (
-    <div className="rounded-md border bg-background p-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.7fr)]">
+    <section className="border-y py-4">
+      <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
           <label className="grid gap-2 text-sm font-medium">
             Remote source
@@ -1263,7 +1273,7 @@ function RemotePopularRunPanel({
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-col justify-between gap-4 border-t pt-4 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+        <div className="grid min-w-0 gap-4 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
           <label className="grid gap-2 text-sm font-medium">
             <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Tag className="h-3.5 w-3.5" />
@@ -1279,13 +1289,13 @@ function RemotePopularRunPanel({
               }}
             />
           </label>
-          <Button disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagName: tagName.trim() })}>
+          <Button className="sm:min-w-40 2xl:w-full" disabled={running || !canSubmit} onClick={() => void onRun({ sourceId, action, limit, tagName: tagName.trim() })}>
             <Play className="h-4 w-4" />
             {running ? "Queueing" : "Run collection"}
           </Button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1317,8 +1327,9 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
   }, [generatedTag, tagCustomized]);
 
   return (
-    <div className="rounded-md border bg-background p-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(240px,0.7fr)]">
+    <section className="border-y py-4">
+      <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
           <div>
             <div className="text-sm font-medium">Ranking period</div>
@@ -1354,7 +1365,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
           )}
         </div>
 
-        <div className="flex min-w-0 flex-col justify-between gap-4 border-t pt-4 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+        <div className="grid min-w-0 gap-4 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end 2xl:grid-cols-1 2xl:items-stretch 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
           <div className="grid gap-2 text-sm font-medium">
             <span className="flex items-center justify-between gap-2">
               <label htmlFor="dlsite-popular-tag" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -1387,13 +1398,13 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
               }}
             />
           </div>
-          <Button disabled={running || !allowed || !tagName.trim()} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName: tagName.trim() })}>
+          <Button className="sm:min-w-40 2xl:w-full" disabled={running || !allowed || !tagName.trim()} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName: tagName.trim() })}>
             <Play className="h-4 w-4" />
             {running ? "Queueing" : "Run collection"}
           </Button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -2262,10 +2273,12 @@ function supportedAutomationTriggerTypes(definition: WorkflowDefinition): Automa
   return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
 }
 
-function workflowDefinitionAutomationStatus(triggers: WorkflowTrigger[]): "manual" | "startup" | "scheduled" {
-  if (triggers.some((trigger) => trigger.triggerType === "schedule")) return "scheduled";
-  if (triggers.some((trigger) => trigger.triggerType === "startup")) return "startup";
-  return "manual";
+function workflowDefinitionAutomationModes(triggers: WorkflowTrigger[]): Array<"manual" | "startup" | "schedule"> {
+  const enabledTriggers = triggers.filter((trigger) => trigger.enabled);
+  const modes: Array<"startup" | "schedule"> = [];
+  if (enabledTriggers.some((trigger) => trigger.triggerType === "startup")) modes.push("startup");
+  if (enabledTriggers.some((trigger) => trigger.triggerType === "schedule")) modes.push("schedule");
+  return modes.length > 0 ? modes : ["manual"];
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {

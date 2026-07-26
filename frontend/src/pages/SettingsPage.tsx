@@ -115,6 +115,7 @@ export function SettingsPage({
 
   const savedDisplayName = user.displayName || user.username;
   const normalizedDisplayName = displayName.trim() || user.username;
+  const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
 
   return (
     <div className="space-y-5">
@@ -175,7 +176,13 @@ export function SettingsPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form className="space-y-3" onSubmit={changePassword}>
+            {passwordManagedByEnvironment ? (
+              <div className="rounded-md border bg-muted/35 px-3 py-3 text-sm text-muted-foreground" role="status">
+                The root password is managed by <code className="font-mono text-foreground">KIKOTO_ROOT_PASSWORD</code>.
+                Update it in <code className="font-mono text-foreground">.env</code> and restart Kikoto.
+              </div>
+            ) : (
+              <form className="space-y-3" onSubmit={changePassword}>
               <PasswordField
                 id="current-password"
                 label="Current password"
@@ -217,7 +224,8 @@ export function SettingsPage({
                   Change password
                 </Button>
               </div>
-            </form>
+              </form>
+            )}
           </CardContent>
         </Card>
         <Card className="lg:col-span-2 xl:col-span-1">

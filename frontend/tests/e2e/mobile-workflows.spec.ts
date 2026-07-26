@@ -129,6 +129,8 @@ async function mockWorkflows(
             role: "super_admin",
             permissions: ["system:admin"],
             devMode: true,
+            demoMode: false,
+            passwordManagedBy: "account",
           },
         },
       });
@@ -193,6 +195,9 @@ test("definitions foreground runnable presets and configure DLsite popular colle
 
   await expect(page.getByText("Built-in workflows", { exact: true })).toBeVisible();
   await expect(page.getByText("Custom definitions", { exact: true })).toBeVisible();
+  const dlsiteDefinition = page.getByRole("button", { name: /Collect DLsite popular voice works/ });
+  await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toBeVisible();
+  await expect(dlsiteDefinition.getByText("manual", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Cache media/ })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
@@ -379,6 +384,30 @@ test("settings persists display mode and accent color together", async ({ page }
   await expect(page.getByRole("button", { name: "Green", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
+});
+
+test("settings identifies an environment-managed root password", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/auth/me", (route) => route.fulfill({
+    json: {
+      authenticated: true,
+      user: {
+        id: 1,
+        username: "configured-root",
+        displayName: "Configured Root",
+        role: "super_admin",
+        permissions: ["system:admin"],
+        devMode: false,
+        demoMode: false,
+        passwordManagedBy: "environment",
+      },
+    },
+  }));
+
+  await page.goto("/settings");
+  await expect(page.getByRole("status")).toContainText("KIKOTO_ROOT_PASSWORD");
+  await expect(page.getByLabel("Current password")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change password", exact: true })).toHaveCount(0);
 });
 
 test("demo settings and scheduled workflows expose read-only controls", async ({ page }) => {

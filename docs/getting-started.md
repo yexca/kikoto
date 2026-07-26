@@ -12,6 +12,12 @@
 Download `docker-compose.yml` into an empty directory, then pull and start the
 published Docker Hub image:
 
+Create a `.env` file in that directory before startup:
+
+```dotenv
+KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
+```
+
 ```sh
 docker compose pull
 docker compose up -d

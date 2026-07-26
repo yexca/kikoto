@@ -13,6 +13,12 @@ a browser-based audio player.
 Download `docker-compose.yml`, then run the production image directly from
 Docker Hub:
 
+Create a `.env` file beside the Compose file with a strong root password:
+
+```dotenv
+KIKOTO_ROOT_PASSWORD=replace-with-a-long-random-password
+```
+
 ```sh
 docker compose pull
 docker compose up -d

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"time"
 )
@@ -18,13 +19,14 @@ func NewStore(db *sql.DB) *Store {
 }
 
 type User struct {
-	ID          int64    `json:"id"`
-	Username    string   `json:"username"`
-	DisplayName string   `json:"displayName"`
-	Role        string   `json:"role"`
-	Permissions []string `json:"permissions"`
-	DevMode     bool     `json:"devMode"`
-	DemoMode    bool     `json:"demoMode"`
+	ID                int64    `json:"id"`
+	Username          string   `json:"username"`
+	DisplayName       string   `json:"displayName"`
+	Role              string   `json:"role"`
+	Permissions       []string `json:"permissions"`
+	DevMode           bool     `json:"devMode"`
+	DemoMode          bool     `json:"demoMode"`
+	PasswordManagedBy string   `json:"passwordManagedBy"`
 }
 
 type Session struct {
@@ -54,16 +56,27 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", username).Scan(&userID); err != nil {
 		return err
 	}
-	var hasCredential bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM user_password_credential WHERE user_id = ?)", userID).Scan(&hasCredential); err != nil {
-		return err
-	}
-	if !hasCredential {
+	var currentHash string
+	err = tx.QueryRowContext(ctx, "SELECT password_hash FROM user_password_credential WHERE user_id = ?", userID).Scan(&currentHash)
+	if errors.Is(err, sql.ErrNoRows) {
 		hash, err := HashPassword(password)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO user_password_credential (user_id, password_hash) VALUES (?, ?)`, userID, hash); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if !VerifyPassword(password, currentHash) {
+		hash, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE user_password_credential SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, hash, userID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID); err != nil {
 			return err
 		}
 	}

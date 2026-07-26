@@ -905,6 +905,7 @@ export type CurrentUser = {
   permissions: string[];
   devMode: boolean;
   demoMode: boolean;
+  passwordManagedBy: "environment" | "account";
 };
 
 export type ManagedUser = {

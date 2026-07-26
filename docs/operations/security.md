@@ -5,6 +5,11 @@
 Keep credentials and real source details outside the repository. Use local
 environment variables or mounted configuration files.
 
+Production startup requires an explicit non-default `KIKOTO_ROOT_PASSWORD`.
+The configured root password is environment-managed: changing the value and
+restarting Kikoto replaces the stored root credential and revokes old root
+sessions.
+
 Do not commit:
 
 - `.env` files with real values.

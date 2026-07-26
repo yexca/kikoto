@@ -51,16 +51,30 @@ func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (c
 		}
 		user.DevMode = s.cfg.IsDevelopment()
 		user.DemoMode = s.cfg.IsDemo()
-		return user, nil
+		return s.withPasswordManagement(user), nil
 	}
 	if sessionID := bearerSessionID(r); sessionID != "" {
-		return s.accountStore.UserForSession(ctx, sessionID, time.Now())
+		user, err := s.accountStore.UserForSession(ctx, sessionID, time.Now())
+		return s.withPasswordManagement(user), err
 	}
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return currentUser{}, sql.ErrNoRows
 	}
-	return s.accountStore.UserForSession(ctx, cookie.Value, time.Now())
+	user, err := s.accountStore.UserForSession(ctx, cookie.Value, time.Now())
+	return s.withPasswordManagement(user), err
+}
+
+func (s *Server) withPasswordManagement(user currentUser) currentUser {
+	user.PasswordManagedBy = "account"
+	rootUsername := strings.TrimSpace(s.cfg.RootUsername)
+	if rootUsername == "" {
+		rootUsername = "root"
+	}
+	if user.Username == rootUsername {
+		user.PasswordManagedBy = "environment"
+	}
+	return user
 }
 
 func bearerSessionID(r *http.Request) string {
@@ -168,6 +182,10 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if payload.NewPassword != "" {
+		if actor.PasswordManagedBy == "environment" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "root password is managed by KIKOTO_ROOT_PASSWORD"})
+			return
+		}
 		if payload.CurrentPassword == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "current password is required"})
 			return
@@ -191,5 +209,6 @@ func (s *Server) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 	updated.DevMode = actor.DevMode
 	updated.DemoMode = actor.DemoMode
+	updated = s.withPasswordManagement(updated)
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "user": updated})
 }

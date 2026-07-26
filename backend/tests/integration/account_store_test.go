@@ -42,7 +42,7 @@ func TestStoreManagesIdentityAndSessions(t *testing.T) {
 	}
 }
 
-func TestBootstrapRootDoesNotReplaceChangedPassword(t *testing.T) {
+func TestBootstrapRootSynchronizesEnvironmentPasswordAndRevokesSessions(t *testing.T) {
 	db := openMigratedTestDB(t, "account-root-password.db")
 	store := account.NewStore(db)
 	ctx := context.Background()
@@ -67,11 +67,14 @@ func TestBootstrapRootDoesNotReplaceChangedPassword(t *testing.T) {
 	if err := store.BootstrapRoot(ctx, "root", "replacement-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Authenticate(ctx, "root", "changed-password", time.Now()); err != nil {
-		t.Fatalf("changed password was not preserved: %v", err)
+	if _, err := store.Authenticate(ctx, "root", "changed-password", time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("changed database password error = %v, want sql.ErrNoRows", err)
 	}
-	if _, err := store.Authenticate(ctx, "root", "replacement-password", time.Now()); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("replacement bootstrap password error = %v, want sql.ErrNoRows", err)
+	if _, err := store.Authenticate(ctx, "root", "replacement-password", time.Now()); err != nil {
+		t.Fatalf("replacement environment password was not applied: %v", err)
+	}
+	if _, err := store.UserForSession(ctx, session.ID, time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("environment password synchronization left an old session active: %v", err)
 	}
 }
 

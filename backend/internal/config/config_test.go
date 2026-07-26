@@ -15,12 +15,26 @@ func TestEnvListNormalizesAndDeduplicatesOrigins(t *testing.T) {
 
 func TestLoadDefaultsToProductionMode(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "production-root-password")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.RuntimeMode() != ModeProduction {
 		t.Fatalf("mode = %q, want production", cfg.RuntimeMode())
+	}
+}
+
+func TestLoadRequiresExplicitProductionRootPassword(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "production")
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted a missing production root password")
+	}
+
+	t.Setenv("KIKOTO_ROOT_PASSWORD", "change-me")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted the default production root password")
 	}
 }
 
