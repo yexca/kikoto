@@ -21,6 +21,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
+import { CollectionPagination } from "@/components/collection/CollectionPagination";
+import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -47,10 +49,11 @@ import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, typ
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
 const TRANSLATION_CIRCLE_ID = "RG60289";
-const circlePageSizeOptions = [10, 20, 40];
+const circlePageSizeOptions = [24, 48, 96] as const;
 const catalogWorkPageSizeOptions = [24, 48] as const;
 type CatalogWorkPageSize = (typeof catalogWorkPageSizeOptions)[number];
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
@@ -62,6 +65,7 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Shelved" },
 ];
 type CircleFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "stale";
+const circleFilters: readonly CircleFilter[] = ["all", "favorite", "tagged", "available", "local", "remote", "missing", "stale"];
 type CircleRefreshScope = "all" | "catalog" | "work" | "source";
 type CircleRefreshResultScope = CircleRefreshScope | "metadata";
 type CircleRefreshMode = "incremental" | "full";
@@ -97,69 +101,94 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
 
 function CircleListPage() {
   const toast = useToast();
+  const initialBrowseState = useMemo(() => creatorBrowseStateFromSearch(
+    window.location.search,
+    { query: "", filter: "all" as CircleFilter, tag: "", page: 1, pageSize: 24 },
+    circleFilters,
+    circlePageSizeOptions,
+  ), []);
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<CircleFilter>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [mobileColumns, setMobileColumns] = useState<1 | 2 | 3>(1);
-  const [desktopColumns, setDesktopColumns] = useState<1 | 2 | 3>(2);
+  const [query, setQuery] = useState(initialBrowseState.query);
+  const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
+  const [filter, setFilter] = useState<CircleFilter>(initialBrowseState.filter);
+  const [page, setPage] = useState(initialBrowseState.page);
+  const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
+  const [total, setTotal] = useState(0);
+  const [catalogWorks, setCatalogWorks] = useState(0);
+  const [availableWorks, setAvailableWorks] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setRequestQuery(query), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
+    window.history.replaceState(window.history.state ?? {}, "", `/circles${search}`);
+  }, [filter, page, pageSize, query]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setIsLoading(true);
-    api.listCircles().then((items) => {
-      setCircles(items);
+    api.listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal }).then((result) => {
+      setCircles(result.circles);
+      setTotal(result.total);
+      setCatalogWorks(result.catalogWorks);
+      setAvailableWorks(result.availableWorks);
+      if (result.page !== page) setPage(result.page);
     }).catch((error) => {
+      if (controller.signal.aborted) return;
       setCircles([]);
       toast.notify(toastFromError(error, "Circle API is unavailable."));
-    }).finally(() => setIsLoading(false));
-  }, []);
-
-  const filteredCircles = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return circles.filter((circle) => {
-      const matchesQuery = !needle || [circle.externalId, circle.displayName, ...circle.aliases, ...circle.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle));
-      if (!matchesQuery) return false;
-      switch (filter) {
-      case "favorite":
-        return circle.favorite;
-      case "tagged":
-        return circle.userTags.length > 0;
-      case "available":
-        return circle.playableWorks > 0 || circle.localWorks > 0 || circle.remoteWorks > 0;
-      case "local":
-        return circle.localWorks > 0;
-      case "remote":
-        return circle.remoteWorks > 0;
-      case "missing":
-        return circle.missingWorks > 0;
-      case "stale":
-        return circle.syncState !== "fresh";
-      default:
-        return true;
-      }
+      setTotal(0);
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoading(false);
     });
-  }, [circles, filter, query]);
-  const totalPages = Math.max(1, Math.ceil(filteredCircles.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageCircles = filteredCircles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const totalCatalogWorks = filteredCircles.reduce((total, circle) => total + circle.catalogWorks, 0);
-  const totalPlayableWorks = filteredCircles.reduce((total, circle) => total + Math.max(circle.playableWorks, circle.localWorks + circle.remoteWorks), 0);
-  useEffect(() => {
-    setPage(1);
-  }, [filter, pageSize, query]);
+    return () => controller.abort();
+  }, [filter, page, pageSize, reloadToken, requestQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const paginationProps = {
+    page,
+    pageSize,
+    totalItems: total,
+    totalPages,
+    itemLabel: "circles",
+    ariaLabel: "Circle pages",
+    pageSizeOptions: circlePageSizeOptions,
+    onPageChange: setPage,
+    onPageSizeChange: (value: number) => {
+      setPage(1);
+      setPageSize(value);
+    },
+  };
+
+  const updateCircle = (next: CircleSummary) => {
+    setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item));
+    if (filter !== "all" || requestQuery.trim()) setReloadToken((value) => value + 1);
+  };
+
+  const toggleFavorite = async (circle: CircleSummary) => {
+    try {
+      updateCircle({ ...circle, ...await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite }) });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle favorite update failed."));
+    }
+  };
+
+  const saveTags = async (circle: CircleSummary, tags: string[]) => {
+    try {
+      const result = await api.setCircleUserTags(circle.externalId, tags);
+      updateCircle({ ...circle, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Circle tags update failed."));
+    }
+  };
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Local party index with personal favorites and tags</p>
-          <h2 className="text-xl font-semibold">Circles</h2>
-        </div>
-      </section>
-
-
       <section className="space-y-3">
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
@@ -187,48 +216,35 @@ function CircleListPage() {
               <option value="missing">Missing</option>
               <option value="stale">Needs refresh</option>
             </select>
-            <select
-              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              value={pageSize}
-              onChange={(event) => setPageSize(Number(event.target.value))}
-              aria-label="Circle page size"
-            >
-              {circlePageSizeOptions.map((value) => (
-                <option key={value} value={value}>{value} / page</option>
-              ))}
-            </select>
-            <EntityColumnPicker
-              mobileColumns={mobileColumns}
-              desktopColumns={desktopColumns}
-              mobileOptions={[1, 2, 3]}
-              desktopOptions={[1, 2, 3]}
-              onMobileChange={setMobileColumns}
-              onDesktopChange={setDesktopColumns}
-            />
-            <Button variant="outline" size="icon" aria-label="Previous page" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" aria-label="Next page" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {isLoading ? <EntityBadgeSkeleton /> : <Badge variant="secondary">{filteredCircles.length} circles</Badge>}
-          <Badge variant="outline">{totalCatalogWorks} catalog works</Badge>
-          <Badge variant="outline">{totalPlayableWorks} available works</Badge>
-          <span>Page {currentPage} / {totalPages}</span>
+        <CollectionPagination {...paginationProps} placement="top" />
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Circle totals">
+          <Badge variant="outline">{catalogWorks} catalog works</Badge>
+          <Badge variant="outline">{availableWorks} available works</Badge>
+          {isLoading && circles.length > 0 && <span>Refreshing...</span>}
         </div>
 
-        <div className={circleListGridClassName(mobileColumns, desktopColumns)}>
-          {isLoading ? (
-            <EntityCardSkeletonGrid count={Math.min(pageSize, 8)} />
-          ) : pageCircles.length > 0 ? (
-            pageCircles.map((circle) => (
-              <CircleCard
+        <div className={creatorCollectionClassName}>
+          {isLoading && circles.length === 0 ? (
+            Array.from({ length: Math.min(pageSize, 8) }, (_, index) => <CreatorCardSkeleton key={index} />)
+          ) : circles.length > 0 ? (
+            circles.map((circle) => (
+              <CreatorCard
                 key={circle.externalId}
-                circle={circle}
-                onChange={(next) => setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item))}
+                name={circle.displayName}
+                identityLabel={circle.externalId}
+                aliases={circle.aliases}
+                latestWork={circle.latestWork}
+                favorite={circle.favorite}
+                userTags={circle.userTags}
+                syncState={circle.syncState}
+                workCount={circle.catalogWorks}
+                unavailableCount={circle.missingWorks}
+                sources={circle.sourceSummaries}
+                onOpen={() => openCircleRoute(circle.externalId)}
+                onFavoriteToggle={() => void toggleFavorite(circle)}
+                onTagsSave={(tags) => saveTags(circle, tags)}
               />
             ))
           ) : (
@@ -237,129 +253,11 @@ function CircleListPage() {
             </Card>
           )}
         </div>
+        <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
     </div>
   );
 }
-
-function EntitySkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function EntityBadgeSkeleton() {
-  return <EntitySkeletonLine className="h-5 w-24 rounded-full" />;
-}
-
-function EntityCardSkeletonGrid({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <Card key={index}>
-          <CardContent className="space-y-3 p-3">
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <EntitySkeletonLine className="h-5 w-20 rounded-full" />
-                  <EntitySkeletonLine className="h-5 w-16 rounded-full" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <EntitySkeletonLine className="h-5 w-40" />
-                  <EntitySkeletonLine className="h-3 w-24" />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                <EntitySkeletonLine className="h-4 w-16" />
-                <EntitySkeletonLine className="h-4 w-20" />
-                <EntitySkeletonLine className="h-4 w-14" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-              <div className="flex gap-1">
-                <EntitySkeletonLine className="h-6 w-16 rounded-full" />
-                <EntitySkeletonLine className="h-6 w-20 rounded-full" />
-              </div>
-              <EntitySkeletonLine className="h-4 w-44" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </>
-  );
-}
-
-function CircleCard({ circle, onChange }: { circle: CircleSummary; onChange: (circle: CircleSummary) => void }) {
-  const toast = useToast();
-  const availableWorks = Math.max(circle.playableWorks, circle.localWorks + circle.remoteWorks);
-  const toggleFavorite = async () => {
-    try {
-      const next = await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite });
-      onChange({ ...circle, ...next });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Circle favorite update failed."));
-    }
-  };
-  const saveTags = async (tags: string[]) => {
-    try {
-      const result = await api.setCircleUserTags(circle.externalId, tags);
-      onChange({ ...circle, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Circle tags update failed."));
-    }
-  };
-  return (
-    <Card className="transition-colors hover:border-primary/50">
-      <CardContent className="space-y-2 p-3">
-        <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{circle.externalId}</Badge>
-              <SyncBadge state={circle.syncState} />
-              {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
-            </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2">
-              <h3 className="truncate text-base font-semibold">{circle.displayName}</h3>
-              <span className="shrink-0 text-xs text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</span>
-            </div>
-          </div>
-          </button>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-muted-foreground lg:justify-end">
-            <span>{circle.catalogWorks} works</span>
-            <span>{availableWorks} available</span>
-            {circle.missingWorks > 0 && <Badge variant="warning">{circle.missingWorks} missing</Badge>}
-            <Button
-              variant={circle.favorite ? "default" : "outline"}
-              size="icon"
-              className="h-8 w-8"
-              aria-label={circle.favorite ? "Remove favorite" : "Add favorite"}
-              title={circle.favorite ? "Remove favorite" : "Add favorite"}
-              onClick={(event) => {
-                event.stopPropagation();
-                void toggleFavorite();
-              }}
-            >
-              <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-          <div className="flex min-h-6 flex-wrap gap-1">
-            {sourceTags(circle.sourceSummaries).map((source) => (
-              <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
-                {source.displayName}
-                {source.count > 0 ? ` ${source.count}` : ""}
-              </Badge>
-            ))}
-            {sourceTags(circle.sourceSummaries).length === 0 && <Badge variant="warning">Unavailable</Badge>}
-          </div>
-          <UserTagRow tags={circle.userTags} compact onSave={saveTags} className="justify-end" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -1276,7 +1174,7 @@ function circleCatalogNeedsMetadataRefresh(circle: CircleDetail) {
 }
 
 function SyncBadge({ state }: { state: string }) {
-  const label = state === "fresh" ? "fresh" : state === "stale" ? "needs refresh" : state === "excluded" ? "excluded" : "first pull";
+  const label = state === "fresh" ? "Synced" : state === "stale" ? "Needs refresh" : state === "excluded" ? "Excluded" : "Never synced";
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
 
@@ -1310,6 +1208,7 @@ function emptyCircleDetail(externalId: string): CircleDetail {
     syncState: "pending",
     autoRefresh: { status: "skipped", reason: "", mode: "" },
     sourceSummaries: [],
+    latestWork: null,
     works: [],
     series: [],
   };
@@ -1535,49 +1434,6 @@ function safeDecodePathSegment(value: string) {
   }
 }
 
-function EntityColumnPicker({
-  mobileColumns,
-  desktopColumns,
-  mobileOptions,
-  desktopOptions,
-  onMobileChange,
-  onDesktopChange,
-}: {
-  mobileColumns: number;
-  desktopColumns: number;
-  mobileOptions: number[];
-  desktopOptions: number[];
-  onMobileChange: (value: any) => void;
-  onDesktopChange: (value: any) => void;
-}) {
-  return (
-    <>
-      <div className="flex rounded-md border bg-background p-1 sm:hidden" aria-label="Mobile catalog columns">
-        {mobileOptions.map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${mobileColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onMobileChange(value)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-      <div className="hidden rounded-md border bg-background p-1 sm:flex" aria-label="Desktop catalog columns">
-        {desktopOptions.map((value) => (
-          <button
-            key={value}
-            className={`h-7 rounded px-2 text-xs font-medium ${desktopColumns === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            onClick={() => onDesktopChange(value)}
-          >
-            {value}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function CatalogWorkPagination({
   page,
   pageSize,
@@ -1657,10 +1513,4 @@ function CatalogWorkPagination({
       </div>
     </div>
   );
-}
-
-function circleListGridClassName(mobileColumns: 1 | 2 | 3, desktopColumns: 1 | 2 | 3) {
-  const mobileClass = mobileColumns === 1 ? "grid-cols-1" : mobileColumns === 2 ? "grid-cols-2" : "grid-cols-3";
-  const desktopClass = desktopColumns === 1 ? "sm:grid-cols-1" : desktopColumns === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3";
-  return `grid gap-2 ${mobileClass} ${desktopClass}`;
 }

@@ -6,6 +6,8 @@ Voice pages present persisted person and credit data.
 
 - Lists voice actors from local provider credits and user-maintained person
   data.
+- Uses server-paged, URL-backed list search and filters with responsive creator
+  cards, Library-style pagination, and the latest known credited-work cover.
 - Shows favorite, rating, note, and user tag state.
 - Supports alias review, duplicate merge, and merge undo.
 - Groups works with no provider voice credits under an `unknown` bucket.

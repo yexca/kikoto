@@ -41,6 +41,16 @@ type circleSummary struct {
 	SyncState       string             `json:"syncState"`
 	AutoRefresh     circleAutoRefresh  `json:"autoRefresh"`
 	SourceSummaries []circleSourceStat `json:"sourceSummaries"`
+	LatestWork      *creatorLatestWork `json:"latestWork"`
+}
+
+type circleSummaryPage struct {
+	Circles        []circleSummary `json:"circles"`
+	Page           int             `json:"page"`
+	PageSize       int             `json:"pageSize"`
+	Total          int             `json:"total"`
+	CatalogWorks   int             `json:"catalogWorks"`
+	AvailableWorks int             `json:"availableWorks"`
 }
 
 type circleAutoRefresh struct {
@@ -117,7 +127,34 @@ type circleRefreshRequest struct {
 
 func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
-	rows, err := s.db.QueryContext(r.Context(), `
+	items, err := s.loadCircleSummaries(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	items = filterCircleSummaries(items, strings.TrimSpace(r.URL.Query().Get("q")), strings.TrimSpace(r.URL.Query().Get("filter")))
+	catalogWorks := 0
+	availableWorks := 0
+	for _, item := range items {
+		catalogWorks += item.CatalogWorks
+		availableWorks += maxInt(item.PlayableWorks, item.LocalWorks+item.RemoteWorks)
+	}
+	pageSize := queryInt(r, "pageSize", 24)
+	page, start, end := creatorPageBounds(queryInt(r, "page", 1), pageSize, len(items))
+	pageItems := items[start:end]
+	for index := range pageItems {
+		if pageItems[index].LatestWork != nil {
+			pageItems[index].LatestWork.CoverURL = s.coverURL(pageItems[index].LatestWork.PrimaryCode)
+		}
+	}
+	writeJSON(w, http.StatusOK, circleSummaryPage{
+		Circles: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(items),
+		CatalogWorks: catalogWorks, AvailableWorks: availableWorks,
+	})
+}
+
+func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circleSummary, error) {
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			party.id,
 			external.external_id,
@@ -138,13 +175,10 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 			AND provider.code = 'dlsite'
 			AND external.id_type = 'maker_id'
 		ORDER BY party.display_name ASC
-		LIMIT 100
 	`, userID)
 	if err != nil {
-		writeError(w, err)
-		return
+		return nil, err
 	}
-	defer rows.Close()
 
 	items := []circleSummary{}
 	partyIDs := []int64{}
@@ -154,33 +188,44 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 		var favorite int
 		var lastSynced sql.NullString
 		if err := rows.Scan(&item.ID, &item.ExternalID, &item.DisplayName, &rating, &item.Note, &favorite, &lastSynced); err != nil {
-			writeError(w, err)
-			return
+			_ = rows.Close()
+			return nil, err
 		}
 		item.Rating = nullableIntPointer(rating)
 		item.Favorite = favorite != 0
-		tags, err := s.loadCircleUserTags(r.Context(), userID, item.ID)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		item.UserTags = tags
 		item.LastSyncedAt = nullableString(lastSynced)
 		item.Aliases = []string{}
+		item.UserTags = []voiceUserTag{}
 		item.SourceSummaries = []circleSourceStat{}
 		setDefaultCircleState(&item)
 		items = append(items, item)
 		partyIDs = append(partyIDs, item.ID)
 	}
 	if err := rows.Err(); err != nil {
-		writeError(w, err)
-		return
+		_ = rows.Close()
+		return nil, err
 	}
-	if err := s.fillCircleStatsBatch(r.Context(), items, partyIDs); err != nil {
-		writeError(w, err)
-		return
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, items)
+	if err := s.fillCircleStatsBatch(ctx, items, partyIDs); err != nil {
+		return nil, err
+	}
+	tagsByParty, err := s.loadCircleUserTagsBatch(ctx, userID, partyIDs)
+	if err != nil {
+		return nil, err
+	}
+	latestByParty, err := s.loadCircleLatestWorks(ctx, partyIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range items {
+		if tags := tagsByParty[items[index].ID]; tags != nil {
+			items[index].UserTags = tags
+		}
+		items[index].LatestWork = latestByParty[items[index].ID]
+	}
+	return items, nil
 }
 
 func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
@@ -744,6 +789,14 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 	if err := s.fillCircleStats(ctx, userID, &item); err != nil {
 		return circleSummary{}, err
 	}
+	latestByParty, err := s.loadCircleLatestWorks(ctx, []int64{item.ID})
+	if err != nil {
+		return circleSummary{}, err
+	}
+	item.LatestWork = latestByParty[item.ID]
+	if item.LatestWork != nil {
+		item.LatestWork.CoverURL = s.coverURL(item.LatestWork.PrimaryCode)
+	}
 	return item, nil
 }
 
@@ -847,8 +900,128 @@ func (s *Server) fillCircleStatsBatch(ctx context.Context, items []circleSummary
 		if items[index].LastSyncedAt != nil && items[index].CatalogWorks == 0 && !isTranslationUmbrellaCircle(items[index].ExternalID) {
 			items[index].SyncState = "stale"
 		}
+		if items[index].LocalWorks > 0 {
+			items[index].SourceSummaries = append(items[index].SourceSummaries, circleSourceStat{
+				Key: "local", DisplayName: "Local", Status: "available", Count: items[index].LocalWorks,
+			})
+		}
+		if items[index].RemoteWorks > 0 {
+			items[index].SourceSummaries = append(items[index].SourceSummaries, circleSourceStat{
+				Key: "remote", DisplayName: "Remote", Status: "available", Count: items[index].RemoteWorks,
+			})
+		}
 	}
 	return nil
+}
+
+func filterCircleSummaries(items []circleSummary, query string, filter string) []circleSummary {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	filtered := make([]circleSummary, 0, len(items))
+	for _, item := range items {
+		matchesQuery := needle == "" || strings.Contains(strings.ToLower(item.ExternalID), needle) || strings.Contains(strings.ToLower(item.DisplayName), needle)
+		if !matchesQuery {
+			for _, alias := range item.Aliases {
+				if strings.Contains(strings.ToLower(alias), needle) {
+					matchesQuery = true
+					break
+				}
+			}
+		}
+		if !matchesQuery {
+			for _, tag := range item.UserTags {
+				if strings.Contains(strings.ToLower(tag.Name), needle) {
+					matchesQuery = true
+					break
+				}
+			}
+		}
+		if !matchesQuery && item.LatestWork != nil {
+			matchesQuery = strings.Contains(strings.ToLower(item.LatestWork.PrimaryCode), needle) || strings.Contains(strings.ToLower(item.LatestWork.Title), needle)
+		}
+		if !matchesQuery {
+			continue
+		}
+		matchesFilter := true
+		switch strings.ToLower(strings.TrimSpace(filter)) {
+		case "favorite":
+			matchesFilter = item.Favorite
+		case "tagged":
+			matchesFilter = len(item.UserTags) > 0
+		case "available":
+			matchesFilter = item.PlayableWorks > 0 || item.LocalWorks > 0 || item.RemoteWorks > 0
+		case "local":
+			matchesFilter = item.LocalWorks > 0
+		case "remote":
+			matchesFilter = item.RemoteWorks > 0
+		case "missing":
+			matchesFilter = item.MissingWorks > 0
+		case "stale":
+			matchesFilter = item.SyncState != "fresh"
+		}
+		if matchesFilter {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (map[int64]*creatorLatestWork, error) {
+	result := map[int64]*creatorLatestWork{}
+	if len(partyIDs) == 0 {
+		return result, nil
+	}
+	query, args := int64InQuery(`
+		WITH candidates AS (
+			SELECT
+				catalog.party_id,
+				UPPER(catalog.primary_code) AS primary_code,
+				COALESCE(NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
+				COALESCE(work.release_date, catalog.release_date) AS release_date
+			FROM party_catalog_item AS catalog
+			INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
+			LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+			UNION ALL
+			SELECT
+				relation.party_id,
+				UPPER(work.primary_code),
+				work.title,
+				work.release_date
+			FROM work_party AS relation
+			INNER JOIN work ON work.id = relation.work_id
+			WHERE relation.role = 'circle'
+				AND NOT EXISTS (
+					SELECT 1
+					FROM party_catalog_item AS catalog
+					INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
+					WHERE catalog.party_id = relation.party_id AND UPPER(catalog.primary_code) = UPPER(work.primary_code)
+				)
+		), ranked AS (
+			SELECT *, ROW_NUMBER() OVER (
+				PARTITION BY party_id
+				ORDER BY COALESCE(release_date, '') DESC, primary_code DESC
+			) AS position
+			FROM candidates
+		)
+		SELECT party_id, primary_code, title, release_date
+		FROM ranked
+		WHERE position = 1 AND party_id IN (%s)
+	`, partyIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var partyID int64
+		var item creatorLatestWork
+		var releaseDate sql.NullString
+		if err := rows.Scan(&partyID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
+			return nil, err
+		}
+		item.ReleaseDate = nullableString(releaseDate)
+		result[partyID] = &item
+	}
+	return result, rows.Err()
 }
 
 func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
@@ -2618,6 +2791,35 @@ func (s *Server) loadCircleUserTags(ctx context.Context, userID int64, partyID i
 		tags = append(tags, tag)
 	}
 	return tags, rows.Err()
+}
+
+func (s *Server) loadCircleUserTagsBatch(ctx context.Context, userID int64, partyIDs []int64) (map[int64][]voiceUserTag, error) {
+	result := map[int64][]voiceUserTag{}
+	if len(partyIDs) == 0 {
+		return result, nil
+	}
+	query, args := int64InQuery(`
+		SELECT assignment.party_id, tag.id, tag.name, tag.color
+		FROM user_party_tag_assignment AS assignment
+		INNER JOIN user_party_tag AS tag ON tag.id = assignment.user_party_tag_id
+		WHERE assignment.user_id = ? AND assignment.party_id IN (%s)
+		ORDER BY assignment.party_id, tag.name, tag.id
+	`, partyIDs)
+	args = append([]any{userID}, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var partyID int64
+		var tag voiceUserTag
+		if err := rows.Scan(&partyID, &tag.ID, &tag.Name, &tag.Color); err != nil {
+			return nil, err
+		}
+		result[partyID] = append(result[partyID], tag)
+	}
+	return result, rows.Err()
 }
 
 func (s *Server) metadataProviderID(ctx context.Context, code string, displayName string) (int64, error) {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,15 @@ type voiceSummary struct {
 	Favorite        bool               `json:"favorite"`
 	UserTags        []voiceUserTag     `json:"userTags"`
 	SourceSummaries []circleSourceStat `json:"sourceSummaries"`
+	LatestWork      *creatorLatestWork `json:"latestWork"`
+}
+
+type voiceSummaryPage struct {
+	Voices     []voiceSummary `json:"voices"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"pageSize"`
+	Total      int            `json:"total"`
+	TagOptions []string       `json:"tagOptions"`
 }
 
 type voiceUserTag struct {
@@ -206,7 +216,34 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summaries)
+	tagNames := map[string]bool{}
+	for _, summary := range summaries {
+		for _, tag := range summary.UserTags {
+			tagNames[tag.Name] = true
+		}
+	}
+	tagOptions := make([]string, 0, len(tagNames))
+	for name := range tagNames {
+		tagOptions = append(tagOptions, name)
+	}
+	sort.Strings(tagOptions)
+	summaries = filterVoiceSummaries(
+		summaries,
+		strings.TrimSpace(r.URL.Query().Get("q")),
+		strings.TrimSpace(r.URL.Query().Get("filter")),
+		strings.TrimSpace(r.URL.Query().Get("tag")),
+	)
+	pageSize := queryInt(r, "pageSize", 24)
+	page, start, end := creatorPageBounds(queryInt(r, "page", 1), pageSize, len(summaries))
+	pageItems := summaries[start:end]
+	for index := range pageItems {
+		if pageItems[index].LatestWork != nil {
+			pageItems[index].LatestWork.CoverURL = s.coverURL(pageItems[index].LatestWork.PrimaryCode)
+		}
+	}
+	writeJSON(w, http.StatusOK, voiceSummaryPage{
+		Voices: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(summaries), TagOptions: tagOptions,
+	})
 }
 
 func (s *Server) getVoice(w http.ResponseWriter, r *http.Request) {
@@ -610,12 +647,35 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 		}
 		summaries[index].UserTags = tags
 	}
+	personIDs := make([]int64, 0, len(summaries))
+	for _, summary := range summaries {
+		personIDs = append(personIDs, summary.PersonID)
+	}
+	latestByPerson, err := s.loadVoiceLatestWorks(ctx, personIDs)
+	if err != nil {
+		return nil, err
+	}
+	for index := range summaries {
+		summaries[index].LatestWork = latestByPerson[summaries[index].PersonID]
+	}
 	return summaries, nil
 }
 
 func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID int64) (voiceSummary, error) {
 	row := s.db.QueryRowContext(ctx, voiceSummaryQuery("WHERE person.id = ?"), userID, personID)
-	return s.scanVoiceSummary(ctx, row, userID)
+	item, err := s.scanVoiceSummary(ctx, row, userID)
+	if err != nil {
+		return voiceSummary{}, err
+	}
+	latestByPerson, err := s.loadVoiceLatestWorks(ctx, []int64{personID})
+	if err != nil {
+		return voiceSummary{}, err
+	}
+	item.LatestWork = latestByPerson[personID]
+	if item.LatestWork != nil {
+		item.LatestWork.CoverURL = s.coverURL(item.LatestWork.PrimaryCode)
+	}
+	return item, nil
 }
 
 func voiceSummaryQuery(where string) string {
@@ -709,6 +769,109 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 	item.Favorite = favorite != 0
 	item.SourceSummaries = voiceSourceSummaries(item.LocalWorks, item.RemoteWorks, item.CachedWorks)
 	return item, nil
+}
+
+func filterVoiceSummaries(items []voiceSummary, query string, filter string, tagFilter string) []voiceSummary {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	filtered := make([]voiceSummary, 0, len(items))
+	for _, item := range items {
+		matchesQuery := needle == "" || strings.Contains(strings.ToLower(item.DisplayName), needle) || strings.Contains(strconv.FormatInt(item.PersonID, 10), needle)
+		if !matchesQuery {
+			for _, alias := range item.Aliases {
+				if strings.Contains(strings.ToLower(alias), needle) {
+					matchesQuery = true
+					break
+				}
+			}
+		}
+		if !matchesQuery {
+			for _, tag := range item.UserTags {
+				if strings.Contains(strings.ToLower(tag.Name), needle) {
+					matchesQuery = true
+					break
+				}
+			}
+		}
+		if !matchesQuery && item.LatestWork != nil {
+			matchesQuery = strings.Contains(strings.ToLower(item.LatestWork.PrimaryCode), needle) || strings.Contains(strings.ToLower(item.LatestWork.Title), needle)
+		}
+		if !matchesQuery {
+			continue
+		}
+		if tagFilter != "" {
+			matchesTag := false
+			for _, tag := range item.UserTags {
+				if tag.Name == tagFilter {
+					matchesTag = true
+					break
+				}
+			}
+			if !matchesTag {
+				continue
+			}
+		}
+		matchesFilter := true
+		switch strings.ToLower(strings.TrimSpace(filter)) {
+		case "favorite":
+			matchesFilter = item.Favorite
+		case "tagged":
+			matchesFilter = len(item.UserTags) > 0
+		case "available":
+			matchesFilter = item.PlayableWorks > 0
+		case "local":
+			matchesFilter = item.LocalWorks > 0
+		case "remote":
+			matchesFilter = item.RemoteWorks > 0
+		case "missing":
+			matchesFilter = item.PlayableWorks == 0
+		}
+		if matchesFilter {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (map[int64]*creatorLatestWork, error) {
+	result := map[int64]*creatorLatestWork{}
+	if len(personIDs) == 0 {
+		return result, nil
+	}
+	query, args := int64InQuery(`
+		WITH ranked AS (
+			SELECT
+				credit.person_id,
+				UPPER(work.primary_code) AS primary_code,
+				work.title,
+				work.release_date,
+				ROW_NUMBER() OVER (
+					PARTITION BY credit.person_id
+					ORDER BY COALESCE(work.release_date, '') DESC, UPPER(work.primary_code) DESC
+				) AS position
+			FROM work_credit AS credit
+			INNER JOIN work ON work.id = credit.work_id
+			WHERE credit.role = 'voice_actor'
+		)
+		SELECT person_id, primary_code, title, release_date
+		FROM ranked
+		WHERE position = 1 AND person_id IN (%s)
+	`, personIDs)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var personID int64
+		var item creatorLatestWork
+		var releaseDate sql.NullString
+		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate); err != nil {
+			return nil, err
+		}
+		item.ReleaseDate = nullableString(releaseDate)
+		result[personID] = &item
+	}
+	return result, rows.Err()
 }
 
 func (s *Server) loadVoiceUserTagsBatch(ctx context.Context, userID int64) (map[int64][]voiceUserTag, error) {

@@ -54,7 +54,15 @@ async function mockFavorites(page: Page) {
       await route.fulfill({ json: { works, page: Number(url.searchParams.get("page") ?? 1), pageSize: 24, total: 48, shelfTotal: 48, listCounts: { "1": 24, "2": 24 }, statusCounts: { listening: 48 } } });
       return;
     }
-    if (url.pathname === "/api/circles" || url.pathname === "/api/voices" || url.pathname === "/api/library-sources") {
+    if (url.pathname === "/api/circles") {
+      await route.fulfill({ json: { circles: [], page: 1, pageSize: 100, total: 0, catalogWorks: 0, availableWorks: 0 } });
+      return;
+    }
+    if (url.pathname === "/api/voices") {
+      await route.fulfill({ json: { voices: [], page: 1, pageSize: 100, total: 0, tagOptions: [] } });
+      return;
+    }
+    if (url.pathname === "/api/library-sources") {
       await route.fulfill({ json: [] });
       return;
     }

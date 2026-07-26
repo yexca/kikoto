@@ -1004,6 +1004,22 @@ export type CircleSourceStat = {
   count: number;
 };
 
+export type CreatorLatestWork = {
+  primaryCode: string;
+  title: string;
+  releaseDate: string | null;
+  coverUrl: string;
+};
+
+export type CreatorListOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  filter?: string;
+  tag?: string;
+  signal?: AbortSignal;
+};
+
 export type CircleSummary = {
   id: number;
   externalId: string;
@@ -1026,6 +1042,16 @@ export type CircleSummary = {
     mode: string;
   };
   sourceSummaries: CircleSourceStat[];
+  latestWork: CreatorLatestWork | null;
+};
+
+export type CircleSummaryPage = {
+  circles: CircleSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  catalogWorks: number;
+  availableWorks: number;
 };
 
 export type CircleCatalogWork = {
@@ -1101,6 +1127,15 @@ export type VoiceSummary = {
   favorite: boolean;
   userTags: VoiceUserTag[];
   sourceSummaries: CircleSourceStat[];
+  latestWork: CreatorLatestWork | null;
+};
+
+export type VoiceSummaryPage = {
+  voices: VoiceSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  tagOptions: string[];
 };
 
 export type UserTag = {
@@ -1308,6 +1343,17 @@ function apiURL(path: string, base = API_BASE()) {
   if (/^https?:\/\//i.test(path)) return path;
   if (!base) return path;
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function creatorListSearch(options: CreatorListOptions) {
+  const search = new URLSearchParams();
+  if (options.page) search.set("page", String(options.page));
+  if (options.pageSize) search.set("pageSize", String(options.pageSize));
+  if (options.query?.trim()) search.set("q", options.query.trim());
+  if (options.filter && options.filter !== "all") search.set("filter", options.filter);
+  if (options.tag?.trim()) search.set("tag", options.tag.trim());
+  const value = search.toString();
+  return value ? `?${value}` : "";
 }
 
 export function assetURL(path: string) {
@@ -1663,9 +1709,15 @@ export const api = {
       `/api/works/${id}/user-state`,
       payload,
     ),
-  listCircles: () => getJSON<CircleSummary[]>("/api/circles"),
+  listCircles: (options: CreatorListOptions = {}) => {
+    const search = creatorListSearch(options);
+    return getJSON<CircleSummaryPage>(`/api/circles${search}`, options.signal);
+  },
   getCircle: (externalId: string) => getJSON<CircleDetail>(`/api/circles/${encodeURIComponent(externalId)}`),
-  listVoices: () => getJSON<VoiceSummary[]>("/api/voices"),
+  listVoices: (options: CreatorListOptions = {}) => {
+    const search = creatorListSearch(options);
+    return getJSON<VoiceSummaryPage>(`/api/voices${search}`, options.signal);
+  },
   getVoice: (personId: number | string) => getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}`),
   getVoiceSummary: (personId: number | string) =>
     getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`),

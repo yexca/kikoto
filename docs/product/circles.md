@@ -4,9 +4,12 @@ Circles represent makers, circles, and related party catalog state.
 
 ## Current Behavior
 
-- Lists known parties with catalog and availability counts.
-- Provides search, filters, pagination, favorite state, user tags, rating, and
-  notes.
+- Lists known parties with catalog and availability counts in server-paged
+  results.
+- Provides search, filters, URL-backed pagination, favorite state, user tags,
+  rating, and notes.
+- Shows the latest known DLsite work code and locally cached cover in compact
+  responsive creator cards, with a `No cover` fallback.
 - Shows circle detail by external id.
 - Supports catalog refresh in incremental or full mode.
 - Stores catalog rows separately from imported works.

@@ -27,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { UserTagRow } from "@/components/UserTagRow";
 import { useAuth } from "@/auth/AuthProvider";
 import {
   WorkCardActionButton,
@@ -53,6 +52,7 @@ import {
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import {
   api,
   assetURL,
@@ -189,11 +189,14 @@ export function FavoritesPage() {
     }
     let cancelled = false;
     setIsEntitiesLoading(true);
-    Promise.all([api.listCircles(), api.listVoices()])
-      .then(([circleItems, voiceItems]) => {
+    Promise.all([
+      api.listCircles({ filter: "favorite", pageSize: 100 }),
+      api.listVoices({ filter: "favorite", pageSize: 100 }),
+    ])
+      .then(([circlePage, voicePage]) => {
         if (cancelled) return;
-        setCircles(circleItems);
-        setVoices(voiceItems);
+        setCircles(circlePage.circles);
+        setVoices(voicePage.voices);
       })
       .catch((error) => {
         if (!cancelled) toast.notify(toastFromError(error, "Favorite people and circles could not be loaded."));
@@ -790,7 +793,7 @@ function FavoriteEntitySection({
     );
   }
   return (
-    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+    <div className={creatorCollectionClassName}>
       {kind === "circles"
         ? filteredCircles.map((circle) => <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />)
         : filteredVoices.map((voice) => <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />)}
@@ -816,31 +819,21 @@ function FavoriteCircleCard({ circle, onChange }: { circle: CircleSummary; onCha
       toast.notify(toastFromError(error, "Circle favorite update failed."));
     }
   };
-  return (
-    <Card className="transition-colors hover:border-primary/50">
-      <CardContent className="space-y-3 p-3">
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <button className="min-w-0 text-left" onClick={() => openCircleRoute(circle.externalId)}>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{circle.externalId}</Badge>
-              <Badge variant="secondary">Favorite</Badge>
-            </div>
-            <h3 className="mt-1 truncate text-base font-semibold">{circle.displayName}</h3>
-          </button>
-          <Button variant="outline" size="icon" aria-label="Remove favorite" title="Remove favorite" onClick={() => void removeFavorite()}>
-            <Heart className="h-4 w-4 fill-current" />
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>{circle.catalogWorks} works</span>
-            <span>{Math.max(circle.playableWorks, circle.localWorks + circle.remoteWorks)} available</span>
-          </div>
-          <UserTagRow tags={circle.userTags} compact onSave={saveTags} className="justify-end" />
-        </div>
-      </CardContent>
-    </Card>
-  );
+  return <CreatorCard
+    name={circle.displayName}
+    identityLabel={circle.externalId}
+    aliases={circle.aliases}
+    latestWork={circle.latestWork}
+    favorite={circle.favorite}
+    userTags={circle.userTags}
+    syncState={circle.syncState}
+    workCount={circle.catalogWorks}
+    unavailableCount={circle.missingWorks}
+    sources={circle.sourceSummaries}
+    onOpen={() => openCircleRoute(circle.externalId)}
+    onFavoriteToggle={() => void removeFavorite()}
+    onTagsSave={saveTags}
+  />;
 }
 
 function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
@@ -861,46 +854,26 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       toast.notify(toastFromError(error, "Voice favorite update failed."));
     }
   };
-  return (
-    <Card className="transition-colors hover:border-primary/50">
-      <CardContent className="space-y-3 p-3">
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <button className="min-w-0 text-left" onClick={() => openVoiceRoute(voice.personId)}>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">#{voice.personId}</Badge>
-              <Badge variant="secondary">Favorite</Badge>
-            </div>
-            <h3 className="mt-1 truncate text-base font-semibold">{voice.displayName}</h3>
-            <p className="truncate text-xs text-muted-foreground">{voice.aliases.filter((alias) => alias !== voice.displayName).join(", ") || "No aliases"}</p>
-          </button>
-          <Button variant="outline" size="icon" aria-label="Remove favorite" title="Remove favorite" onClick={() => void removeFavorite()}>
-            <Heart className="h-4 w-4 fill-current" />
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>{voice.knownWorks} works</span>
-            <span>{voice.playableWorks} available</span>
-          </div>
-          <UserTagRow tags={voice.userTags} compact onSave={saveTags} className="justify-end" />
-        </div>
-      </CardContent>
-    </Card>
-  );
+  return <CreatorCard
+    name={voice.displayName}
+    identityLabel={voice.latestWork ? undefined : "Voice actor"}
+    aliases={voice.aliases}
+    latestWork={voice.latestWork}
+    favorite={voice.favorite}
+    userTags={voice.userTags}
+    workCount={voice.knownWorks}
+    unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+    sources={voice.sourceSummaries}
+    onOpen={() => openVoiceRoute(voice.personId)}
+    onFavoriteToggle={() => void removeFavorite()}
+    onTagsSave={saveTags}
+  />;
 }
 
 function FavoriteEntitySkeletonGrid() {
   return (
-    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-      {Array.from({ length: 6 }, (_, index) => (
-        <Card key={index}>
-          <CardContent className="space-y-3 p-3">
-            <FavoriteSkeletonLine className="h-5 w-32" />
-            <FavoriteSkeletonLine className="h-5 w-48" />
-            <FavoriteSkeletonLine className="h-8 w-full" />
-          </CardContent>
-        </Card>
-      ))}
+    <div className={creatorCollectionClassName}>
+      {Array.from({ length: 6 }, (_, index) => <CreatorCardSkeleton key={index} />)}
     </div>
   );
 }

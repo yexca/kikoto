@@ -29,6 +29,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
+import { CollectionPagination } from "@/components/collection/CollectionPagination";
+import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -57,11 +59,13 @@ import {
 import { api, ApiError, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
+import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing";
 type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
-const voicePageSizeOptions = [20, 40, 80];
+const voicePageSizeOptions = [24, 48, 96] as const;
+const voiceFilters: readonly VoiceFilter[] = ["all", "favorite", "tagged", "available", "local", "remote", "missing"];
 const workPageSizeOptions = [24, 48] as const;
 const aliasSuggestMinChars = 2;
 const aliasSuggestMaxResults = 12;
@@ -99,72 +103,96 @@ function VoiceCreatorWorksPage() {
 
 function VoiceListPage() {
   const toast = useToast();
+  const initialBrowseState = useMemo(() => creatorBrowseStateFromSearch(
+    window.location.search,
+    { query: "", filter: "all" as VoiceFilter, tag: "", page: 1, pageSize: 24 },
+    voiceFilters,
+    voicePageSizeOptions,
+  ), []);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<VoiceFilter>("all");
-  const [tagFilter, setTagFilter] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(40);
+  const [query, setQuery] = useState(initialBrowseState.query);
+  const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
+  const [filter, setFilter] = useState<VoiceFilter>(initialBrowseState.filter);
+  const [tagFilter, setTagFilter] = useState(initialBrowseState.tag);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
+  const [page, setPage] = useState(initialBrowseState.page);
+  const [pageSize, setPageSize] = useState(initialBrowseState.pageSize);
+  const [total, setTotal] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setRequestQuery(query), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const search = creatorBrowseSearch({ query, filter, tag: tagFilter, page, pageSize });
+    window.history.replaceState(window.history.state ?? {}, "", `/voices${search}`);
+  }, [filter, page, pageSize, query, tagFilter]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setIsLoading(true);
-    api.listVoices().then((items) => {
-      setVoices(items);
-      setMessage(items.length === 0 ? "No voice actor credits have been derived from known work metadata yet." : "");
+    api.listVoices({ page, pageSize, query: requestQuery, filter, tag: tagFilter, signal: controller.signal }).then((result) => {
+      setVoices(result.voices);
+      setTotal(result.total);
+      setTagOptions(result.tagOptions);
+      setMessage(result.total === 0 && !requestQuery.trim() && filter === "all" && !tagFilter ? "No voice actor credits have been derived from known work metadata yet." : "");
+      if (result.page !== page) setPage(result.page);
     }).catch((error) => {
+      if (controller.signal.aborted) return;
       setVoices([]);
       toast.notify(toastFromError(error, "Voice actor API is unavailable."));
       setMessage("");
-    }).finally(() => setIsLoading(false));
-  }, []);
-
-  const tagOptions = useMemo(() => {
-    const names = new Set<string>();
-    voices.forEach((voice) => voice.userTags.forEach((tag) => names.add(tag.name)));
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [voices]);
-
-  const filteredVoices = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return voices.filter((voice) => {
-      const matchesQuery = !needle || [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle));
-      if (!matchesQuery) return false;
-      if (tagFilter && !voice.userTags.some((tag) => tag.name === tagFilter)) return false;
-      switch (filter) {
-      case "favorite":
-        return voice.favorite;
-      case "tagged":
-        return voice.userTags.length > 0;
-      case "available":
-        return voice.playableWorks > 0;
-      case "local":
-        return voice.localWorks > 0;
-      case "remote":
-        return voice.remoteWorks > 0;
-      case "missing":
-        return voice.playableWorks === 0;
-      default:
-        return true;
-      }
+      setTotal(0);
+    }).finally(() => {
+      if (!controller.signal.aborted) setIsLoading(false);
     });
-  }, [filter, query, tagFilter, voices]);
-  const totalPages = Math.max(1, Math.ceil(filteredVoices.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageVoices = filteredVoices.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  useEffect(() => setPage(1), [filter, pageSize, query, tagFilter]);
+    return () => controller.abort();
+  }, [filter, page, pageSize, reloadToken, requestQuery, tagFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const paginationProps = {
+    page,
+    pageSize,
+    totalItems: total,
+    totalPages,
+    itemLabel: "voice actors",
+    ariaLabel: "Voice actor pages",
+    pageSizeOptions: voicePageSizeOptions,
+    onPageChange: setPage,
+    onPageSizeChange: (value: number) => {
+      setPage(1);
+      setPageSize(value);
+    },
+  };
+
+  const updateVoice = (next: VoiceSummary) => {
+    setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item));
+    if (filter !== "all" || tagFilter || requestQuery.trim()) setReloadToken((value) => value + 1);
+  };
+
+  const toggleFavorite = async (voice: VoiceSummary) => {
+    try {
+      updateVoice({ ...voice, ...await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite }) });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice favorite update failed."));
+    }
+  };
+
+  const saveTags = async (voice: VoiceSummary, tags: string[]) => {
+    try {
+      const result = await api.setVoiceUserTags(voice.personId, tags);
+      updateVoice({ ...voice, userTags: result.userTags });
+    } catch (error) {
+      toast.notify(toastFromError(error, "Voice tags update failed."));
+    }
+  };
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Persisted voice credits with personal favorites and tags</p>
-          <h2 className="text-xl font-semibold">Voice Actors</h2>
-        </div>
-        {isLoading ? <EntityBadgeSkeleton /> : <Badge variant="outline">{filteredVoices.length} voices</Badge>}
-      </section>
-
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="space-y-3">
@@ -187,21 +215,31 @@ function VoiceListPage() {
               <option value="">All tags</option>
               {tagOptions.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
             </select>
-            <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} aria-label="Voices per page">
-              {voicePageSizeOptions.map((value) => <option key={value} value={value}>{value} / page</option>)}
-            </select>
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-          {isLoading ? (
-            <EntityCardSkeletonGrid count={Math.min(pageSize, 9)} />
-          ) : pageVoices.length > 0 ? (
-            pageVoices.map((voice) => (
-              <VoiceCard
+        <CollectionPagination {...paginationProps} placement="top" />
+        {isLoading && voices.length > 0 && <div className="text-xs text-muted-foreground">Refreshing...</div>}
+
+        <div className={creatorCollectionClassName}>
+          {isLoading && voices.length === 0 ? (
+            Array.from({ length: Math.min(pageSize, 9) }, (_, index) => <CreatorCardSkeleton key={index} />)
+          ) : voices.length > 0 ? (
+            voices.map((voice) => (
+              <CreatorCard
                 key={voice.personId}
-                voice={voice}
-                onChange={(next) => setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item))}
+                name={voice.displayName}
+                identityLabel={voice.latestWork ? undefined : "Voice actor"}
+                aliases={voice.aliases}
+                latestWork={voice.latestWork}
+                favorite={voice.favorite}
+                userTags={voice.userTags}
+                workCount={voice.knownWorks}
+                unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+                sources={voice.sourceSummaries}
+                onOpen={() => openVoiceRoute(voice.personId)}
+                onFavoriteToggle={() => void toggleFavorite(voice)}
+                onTagsSave={(tags) => saveTags(voice, tags)}
               />
             ))
           ) : (
@@ -209,7 +247,7 @@ function VoiceListPage() {
           )}
         </div>
 
-        {totalPages > 1 && <Pagination currentPage={currentPage} totalPages={totalPages} onPage={setPage} />}
+        <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
     </div>
   );
@@ -217,107 +255,6 @@ function VoiceListPage() {
 
 function EntitySkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function EntityBadgeSkeleton() {
-  return <EntitySkeletonLine className="h-5 w-24 rounded-full" />;
-}
-
-function EntityCardSkeletonGrid({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <Card key={index}>
-          <CardContent className="space-y-3 p-3">
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <EntitySkeletonLine className="h-5 w-16 rounded-full" />
-                  <EntitySkeletonLine className="h-5 w-20 rounded-full" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <EntitySkeletonLine className="h-5 w-36" />
-                  <EntitySkeletonLine className="h-3 w-24" />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                <EntitySkeletonLine className="h-4 w-16" />
-                <EntitySkeletonLine className="h-4 w-20" />
-                <EntitySkeletonLine className="h-4 w-14" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-              <div className="flex gap-1">
-                <EntitySkeletonLine className="h-6 w-16 rounded-full" />
-                <EntitySkeletonLine className="h-6 w-20 rounded-full" />
-              </div>
-              <EntitySkeletonLine className="h-4 w-44" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </>
-  );
-}
-
-function VoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
-  const toast = useToast();
-  const toggleFavorite = async () => {
-    try {
-      const next = await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite });
-      onChange({ ...voice, ...next });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Voice favorite update failed."));
-    }
-  };
-  const saveTags = async (tags: string[]) => {
-    try {
-      const result = await api.setVoiceUserTags(voice.personId, tags);
-      onChange({ ...voice, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Voice tags update failed."));
-    }
-  };
-  return (
-    <Card className="transition-colors hover:border-primary/50">
-      <CardContent className="space-y-2 p-3">
-        <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <button className="min-w-0 text-left" onClick={() => openVoiceRoute(voice.personId)}>
-            <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">#{voice.personId}</Badge>
-              {voice.favorite && <Badge variant="secondary">Favorite</Badge>}
-            </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2">
-              <h3 className="truncate text-base font-semibold">{voice.displayName}</h3>
-              <span className="shrink-0 text-xs text-muted-foreground">{voice.aliases.filter((alias) => alias !== voice.displayName).join(", ") || "No aliases"}</span>
-            </div>
-          </div>
-          </button>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-muted-foreground lg:justify-end">
-            <span>{voice.knownWorks} works</span>
-            <span>{voice.playableWorks} available</span>
-            {voice.playableWorks === 0 && <Badge variant="warning">missing</Badge>}
-            <Button
-              variant={voice.favorite ? "default" : "outline"}
-              size="icon"
-              className="h-8 w-8"
-              aria-label={voice.favorite ? "Remove favorite" : "Add favorite"}
-              title={voice.favorite ? "Remove favorite" : "Add favorite"}
-              onClick={() => void toggleFavorite()}
-            >
-              <Heart className={`h-4 w-4 ${voice.favorite ? "fill-current" : ""}`} />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-          <SourceTags sources={voice.sourceSummaries} />
-          <UserTagRow tags={voice.userTags} compact onSave={saveTags} className="justify-end" />
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 function VoiceDetailPage({ personId }: { personId: number }) {
@@ -1433,18 +1370,6 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return <Card><CardContent className="flex items-center justify-between gap-3 p-4"><div><div className="text-2xl font-semibold">{value}</div><div className="text-sm text-muted-foreground">{label}</div></div><div className="text-primary">{icon}</div></CardContent></Card>;
-}
-
-function Pagination({ currentPage, totalPages, onPage }: { currentPage: number; totalPages: number; onPage: (page: number) => void }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border bg-card px-3 py-2">
-      <div className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="icon" aria-label="Previous page" disabled={currentPage <= 1} onClick={() => onPage(Math.max(1, currentPage - 1))}><ChevronLeft className="h-4 w-4" /></Button>
-        <Button variant="outline" size="icon" aria-label="Next page" disabled={currentPage >= totalPages} onClick={() => onPage(Math.min(totalPages, currentPage + 1))}><ChevronRight className="h-4 w-4" /></Button>
-      </div>
-    </div>
-  );
 }
 
 function CatalogPagination({ page, pageSize, totalItems, totalPages, onPageChange, onPageSizeChange }: { page: number; pageSize: 24 | 48; totalItems: number; totalPages: number; onPageChange: (page: number) => void; onPageSizeChange: (pageSize: 24 | 48) => void }) {
