@@ -41,10 +41,14 @@ Demo mode renders Settings read-only.
 - Recommendation starts with named common profiles and keeps the full scoring
   priors, weights, and caps under Advanced scoring.
 - Cache & Fetch presents editable policy first, followed by managed-media usage
-  and cleanup controls.
+  and cleanup controls. Its configuration is a vertical list; resolved save
+  paths are read-only previews owned by Paths.
+- Managed media cache cleanup is grouped by source scope. Groups can be
+  collapsed and selected as a unit while the bounded list scrolls independently
+  for large libraries. Cleanup remains a two-step destructive action.
 - Paths is read-only and shows the resolved data root, cache root, default
-  Fetch template, and per-source Fetch templates. Path changes remain owned by
-  their runtime or source configuration rather than this overview.
+  cache/save previews, and per-source save previews. Remote Source configuration
+  shows the same resolved example instead of exposing a path-template editor.
 
 ## Related Docs
 

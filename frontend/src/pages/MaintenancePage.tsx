@@ -1,6 +1,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
   Cloud,
   Database,
   Download,
@@ -43,6 +44,7 @@ import {
 const DATA_PREFIX = "/data";
 const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
+const CACHE_GROUP_PAGE_SIZE = 50;
 const LEGACY_NUMBER178_SOURCE_TYPE = "kikoeru_compatible_number178";
 const REMOTE_SOURCE_TYPES = new Set(["kikoeru_compatible", LEGACY_NUMBER178_SOURCE_TYPE]);
 
@@ -53,7 +55,7 @@ const emptyRemoteSource = {
   sourceType: "kikoeru_compatible",
   priority: 30,
   enabled: true,
-  config: { cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}` },
+  config: { cacheEnabled: false, cacheLimitGb: 20 },
   endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "/work/{code}" },
   healthStatus: "unknown",
   lastCheckedAt: null,
@@ -91,7 +93,6 @@ export function MaintenancePage({
   const [recommendationThreshold, setRecommendationThreshold] = useState(50);
   const [recommendationConfig, setRecommendationConfig] = useState<RecommendationConfig | null>(null);
   const [recommendationTelemetry, setRecommendationTelemetry] = useState<RecommendationTelemetrySummary | null>(null);
-  const [saveSuffix, setSaveSuffix] = useState(DEFAULT_SAVE_SUFFIX);
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -102,8 +103,6 @@ export function MaintenancePage({
     [settings],
   );
   const localSource = settings?.fileSources.find((source) => source.sourceType === "local_folder") ?? null;
-  const saveTemplate = `${DATA_PREFIX}${normalizeSaveSuffix(saveSuffix)}`;
-  const saveSuffixError = saveSuffix.trim().startsWith("/") ? "" : "Save path suffix must start with /.";
 
   const reload = () =>
     api
@@ -122,7 +121,6 @@ export function MaintenancePage({
         setDirectoryRoutingRules(reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)));
         setRecommendationThreshold(next.recommendationThreshold ?? 50);
         setRecommendationConfig(next.recommendationConfig);
-        setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
       })
       .catch((error) => toast.notify(toastFromError(error, "Settings API is unavailable.")))
       .finally(() => setIsSettingsLoading(false));
@@ -154,15 +152,10 @@ export function MaintenancePage({
 
   const saveRuntimeSettings = async () => {
     if (readOnly) return;
-    if (saveSuffixError) {
-      toast.warning(saveSuffixError);
-      return;
-    }
     const next = await api.updateSettings({
       localScanDepth,
       cacheEnabled,
       cacheLimitGb,
-      remoteSaveTemplate: saveTemplate,
       remoteDelayBaseSeconds: remoteDelayBase,
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
@@ -176,7 +169,6 @@ export function MaintenancePage({
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
     setRecommendationConfig(next.recommendationConfig);
-    setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
     toast.success("Settings saved.");
   };
 
@@ -316,7 +308,6 @@ export function MaintenancePage({
           cacheLimitGb={cacheLimitGb}
           localScanDepth={localScanDepth}
           circleAutoRefreshDays={circleAutoRefreshDays}
-          saveTemplate={saveTemplate}
           onSelect={selectTab}
           canManageUsers={canManageUsers}
         />
@@ -355,23 +346,18 @@ export function MaintenancePage({
         />
       ) : activeTab === "cache" ? (
         <CacheFetchSettings
-          settings={settings}
           cacheEnabled={cacheEnabled}
           cacheLimitGb={cacheLimitGb}
           remoteDelayBase={remoteDelayBase}
           remoteDelayRandom={remoteDelayRandom}
           remoteBackoff={remoteBackoff}
           remoteMaxBackoff={remoteMaxBackoff}
-          saveSuffix={saveSuffix}
-          saveTemplate={saveTemplate}
-          saveSuffixError={saveSuffixError}
           onCacheEnabledChange={setCacheEnabled}
           onCacheLimitChange={setCacheLimitGb}
           onRemoteDelayBaseChange={setRemoteDelayBase}
           onRemoteDelayRandomChange={setRemoteDelayRandom}
           onRemoteBackoffChange={setRemoteBackoff}
           onRemoteMaxBackoffChange={setRemoteMaxBackoff}
-          onSaveSuffixChange={setSaveSuffix}
           onSave={saveRuntimeSettings}
         />
       ) : activeTab === "metadata" ? (
@@ -392,6 +378,7 @@ export function MaintenancePage({
       {isSourceModalOpen && (
         <SourceModal
           source={draftSource}
+          defaultSaveTemplate={settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}
           editing={editingSourceId !== null}
           onChange={setDraftSource}
           onSave={saveSource}
@@ -409,7 +396,6 @@ function SettingsOverview({
   cacheLimitGb,
   localScanDepth,
   circleAutoRefreshDays,
-  saveTemplate,
   onSelect,
   canManageUsers,
 }: {
@@ -419,7 +405,6 @@ function SettingsOverview({
   cacheLimitGb: number;
   localScanDepth: number;
   circleAutoRefreshDays: number;
-  saveTemplate: string;
   onSelect: (tab: MaintenanceTab) => void;
   canManageUsers: boolean;
 }) {
@@ -454,9 +439,9 @@ function SettingsOverview({
       <SettingsHomeCard
         icon={<Download className="h-5 w-5" />}
         title="Cache & fetch"
-        description="Remote playback cache, save path, and download pacing."
+        description="Remote playback cache and request pacing."
         status={cacheEnabled ? "Auto cache on" : "Auto cache off"}
-        chips={[`${cacheLimitGb} GB limit`, saveTemplate]}
+        chips={[`${cacheLimitGb} GB limit`, "Request pacing"]}
         onClick={() => onSelect("cache")}
       />
       <SettingsHomeCard
@@ -1362,42 +1347,32 @@ function RemoteSourcesSettings({
 }
 
 function CacheFetchSettings({
-  settings,
   cacheEnabled,
   cacheLimitGb,
   remoteDelayBase,
   remoteDelayRandom,
   remoteBackoff,
   remoteMaxBackoff,
-  saveSuffix,
-  saveTemplate,
-  saveSuffixError,
   onCacheEnabledChange,
   onCacheLimitChange,
   onRemoteDelayBaseChange,
   onRemoteDelayRandomChange,
   onRemoteBackoffChange,
   onRemoteMaxBackoffChange,
-  onSaveSuffixChange,
   onSave,
 }: {
-  settings: AppSettings | null;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   remoteDelayBase: number;
   remoteDelayRandom: number;
   remoteBackoff: number;
   remoteMaxBackoff: number;
-  saveSuffix: string;
-  saveTemplate: string;
-  saveSuffixError: string;
   onCacheEnabledChange: (value: boolean) => void;
   onCacheLimitChange: (value: number) => void;
   onRemoteDelayBaseChange: (value: number) => void;
   onRemoteDelayRandomChange: (value: number) => void;
   onRemoteBackoffChange: (value: number) => void;
   onRemoteMaxBackoffChange: (value: number) => void;
-  onSaveSuffixChange: (value: string) => void;
   onSave: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -1408,13 +1383,42 @@ function CacheFetchSettings({
   const [cleanupStatus, setCleanupStatus] = useState("");
   const [cleanupMode, setCleanupMode] = useState<"orphans" | "works">("orphans");
   const [selectedCleanupKeys, setSelectedCleanupKeys] = useState<Set<string>>(new Set());
+  const [expandedCleanupGroups, setExpandedCleanupGroups] = useState<Set<string>>(new Set());
+  const [cleanupGroupLimits, setCleanupGroupLimits] = useState<Map<string, number>>(new Map());
   const cleanupRows = useMemo(() => cacheCleanupRows(overview, cleanupMode), [cleanupMode, overview]);
+  const cleanupGroups = useMemo(() => cacheCleanupGroups(cleanupRows), [cleanupRows]);
   const selectedCleanupRows = cleanupRows.filter((row) => selectedCleanupKeys.has(row.key));
+
+  const setCleanupRowsSelected = (rows: CacheCleanupRow[], checked: boolean) => {
+    setSelectedCleanupKeys((current) => {
+      const next = new Set(current);
+      for (const row of rows) {
+        if (checked) next.add(row.key); else next.delete(row.key);
+      }
+      return next;
+    });
+    setConfirmCleanup(false);
+  };
+
+  const toggleCleanupGroup = (groupKey: string) => {
+    setExpandedCleanupGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
+      return next;
+    });
+    setCleanupGroupLimits((current) => current.has(groupKey) ? current : new Map(current).set(groupKey, CACHE_GROUP_PAGE_SIZE));
+  };
+
+  const showMoreCleanupRows = (groupKey: string) => {
+    setCleanupGroupLimits((current) => new Map(current).set(groupKey, (current.get(groupKey) ?? CACHE_GROUP_PAGE_SIZE) + CACHE_GROUP_PAGE_SIZE));
+  };
 
   const scanCache = async () => {
     setIsScanning(true);
     try {
       setOverview(await api.getCacheOverview());
+      setSelectedCleanupKeys(new Set());
+      setConfirmCleanup(false);
     } catch (error) {
       toast.notify(toastFromError(error, "Cache scan failed."));
     } finally {
@@ -1454,110 +1458,101 @@ function CacheFetchSettings({
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden">
+      <Card className="max-w-3xl overflow-hidden" data-testid="cache-configuration-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
-              <Download className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" />
             </span>
-            Cache & fetch
+            Configuration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border px-3 text-sm">
-              <span className="font-medium">Cache remote playback</span>
+          <div className="overflow-hidden rounded-md border">
+            <ConfigurationSectionLabel>Cache policy</ConfigurationSectionLabel>
+            <ConfigurationRow
+              title="Cache remote playback"
+              description="Keep remotely played media on local storage for later playback."
+            >
               <Switch checked={cacheEnabled} onCheckedChange={onCacheEnabledChange} aria-label="Cache remote playback" />
-            </div>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Total limit GB</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                value={cacheLimitGb}
-                onChange={(event) => onCacheLimitChange(Number(event.target.value))}
-              />
-            </label>
-          </div>
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Cache limit"
+              description="Maximum total size of the managed playback cache."
+            >
+              <div className="flex h-9 w-full overflow-hidden rounded-md border bg-card sm:w-44">
+                <input
+                  aria-label="Cache limit"
+                  className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
+                  type="number"
+                  min={0}
+                  value={cacheLimitGb}
+                  onChange={(event) => onCacheLimitChange(Number(event.target.value))}
+                />
+                <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">GB</span>
+              </div>
+            </ConfigurationRow>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Delay base sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
-                min={0}
-                step={0.1}
+            <ConfigurationSectionLabel>Remote request pacing</ConfigurationSectionLabel>
+            <ConfigurationRow
+              title="Base delay"
+              description="Minimum pause between requests to a remote source."
+            >
+              <ConfigurationNumberInput
+                label="Base delay"
                 value={remoteDelayBase}
-                onChange={(event) => onRemoteDelayBaseChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Delay random sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
                 min={0}
                 step={0.1}
+                onChange={onRemoteDelayBaseChange}
+              />
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Random delay"
+              description="Additional jitter used to avoid synchronized request bursts."
+            >
+              <ConfigurationNumberInput
+                label="Random delay"
                 value={remoteDelayRandom}
-                onChange={(event) => onRemoteDelayRandomChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">429 backoff sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
                 min={0}
-                step={1}
+                step={0.1}
+                onChange={onRemoteDelayRandomChange}
+              />
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Initial 429 backoff"
+              description="First retry delay after a remote rate-limit response."
+            >
+              <ConfigurationNumberInput
+                label="Initial 429 backoff"
                 value={remoteBackoff}
-                onChange={(event) => onRemoteBackoffChange(Number(event.target.value))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Max backoff sec</span>
-              <input
-                className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-                type="number"
                 min={0}
                 step={1}
+                onChange={onRemoteBackoffChange}
+              />
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Maximum backoff"
+              description="Upper bound for repeated rate-limit retries."
+            >
+              <ConfigurationNumberInput
+                label="Maximum backoff"
                 value={remoteMaxBackoff}
-                onChange={(event) => onRemoteMaxBackoffChange(Number(event.target.value))}
+                min={0}
+                step={1}
+                onChange={onRemoteMaxBackoffChange}
               />
-            </label>
+            </ConfigurationRow>
           </div>
 
-          <div className="grid gap-1 text-sm">
-            <span className="font-medium">Save path template</span>
-            <div className="flex min-h-9 overflow-hidden rounded-md border bg-card">
-              <div className="flex items-center border-r bg-muted px-3 text-muted-foreground">{DATA_PREFIX}</div>
-              <input
-                className="min-w-0 flex-1 bg-transparent px-3 outline-none focus:ring-2 focus:ring-ring"
-                value={saveSuffix}
-                onChange={(event) => onSaveSuffixChange(event.target.value)}
-                placeholder={DEFAULT_SAVE_SUFFIX}
-              />
-            </div>
-            <div className={saveSuffixError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-              {saveSuffixError || saveTemplate}
-            </div>
-          </div>
-
-          <div className="grid gap-2 text-sm md:grid-cols-2">
-            <ReadonlyField label="Remote cache root" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
-            <ReadonlyField label="Remote fetch root" value={saveTemplate} />
-          </div>
-
-          <Button size="sm" onClick={() => void onSave()} disabled={Boolean(saveSuffixError)}>
+          <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
-            Save cache & fetch settings
+            Save configuration
           </Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="flex items-center gap-2 text-base">
             <HardDrive className="h-4 w-4" />
             Managed media cache
@@ -1588,6 +1583,8 @@ function CacheFetchSettings({
               onClick={() => {
                 setCleanupMode("orphans");
                 setSelectedCleanupKeys(new Set());
+                setExpandedCleanupGroups(new Set());
+                setCleanupGroupLimits(new Map());
                 setConfirmCleanup(false);
               }}
             >
@@ -1599,6 +1596,8 @@ function CacheFetchSettings({
               onClick={() => {
                 setCleanupMode("works");
                 setSelectedCleanupKeys(new Set());
+                setExpandedCleanupGroups(new Set());
+                setCleanupGroupLimits(new Map());
                 setConfirmCleanup(false);
               }}
             >
@@ -1612,33 +1611,71 @@ function CacheFetchSettings({
                 <Checkbox
                   checked={selectedCleanupKeys.size === cleanupRows.length}
                   indeterminate={selectedCleanupKeys.size > 0 && selectedCleanupKeys.size < cleanupRows.length}
-                  onCheckedChange={(checked) => setSelectedCleanupKeys(checked ? new Set(cleanupRows.map((row) => row.key)) : new Set())}
+                  onCheckedChange={(checked) => setCleanupRowsSelected(cleanupRows, checked)}
                   aria-label={`Select all ${cleanupMode === "orphans" ? "orphan cache groups" : "work caches"}`}
                 />
-                <span>Work / source</span>
+                <span>{cleanupGroups.length} groups · {cleanupRows.length} works</span>
                 <span>Files</span>
-                <span>Selected size</span>
+                <span>Size</span>
               </div>
-              <div className="app-scroll max-h-80 overflow-y-auto">
-              {cleanupRows.map((row) => (
-                <div key={row.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0">
-                  <Checkbox
-                    checked={selectedCleanupKeys.has(row.key)}
-                    onCheckedChange={(checked) => setSelectedCleanupKeys((current) => {
-                      const next = new Set(current);
-                      if (checked) next.add(row.key); else next.delete(row.key);
-                      return next;
-                    })}
-                    aria-label={`Select cache for ${row.workCode}`}
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{row.workCode}</div>
-                    <div className="truncate text-xs text-muted-foreground">{row.sourceLabel}</div>
-                  </div>
-                  <span className="whitespace-nowrap text-xs text-muted-foreground">{row.files}</span>
-                  <span className={cleanupMode === "orphans" ? "whitespace-nowrap text-xs font-medium text-destructive" : "whitespace-nowrap text-xs font-medium"}>{formatByteSize(row.bytes)}</span>
-                </div>
-              ))}
+              <div className="app-scroll max-h-[28rem] overflow-y-auto">
+                {cleanupGroups.map((group) => {
+                  const selectedInGroup = group.rows.filter((row) => selectedCleanupKeys.has(row.key)).length;
+                  const expanded = expandedCleanupGroups.has(group.key);
+                  const visibleRows = group.rows.slice(0, cleanupGroupLimits.get(group.key) ?? CACHE_GROUP_PAGE_SIZE);
+                  const remainingRows = group.rows.length - visibleRows.length;
+                  return (
+                    <section key={group.key} className="border-b last:border-b-0">
+                      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 bg-muted/25 px-3 py-2.5">
+                        <Checkbox
+                          checked={selectedInGroup === group.rows.length}
+                          indeterminate={selectedInGroup > 0 && selectedInGroup < group.rows.length}
+                          onCheckedChange={(checked) => setCleanupRowsSelected(group.rows, checked)}
+                          aria-label={`Select all cache in ${group.label}`}
+                        />
+                        <button
+                          type="button"
+                          className="flex min-w-0 items-center gap-2 text-left"
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "Collapse" : "Expand"} ${group.label} cache group`}
+                          onClick={() => toggleCleanupGroup(group.key)}
+                        >
+                          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "" : "-rotate-90"}`} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold">{group.label}</span>
+                            <span className="block text-xs text-muted-foreground">{group.rows.length} {group.rows.length === 1 ? "work" : "works"}</span>
+                          </span>
+                        </button>
+                        <span className="whitespace-nowrap text-xs text-muted-foreground">{group.files}</span>
+                        <span className={`whitespace-nowrap text-xs font-semibold ${cleanupMode === "orphans" ? "text-destructive" : ""}`}>{formatByteSize(group.bytes)}</span>
+                      </div>
+                      {expanded && visibleRows.map((row) => (
+                        <div key={row.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 border-t bg-background px-3 py-2 pl-9 text-sm">
+                          <Checkbox
+                            checked={selectedCleanupKeys.has(row.key)}
+                            onCheckedChange={(checked) => setCleanupRowsSelected([row], checked)}
+                            aria-label={`Select cache for ${row.workCode}`}
+                          />
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{row.workCode}</div>
+                            <div className="truncate text-xs text-muted-foreground">{row.sourceLabel}</div>
+                          </div>
+                          <span className="whitespace-nowrap text-xs text-muted-foreground">{row.files}</span>
+                          <span className={`whitespace-nowrap text-xs font-medium ${cleanupMode === "orphans" ? "text-destructive" : ""}`}>{formatByteSize(row.bytes)}</span>
+                        </div>
+                      ))}
+                      {expanded && remainingRows > 0 && (
+                        <button
+                          type="button"
+                          className="w-full border-t bg-background px-3 py-2 text-xs font-medium text-primary hover:bg-muted/40"
+                          onClick={() => showMoreCleanupRows(group.key)}
+                        >
+                          Show {Math.min(CACHE_GROUP_PAGE_SIZE, remainingRows)} more in {group.label}
+                        </button>
+                      )}
+                    </section>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1651,8 +1688,7 @@ function CacheFetchSettings({
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="outline"
-              className={confirmCleanup ? "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground" : ""}
+              variant="destructive"
               size="sm"
               onClick={() => void cleanupCache()}
               disabled={isCleaning || isScanning || selectedCleanupRows.length === 0}
@@ -1678,11 +1714,78 @@ function CacheFetchSettings({
   );
 }
 
+function ConfigurationSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="border-b bg-muted/35 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function ConfigurationRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-b px-3 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{title}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
+      </div>
+      <div className="flex w-full shrink-0 justify-end sm:w-auto">{children}</div>
+    </div>
+  );
+}
+
+function ConfigurationNumberInput({
+  label,
+  value,
+  min,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex h-9 w-full overflow-hidden rounded-md border bg-card sm:w-44">
+      <input
+        aria-label={label}
+        className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">sec</span>
+    </div>
+  );
+}
+
 type CacheCleanupRow = {
   key: string;
   workId: number;
   workCode: string;
+  groupKey: string;
+  groupLabel: string;
   sourceLabel: string;
+  files: number;
+  bytes: number;
+};
+
+type CacheCleanupGroup = {
+  key: string;
+  label: string;
+  rows: CacheCleanupRow[];
   files: number;
   bytes: number;
 };
@@ -1696,33 +1799,63 @@ function cacheCleanupRows(overview: CacheOverview | null, mode: "orphans" | "wor
         key: row.groupKey,
         workId: row.workId,
         workCode: row.workCode,
-        sourceLabel: row.sourceName,
+        groupKey: `source:${row.sourceCode || row.sourceId || "unknown"}`,
+        groupLabel: row.sourceName.trim() || row.sourceCode.trim() || "Unknown source",
+        sourceLabel: row.sourceName.trim() || row.sourceCode.trim() || "Unknown source",
         files: row.orphanFiles,
         bytes: row.orphanBytes,
       }));
   }
 
-  const works = new Map<number, CacheCleanupRow & { sources: Set<string> }>();
+  const works = new Map<number, Omit<CacheCleanupRow, "groupKey" | "groupLabel" | "sourceLabel"> & { sources: Map<string, string> }>();
   for (const row of overview.works) {
     if (row.workId <= 0 || row.referencedFiles <= 0) continue;
     const current = works.get(row.workId) ?? {
       key: String(row.workId),
       workId: row.workId,
       workCode: row.workCode,
-      sourceLabel: row.sourceName,
       files: 0,
       bytes: 0,
-      sources: new Set<string>(),
+      sources: new Map<string, string>(),
     };
     current.files += row.referencedFiles;
     current.bytes += row.referencedBytes;
-    if (row.sourceName.trim()) current.sources.add(row.sourceName.trim());
-    current.sourceLabel = current.sources.size > 1 ? `${current.sources.size} sources` : Array.from(current.sources)[0] ?? "Unknown source";
+    const sourceKey = row.sourceCode.trim() || String(row.sourceId || "unknown");
+    current.sources.set(sourceKey, row.sourceName.trim() || row.sourceCode.trim() || "Unknown source");
     works.set(row.workId, current);
   }
   return Array.from(works.values())
     .sort((left, right) => left.workCode.localeCompare(right.workCode))
-    .map(({ sources: _sources, ...row }) => row);
+    .map(({ sources, ...row }) => {
+      const sourceEntries = Array.from(sources.entries());
+      const singleSource = sourceEntries.length === 1 ? sourceEntries[0] : null;
+      return {
+        ...row,
+        groupKey: singleSource ? `source:${singleSource[0]}` : "source:multiple",
+        groupLabel: singleSource?.[1] ?? "Multiple sources",
+        sourceLabel: singleSource?.[1] ?? `${sourceEntries.length} sources`,
+      };
+    });
+}
+
+function cacheCleanupGroups(rows: CacheCleanupRow[]): CacheCleanupGroup[] {
+  const groups = new Map<string, CacheCleanupGroup>();
+  for (const row of rows) {
+    const group = groups.get(row.groupKey) ?? {
+      key: row.groupKey,
+      label: row.groupLabel,
+      rows: [],
+      files: 0,
+      bytes: 0,
+    };
+    group.rows.push(row);
+    group.files += row.files;
+    group.bytes += row.bytes;
+    groups.set(row.groupKey, group);
+  }
+  return Array.from(groups.values())
+    .map((group) => ({ ...group, rows: [...group.rows].sort((left, right) => left.workCode.localeCompare(right.workCode)) }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function CacheMetric({
@@ -1755,20 +1888,22 @@ function formatByteSize(bytes: number) {
 
 function SourceModal({
   source,
+  defaultSaveTemplate,
   editing,
   onChange,
   onSave,
   onClose,
 }: {
   source: FileSource;
+  defaultSaveTemplate: string;
   editing: boolean;
   onChange: (source: FileSource) => void;
   onSave: () => Promise<void>;
   onClose: () => void;
 }) {
   const patch = (next: Partial<FileSource>) => onChange({ ...source, ...next });
-  const sourceSaveSuffix = templateToSuffix(source.config.saveRootTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`);
-  const sourceSaveError = sourceSaveSuffix.startsWith("/") ? "" : "Save path suffix must start with /.";
+  const sourceSaveTemplate = source.config.saveRootTemplate?.trim() || defaultSaveTemplate;
+  const sourceSavePreview = storagePathPreview(sourceSaveTemplate, source.code.trim() || "source");
   const legacyNumber178 = source.sourceType === LEGACY_NUMBER178_SOURCE_TYPE;
 
   useEffect(() => {
@@ -1780,7 +1915,13 @@ function SourceModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-label={editing ? "Edit remote source" : "Add remote source"}
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
       <Card className="app-scroll max-h-[90vh] w-full max-w-2xl overflow-auto" onMouseDown={(event) => event.stopPropagation()}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
@@ -1853,24 +1994,12 @@ function SourceModal({
               />
             </div>
           </div>
-          <div className="grid gap-1 text-sm">
-            <span className="font-medium">Save path template</span>
-            <div className="flex min-h-9 overflow-hidden rounded-md border bg-card">
-              <div className="flex items-center border-r bg-muted px-3 text-muted-foreground">{DATA_PREFIX}</div>
-              <input
-                className="min-w-0 flex-1 bg-transparent px-3 outline-none focus:ring-2 focus:ring-ring"
-                value={sourceSaveSuffix}
-                onChange={(event) =>
-                  patch({ config: { ...source.config, saveRootTemplate: `${DATA_PREFIX}${normalizeSaveSuffix(event.target.value)}` } })
-                }
-              />
-            </div>
-            <div className={sourceSaveError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-              {sourceSaveError || source.config.saveRootTemplate}
-            </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <ReadonlyField label="Save path preview" value={sourceSavePreview} />
+            <p className="mt-2 text-xs text-muted-foreground">Example for RJ01234567. Resolved storage paths are managed in Paths.</p>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" className="flex-1" disabled={!source.displayName.trim() || Boolean(sourceSaveError)} onClick={() => void onSave()}>
+            <Button size="sm" className="flex-1" disabled={!source.displayName.trim()} onClick={() => void onSave()}>
               <Save className="h-4 w-4" />
               Save
             </Button>
@@ -1896,19 +2025,23 @@ function PathsSettings({ settings, remoteSources }: { settings: AppSettings | nu
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">These resolved paths are displayed for verification. Changes are made through the owning runtime or source settings.</p>
+        <p className="text-sm text-muted-foreground">These resolved paths are read-only previews derived from runtime defaults and existing source configuration.</p>
         <div className="grid gap-3 md:grid-cols-2">
           <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
           <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />
-          <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
-          <ReadonlyField label="Remote fetch path" value={`${settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}`} />
+          <ReadonlyField label="Remote cache path preview" value={storagePathPreview(`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`, "source")} />
+          <ReadonlyField label="Remote save path preview" value={storagePathPreview(settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`, "source")} />
         </div>
         {remoteSources.length > 0 && (
           <section className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-semibold">Source fetch templates</h3>
+            <h3 className="mb-3 text-sm font-semibold">Source save path previews</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {remoteSources.map((source) => (
-                <ReadonlyField key={source.id} label={source.displayName} value={source.config.saveRootTemplate || settings?.remoteSaveTemplate || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`} />
+                <ReadonlyField
+                  key={source.id}
+                  label={source.displayName}
+                  value={storagePathPreview(source.config.saveRootTemplate || settings?.remoteSaveTemplate || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`, source.code || "source")}
+                />
               ))}
             </div>
           </section>
@@ -1986,17 +2119,20 @@ function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
   return "overview";
 }
 
-function templateToSuffix(value: string) {
-  const trimmed = value.trim() || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`;
-  if (trimmed === DATA_PREFIX) return DEFAULT_SAVE_SUFFIX;
-  if (trimmed.startsWith(`${DATA_PREFIX}/`)) return trimmed.slice(DATA_PREFIX.length);
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-}
-
-function normalizeSaveSuffix(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return DEFAULT_SAVE_SUFFIX;
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+function storagePathPreview(template: string, sourceCode: string) {
+  const workCode = "RJ01234567";
+  const normalizedSource = sourceCode.trim() || "source";
+  const replacements: Array<[string, string]> = [
+    ["<source_name>", normalizedSource],
+    ["<source_code>", normalizedSource],
+    ["<work_code>", workCode],
+    ["<code_prefix>", "RJ"],
+    ["<code_group>", "012"],
+  ];
+  return replacements.reduce(
+    (value, [token, replacement]) => value.split(token).join(replacement),
+    template.trim() || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`,
+  );
 }
 
 function splitRuleTokens(value: string) {

@@ -175,19 +175,32 @@ async function mockCacheSettings(
 test("cache settings scan managed media and require cleanup confirmation", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const cleanupRequests: unknown[] = [];
-  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
+  const settingsPayloads: Record<string, unknown>[] = [];
+  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); }, (payload) => { settingsPayloads.push(payload); });
   await page.goto("/maintenance?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "768px");
   const cacheSections = await page
-    .getByText(/^(Cache & fetch|Managed media cache)$/)
+    .getByText(/^(Configuration|Managed media cache)$/)
     .allTextContents();
-  expect(cacheSections).toEqual(["Cache & fetch", "Managed media cache"]);
+  expect(cacheSections).toEqual(["Configuration", "Managed media cache"]);
+  await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save configuration" }).click();
+  await expect.poll(() => settingsPayloads).toHaveLength(1);
+  expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Expand Example Remote cache group" })).toBeVisible();
+  await expect(page.getByText("RJ09990001", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Expand Example Remote cache group" }).click();
   await expect(page.getByText("RJ09990001", { exact: true })).toBeVisible();
-
-  await page.getByRole("checkbox", { name: "Select cache for RJ09990001" }).click();
+  await page.getByRole("button", { name: "Collapse Example Remote cache group" }).click();
+  await expect(page.getByText("RJ09990001", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Expand Example Remote cache group" }).click();
+  await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
+  await expect(page.getByRole("button", { name: "Clean selected orphans" })).toHaveClass(/bg-destructive/);
   await page.getByRole("button", { name: "Clean selected orphans" }).click();
   expect(cleanupRequests).toHaveLength(0);
   await expect(page.getByRole("button", { name: "Confirm cleanup (2 files)" })).toBeVisible();
@@ -202,7 +215,7 @@ test("cache settings can clear referenced cache for selected works", async ({ pa
   await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
   await page.goto("/maintenance?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Select cache for RJ09990001" }).click();
+  await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await page.getByRole("button", { name: "Clean selected works" }).click();
   await page.getByRole("button", { name: "Confirm cleanup (6 files)" }).click();
   await expect.poll(() => cleanupRequests).toHaveLength(1);
@@ -239,9 +252,15 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect.poll(() => healthChecks).toBe(1);
   await expect(page.getByText("healthy", { exact: true })).toBeVisible();
 
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
+  await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ01234567");
+  await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
+  await sourceDialog.getByRole("button", { name: "Close source modal" }).click();
+
   await page.getByRole("button", { name: "Paths", exact: true }).click();
   await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Example Remote")).toHaveValue("/data/<source_name>/<work_code>");
+  await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ01234567");
   await expect(page.getByRole("button", { name: /Save.*path/i })).toHaveCount(0);
 });
 
