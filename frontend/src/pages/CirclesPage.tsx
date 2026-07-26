@@ -675,7 +675,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{circle.aliases.join(", ") || "No aliases"}</p>
+                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{circle.aliases.join(", ") || "No aliases"}</p>
+                {circle.aliases.length > 0 ? (
+                  <details className="mt-2 text-sm sm:hidden">
+                    <summary className="cursor-pointer font-medium text-muted-foreground">Aliases · {circle.aliases.length}</summary>
+                    <p className="mt-1 text-muted-foreground">{circle.aliases.join(", ")}</p>
+                  </details>
+                ) : <p className="mt-1 text-sm text-muted-foreground sm:hidden">No aliases</p>}
                 <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
@@ -700,7 +706,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-4 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
               <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
               <Stat label="Series" value={String(circle.series.length)} />
               <Stat label="Catalog only" value={String(catalogOnlyCount)} />
@@ -1180,10 +1186,10 @@ function SyncBadge({ state }: { state: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-2xl font-semibold">{value}</div>
-        <div className="text-sm text-muted-foreground">{label}</div>
+    <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border">
+      <CardContent className="p-2 text-center sm:p-4 sm:text-left">
+        <div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div>
+        <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div>
       </CardContent>
     </Card>
   );

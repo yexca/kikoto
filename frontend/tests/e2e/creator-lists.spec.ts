@@ -76,6 +76,65 @@ async function mockCreatorLists(page: Page) {
   });
 }
 
+async function mockCreatorDetails(page: Page) {
+  const voiceDetail = {
+    ...voice,
+    aliases: [voice.displayName, "Voice alias"],
+    aliasRecords: [
+      { id: 1, alias: voice.displayName, source: "primary_name", createdAt: "2026-07-01T00:00:00Z" },
+      { id: 2, alias: "Voice alias", source: "manual", createdAt: "2026-07-01T00:00:00Z" },
+    ],
+    works: [],
+    remoteMatches: [],
+  };
+  const circleDetail = {
+    ...circle,
+    aliases: ["Circle alias", "Second alias"],
+    works: [],
+    series: [],
+  };
+
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/auth/me") {
+      await route.fulfill({ json: { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync"], devMode: true } } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7") {
+      await route.fulfill({ json: voiceDetail });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/works") {
+      await route.fulfill({ json: { personId: 7, works: [] } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/remote-matches") {
+      await route.fulfill({ json: { personId: 7, remoteMatches: [{ sourceId: 3, sourceCode: "example", displayName: "Example Remote", status: "ok", error: "", elapsedMs: 12, total: 0, works: [] }] } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/merges") {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    if (url.pathname === "/api/circles/RG09999") {
+      await route.fulfill({ json: circleDetail });
+      return;
+    }
+    if (url.pathname === "/api/circles/RG09999/auto-refresh") {
+      await route.fulfill({ json: { status: "skipped", reason: "fresh", mode: "" } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
+  });
+}
+
+async function expectSingleStatRow(page: Page, columns: 4 | 5, marker: string) {
+  const cards = page.locator(`div.grid.grid-cols-${columns}`).filter({ hasText: marker }).locator(":scope > *");
+  await expect(cards).toHaveCount(columns);
+  const tops = await cards.evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().top)));
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+}
+
 test("circle list uses compact responsive cards and shared pagination", async ({ page }) => {
   await mockCreatorLists(page);
   await page.goto("/circles?pageSize=24");
@@ -101,5 +160,32 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.locator("div.inline-flex").filter({ hasText: /^Soft$/ }).first()).toBeVisible();
   await expect(page.getByText("1-24 of 30 voice actors", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("voice detail keeps stats together and secondary panels folded on mobile", async ({ page }) => {
+  await mockCreatorDetails(page);
+  await page.goto("/voices/7");
+
+  await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
+  await expectSingleStatRow(page, 5, "Known works");
+  const aliases = page.locator("details").filter({ hasText: "Aliases" }).first();
+  const remoteSources = page.locator("details").filter({ hasText: "Remote Sources" }).first();
+  await expect(aliases).not.toHaveAttribute("open", "");
+  await expect(remoteSources).not.toHaveAttribute("open", "");
+  await expect(aliases.getByRole("heading", { name: "Aliases", exact: true })).toBeHidden();
+  await expect(remoteSources.getByRole("heading", { name: "Remote Sources", exact: true })).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("circle detail keeps stats together and aliases folded on mobile", async ({ page }) => {
+  await mockCreatorDetails(page);
+  await page.goto("/circles/RG09999");
+
+  await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
+  await expectSingleStatRow(page, 4, "Catalog works");
+  const aliases = page.locator("details").filter({ hasText: "Aliases" }).first();
+  await expect(aliases).not.toHaveAttribute("open", "");
+  await expect(aliases.getByText("Circle alias, Second alias", { exact: true })).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Settings2,
   Tag,
   Trash2,
   X,
@@ -1052,6 +1053,12 @@ function WorkflowDetail({
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
   onEditNode: (index: number) => void;
 }) {
+  const [configuredSystemRun, setConfiguredSystemRun] = useState<"dlsite_popular" | "remote_popular" | null>(null);
+
+  useEffect(() => {
+    setConfiguredSystemRun(null);
+  }, [definition?.id]);
+
   if (!definition) {
     return <EmptyPanel text={emptyText} />;
   }
@@ -1106,6 +1113,16 @@ function WorkflowDetail({
                 </Button>
               );
             })}
+            {definition.scope === "system" && systemRunKinds?.filter((kind): kind is "dlsite_popular" | "remote_popular" => kind === "dlsite_popular" || kind === "remote_popular").map((kind) => {
+              const running = isSystemActionRunning?.(kind) ?? false;
+              const allowed = canRunSystemAction?.(kind) ?? false;
+              return (
+                <Button key={kind} size="sm" onClick={() => setConfiguredSystemRun(kind)} disabled={running || !allowed}>
+                  <Settings2 className="h-4 w-4" />
+                  {running ? "Queueing" : "Configure"}
+                </Button>
+              );
+            })}
           </div>
         </div>
 
@@ -1117,23 +1134,6 @@ function WorkflowDetail({
           onEdit={onEditTrigger}
           onToggle={onToggleTrigger}
         />
-
-        {systemRunKinds?.includes("dlsite_popular") && onRunDLsitePopular && (
-          <DLsitePopularRunPanel
-            running={isSystemActionRunning?.("dlsite_popular") ?? false}
-            allowed={canRunSystemAction?.("dlsite_popular") ?? false}
-            onRun={onRunDLsitePopular}
-          />
-        )}
-
-        {systemRunKinds?.includes("remote_popular") && onRunRemotePopular && (
-          <RemotePopularRunPanel
-            running={isSystemActionRunning?.("remote_popular") ?? false}
-            allowed={canRunSystemAction?.("remote_popular") ?? false}
-            canFetch={canFetchRemotePopular}
-            onRun={onRunRemotePopular}
-          />
-        )}
 
         {definition.scope === "system" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -1164,6 +1164,25 @@ function WorkflowDetail({
         {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
+      {configuredSystemRun === "dlsite_popular" && onRunDLsitePopular && (
+        <Modal title="Configure DLsite popular collection" onClose={() => setConfiguredSystemRun(null)}>
+          <DLsitePopularRunPanel
+            running={isSystemActionRunning?.("dlsite_popular") ?? false}
+            allowed={canRunSystemAction?.("dlsite_popular") ?? false}
+            onRun={onRunDLsitePopular}
+          />
+        </Modal>
+      )}
+      {configuredSystemRun === "remote_popular" && onRunRemotePopular && (
+        <Modal title="Configure remote popular collection" onClose={() => setConfiguredSystemRun(null)}>
+          <RemotePopularRunPanel
+            running={isSystemActionRunning?.("remote_popular") ?? false}
+            allowed={canRunSystemAction?.("remote_popular") ?? false}
+            canFetch={canFetchRemotePopular}
+            onRun={onRunRemotePopular}
+          />
+        </Modal>
+      )}
     </Card>
   );
 }
@@ -1229,8 +1248,7 @@ function RemotePopularRunPanel({
 
   const canSubmit = allowed && sourceId > 0 && !tagError && tagPreview.value.length > 0 && (action !== "fetch" || canFetch);
   return (
-    <section className="pb-1 pt-4">
-      <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
+    <section>
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
           <label className="grid gap-2 text-sm font-medium">
@@ -1317,8 +1335,7 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
   }, [defaultTagTemplate, tagCustomized]);
 
   return (
-    <section className="pb-1 pt-4">
-      <h4 className="mb-4 text-sm font-semibold">Manual run</h4>
+    <section>
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
         <div className="space-y-4">
           <div>

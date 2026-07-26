@@ -52,6 +52,19 @@ func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
 	}
 }
 
+func TestDirectoryRoutingRulesPreserveExplicitEmptySetting(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('directory_routing_rules', '[]')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodGet, "/api/runtime-settings", nil)
+	rules := server.settingDirectoryRules(request, "directory_routing_rules", defaultDirectoryRoutingRules())
+	if len(rules) != 0 {
+		t.Fatalf("rules = %+v, want explicit empty list", rules)
+	}
+}
+
 func TestLegacyNumber178SourceTypesCannotBeSeededFromConfig(t *testing.T) {
 	for _, sourceType := range []string{"kikoeru_compatible_number178", "kikoeru_compilable_number178"} {
 		t.Run(sourceType, func(t *testing.T) {
@@ -160,6 +173,46 @@ func TestUpdateSourceHealthOnlyWritesSameStatusAfterThrottleWindow(t *testing.T)
 	}
 	if firstChecked == "" || firstChecked == "2026-01-01 00:00:00" {
 		t.Fatalf("stale same-status check was not refreshed: %q", firstChecked)
+	}
+}
+
+func TestManualFileSourceHealthCheckRefreshesStatus(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/health" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode("ok")
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'remote', 'Example Remote', 'kikoeru_compatible', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, health_status, last_checked_at)
+		VALUES (1, ?, ?, 'unknown', NULL)
+	`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources/1/health-check", nil)
+	request.SetPathValue("id", "1")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+	response := httptest.NewRecorder()
+	server.checkFileSourceHealth(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var result fileSourceHealthCheckResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Healthy || result.HealthStatus != "healthy" || result.LastCheckedAt == nil {
+		t.Fatalf("health result = %+v", result)
 	}
 }
 

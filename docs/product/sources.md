@@ -37,6 +37,11 @@ Startup and source-change batch checks first verify relevant source health. The
 probe prefers `/api/health` and falls back to a one-item list request for
 compatible sources that do not expose a health endpoint.
 
+Administrators can run the same bounded probe manually from Maintenance with
+`POST /api/file-sources/{id}/health-check`. The response reports health, check
+time, and duration without returning the configured upstream address or raw
+upstream error.
+
 If a source is unreachable, Kikoto marks that source unavailable for the batch
 and skips per-work checks. It does not mark every candidate work as missing.
 

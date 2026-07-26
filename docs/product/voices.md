@@ -17,6 +17,9 @@ Voice pages present persisted person and credit data.
 - Loads person detail, known works, and remote matches independently. Remote
   source searches use bounded concurrency, while voice counts and user tags are
   aggregated in batches.
+- On mobile detail views, all five work counts stay in one compact row. Alias
+  review and Remote Sources start folded with count and health summaries, while
+  desktop detail keeps both panels expanded.
 
 ## Boundary
 

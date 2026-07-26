@@ -27,6 +27,19 @@ change their own passwords normally.
 
 Demo mode renders Settings read-only.
 
+## Maintenance Organization
+
+- Library combines the local scan settings and configured remote sources.
+- Each enabled remote source has an explicit health-check action. The result is
+  persisted through the same source health state used by automatic probes.
+- Routing rules are ordered preferences. Their timeline position determines
+  internal priority; disabled and numeric-weight controls are not exposed.
+- Recommendation starts with named common profiles and keeps the full scoring
+  priors, weights, and caps under Advanced scoring.
+- Paths is read-only and shows the resolved data root, cache root, default
+  Fetch template, and per-source Fetch templates. Path changes remain owned by
+  their runtime or source configuration rather than this overview.
+
 ## Related Docs
 
 - [Configuration](../operations/configuration.md)

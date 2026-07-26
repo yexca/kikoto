@@ -28,6 +28,10 @@ Workflows make backend actions inspectable.
   expand the template on request; automatic triggers store it unchanged and
   expand it at dispatch. Remote automatic collection is Track-only so it
   cannot bypass Fetch size and disk-reserve safeguards.
+- The two configurable popular collectors keep their detail surfaces compact.
+  `Configure` in the selected workflow header opens a modal containing the run
+  inputs, tag preview, and final run action. Built-in workflows without run
+  parameters continue to expose a direct run action.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
   annual runs select an explicit year and default to a template containing

@@ -7,6 +7,7 @@ import {
   Folder,
   Gauge,
   Globe2,
+  GripVertical,
   HardDrive,
   PlayCircle,
   Plus,
@@ -21,7 +22,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type MaintenanceTab = "overview" | "routing" | "recommendation" | "local" | "remote" | "cache" | "metadata" | "users" | "system";
+type MaintenanceTab = "overview" | "routing" | "recommendation" | "library" | "cache" | "metadata" | "users" | "paths";
 
 export function MaintenancePage({
   canManageSources,
@@ -95,7 +96,7 @@ export function MaintenancePage({
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
-  const [isPathsOpen, setIsPathsOpen] = useState(false);
+  const [checkingSourceId, setCheckingSourceId] = useState<number | null>(null);
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -119,7 +120,7 @@ export function MaintenancePage({
         setRemoteMaxBackoff(next.remoteMaxBackoffSeconds);
         setCircleAutoRefreshDays(next.circleAutoRefreshDays);
         setDlsiteMetadataLanguage(next.dlsiteMetadataLanguage);
-        setDirectoryRoutingRules(next.directoryRoutingRules ?? []);
+        setDirectoryRoutingRules(reweightDirectoryRoutingRules((next.directoryRoutingRules ?? []).filter((rule) => rule.enabled)));
         setRecommendationThreshold(next.recommendationThreshold ?? 50);
         setRecommendationConfig(next.recommendationConfig);
         setSaveSuffix(templateToSuffix(next.remoteSaveTemplate));
@@ -227,6 +228,28 @@ export function MaintenancePage({
     toast.success("Source deleted.");
   };
 
+  const checkSourceHealth = async (id: number) => {
+    if (readOnly) return;
+    setCheckingSourceId(id);
+    try {
+      const result = await api.checkFileSourceHealth(id);
+      setSettings((current) => current ? {
+        ...current,
+        fileSources: current.fileSources.map((source) => source.id === id ? {
+          ...source,
+          healthStatus: result.healthStatus,
+          lastCheckedAt: result.lastCheckedAt,
+        } : source),
+      } : current);
+      if (result.healthy) toast.success("Source health check passed.");
+      else toast.warning("Source health check failed.");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Source health check could not run."));
+    } finally {
+      setCheckingSourceId(null);
+    }
+  };
+
   if (!canManageSources) {
     return (
       <section className="rounded-lg border bg-card p-5">
@@ -274,11 +297,8 @@ export function MaintenancePage({
         <SettingsTabButton active={activeTab === "recommendation"} onClick={() => selectTab("recommendation")} icon={<Sparkles className="h-4 w-4" />}>
           Recommendation
         </SettingsTabButton>
-        <SettingsTabButton active={activeTab === "local"} onClick={() => selectTab("local")} icon={<Folder className="h-4 w-4" />}>
+        <SettingsTabButton active={activeTab === "library"} onClick={() => selectTab("library")} icon={<Folder className="h-4 w-4" />}>
           Library
-        </SettingsTabButton>
-        <SettingsTabButton active={activeTab === "remote"} onClick={() => selectTab("remote")} icon={<Cloud className="h-4 w-4" />}>
-          Sources
         </SettingsTabButton>
         <SettingsTabButton active={activeTab === "cache"} onClick={() => selectTab("cache")} icon={<Download className="h-4 w-4" />}>
           Cache & Fetch
@@ -289,8 +309,8 @@ export function MaintenancePage({
         {canManageUsers && <SettingsTabButton active={activeTab === "users"} onClick={() => selectTab("users")} icon={<Shield className="h-4 w-4" />}>
           Users
         </SettingsTabButton>}
-        <SettingsTabButton active={activeTab === "system"} onClick={() => selectTab("system")} icon={<Server className="h-4 w-4" />}>
-          System
+        <SettingsTabButton active={activeTab === "paths"} onClick={() => selectTab("paths")} icon={<Server className="h-4 w-4" />}>
+          Paths
         </SettingsTabButton>
       </div>
 
@@ -298,7 +318,7 @@ export function MaintenancePage({
       {isSettingsLoading ? (
         activeTab === "overview" ? (
           <SettingsOverviewSkeleton />
-        ) : activeTab === "remote" ? (
+        ) : activeTab === "library" ? (
           <RemoteSourcesSettingsSkeleton />
         ) : (
           <SettingsPanelSkeleton />
@@ -321,16 +341,23 @@ export function MaintenancePage({
           onRulesChange={setDirectoryRoutingRules}
           onSave={saveRuntimeSettings}
         />
-      ) : activeTab === "local" ? (
-        <LocalLibrarySettings
-          settings={settings}
-          localSource={localSource}
-          localScanDepth={localScanDepth}
-          pathsOpen={isPathsOpen}
-          onScanDepthChange={setLocalScanDepth}
-          onPathsOpenChange={setIsPathsOpen}
-          onSave={saveRuntimeSettings}
-        />
+      ) : activeTab === "library" ? (
+        <div className="space-y-4">
+          <LocalLibrarySettings
+            localSource={localSource}
+            localScanDepth={localScanDepth}
+            onScanDepthChange={setLocalScanDepth}
+            onSave={saveRuntimeSettings}
+          />
+          <RemoteSourcesSettings
+            remoteSources={remoteSources}
+            checkingSourceId={checkingSourceId}
+            onCreateSource={openCreateSource}
+            onEditSource={openEditSource}
+            onDeleteSource={deleteSource}
+            onCheckSource={checkSourceHealth}
+          />
+        </div>
       ) : activeTab === "recommendation" ? (
         <RecommendationSettings
           config={recommendationConfig}
@@ -340,13 +367,6 @@ export function MaintenancePage({
           onConfigChange={setRecommendationConfig}
           onThresholdChange={setRecommendationThreshold}
           onSave={saveRuntimeSettings}
-        />
-      ) : activeTab === "remote" ? (
-        <RemoteSourcesSettings
-          remoteSources={remoteSources}
-          onCreateSource={openCreateSource}
-          onEditSource={openEditSource}
-          onDeleteSource={deleteSource}
         />
       ) : activeTab === "cache" ? (
         <CacheFetchSettings
@@ -380,7 +400,7 @@ export function MaintenancePage({
       ) : activeTab === "users" ? (
         <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} embedded />
       ) : (
-        <SystemPathsSettings settings={settings} saveTemplate={saveTemplate} />
+        <PathsSettings settings={settings} remoteSources={remoteSources} />
       )}
       </fieldset>
 
@@ -425,9 +445,9 @@ function SettingsOverview({
       <SettingsHomeCard
         icon={<PlayCircle className="h-5 w-5" />}
         title="Directory routing"
-        description="Route playback and Fetch actions through weighted directory rules."
+        description="Order directory preferences for playback and Fetch actions."
         status="Configured"
-        chips={["Aliases", "Weights", "Fallback"]}
+        chips={["Ordered", "Aliases", "Fallback"]}
         onClick={() => onSelect("routing")}
       />
       <SettingsHomeCard
@@ -436,7 +456,7 @@ function SettingsOverview({
         description="Local source scan behavior and library root visibility."
         status={localSource?.enabled ? "Active" : "Needs scan"}
         chips={[localSource?.displayName ?? "Main local library", `${localScanDepth} scan levels`]}
-        onClick={() => onSelect("local")}
+        onClick={() => onSelect("library")}
       />
       <SettingsHomeCard
         icon={<Cloud className="h-5 w-5" />}
@@ -444,7 +464,7 @@ function SettingsOverview({
         description="Manage configured file sources, health, and priority."
         status={`${enabledSources}/${remoteSources.length} enabled`}
         chips={[warningSources > 0 ? `${warningSources} warnings` : "Healthy", "Priority", "Endpoints"]}
-        onClick={() => onSelect("remote")}
+        onClick={() => onSelect("library")}
       />
       <SettingsHomeCard
         icon={<Download className="h-5 w-5" />}
@@ -464,11 +484,11 @@ function SettingsOverview({
       />
       <SettingsHomeCard
         icon={<Server className="h-5 w-5" />}
-        title="System paths"
-        description="Read-only runtime roots and derived storage templates."
+        title="Paths"
+        description="Read-only runtime roots and resolved storage templates."
         status="Read only"
         chips={["/data", "/cache", "Docker"]}
-        onClick={() => onSelect("system")}
+        onClick={() => onSelect("paths")}
       />
       {canManageUsers && <SettingsHomeCard
         icon={<Shield className="h-5 w-5" />}
@@ -528,31 +548,34 @@ function PlaybackSettings({
   onRulesChange: (rules: DirectoryRoutingRule[]) => void;
   onSave: () => Promise<void>;
 }) {
+  const [draggedRuleIndex, setDraggedRuleIndex] = useState<number | null>(null);
+  const draggedRuleIndexRef = useRef<number | null>(null);
+  const applyRules = (next: DirectoryRoutingRule[]) => onRulesChange(reweightDirectoryRoutingRules(next));
   const patchRule = (index: number, patch: Partial<DirectoryRoutingRule>) => {
-    onRulesChange(rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule));
+    onRulesChange(rules.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch, enabled: true } : rule));
   };
-  const moveRule = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction;
+  const moveRuleTo = (index: number, nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= rules.length) return;
     const next = [...rules];
     const [rule] = next.splice(index, 1);
     next.splice(nextIndex, 0, rule);
-    onRulesChange(next);
+    applyRules(next);
   };
+  const moveRule = (index: number, direction: -1 | 1) => moveRuleTo(index, index + direction);
   const addRule = () => {
-    onRulesChange([
+    applyRules([
       ...rules,
       {
         id: `rule_${Date.now()}`,
         label: "New rule",
-        weight: 10,
+        weight: 20,
         aliases: ["keyword"],
         negativeAliases: [],
         enabled: true,
       },
     ]);
   };
-  const removeRule = (index: number) => onRulesChange(rules.filter((_, ruleIndex) => ruleIndex !== index));
+  const removeRule = (index: number) => applyRules(rules.filter((_, ruleIndex) => ruleIndex !== index));
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden">
@@ -572,11 +595,11 @@ function PlaybackSettings({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
-            <StatusPanel icon={<Folder className="h-4 w-4" />} label="Directory routing" value={rules.length > 0 ? "Enabled" : "No rules"} />
-            <StatusPanel icon={<SlidersHorizontal className="h-4 w-4" />} label="Match model" value="Weighted aliases" />
+            <StatusPanel icon={<Folder className="h-4 w-4" />} label="Directory routing" value={rules.length > 0 ? `${rules.length} preferences` : "No rules"} />
+            <StatusPanel icon={<SlidersHorizontal className="h-4 w-4" />} label="Match model" value="Ordered preferences" />
             <StatusPanel icon={<Gauge className="h-4 w-4" />} label="Fallback" value="Most audio" />
           </div>
-          <div className="space-y-3">
+          <div className="relative space-y-2 before:absolute before:bottom-5 before:left-5 before:top-5 before:w-px before:bg-border">
             {rules.map((rule, index) => (
               <DirectoryRuleEditor
                 key={rule.id || index}
@@ -586,6 +609,24 @@ function PlaybackSettings({
                 canMoveDown={index < rules.length - 1}
                 onPatch={(patch) => patchRule(index, patch)}
                 onMove={moveRule}
+                onDragStart={() => {
+                  draggedRuleIndexRef.current = index;
+                  setDraggedRuleIndex(index);
+                }}
+                onDragMove={(clientX, clientY) => {
+                  const source = draggedRuleIndexRef.current;
+                  const target = Number(document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-routing-rule-index]")?.dataset.routingRuleIndex);
+                  if (source !== null && Number.isInteger(target) && source !== target) {
+                    moveRuleTo(source, target);
+                    draggedRuleIndexRef.current = target;
+                    setDraggedRuleIndex(target);
+                  }
+                }}
+                onDragEnd={() => {
+                  draggedRuleIndexRef.current = null;
+                  setDraggedRuleIndex(null);
+                }}
+                dragging={draggedRuleIndex === index}
                 onRemove={() => removeRule(index)}
               />
             ))}
@@ -612,6 +653,10 @@ function DirectoryRuleEditor({
   canMoveDown,
   onPatch,
   onMove,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  dragging,
   onRemove,
 }: {
   rule: DirectoryRoutingRule;
@@ -620,65 +665,85 @@ function DirectoryRuleEditor({
   canMoveDown: boolean;
   onPatch: (patch: Partial<DirectoryRoutingRule>) => void;
   onMove: (index: number, direction: -1 | 1) => void;
+  onDragStart: () => void;
+  onDragMove: (clientX: number, clientY: number) => void;
+  onDragEnd: () => void;
+  dragging: boolean;
   onRemove: () => void;
 }) {
   return (
-    <div className={`rounded-lg border bg-background p-3 ${rule.enabled ? "" : "opacity-65"}`}>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-        <div className="flex items-center gap-2">
-          <button
-            className="grid h-8 w-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:opacity-40"
-            disabled={!canMoveUp}
-            onClick={() => onMove(index, -1)}
-            aria-label="Move rule up"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-          <button
-            className="grid h-8 w-8 place-items-center rounded-md border text-muted-foreground hover:bg-muted disabled:opacity-40"
-            disabled={!canMoveDown}
-            onClick={() => onMove(index, 1)}
-            aria-label="Move rule down"
-          >
-            <ArrowDown className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_120px_120px]">
+    <div
+      data-routing-rule-index={index}
+      className={`relative flex min-w-0 gap-3 ${dragging ? "opacity-55" : ""}`}
+    >
+      <div className="relative z-[1] flex w-10 shrink-0 flex-col items-center gap-1.5">
+        <button
+          type="button"
+          className="grid h-8 w-8 touch-none cursor-grab place-items-center rounded-md border bg-card text-muted-foreground active:cursor-grabbing"
+          aria-label={`Drag ${rule.label}`}
+          onPointerDown={(event) => {
+            if (!event.isPrimary || event.button !== 0) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            onDragStart();
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) onDragMove(event.clientX, event.clientY);
+          }}
+          onPointerUp={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+            onDragEnd();
+          }}
+          onPointerCancel={onDragEnd}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">{index + 1}</span>
+      </div>
+      <details className="group min-w-0 flex-1 rounded-md border bg-background">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 marker:hidden">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{rule.label}</div>
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              {rule.aliases.length} match keyword{rule.aliases.length === 1 ? "" : "s"}
+              {rule.negativeAliases.length > 0 ? ` · ${rule.negativeAliases.length} exclusion${rule.negativeAliases.length === 1 ? "" : "s"}` : ""}
+            </div>
+          </div>
+          <span className="text-xs text-muted-foreground group-open:hidden">Edit</span>
+          <span className="hidden text-xs text-muted-foreground group-open:inline">Close</span>
+        </summary>
+        <div className="space-y-3 border-t p-3">
           <TextInput label="Rule name" value={rule.label} onChange={(value) => onPatch({ label: value })} />
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium">Weight</span>
-            <input
-              className="h-9 rounded-md border bg-card px-3 outline-none focus:ring-2 focus:ring-ring"
-              type="number"
-              min={1}
-              max={100}
-              value={rule.weight}
-              onChange={(event) => onPatch({ weight: Number(event.target.value) })}
-            />
-          </label>
-          <div className="flex min-h-9 items-center justify-between gap-3 self-end rounded-md border px-3 text-sm">
-            <span className="font-medium">Enabled</span>
-            <Switch checked={rule.enabled} onCheckedChange={(enabled) => onPatch({ enabled })} aria-label="Enable routing rule" />
+          <div className="grid gap-3 md:grid-cols-2">
+            <TagListInput label="Aliases" value={rule.aliases} onChange={(aliases) => onPatch({ aliases })} />
+            <TagListInput label="Negative aliases" value={rule.negativeAliases} onChange={(negativeAliases) => onPatch({ negativeAliases })} />
+          </div>
+          <div className="flex flex-wrap justify-between gap-2 border-t pt-3">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={!canMoveUp} onClick={() => onMove(index, -1)}>
+                <ArrowUp className="h-4 w-4" />
+                Earlier
+              </Button>
+              <Button variant="outline" size="sm" disabled={!canMoveDown} onClick={() => onMove(index, 1)}>
+                <ArrowDown className="h-4 w-4" />
+                Later
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" className="text-destructive" onClick={onRemove}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
           </div>
         </div>
-        <Button variant="outline" size="icon" aria-label="Remove rule" onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <TagListInput
-          label="Aliases"
-          value={rule.aliases}
-          onChange={(aliases) => onPatch({ aliases })}
-        />
-        <TagListInput
-          label="Negative aliases"
-          value={rule.negativeAliases}
-          onChange={(negativeAliases) => onPatch({ negativeAliases })}
-        />
-      </div>
+      </details>
     </div>
   );
+}
+
+function reweightDirectoryRoutingRules(rules: DirectoryRoutingRule[]) {
+  if (rules.length === 0) return [];
+  const step = rules.length === 1 ? 0 : Math.min(10, Math.max(1, Math.floor(80 / (rules.length - 1))));
+  const firstWeight = rules.length === 1 ? 40 : 20 + step * (rules.length - 1);
+  return rules.map((rule, index) => ({ ...rule, weight: firstWeight - step * index, enabled: true }));
 }
 
 function TagListInput({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string[]) => void }) {
@@ -919,24 +984,33 @@ const recommendationStateFields: Array<{ key: RecommendationConfigKey; label: st
 ];
 
 const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
-  { key: "tagWeight", label: "Tag weight", max: 50 },
-  { key: "tagCap", label: "Tag cap", max: 100 },
-  { key: "voiceWeight", label: "Voice weight", max: 50 },
-  { key: "voiceCap", label: "Voice cap", max: 100 },
-  { key: "circleWeight", label: "Circle weight", max: 50 },
-  { key: "circleCap", label: "Circle cap", max: 100 },
+  { key: "tagWeight", label: "Positive tag weight", max: 50 },
+  { key: "tagCap", label: "Positive tag cap", max: 100 },
+  { key: "voiceWeight", label: "Positive voice weight", max: 50 },
+  { key: "voiceCap", label: "Positive voice cap", max: 100 },
+  { key: "circleWeight", label: "Positive circle weight", max: 50 },
+  { key: "circleCap", label: "Positive circle cap", max: 100 },
   { key: "favoriteBonus", label: "Favorite bonus", max: 50 },
 ];
 
 const recommendationNegativeFields: Array<{ key: RecommendationConfigKey; label: string; min?: number; max: number }> = [
-  { key: "negativeMinEvidence", label: "Minimum evidence", min: 1, max: 10 },
-  { key: "negativeTagWeight", label: "Tag weight", max: 50 },
-  { key: "negativeTagCap", label: "Tag cap", max: 100 },
-  { key: "negativeVoiceWeight", label: "Voice weight", max: 50 },
-  { key: "negativeVoiceCap", label: "Voice cap", max: 100 },
-  { key: "negativeCircleWeight", label: "Circle weight", max: 50 },
-  { key: "negativeCircleCap", label: "Circle cap", max: 100 },
-  { key: "negativeTotalCap", label: "Total cap", max: 100 },
+  { key: "negativeMinEvidence", label: "Shelved evidence works", min: 1, max: 10 },
+  { key: "negativeTagWeight", label: "Shelved tag weight", max: 50 },
+  { key: "negativeTagCap", label: "Shelved tag cap", max: 100 },
+  { key: "negativeVoiceWeight", label: "Shelved voice weight", max: 50 },
+  { key: "negativeVoiceCap", label: "Shelved voice cap", max: 100 },
+  { key: "negativeCircleWeight", label: "Shelved circle weight", max: 50 },
+  { key: "negativeCircleCap", label: "Shelved circle cap", max: 100 },
+  { key: "negativeTotalCap", label: "Shelved total cap", max: 100 },
+];
+
+type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_shelved";
+
+const recommendationPresetOptions: Array<{ key: RecommendationPreset; label: string; description: string }> = [
+  { key: "balanced", label: "Balanced", description: "Default affinity and variety" },
+  { key: "familiar", label: "Familiar", description: "Stronger tag, voice, and circle affinity" },
+  { key: "exploratory", label: "Exploratory", description: "More unmarked works and ordering variety" },
+  { key: "avoid_shelved", label: "Avoid shelved", description: "Stronger penalty for repeated shelved similarity" },
 ];
 
 function RecommendationSettings({
@@ -963,6 +1037,15 @@ function RecommendationSettings({
   };
   const impressions = telemetry?.eventCounts.impression ?? 0;
   const scoreBuckets = ["0-19", "20-39", "40-59", "60-79", "80-100"];
+  const activePreset = defaults
+    ? recommendationPresetOptions.find((preset) => recommendationConfigsEqual(config, recommendationPresetConfig(defaults, preset.key)))?.key ?? "custom"
+    : "custom";
+  const exampleScore = Math.max(0, Math.min(100,
+    config.nonePrior
+    + Math.min(config.tagCap, config.tagWeight)
+    + Math.min(config.voiceCap, config.voiceWeight)
+    + Math.min(config.circleCap, config.circleWeight),
+  ));
 
   return (
     <div className="space-y-4">
@@ -986,28 +1069,62 @@ function RecommendationSettings({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <RecommendationNumberField label="Badge threshold" value={threshold} min={1} max={100} onChange={onThresholdChange} />
-            <RecommendationNumberField label="Seed jitter" value={config.jitterAmplitude} min={0} max={10} onChange={(value) => updateField("jitterAmplitude", value)} />
+          <section>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">Recommendation profile</h3>
+              {activePreset === "custom" && <Badge variant="outline">Custom</Badge>}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {recommendationPresetOptions.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  className={`min-h-16 rounded-md border px-3 py-2 text-left transition-colors ${activePreset === preset.key ? "border-primary bg-primary/8" : "bg-background hover:bg-muted/40"}`}
+                  aria-pressed={activePreset === preset.key}
+                  disabled={!defaults}
+                  onClick={() => defaults && onConfigChange(recommendationPresetConfig(defaults, preset.key))}
+                >
+                  <span className="block text-sm font-semibold">{preset.label}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{preset.description}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px]">
+            <RecommendationRangeField label="Badge threshold" value={threshold} min={1} max={100} onChange={onThresholdChange} />
+            <RecommendationRangeField label="Result variation" value={config.jitterAmplitude} min={0} max={10} onChange={(value) => updateField("jitterAmplitude", value)} />
+            <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+              <div>
+                <div className="text-xs text-muted-foreground">Example score</div>
+                <div className="text-2xl font-semibold tabular-nums">{exampleScore}</div>
+              </div>
+              <Badge variant={exampleScore >= threshold ? "secondary" : "outline"}>{exampleScore >= threshold ? "Badge shown" : "Below threshold"}</Badge>
+            </div>
           </div>
 
-          <RecommendationFieldGroup title="Listening state priors">
-            {recommendationStateFields.map((field) => (
-              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={-100} max={100} onChange={(value) => updateField(field.key, value)} />
-            ))}
-          </RecommendationFieldGroup>
+          <details className="rounded-md border bg-background">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Advanced scoring</summary>
+            <div className="space-y-5 border-t p-4">
+              <RecommendationFieldGroup title="Listening state base score">
+                {recommendationStateFields.map((field) => (
+                  <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={-100} max={100} onChange={(value) => updateField(field.key, value)} />
+                ))}
+              </RecommendationFieldGroup>
 
-          <RecommendationFieldGroup title="Positive signals">
-            {recommendationPositiveFields.map((field) => (
-              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={0} max={field.max} onChange={(value) => updateField(field.key, value)} />
-            ))}
-          </RecommendationFieldGroup>
+              <RecommendationFieldGroup title="Positive affinity per match and cap">
+                {recommendationPositiveFields.map((field) => (
+                  <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={0} max={field.max} onChange={(value) => updateField(field.key, value)} />
+                ))}
+              </RecommendationFieldGroup>
 
-          <RecommendationFieldGroup title="Shelved similarity penalty">
-            {recommendationNegativeFields.map((field) => (
-              <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} min={field.min ?? 0} max={field.max} onChange={(value) => updateField(field.key, value)} />
-            ))}
-          </RecommendationFieldGroup>
+              <RecommendationFieldGroup title="Shelved similarity penalty">
+                {recommendationNegativeFields.map((field) => (
+                  <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={field.min ?? 0} max={field.max} onChange={(value) => updateField(field.key, value)} />
+                ))}
+              </RecommendationFieldGroup>
+            </div>
+          </details>
 
           <Button size="sm" onClick={() => void onSave()}>
             <Save className="h-4 w-4" />
@@ -1063,7 +1180,7 @@ function RecommendationSettings({
 
 function RecommendationFieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-t pt-5">
+    <section>
       <h3 className="mb-3 text-sm font-semibold">{title}</h3>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
     </section>
@@ -1073,19 +1190,24 @@ function RecommendationFieldGroup({ title, children }: { title: string; children
 function RecommendationNumberField({
   label,
   value,
+  defaultValue,
   min,
   max,
   onChange,
 }: {
   label: string;
   value: number;
+  defaultValue?: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
 }) {
   return (
     <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
+      <span className="flex items-center justify-between gap-2 font-medium">
+        <span>{label}</span>
+        {defaultValue !== undefined && value !== defaultValue && <span className="text-[10px] font-normal text-muted-foreground">Default {defaultValue}</span>}
+      </span>
       <input
         className="h-9 min-w-0 rounded-md border bg-card px-3 tabular-nums outline-none focus:ring-2 focus:ring-ring"
         type="number"
@@ -1098,21 +1220,44 @@ function RecommendationNumberField({
   );
 }
 
+function RecommendationRangeField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  return (
+    <label className="grid gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+      <span className="flex items-center justify-between gap-3 font-medium">
+        <span>{label}</span>
+        <span className="tabular-nums text-muted-foreground">{value}</span>
+      </span>
+      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+    </label>
+  );
+}
+
+function recommendationPresetConfig(defaults: RecommendationConfig, preset: RecommendationPreset): RecommendationConfig {
+  switch (preset) {
+  case "familiar":
+    return { ...defaults, tagWeight: 7, tagCap: 35, voiceWeight: 13, voiceCap: 30, circleWeight: 20, circleCap: 25, jitterAmplitude: 1 };
+  case "exploratory":
+    return { ...defaults, nonePrior: 45, tagWeight: 3, tagCap: 15, voiceWeight: 6, voiceCap: 15, circleWeight: 8, circleCap: 10, jitterAmplitude: 8 };
+  case "avoid_shelved":
+    return { ...defaults, pausedPrior: -70, negativeTagWeight: 4, negativeTagCap: 10, negativeVoiceWeight: 5, negativeVoiceCap: 10, negativeCircleWeight: 8, negativeCircleCap: 10, negativeTotalCap: 25 };
+  default:
+    return { ...defaults };
+  }
+}
+
+function recommendationConfigsEqual(left: RecommendationConfig, right: RecommendationConfig) {
+  return (Object.keys(left) as RecommendationConfigKey[]).every((key) => left[key] === right[key]);
+}
+
 function LocalLibrarySettings({
-  settings,
   localSource,
   localScanDepth,
-  pathsOpen,
   onScanDepthChange,
-  onPathsOpenChange,
   onSave,
 }: {
-  settings: AppSettings | null;
   localSource: FileSource | null;
   localScanDepth: number;
-  pathsOpen: boolean;
   onScanDepthChange: (value: number) => void;
-  onPathsOpenChange: (value: boolean) => void;
   onSave: () => Promise<void>;
 }) {
   return (
@@ -1156,37 +1301,29 @@ function LocalLibrarySettings({
         </CardContent>
       </Card>
 
-      <details className="rounded-lg border bg-card" open={pathsOpen} onToggle={(event) => onPathsOpenChange(event.currentTarget.open)}>
-        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold">
-          <Settings2 className="h-4 w-4 text-primary" />
-          Program paths
-        </summary>
-        <div className="grid gap-3 border-t p-4 md:grid-cols-2">
-          <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
-          <ReadonlyField label="Cache root" value={settings?.cacheRoot ?? ""} />
-          <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
-          <ReadonlyField label="Remote fetch path" value={`${settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}`} />
-        </div>
-      </details>
     </div>
   );
 }
 
 function RemoteSourcesSettings({
   remoteSources,
+  checkingSourceId,
   onCreateSource,
   onEditSource,
   onDeleteSource,
+  onCheckSource,
 }: {
   remoteSources: FileSource[];
+  checkingSourceId: number | null;
   onCreateSource: () => void;
   onEditSource: (source: FileSource) => void;
   onDeleteSource: (id: number) => Promise<void>;
+  onCheckSource: (id: number) => Promise<void>;
 }) {
   const enabledSources = remoteSources.filter((source) => source.enabled).length;
   return (
     <div className="space-y-4">
-      <section className="rounded-lg border bg-card p-4">
+      <section id="remote-sources" className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold">Remote sources</h2>
@@ -1229,6 +1366,10 @@ function RemoteSourcesSettings({
                 <div className="mt-1 truncate text-sm">{source.endpoint.baseUrl || source.endpoint.apiUrl || "No endpoint configured"}</div>
               </div>
               <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => void onCheckSource(source.id)} disabled={!source.enabled || checkingSourceId !== null}>
+                  <RefreshCw className={`h-4 w-4 ${checkingSourceId === source.id ? "animate-spin" : ""}`} />
+                  {checkingSourceId === source.id ? "Checking" : "Check health"}
+                </Button>
                 <Button variant="outline" size="sm" className="flex-1" onClick={() => onEditSource(source)}>
                   Configure
                 </Button>
@@ -1776,7 +1917,7 @@ function SourceModal({
   );
 }
 
-function SystemPathsSettings({ settings, saveTemplate }: { settings: AppSettings | null; saveTemplate: string }) {
+function PathsSettings({ settings, remoteSources }: { settings: AppSettings | null; remoteSources: FileSource[] }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -1784,14 +1925,15 @@ function SystemPathsSettings({ settings, saveTemplate }: { settings: AppSettings
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
             <Server className="h-4 w-4" />
           </span>
-          System paths
+          Storage paths
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">These resolved paths are displayed for verification. Changes are made through the owning runtime or source settings.</p>
         <div className="grid gap-3 md:grid-cols-3">
           <StatusPanel icon={<HardDrive className="h-4 w-4" />} label="Data root" value={settings?.dataRoot ?? "/data"} />
           <StatusPanel icon={<Database className="h-4 w-4" />} label="Cache root" value={settings?.cacheRoot ?? "/cache"} />
-          <StatusPanel icon={<Download className="h-4 w-4" />} label="Fetch root" value={saveTemplate} />
+          <StatusPanel icon={<Download className="h-4 w-4" />} label="Default fetch template" value={settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`} />
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <ReadonlyField label="Local data root" value={settings?.dataRoot ?? ""} />
@@ -1799,6 +1941,16 @@ function SystemPathsSettings({ settings, saveTemplate }: { settings: AppSettings
           <ReadonlyField label="Remote cache path" value={`${settings?.cacheRoot ?? ""}${DEFAULT_CACHE_SUFFIX}`} />
           <ReadonlyField label="Remote fetch path" value={`${settings?.remoteSaveTemplate ?? `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`}`} />
         </div>
+        {remoteSources.length > 0 && (
+          <section className="border-t pt-4">
+            <h3 className="mb-3 text-sm font-semibold">Source fetch templates</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              {remoteSources.map((source) => (
+                <ReadonlyField key={source.id} label={source.displayName} value={source.config.saveRootTemplate || settings?.remoteSaveTemplate || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`} />
+              ))}
+            </div>
+          </section>
+        )}
       </CardContent>
     </Card>
   );
@@ -1865,7 +2017,9 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
 function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
   if (window.location.pathname === "/users" && canManageUsers) return "users";
   const value = new URLSearchParams(window.location.search).get("tab");
-  const tabs: MaintenanceTab[] = ["overview", "routing", "recommendation", "local", "remote", "cache", "metadata", "users", "system"];
+  if (value === "local" || value === "remote") return "library";
+  if (value === "system") return "paths";
+  const tabs: MaintenanceTab[] = ["overview", "routing", "recommendation", "library", "cache", "metadata", "users", "paths"];
   if (value && tabs.includes(value as MaintenanceTab) && (value !== "users" || canManageUsers)) return value as MaintenanceTab;
   return "overview";
 }

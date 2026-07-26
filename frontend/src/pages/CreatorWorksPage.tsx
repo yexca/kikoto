@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -279,6 +280,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
   const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string>; decisions: Record<string, RemoteFetchFileDecision>; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
+  const compactDetailPanels = useCompactDetailPanels();
 
   useEffect(() => {
     setIsLoading(true);
@@ -660,7 +662,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-5 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
               <Stat label="Known works" value={detail.knownWorks} icon={<Database className="h-4 w-4" />} />
               <Stat label="Playable" value={detail.playableWorks} icon={<Layers3 className="h-4 w-4" />} />
               <Stat label="Local" value={detail.localWorks} icon={<HardDrive className="h-4 w-4" />} />
@@ -673,20 +675,51 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
         <div className="space-y-5">
           {auth.hasPermission("metadata:sync") && (
-            <AliasReviewPanel
-              personId={detail.personId}
-              aliases={detail.aliasRecords ?? []}
-              onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
-              onMerged={() => void refreshDetail()}
-              onMessage={setMessage}
+            compactDetailPanels ? (
+              <MobileDetailDisclosure title="Aliases" summary={`${detail.aliasRecords?.length ?? detail.aliases.length} known`}>
+                <AliasReviewPanel
+                  personId={detail.personId}
+                  aliases={detail.aliasRecords ?? []}
+                  onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+                  onMerged={() => void refreshDetail()}
+                  onMessage={setMessage}
+                />
+              </MobileDetailDisclosure>
+            ) : (
+              <AliasReviewPanel
+                personId={detail.personId}
+                aliases={detail.aliasRecords ?? []}
+                onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+                onMerged={() => void refreshDetail()}
+                onMessage={setMessage}
+              />
+            )
+          )}
+          {compactDetailPanels ? (
+            <MobileDetailDisclosure
+              title="Remote Sources"
+              summary={remoteError
+                ? "Unavailable"
+                : isRemoteLoading && remoteMatches.length === 0
+                  ? "Checking"
+                  : `${remoteMatches.length} source${remoteMatches.length === 1 ? "" : "s"} · ${remoteMatches.reduce((total, source) => total + (source.total || source.works.length), 0)} matches`}
+              warning={Boolean(remoteError) || remoteMatches.some(remoteSourceFailed)}
+            >
+              <RemoteSourcePanel
+                sources={remoteMatches}
+                loading={isRemoteLoading}
+                error={remoteError}
+                onRetry={() => void loadRemoteMatches(true)}
+              />
+            </MobileDetailDisclosure>
+          ) : (
+            <RemoteSourcePanel
+              sources={remoteMatches}
+              loading={isRemoteLoading}
+              error={remoteError}
+              onRetry={() => void loadRemoteMatches(true)}
             />
           )}
-          <RemoteSourcePanel
-            sources={remoteMatches}
-            loading={isRemoteLoading}
-            error={remoteError}
-            onRetry={() => void loadRemoteMatches(true)}
-          />
         </div>
       </section>
 
@@ -1269,8 +1302,8 @@ function VoiceDetailSkeleton() {
             <EntitySkeletonLine className="h-5 w-24" />
             <EntitySkeletonLine className="h-9 w-64" />
             <EntitySkeletonLine className="h-5 w-80" />
-            <div className="grid gap-3 sm:grid-cols-5">
-              {Array.from({ length: 5 }, (_, index) => <EntitySkeletonLine key={index} className="h-20 w-full" />)}
+            <div className="grid grid-cols-5 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
+              {Array.from({ length: 5 }, (_, index) => <EntitySkeletonLine key={index} className="h-16 w-full rounded-none sm:h-20 sm:rounded" />)}
             </div>
           </CardContent>
         </Card>
@@ -1369,7 +1402,33 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 }
 
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return <Card><CardContent className="flex items-center justify-between gap-3 p-4"><div><div className="text-2xl font-semibold">{value}</div><div className="text-sm text-muted-foreground">{label}</div></div><div className="text-primary">{icon}</div></CardContent></Card>;
+  return <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border"><CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left"><div className="min-w-0"><div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div><div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div></div><div className="hidden text-primary sm:block">{icon}</div></CardContent></Card>;
+}
+
+function MobileDetailDisclosure({ title, summary, warning = false, children }: { title: string; summary: string; warning?: boolean; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 marker:hidden">
+        <div className="min-w-0">
+          <div className="font-semibold">{title}</div>
+          <div className={`truncate text-xs ${warning ? "text-destructive" : "text-muted-foreground"}`}>{summary}</div>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
+
+function useCompactDetailPanels() {
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return compact;
 }
 
 function CatalogPagination({ page, pageSize, totalItems, totalPages, onPageChange, onPageSizeChange }: { page: number; pageSize: 24 | 48; totalItems: number; totalPages: number; onPageChange: (page: number) => void; onPageSizeChange: (pageSize: 24 | 48) => void }) {

@@ -144,6 +144,13 @@ type fileSourceSummary struct {
 	LastCheckedAt *string            `json:"lastCheckedAt"`
 }
 
+type fileSourceHealthCheckResult struct {
+	Healthy       bool    `json:"healthy"`
+	HealthStatus  string  `json:"healthStatus"`
+	LastCheckedAt *string `json:"lastCheckedAt"`
+	ElapsedMS     int64   `json:"elapsedMs"`
+}
+
 type fileSourceConfig struct {
 	CacheEnabled     *bool  `json:"cacheEnabled,omitempty"`
 	CacheLimitGB     *int   `json:"cacheLimitGb,omitempty"`
@@ -853,6 +860,66 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 	}
 	s.invalidateRemoteWorkCache(id)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) checkFileSourceHealth(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return
+	}
+	source, err := s.loadRemoteSourceForUse(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	if !source.Enabled {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "source is disabled"})
+		return
+	}
+	if !isKikoeruSourceType(source.SourceType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source type does not support health checks"})
+		return
+	}
+	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source API endpoint is not configured"})
+		return
+	}
+
+	started := time.Now()
+	checkCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	probeErr := checkRemoteSourceHealth(checkCtx, source)
+	cancel()
+	status := "healthy"
+	if probeErr != nil {
+		status = "unavailable"
+	}
+	if _, err := s.db.ExecContext(r.Context(), `
+		UPDATE file_source_endpoint
+		SET health_status = ?, last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ?
+	`, status, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	updated, err := s.loadFileSource(r, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, fileSourceHealthCheckResult{
+		Healthy:       probeErr == nil,
+		HealthStatus:  updated.HealthStatus,
+		LastCheckedAt: updated.LastCheckedAt,
+		ElapsedMS:     time.Since(started).Milliseconds(),
+	})
 }
 
 func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
@@ -5789,9 +5856,6 @@ func (s *Server) settingDirectoryRules(r *http.Request, key string, fallback []d
 		return fallback
 	}
 	rules = normalizeDirectoryRoutingRules(rules)
-	if len(rules) == 0 {
-		return fallback
-	}
 	return rules
 }
 

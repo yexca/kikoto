@@ -908,6 +908,13 @@ export type CurrentUser = {
   passwordManagedBy: "environment" | "account";
 };
 
+export type FileSourceHealthCheckResult = {
+  healthy: boolean;
+  healthStatus: string;
+  lastCheckedAt: string | null;
+  elapsedMs: number;
+};
+
 export type ManagedUser = {
   id: number;
   username: string;
@@ -1822,6 +1829,7 @@ export const api = {
     },
   ) => patchJSONBody<FileSource>(`/api/file-sources/${id}`, payload),
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
+  checkFileSourceHealth: (id: number) => postJSON<FileSourceHealthCheckResult>(`/api/file-sources/${id}/health-check`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
   createWorkflowDefinition: (payload: {

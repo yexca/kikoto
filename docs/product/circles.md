@@ -17,6 +17,8 @@ Circles represent makers, circles, and related party catalog state.
 - Presents work results with the same responsive grid/masonry layout and work
   cards as the Library. This applies to both circle detail and circle series;
   the separate circle-entity list keeps its own controls.
+- On mobile detail views, the four catalog statistics remain in one compact row
+  and non-empty aliases start folded below the circle name.
 - Allows stale catalog rows to be removed after confirmation.
 
 ## Boundary

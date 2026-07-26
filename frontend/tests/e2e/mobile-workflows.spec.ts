@@ -204,12 +204,16 @@ test("definitions foreground runnable presets and configure DLsite popular colle
 
   await page.getByRole("button", { name: /Collect DLsite popular voice works/ }).click();
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
-  await expect(page.getByText("Ranking period", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
-  const dlsiteTagField = page.getByTestId("dlsite-popular-tag-template-field");
+  await expect(page.getByText("Ranking period", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  let configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
+  await expect(configureDialog.getByText("Ranking period", { exact: true }).first()).toBeVisible();
+  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
+  let dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
   await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
+  await configureDialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByLabel("Workflow node canvas")).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
 
@@ -222,9 +226,12 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(/Preview.*_DL_24h_all_popular/);
   await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
 
-  await page.getByRole("button", { name: "Year", exact: true }).click();
-  await expect(page.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
-  await page.getByLabel("Ranking year").selectOption("2025");
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
+  dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
+  await configureDialog.getByRole("button", { name: "Year", exact: true }).click();
+  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
+  await configureDialog.getByLabel("Ranking year").selectOption("2025");
   await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_year_{year}_popular");
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_year_2025_popular/);
   const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
@@ -324,17 +331,19 @@ test("remote popular collection requires an explicit source and queues configure
   await mockWorkflows(page, (payload) => payloads.push(payload));
   await page.goto("/workflows");
   await page.getByRole("button", { name: /Collect popular remote works/ }).click();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
 
-  await expect(page.getByLabel("Remote source")).toHaveValue("8");
-  await page.getByRole("button", { name: "fetch", exact: true }).click();
-  await page.getByLabel("Work limit").selectOption("50");
-  const remoteTagField = page.getByTestId("remote-popular-tag-template-field");
+  const configureDialog = page.getByRole("dialog", { name: "Configure remote popular collection" });
+  await expect(configureDialog.getByLabel("Remote source")).toHaveValue("8");
+  await configureDialog.getByRole("button", { name: "fetch", exact: true }).click();
+  await configureDialog.getByLabel("Work limit").selectOption("50");
+  const remoteTagField = configureDialog.getByTestId("remote-popular-tag-template-field");
   await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();
   await expect(remoteTagField.getByRole("button", { name: /\{source_code\}.*remote-test/ })).toBeVisible();
   await expect(remoteTagField.getByRole("button", { name: /\{action\}.*fetch/ })).toBeVisible();
   await remoteTagField.getByLabel("Tag template", { exact: true }).fill("weekly_{source_code}_{action}_popular");
   await expect(remoteTagField).toContainText("weekly_remote-test_fetch_popular");
-  await page.getByRole("button", { name: "Run collection" }).click();
+  await configureDialog.getByRole("button", { name: "Run collection" }).click();
 
   await expect.poll(() => payloads).toHaveLength(1);
   expect(payloads[0]).toEqual({ sourceId: 8, action: "fetch", limit: 50, tagNameTemplate: "weekly_{source_code}_{action}_popular" });
