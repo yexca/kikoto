@@ -63,6 +63,20 @@ const emptyRemoteSource = {
 
 type MaintenanceTab = "overview" | "routing" | "recommendation" | "library" | "cache" | "metadata" | "users" | "paths";
 
+function maintenancePanelWidthClass(tab: MaintenanceTab) {
+  switch (tab) {
+    case "routing":
+      return "max-w-4xl";
+    case "recommendation":
+    case "paths":
+      return "max-w-5xl";
+    case "metadata":
+      return "max-w-3xl";
+    default:
+      return "";
+  }
+}
+
 export function MaintenancePage({
   canManageSources,
   canManageUsers,
@@ -298,7 +312,7 @@ export function MaintenancePage({
         ) : activeTab === "library" ? (
           <RemoteSourcesSettingsSkeleton />
         ) : (
-          <SettingsPanelSkeleton />
+          <SettingsPanelSkeleton className={maintenancePanelWidthClass(activeTab)} />
         )
       ) : activeTab === "overview" ? (
         <SettingsOverview
@@ -568,7 +582,7 @@ function PlaybackSettings({
   }, [draggedRuleId]);
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-4xl space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
@@ -774,9 +788,9 @@ function SettingsOverviewSkeleton() {
   );
 }
 
-function SettingsPanelSkeleton() {
+function SettingsPanelSkeleton({ className = "" }: { className?: string }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${className}`}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <SettingsSkeletonLine className="h-8 w-8 rounded-md" />
@@ -873,7 +887,7 @@ function MetadataSettings({
   onSave: () => Promise<void>;
 }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className="max-w-3xl overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
@@ -988,7 +1002,7 @@ function RecommendationSettings({
   onThresholdChange: (value: number) => void;
   onSave: () => Promise<void>;
 }) {
-  if (!config) return <SettingsPanelSkeleton />;
+  if (!config) return <SettingsPanelSkeleton className="max-w-5xl" />;
 
   const updateField = (key: RecommendationConfigKey, value: number) => {
     onConfigChange({ ...config, [key]: value });
@@ -1006,7 +1020,7 @@ function RecommendationSettings({
   ));
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-5xl space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center justify-between gap-3">
@@ -1219,7 +1233,7 @@ function LocalLibrarySettings({
   onSave: () => Promise<void>;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="max-w-3xl space-y-4">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -2015,7 +2029,7 @@ function SourceModal({
 
 function PathsSettings({ settings, remoteSources }: { settings: AppSettings | null; remoteSources: FileSource[] }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className="max-w-5xl overflow-hidden">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
