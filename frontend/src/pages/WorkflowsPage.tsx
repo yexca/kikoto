@@ -18,7 +18,6 @@ import {
   Search,
   Tag,
   Trash2,
-  Workflow,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -63,9 +62,8 @@ import {
 } from "@/lib/api";
 
 type Surface = "workflows" | "activity";
-type WorkflowView = "definitions" | "scheduled" | "system";
-type DefinitionView = Exclude<WorkflowView, "scheduled">;
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
+type AutomationTriggerType = "startup" | "schedule";
 
 type WorkflowNode = {
   id: string;
@@ -91,12 +89,10 @@ const fallbackNodeTypes: WorkflowNodeType[] = [
 
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
-const triggerTypes = ["startup", "schedule", "filesystem_event", "source_poll"] as const;
+const automationTriggerTypes: AutomationTriggerType[] = ["startup", "schedule"];
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
 const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
-const workflowViewStorageKey = "kikoto.workflows.view";
-const workflowDefinitionStoragePrefix = "kikoto.workflows.definition.";
-const workflowTriggerStorageKey = "kikoto.workflows.trigger";
+const workflowDefinitionStorageKey = "kikoto.workflows.definition";
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -185,7 +181,6 @@ export function WorkflowsPage({
   readOnly?: boolean;
 }) {
   const toast = useToast();
-  const [workflowView, setWorkflowView] = useState<WorkflowView>(() => storedWorkflowView());
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
@@ -195,14 +190,12 @@ export function WorkflowsPage({
   const [runsView, setRunsView] = useState<ActivityView | null>(null);
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
-  const [selectedDefinitionIds, setSelectedDefinitionIDs] = useState<Record<DefinitionView, number | null>>(() => ({
-    definitions: storedPositiveInt(workflowDefinitionStoragePrefix + "definitions"),
-    system: storedPositiveInt(workflowDefinitionStoragePrefix + "system"),
-  }));
-  const [selectedTriggerId, setSelectedTriggerID] = useState<number | null>(() => storedPositiveInt(workflowTriggerStorageKey));
+  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() => storedPositiveInt(workflowDefinitionStorageKey));
   const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
+  const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
+  const [creatingTriggerType, setCreatingTriggerType] = useState<AutomationTriggerType>("schedule");
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
@@ -262,19 +255,11 @@ export function WorkflowsPage({
     };
   }, [surface]);
 
-  const definitionView: DefinitionView = workflowView === "system" ? "system" : "definitions";
   const visibleDefinitions = useMemo(() => {
-    if (definitionView === "system") {
-      return sortDefinitionsForSidebar(definitions.filter((definition) => definition.scope === "system"), true);
-    }
-    return definitions.filter((definition) => definition.scope === "user" || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
-  }, [definitionView, definitions]);
-  const scheduledTriggers = triggers.filter((trigger) => trigger.triggerType !== "manual");
-  const schedulableDefinitions = definitions;
+    return definitions.filter((definition) => definition.scope === "user" || definition.triggerCount > 0 || Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length));
+  }, [definitions]);
   const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
   const activityTotals = runsPage.viewTotals ?? emptyRunViewTotals;
-  const selectedDefinitionId = selectedDefinitionIds[definitionView];
-
   const selectedDefinition = useMemo(() => {
     return visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? visibleDefinitions[0] ?? null;
   }, [selectedDefinitionId, visibleDefinitions]);
@@ -289,8 +274,6 @@ export function WorkflowsPage({
       .catch(() => setRecentDefinitionRuns([]));
   }, [selectedDefinition?.code, surface]);
 
-  const selectedTrigger = scheduledTriggers.find((trigger) => trigger.id === selectedTriggerId) ?? scheduledTriggers[0] ?? null;
-  const scheduledDefinition = definitions.find((definition) => definition.id === selectedTrigger?.workflowDefinitionId) ?? null;
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId)
     ?? (selectedRunId === null ? visibleRuns[0] ?? null : null);
   const selectedActivityRunID = selectedRunId ?? selectedRunSummary?.id ?? null;
@@ -300,37 +283,17 @@ export function WorkflowsPage({
   const definitionEmptyText = "No runnable or custom workflow definitions exist yet.";
 
   useEffect(() => {
-    if (isWorkflowMetaLoading || workflowView === "scheduled") return;
+    if (isWorkflowMetaLoading) return;
     const nextID = selectedDefinition?.id ?? null;
     if (selectedDefinitionId !== nextID) {
-      setSelectedDefinitionIDs((current) => ({ ...current, [definitionView]: nextID }));
+      setSelectedDefinitionID(nextID);
     }
-    storePositiveInt(workflowDefinitionStoragePrefix + definitionView, nextID);
-  }, [definitionView, isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId, workflowView]);
-
-  useEffect(() => {
-    if (isWorkflowMetaLoading) return;
-    const nextID = selectedTrigger?.id ?? null;
-    if (selectedTriggerId !== nextID) {
-      setSelectedTriggerID(nextID);
-    }
-    storePositiveInt(workflowTriggerStorageKey, nextID);
-  }, [isWorkflowMetaLoading, selectedTrigger?.id, selectedTriggerId]);
-
-  const selectWorkflowView = (view: WorkflowView) => {
-    setWorkflowView(view);
-    storeSessionValue(workflowViewStorageKey, view);
-  };
+    storePositiveInt(workflowDefinitionStorageKey, nextID);
+  }, [isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId]);
 
   const selectDefinition = (definition: WorkflowDefinition) => {
-    const view: DefinitionView = workflowView === "system" ? "system" : "definitions";
-    setSelectedDefinitionIDs((current) => ({ ...current, [view]: definition.id }));
-    storePositiveInt(workflowDefinitionStoragePrefix + view, definition.id);
-  };
-
-  const selectTrigger = (trigger: WorkflowTrigger) => {
-    setSelectedTriggerID(trigger.id);
-    storePositiveInt(workflowTriggerStorageKey, trigger.id);
+    setSelectedDefinitionID(definition.id);
+    storePositiveInt(workflowDefinitionStorageKey, definition.id);
   };
 
 
@@ -444,6 +407,36 @@ export function WorkflowsPage({
     return canRun;
   };
 
+  const createAutomationTrigger = (triggerType: AutomationTriggerType) => {
+    setCreatingTriggerType(triggerType);
+    setEditingTrigger(null);
+    setModalMode("create-trigger");
+  };
+
+  const editAutomationTrigger = (trigger: WorkflowTrigger) => {
+    setEditingTrigger(trigger);
+    setModalMode("edit-trigger");
+  };
+
+  const toggleAutomationTrigger = async (trigger: WorkflowTrigger, enabled: boolean) => {
+    setTriggers((current) => current.map((item) => item.id === trigger.id ? { ...item, enabled } : item));
+    try {
+      const saved = await api.updateWorkflowTrigger(trigger.id, {
+        workflowDefinitionId: trigger.workflowDefinitionId,
+        displayName: trigger.displayName,
+        triggerType: trigger.triggerType,
+        enabled,
+        scheduleJson: trigger.scheduleJson,
+        configJson: trigger.configJson,
+        nextRunAt: null,
+      });
+      setTriggers((current) => current.map((item) => item.id === saved.id ? saved : item));
+    } catch (error) {
+      setTriggers((current) => current.map((item) => item.id === trigger.id ? trigger : item));
+      toast.notify(toastFromError(error, `Could not ${enabled ? "enable" : "pause"} trigger.`));
+    }
+  };
+
   const refreshSelectedRunReview = async () => {
     if (!selectedActivityRunID) return;
     await activityRun.refresh(true);
@@ -479,7 +472,7 @@ export function WorkflowsPage({
         <div>
           <h2 className="text-lg font-semibold">{surface === "activity" ? "Activity" : "Workflows"}</h2>
           <p className="text-sm text-muted-foreground">
-            {surface === "activity" ? "Inspect runs by node state and failure point." : "Run built-in operations or manage custom definition drafts."}
+            {surface === "activity" ? "Inspect runs by node state and failure point." : "Run built-in operations and manage workflow triggers or custom definitions."}
           </p>
         </div>
       </div>
@@ -491,81 +484,47 @@ export function WorkflowsPage({
       )}
 
       {surface === "workflows" ? (
-        <>
-          <SegmentedNav>
-            <ViewButton active={workflowView === "definitions"} onClick={() => selectWorkflowView("definitions")} icon={<Workflow className="h-4 w-4" />}>
-              Definitions
-            </ViewButton>
-            <ViewButton active={workflowView === "scheduled"} onClick={() => selectWorkflowView("scheduled")} icon={<CalendarClock className="h-4 w-4" />}>
-              Scheduled
-            </ViewButton>
-          </SegmentedNav>
-
-          {workflowView === "scheduled" ? (
-            <Workbench
-              left={
-                <TriggerSidebar
-                  triggers={scheduledTriggers}
-                  selectedId={selectedTrigger?.id ?? null}
-                  loading={isWorkflowMetaLoading}
-                  onSelect={selectTrigger}
-                  onCreate={() => setModalMode("create-trigger")}
-                  canCreate={!readOnly}
-                />
-              }
-              right={
-                <WorkflowDetail
-                  definition={scheduledDefinition}
-                  trigger={selectedTrigger}
-                  nodeTypes={nodeTypes}
-                  readonly
-                  onEditTrigger={readOnly ? undefined : () => setModalMode("edit-trigger")}
-                  onEditDefinition={() => undefined}
-                  onEditNode={() => undefined}
-                  emptyText="No scheduled workflow triggers exist yet."
-                />
-              }
+        <Workbench
+          left={
+            <DefinitionSidebar
+              definitions={visibleDefinitions}
+              selectedId={selectedDefinition?.id ?? null}
+              canCreate={!readOnly}
+              loading={isWorkflowMetaLoading}
+              emptyText={definitionEmptyText}
+              onSelect={selectDefinition}
+              onCreate={() => setModalMode("create-workflow")}
             />
-          ) : (
-            <Workbench
-              left={
-                <DefinitionSidebar
-                  definitions={visibleDefinitions}
-                  selectedId={selectedDefinition?.id ?? null}
-                  canCreate={workflowView === "definitions" && !readOnly}
-                  loading={isWorkflowMetaLoading}
-                  emptyText={definitionEmptyText}
-                  onSelect={selectDefinition}
-                  onCreate={() => setModalMode("create-workflow")}
-                />
-              }
-              right={
-                <WorkflowDetail
-                  definition={selectedDefinition}
-                  definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
-                  nodeTypes={nodeTypes}
-                  readonly={readOnly || !selectedDefinition?.editable}
-                  systemRunKinds={selectedSystemRunKinds}
-                  isSystemActionRunning={systemActionBusy}
-                  canRunSystemAction={systemActionAllowed}
-                  onRunSystemAction={runSystemAction}
-                  onRunRemotePopular={runPopularCollection}
-                  canFetchRemotePopular={canManageDownloads}
-                  onRunDLsitePopular={runDLsitePopularCollection}
-                  recentRuns={recentDefinitionRuns}
-                  onOpenRun={openActivityRun}
-                  onRunDefinition={!readOnly && selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
-                  emptyText={definitionEmptyText}
-                  onEditDefinition={readOnly ? undefined : () => setModalMode("edit-workflow")}
-                  onEditNode={(index) => {
-                    setEditingNodeIndex(index);
-                    setModalMode("edit-node");
-                  }}
-                />
-              }
+          }
+          right={
+            <WorkflowDetail
+              definition={selectedDefinition}
+              definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
+              nodeTypes={nodeTypes}
+              readonly={readOnly || !selectedDefinition?.editable}
+              canManageTriggers={!readOnly}
+              systemRunKinds={selectedSystemRunKinds}
+              isSystemActionRunning={systemActionBusy}
+              canRunSystemAction={systemActionAllowed}
+              onRunSystemAction={runSystemAction}
+              onRunRemotePopular={runPopularCollection}
+              canFetchRemotePopular={canManageDownloads}
+              onRunDLsitePopular={runDLsitePopularCollection}
+              recentRuns={recentDefinitionRuns}
+              onOpenRun={openActivityRun}
+              onRunDefinition={!readOnly && selectedDefinition?.scope === "user" ? () => setLaunchDefinition(selectedDefinition) : undefined}
+              onCreateTrigger={createAutomationTrigger}
+              onEditTrigger={editAutomationTrigger}
+              onToggleTrigger={toggleAutomationTrigger}
+              emptyText={definitionEmptyText}
+              onEditDefinition={readOnly ? undefined : () => setModalMode("edit-workflow")}
+              onEditNode={(index) => {
+                setEditingNodeIndex(index);
+                setModalMode("edit-node");
+              }}
             />
-          )}
-        </>
+          }
+        />
       ) : (
         <>
           <SegmentedNav compact>
@@ -644,7 +603,7 @@ export function WorkflowsPage({
             const deletedID = selectedDefinition.id;
             const deletedName = selectedDefinition.displayName;
             setDefinitions((current) => current.filter((definition) => definition.id !== deletedID));
-            setSelectedDefinitionIDs((current) => ({ ...current, definitions: null }));
+            setSelectedDefinitionID(null);
             setModalMode(null);
             refresh();
             toast.success(`${deletedName} deleted.`);
@@ -668,25 +627,31 @@ export function WorkflowsPage({
           }}
         />
       )}
-      {modalMode === "create-trigger" && (
+      {modalMode === "create-trigger" && selectedDefinition && (
         <TriggerModal
-          definitions={schedulableDefinitions}
+          definition={selectedDefinition}
           trigger={null}
+          initialTriggerType={creatingTriggerType}
           onClose={() => setModalMode(null)}
-          onSaved={(trigger) => {
-            selectTrigger(trigger);
+          onSaved={() => {
             setModalMode(null);
             refresh();
           }}
+          onDeleted={() => undefined}
         />
       )}
-      {modalMode === "edit-trigger" && selectedTrigger && (
+      {modalMode === "edit-trigger" && selectedDefinition && editingTrigger && (
         <TriggerModal
-          definitions={schedulableDefinitions}
-          trigger={selectedTrigger}
+          definition={selectedDefinition}
+          trigger={editingTrigger}
+          initialTriggerType={editingTrigger.triggerType === "startup" ? "startup" : "schedule"}
           onClose={() => setModalMode(null)}
-          onSaved={(trigger) => {
-            selectTrigger(trigger);
+          onSaved={() => {
+            setModalMode(null);
+            refresh();
+          }}
+          onDeleted={() => {
+            setEditingTrigger(null);
             setModalMode(null);
             refresh();
           }}
@@ -736,6 +701,9 @@ function DefinitionSidebar({
     definitions.filter((definition) => definition.scope === "system" && Boolean(manuallyRunnableSystemWorkflows[definition.code]?.length)),
     true,
   );
+  const automatedDefinitions = definitions
+    .filter((definition) => definition.scope === "system" && !manuallyRunnableSystemWorkflows[definition.code]?.length && definition.triggerCount > 0)
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
   const customDefinitions = definitions
     .filter((definition) => definition.scope === "user")
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
@@ -745,8 +713,8 @@ function DefinitionSidebar({
       <CardContent className="space-y-3 p-3">
         <div className="flex items-center justify-between gap-2 px-1">
           <div>
-            <div className="text-sm font-semibold">Definitions</div>
-            <div className="text-xs text-muted-foreground">Runnable presets and custom drafts.</div>
+            <div className="text-sm font-semibold">Workflows</div>
+            <div className="text-xs text-muted-foreground">Commands, automations, and custom definitions.</div>
           </div>
           {canCreate && (
             <Button size="sm" onClick={onCreate}>
@@ -763,6 +731,11 @@ function DefinitionSidebar({
               {readyDefinitions.length > 0 && (
                 <DefinitionGroup label="Ready to run">
                   {readyDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
+                </DefinitionGroup>
+              )}
+              {automatedDefinitions.length > 0 && (
+                <DefinitionGroup label="Automated">
+                  {automatedDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} selected={selectedId === definition.id} onSelect={onSelect} />)}
                 </DefinitionGroup>
               )}
               <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
@@ -808,62 +781,9 @@ function DefinitionListItem({ definition, selected, onSelect }: { definition: Wo
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
         <span>{workflowDefinitionNodeCount(definition.definitionJson)} nodes</span>
-        <span>{definition.triggerCount} triggers</span>
+        <span>{definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}</span>
       </div>
     </button>
-  );
-}
-
-function TriggerSidebar({
-  triggers,
-  selectedId,
-  loading,
-  onSelect,
-  onCreate,
-  canCreate,
-}: {
-  triggers: WorkflowTrigger[];
-  selectedId: number | null;
-  loading?: boolean;
-  onSelect: (trigger: WorkflowTrigger) => void;
-  onCreate: () => void;
-  canCreate: boolean;
-}) {
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-3">
-        <div className="flex items-center justify-between gap-2 px-1">
-          <div className="text-sm font-semibold">Scheduled</div>
-          <Button size="sm" onClick={onCreate} disabled={!canCreate}>
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {loading ? (
-            <SidebarSkeletonRows count={5} />
-          ) : triggers.map((trigger) => (
-            <button
-              key={trigger.id}
-              className={`w-full rounded-md border p-3 text-left transition-colors ${
-                selectedId === trigger.id ? "border-primary bg-secondary" : "bg-card hover:bg-muted"
-              }`}
-              onClick={() => onSelect(trigger)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{trigger.displayName}</div>
-                  <div className="truncate text-xs text-muted-foreground">{trigger.triggerType} · {trigger.workflowCode}</div>
-                </div>
-                <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
-              </div>
-              <div className="mt-2 text-xs text-muted-foreground">{trigger.lastSuccessAt ? `Last success ${trigger.lastSuccessAt}` : "No successful run yet"}</div>
-            </button>
-          ))}
-          {!loading && triggers.length === 0 && <EmptyPanel text="No scheduled triggers yet." />}
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1063,9 +983,9 @@ function RunSidebarSkeletonRows() {
 function WorkflowDetail({
   definition,
   definitionTriggers = [],
-  trigger,
   nodeTypes,
   readonly,
+  canManageTriggers,
   systemRunKinds,
   isSystemActionRunning,
   canRunSystemAction,
@@ -1078,14 +998,16 @@ function WorkflowDetail({
   onRunDefinition,
   emptyText = "Select a workflow to inspect its node pipeline.",
   onEditDefinition,
+  onCreateTrigger,
   onEditTrigger,
+  onToggleTrigger,
   onEditNode,
 }: {
   definition: WorkflowDefinition | null;
   definitionTriggers?: WorkflowTrigger[];
-  trigger?: WorkflowTrigger | null;
   nodeTypes: WorkflowNodeType[];
   readonly: boolean;
+  canManageTriggers: boolean;
   systemRunKinds?: SystemRunKind[];
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
@@ -1098,7 +1020,9 @@ function WorkflowDetail({
   onRunDefinition?: () => void;
   emptyText?: string;
   onEditDefinition?: () => void;
-  onEditTrigger?: () => void;
+  onCreateTrigger: (triggerType: AutomationTriggerType) => void;
+  onEditTrigger: (trigger: WorkflowTrigger) => void;
+  onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
   onEditNode: (index: number) => void;
 }) {
   if (!definition) {
@@ -1116,22 +1040,15 @@ function WorkflowDetail({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{definition.displayName}</h3>
               <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>{definition.scope}</Badge>
-              {trigger && <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>{definition.code}</span>
               <span>{nodes.length} nodes</span>
-              <span>{definition.triggerCount} triggers</span>
+              <span>{definition.triggerCount} trigger{definition.triggerCount === 1 ? "" : "s"}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {trigger && onEditTrigger && (
-              <Button size="sm" variant="outline" onClick={onEditTrigger}>
-                <CalendarClock className="h-4 w-4" />
-                Edit trigger
-              </Button>
-            )}
             {composerEditable && onEditDefinition && (
               <Button size="sm" onClick={onEditDefinition}>
                 <Edit3 className="h-4 w-4" />
@@ -1163,6 +1080,15 @@ function WorkflowDetail({
           </div>
         </div>
 
+        <WorkflowAutomationPanel
+          definition={definition}
+          triggers={definitionTriggers}
+          canManage={canManageTriggers}
+          onCreate={onCreateTrigger}
+          onEdit={onEditTrigger}
+          onToggle={onToggleTrigger}
+        />
+
         {systemRunKinds?.includes("dlsite_popular") && onRunDLsitePopular && (
           <DLsitePopularRunPanel
             running={isSystemActionRunning?.("dlsite_popular") ?? false}
@@ -1193,7 +1119,6 @@ function WorkflowDetail({
             {legacyUpgrade?.kind === "blocked" && <span className="ml-1">Compatibility check: {legacyUpgrade.reasons.join(" ")}</span>}
           </div>
         )}
-        {trigger && <TriggerSummary trigger={trigger} />}
         {parsedDefinition.kind === "v2" ? (
           <WorkflowCanvas
             document={parsedDefinition.document}
@@ -1356,7 +1281,9 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const releaseWindow: "30d" | "" = period === "year" ? "" : recentOnly ? "30d" : "";
-  const tagName = dlsitePopularTagName(period, releaseWindow, year, new Date());
+  const generatedTag = dlsitePopularTagName(period, releaseWindow, year, new Date());
+  const [tagName, setTagName] = useState(generatedTag);
+  const [tagCustomized, setTagCustomized] = useState(false);
   const years = Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index);
   const periodOptions: { value: DLsitePopularPeriod; label: string }[] = [
     { value: "day", label: "24h" },
@@ -1364,6 +1291,10 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
     { value: "month", label: "30d" },
     { value: "year", label: "Year" },
   ];
+
+  useEffect(() => {
+    if (!tagCustomized) setTagName(generatedTag);
+  }, [generatedTag, tagCustomized]);
 
   return (
     <div className="rounded-md border bg-background p-4">
@@ -1404,14 +1335,39 @@ function DLsitePopularRunPanel({ running, allowed, onRun }: { running: boolean; 
         </div>
 
         <div className="flex min-w-0 flex-col justify-between gap-4 border-t pt-4 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Tag className="h-3.5 w-3.5" />
-              Tag preview
-            </div>
-            <code className="mt-2 block break-all rounded-md bg-muted px-3 py-2 text-xs">{tagName}</code>
+          <div className="grid gap-2 text-sm font-medium">
+            <span className="flex items-center justify-between gap-2">
+              <label htmlFor="dlsite-popular-tag" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Tag className="h-3.5 w-3.5" />
+                User tag
+              </label>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                disabled={!tagCustomized && tagName === generatedTag}
+                onClick={() => {
+                  setTagCustomized(false);
+                  setTagName(generatedTag);
+                }}
+                title="Reset to generated tag"
+                aria-label="Reset to generated tag"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </span>
+            <input
+              id="dlsite-popular-tag"
+              className="h-9 min-w-0 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={tagName}
+              maxLength={40}
+              onChange={(event) => {
+                setTagCustomized(true);
+                setTagName(event.target.value);
+              }}
+            />
           </div>
-          <Button disabled={running || !allowed} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName })}>
+          <Button disabled={running || !allowed || !tagName.trim()} onClick={() => void onRun({ period, releaseWindow, year: period === "year" ? year : 0, tagName: tagName.trim() })}>
             <Play className="h-4 w-4" />
             {running ? "Queueing" : "Run collection"}
           </Button>
@@ -2059,6 +2015,7 @@ function DefinitionNodeCanvas({ nodes, nodeTypes, readonly, onEditNode }: { node
     <div className="space-y-2">
       <WorkflowNodeCanvas
         nodes={canvasNodes}
+        responsiveLinear
         onNodeClick={setSelectedNodeID}
         onNodeDoubleClick={readonly ? undefined : (nodeID) => {
           const index = canvasNodes.findIndex((node) => node.id === nodeID);
@@ -2083,6 +2040,8 @@ type WorkflowCanvasData = WorkflowCanvasItem & Record<string, unknown> & {
   hasOutgoing: boolean;
   incomingColor: string;
   outgoingColor: string;
+  incomingPosition: Position;
+  outgoingPosition: Position;
 };
 type WorkflowCanvasNode = Node<WorkflowCanvasData, "workflow">;
 
@@ -2090,10 +2049,10 @@ function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
   const status = normalizedWorkflowNodeStatus(data.status);
   return (
     <div className={`workflow-run-node workflow-run-node--${status} ${data.flowing ? "workflow-run-node--flowing" : ""} group relative flex h-11 min-w-40 max-w-52 items-center gap-2 rounded-md border bg-card px-3 shadow-sm`}>
-      {data.hasIncoming && <Handle id="in" type="target" position={Position.Left} className="!h-3 !w-3 !border-2 !border-card" style={{ background: data.incomingColor }} aria-hidden />}
+      {data.hasIncoming && <Handle id="in" type="target" position={data.incomingPosition} className="!h-3 !w-3 !border-2 !border-card" style={{ background: data.incomingColor }} aria-hidden />}
       <StatusPoint status={data.status} />
       <span className="truncate text-sm font-medium">{data.title}</span>
-      {data.hasOutgoing && <Handle id="out" type="source" position={Position.Right} className="!h-3 !w-3 !border-2 !border-card" style={{ background: data.outgoingColor }} aria-hidden />}
+      {data.hasOutgoing && <Handle id="out" type="source" position={data.outgoingPosition} className="!h-3 !w-3 !border-2 !border-card" style={{ background: data.outgoingColor }} aria-hidden />}
       <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-md border bg-popover p-3 text-left shadow-lg group-hover:block group-focus-within:block">
         <div className="text-sm font-semibold">{data.title}</div>
         <div className="mt-1 text-xs text-muted-foreground">{data.subtitle}</div>
@@ -2105,8 +2064,52 @@ function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
 
 const workflowCanvasNodeTypes = { workflow: WorkflowCanvasNodeView };
 
-function WorkflowNodeCanvas({ nodes, connections, onNodeClick, onNodeDoubleClick, compact = false }: { nodes: WorkflowCanvasItem[]; connections?: WorkflowCanvasConnection[]; onNodeClick?: (nodeID: string) => void; onNodeDoubleClick?: (nodeID: string) => void; compact?: boolean }) {
+type WorkflowLinearPreviewLayout = {
+  positions: { x: number; y: number }[];
+  incomingPositions: Position[];
+  outgoingPositions: Position[];
+  height: number;
+};
+
+function positionToward(origin: { x: number; y: number }, target: { x: number; y: number }) {
+  const deltaX = target.x - origin.x;
+  const deltaY = target.y - origin.y;
+  if (Math.abs(deltaY) > Math.abs(deltaX)) return deltaY > 0 ? Position.Bottom : Position.Top;
+  return deltaX > 0 ? Position.Right : Position.Left;
+}
+
+function workflowLinearPreviewLayout(nodeCount: number, width: number): WorkflowLinearPreviewLayout {
+  const nodeWidth = 176;
+  const horizontalGap = 56;
+  const verticalStep = 88;
+  const usableWidth = Math.max(220, width - 80);
+  const columns = Math.max(1, Math.min(nodeCount, Math.floor((usableWidth + horizontalGap) / (nodeWidth + horizontalGap))));
+  const rows = Math.max(1, Math.ceil(nodeCount / columns));
+  const positions = Array.from({ length: nodeCount }, (_, index) => {
+    const row = Math.floor(index / columns);
+    const offset = index % columns;
+    const column = row % 2 === 0 ? offset : columns - 1 - offset;
+    return { x: column * (nodeWidth + horizontalGap), y: 48 + row * verticalStep };
+  });
+  const incomingPositions = positions.map((position, index) => index === 0 ? Position.Left : positionToward(position, positions[index - 1]));
+  const outgoingPositions = positions.map((position, index) => index === positions.length - 1 ? Position.Right : positionToward(position, positions[index + 1]));
+  return { positions, incomingPositions, outgoingPositions, height: rows * verticalStep + 96 };
+}
+
+function WorkflowNodeCanvas({ nodes, connections, onNodeClick, onNodeDoubleClick, compact = false, responsiveLinear = false }: { nodes: WorkflowCanvasItem[]; connections?: WorkflowCanvasConnection[]; onNodeClick?: (nodeID: string) => void; onNodeDoubleClick?: (nodeID: string) => void; compact?: boolean; responsiveLinear?: boolean }) {
   const flowInstance = useRef<ReactFlowInstance<WorkflowCanvasNode, Edge> | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  useEffect(() => {
+    if (!responsiveLinear || !canvasRef.current) return;
+    const observer = new ResizeObserver((entries) => setCanvasWidth(entries[0]?.contentRect.width ?? 0));
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, [responsiveLinear]);
+  const responsiveLayout = useMemo(
+    () => responsiveLinear && canvasWidth > 0 ? workflowLinearPreviewLayout(nodes.length, canvasWidth) : null,
+    [canvasWidth, nodes.length, responsiveLinear],
+  );
   const resolvedConnections = useMemo<WorkflowCanvasConnection[]>(() => connections ?? nodes.slice(0, -1).map((node, index) => ({
     id: `${node.id}->${nodes[index + 1].id}`,
     source: node.id,
@@ -2124,15 +2127,17 @@ function WorkflowNodeCanvas({ nodes, connections, onNodeClick, onNodeDoubleClick
       hasOutgoing: (outgoingByNode.get(node.id)?.length ?? 0) > 0,
       incomingColor: workflowDataTypeColor(incomingByNode.get(node.id)?.[0]?.dataType),
       outgoingColor: workflowDataTypeColor(outgoingByNode.get(node.id)?.[0]?.dataType),
+      incomingPosition: responsiveLayout?.incomingPositions[index] ?? Position.Left,
+      outgoingPosition: responsiveLayout?.outgoingPositions[index] ?? Position.Right,
     },
-    position: node.position ?? { x: index * 210, y: 48 },
+    position: responsiveLayout?.positions[index] ?? node.position ?? { x: index * 210, y: 48 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     draggable: false,
     selectable: true,
-  })), [incomingByNode, nodes, outgoingByNode]);
+  })), [incomingByNode, nodes, outgoingByNode, responsiveLayout]);
   const nodeByID = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const layoutKey = useMemo(() => nodes.map((node) => `${node.id}:${node.position?.x ?? "auto"}:${node.position?.y ?? "auto"}`).join("|"), [nodes]);
+  const layoutKey = useMemo(() => flowNodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join("|"), [flowNodes]);
   const edges = useMemo<Edge[]>(() => resolvedConnections.map((connection) => {
     const source = nodeByID.get(connection.source);
     const target = nodeByID.get(connection.target);
@@ -2160,7 +2165,12 @@ function WorkflowNodeCanvas({ nodes, connections, onNodeClick, onNodeDoubleClick
   }, [layoutKey]);
 
   return (
-    <div className={`workflow-canvas overflow-hidden rounded-md border ${compact ? "h-48" : "h-64"}`} aria-label="Workflow node canvas">
+    <div
+      ref={canvasRef}
+      className={`workflow-canvas overflow-hidden rounded-md border ${responsiveLayout ? "" : compact ? "h-48" : "h-64"}`}
+      style={responsiveLayout ? { height: responsiveLayout.height } : undefined}
+      aria-label="Workflow node canvas"
+    >
       <ReactFlow
         nodes={flowNodes}
         edges={edges}
@@ -2171,7 +2181,7 @@ function WorkflowNodeCanvas({ nodes, connections, onNodeClick, onNodeDoubleClick
         elementsSelectable
         panOnDrag
         zoomOnDoubleClick={false}
-        minZoom={0.45}
+        minZoom={responsiveLinear ? 0.7 : 0.45}
         maxZoom={1.5}
         fitView
         fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
@@ -2226,14 +2236,113 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
   );
 }
 
-function TriggerSummary({ trigger }: { trigger: WorkflowTrigger }) {
+function supportedAutomationTriggerTypes(definition: WorkflowDefinition): AutomationTriggerType[] {
+  if (definition.code === "startup_library_refresh") return automationTriggerTypes;
+  if (definition.scope !== "user" || !definition.editable) return [];
+  return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
+}
+
+function workflowTriggerCondition(trigger: WorkflowTrigger) {
+  if (trigger.triggerType === "startup") return "When the application service starts";
+  if (trigger.triggerType === "schedule") {
+    const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
+    if (typeof interval === "number") return `Every ${interval} minute${interval === 1 ? "" : "s"}`;
+    return "Interval schedule";
+  }
+  return trigger.triggerType.replace(/_/g, " ");
+}
+
+function workflowTriggerNextRun(trigger: WorkflowTrigger) {
+  if (!trigger.enabled) return "Paused";
+  if (trigger.triggerType === "startup") return "Next service start";
+  return trigger.nextRunAt ?? "Pending calculation";
+}
+
+function WorkflowAutomationPanel({
+  definition,
+  triggers,
+  canManage,
+  onCreate,
+  onEdit,
+  onToggle,
+}: {
+  definition: WorkflowDefinition;
+  triggers: WorkflowTrigger[];
+  canManage: boolean;
+  onCreate: (triggerType: AutomationTriggerType) => void;
+  onEdit: (trigger: WorkflowTrigger) => void;
+  onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
+}) {
+  const supportedTypes = supportedAutomationTriggerTypes(definition);
+  const hasStartup = triggers.some((trigger) => trigger.triggerType === "startup");
+  const orderedTriggers = [...triggers].sort((left, right) => {
+    const leftOrder = left.triggerType === "startup" ? 0 : left.triggerType === "schedule" ? 1 : 2;
+    const rightOrder = right.triggerType === "startup" ? 0 : right.triggerType === "schedule" ? 1 : 2;
+    return leftOrder - rightOrder || left.id - right.id;
+  });
   return (
-    <div className="grid gap-3 rounded-md border bg-muted/40 p-3 md:grid-cols-4">
-      <SummaryCell label="Type" value={trigger.triggerType} />
-      <SummaryCell label="Next" value={trigger.nextRunAt ?? "not scheduled"} />
-      <SummaryCell label="Last run" value={trigger.lastRunAt ?? "never"} />
-      <SummaryCell label="Last error" value={trigger.lastErrorMessage || "none"} />
-    </div>
+    <section className="border-y py-4" aria-label="Workflow automations">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold">Triggers</div>
+          <div className="text-xs text-muted-foreground">Automatic execution conditions for this workflow.</div>
+        </div>
+        {canManage && supportedTypes.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {supportedTypes.includes("startup") && !hasStartup && (
+              <Button size="sm" variant="outline" onClick={() => onCreate("startup")}>
+                <Plus className="h-4 w-4" />
+                Run at startup
+              </Button>
+            )}
+            {supportedTypes.includes("schedule") && (
+              <Button size="sm" variant="outline" onClick={() => onCreate("schedule")}>
+                <CalendarClock className="h-4 w-4" />
+                Add schedule
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {orderedTriggers.length > 0 ? (
+        <div className="mt-3 divide-y border-y">
+          {orderedTriggers.map((trigger) => (
+            <div key={trigger.id} className="grid gap-3 py-3 md:grid-cols-[minmax(180px,1fr)_minmax(0,1.6fr)_auto] md:items-center">
+              <div className="flex min-w-0 items-center gap-3">
+                <Switch
+                  checked={trigger.enabled}
+                  disabled={!canManage || !supportedTypes.includes(trigger.triggerType as AutomationTriggerType)}
+                  onCheckedChange={(enabled) => void onToggle(trigger, enabled)}
+                  aria-label={`${trigger.enabled ? "Pause" : "Enable"} ${trigger.displayName}`}
+                />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{trigger.displayName}</div>
+                  <div className="text-xs capitalize text-muted-foreground">{trigger.triggerType.replace(/_/g, " ")}</div>
+                </div>
+              </div>
+              <div className="grid min-w-0 gap-1 text-xs sm:grid-cols-3 sm:gap-3">
+                <SummaryCell label="Runs" value={workflowTriggerCondition(trigger)} />
+                <SummaryCell label="Next" value={workflowTriggerNextRun(trigger)} />
+                <SummaryCell label="Last success" value={trigger.lastSuccessAt ?? "Never"} />
+              </div>
+              {canManage && supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
+                <Button size="icon" variant="ghost" onClick={() => onEdit(trigger)} title={`Edit ${trigger.displayName}`} aria-label={`Edit ${trigger.displayName}`}>
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+              )}
+              {trigger.lastErrorMessage && (
+                <div className="text-xs text-destructive md:col-start-2 md:col-end-4">Last error: {trigger.lastErrorMessage}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 border-y py-3 text-sm text-muted-foreground">
+          {supportedTypes.length > 0 ? "No automatic triggers configured." : "This workflow has no configurable automatic triggers."}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2241,7 +2350,7 @@ function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="truncate text-sm font-medium">{value}</div>
+      <div className="break-words text-sm font-medium">{value}</div>
     </div>
   );
 }
@@ -2429,69 +2538,61 @@ function NodeModal({
 }
 
 function TriggerModal({
-  definitions,
+  definition,
   trigger,
+  initialTriggerType,
   onClose,
   onSaved,
+  onDeleted,
 }: {
-  definitions: WorkflowDefinition[];
+  definition: WorkflowDefinition;
   trigger: WorkflowTrigger | null;
+  initialTriggerType: AutomationTriggerType;
   onClose: () => void;
   onSaved: (trigger: WorkflowTrigger) => void;
+  onDeleted: () => void;
 }) {
-  const [workflowDefinitionId, setWorkflowDefinitionID] = useState(trigger?.workflowDefinitionId ?? definitions[0]?.id ?? 0);
-  const [displayName, setDisplayName] = useState(trigger?.displayName ?? "Scheduled workflow");
-  const [triggerType, setTriggerType] = useState(trigger?.triggerType ?? "schedule");
+  const triggerType: AutomationTriggerType = trigger?.triggerType === "startup" ? "startup" : initialTriggerType;
+  const selectedParsed = parseWorkflowDefinition(definition.definitionJson);
+  const dagDocument = selectedParsed.kind === "v2" ? selectedParsed.document : null;
+  const [displayName, setDisplayName] = useState(trigger?.displayName ?? (triggerType === "startup" ? "Run at startup" : "Scheduled workflow"));
   const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
-  const [scheduleJson, setScheduleJson] = useState(trigger?.scheduleJson ?? '{"intervalMinutes":60}');
-  const [configJson, setConfigJson] = useState(trigger?.configJson ?? "{}");
   const [intervalMinutes, setIntervalMinutes] = useState(() => {
     const value = parseJSONRecord(trigger?.scheduleJson ?? "").intervalMinutes;
     return typeof value === "number" ? value : 60;
   });
   const [scheduledInputs, setScheduledInputs] = useState<Record<string, string>>(() => {
     const inputs = parseJSONRecord(trigger?.configJson ?? "").inputs;
-    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return {};
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
+      return Object.fromEntries(dagDocument?.inputs.flatMap((input) => input.defaultValue === undefined ? [] : [[input.key, input.defaultValue]]) ?? []);
+    }
     return Object.fromEntries(Object.entries(inputs).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")]));
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const selectedDefinition = definitions.find((definition) => definition.id === workflowDefinitionId) ?? null;
-  const selectedParsed = selectedDefinition ? parseWorkflowDefinition(selectedDefinition.definitionJson) : null;
-  const dagDocument = selectedParsed?.kind === "v2" ? selectedParsed.document : null;
   const missingScheduledInputs = dagDocument?.inputs.filter((input) => input.required && !(scheduledInputs[input.key]?.trim())) ?? [];
-  const scheduleBlockers = dagDocument ? [
-    ...(dagDocument.policy.requirePreview ? ["Disable Require preview in the workflow before scheduling it."] : []),
-    ...(intervalMinutes < 5 || intervalMinutes > 10080 ? ["Interval must be between 5 and 10080 minutes."] : []),
+  const automationBlockers = [
+    ...(dagDocument?.policy.requirePreview ? ["Disable Require preview in the workflow before automating it."] : []),
+    ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080) ? ["Interval must be between 5 and 10080 minutes."] : []),
     ...(missingScheduledInputs.length > 0 ? [`Provide required inputs: ${missingScheduledInputs.map((input) => input.label).join(", ")}.`] : []),
-  ] : [];
-
-  const chooseDefinition = (definitionId: number) => {
-    setWorkflowDefinitionID(definitionId);
-    const next = definitions.find((definition) => definition.id === definitionId);
-    const parsed = next ? parseWorkflowDefinition(next.definitionJson) : null;
-    if (parsed?.kind !== "v2") return;
-    setTriggerType("schedule");
-    setIntervalMinutes(60);
-    setScheduledInputs(Object.fromEntries(parsed.document.inputs.flatMap((input) => input.defaultValue === undefined ? [] : [[input.key, input.defaultValue]])));
-  };
+  ];
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      if (scheduleBlockers.length > 0) throw new Error(scheduleBlockers[0]);
+      if (automationBlockers.length > 0) throw new Error(automationBlockers[0]);
       const resolvedInputs = dagDocument ? Object.fromEntries(dagDocument.inputs.flatMap((input) => {
         const value = scheduledInputs[input.key]?.trim() ?? "";
         return !input.required && value === "" ? [] : [[input.key, value]];
       })) : null;
       const payload = {
-        workflowDefinitionId,
+        workflowDefinitionId: definition.id,
         displayName,
-        triggerType: dagDocument ? "schedule" : triggerType,
+        triggerType,
         enabled,
-        scheduleJson: dagDocument ? JSON.stringify({ intervalMinutes }) : scheduleJson,
-        configJson: dagDocument ? JSON.stringify({ inputs: resolvedInputs }) : configJson,
+        scheduleJson: triggerType === "schedule" ? JSON.stringify({ intervalMinutes }) : trigger?.scheduleJson ?? JSON.stringify({ type: "startup" }),
+        configJson: dagDocument ? JSON.stringify({ inputs: resolvedInputs }) : trigger?.configJson ?? "{}",
         nextRunAt: null,
       };
       const saved = trigger ? await api.updateWorkflowTrigger(trigger.id, payload) : await api.createWorkflowTrigger(payload);
@@ -2508,7 +2609,7 @@ function TriggerModal({
     setSaving(true);
     try {
       await api.deleteWorkflowTrigger(trigger.id);
-      onClose();
+      onDeleted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -2517,39 +2618,32 @@ function TriggerModal({
   };
 
   return (
-    <Modal title={trigger ? "Edit scheduled trigger" : "New scheduled trigger"} onClose={onClose}>
+    <Modal title={trigger ? "Edit trigger" : triggerType === "startup" ? "New startup trigger" : "New schedule"} onClose={onClose}>
       <div className="grid gap-3">
-        <Field label="Workflow">
-          <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={workflowDefinitionId} onChange={(event) => chooseDefinition(Number(event.target.value))}>
-            {definitions.map((definition) => (
-              <option key={definition.id} value={definition.id}>{definition.displayName}</option>
-            ))}
-          </select>
-        </Field>
+        <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
+          <div className="text-xs text-muted-foreground">Workflow</div>
+          <div className="text-sm font-medium">{definition.displayName}</div>
+        </div>
         <Field label="Name">
           <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
-          {dagDocument ? (
+          {triggerType === "schedule" ? (
             <Field label="Interval (minutes)">
               <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" type="number" min={5} max={10080} value={intervalMinutes} onChange={(event) => setIntervalMinutes(Number(event.target.value))} />
             </Field>
           ) : (
-            <Field label="Trigger type">
-              <select className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={triggerType} onChange={(event) => setTriggerType(event.target.value)}>
-                {triggerTypes.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </Field>
+            <div className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2">
+              <div className="text-xs text-muted-foreground">Runs</div>
+              <div className="text-sm font-medium">When the application service starts</div>
+            </div>
           )}
           <div className="flex items-center gap-2 self-end pb-1 text-sm">
             <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enable trigger" />
             <span>Enabled</span>
           </div>
         </div>
-        {dagDocument ? (
-          dagDocument.inputs.length > 0 && <div className="grid gap-3 md:grid-cols-2">{dagDocument.inputs.map((input) => (
+        {dagDocument && dagDocument.inputs.length > 0 && <div className="grid gap-3 md:grid-cols-2">{dagDocument.inputs.map((input) => (
             <Field key={input.key} label={`${input.label}${input.required ? " *" : ""}`}>
               {input.type === "work_codes" ? (
                 <textarea className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
@@ -2557,20 +2651,10 @@ function TriggerModal({
                 <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
               )}
             </Field>
-          ))}</div>
-        ) : (
-          <>
-            <Field label="Schedule JSON">
-              <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduleJson} onChange={(event) => setScheduleJson(event.target.value)} />
-            </Field>
-            <Field label="Config JSON">
-              <textarea className="min-h-24 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={configJson} onChange={(event) => setConfigJson(event.target.value)} />
-            </Field>
-          </>
-        )}
-        {scheduleBlockers.length > 0 && (
+          ))}</div>}
+        {automationBlockers.length > 0 && (
           <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-muted-foreground">
-            {scheduleBlockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            {automationBlockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
           </div>
         )}
         {error && <ErrorPanel error={error} />}
@@ -2581,7 +2665,7 @@ function TriggerModal({
               Delete
             </Button>
           )}
-          <Button onClick={save} disabled={saving || definitions.length === 0 || scheduleBlockers.length > 0}>
+          <Button onClick={save} disabled={saving || automationBlockers.length > 0 || !displayName.trim()}>
             <Save className="h-4 w-4" />
             {saving ? "Saving" : "Save"}
           </Button>
@@ -3017,11 +3101,6 @@ function workflowHints(nodes: WorkflowNode[], nodeTypes: WorkflowNodeType[]) {
     hints.push("This workflow has no commit node; it may inspect or materialize data without persisting library state.");
   }
   return hints.slice(0, 5);
-}
-
-function storedWorkflowView(): WorkflowView {
-  const value = readSessionValue(workflowViewStorageKey);
-  return value === "scheduled" ? value : "definitions";
 }
 
 function storedPositiveInt(key: string) {

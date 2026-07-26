@@ -529,6 +529,10 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
+	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, 0, payload.TriggerType); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
 	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -609,6 +613,10 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 	if !canUseWorkflowDefinition(actor, definition) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+		return
+	}
+	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, id, payload.TriggerType); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 	nextRunAt, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC())
@@ -1873,6 +1881,23 @@ func validateWorkflowTriggerPayload(payload workflowTriggerPayload) error {
 	}
 	if !json.Valid([]byte(payload.ConfigJSON)) {
 		return fmt.Errorf("config JSON is invalid")
+	}
+	return nil
+}
+
+func (s *Server) ensureUniqueWorkflowStartupTrigger(ctx context.Context, definitionID, excludeTriggerID int64, triggerType string) error {
+	if triggerType != "startup" {
+		return nil
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM workflow_trigger
+		WHERE workflow_definition_id = ? AND trigger_type = 'startup' AND id != ?
+	`, definitionID, excludeTriggerID).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("workflow already has a startup trigger")
 	}
 	return nil
 }

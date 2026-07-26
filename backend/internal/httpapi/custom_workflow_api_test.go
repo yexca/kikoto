@@ -342,6 +342,109 @@ func TestCustomWorkflowScheduleAcceptsBoundedDAG(t *testing.T) {
 	}
 }
 
+func TestCustomWorkflowStartupTriggerCoexistsWithScheduleAndQueuesOnce(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-startup-owner")
+	definition := `{
+		"schemaVersion":2,
+		"inputs":[{"key":"works","label":"Works","type":"work_codes","required":true}],
+		"nodes":[{"id":"input","type":"workflow_input","config":{"inputKey":"works"}}],
+		"edges":[],
+		"policy":{"requirePreview":false}
+	}`
+	result, err := db.Exec(`INSERT INTO workflow_definition (code, display_name, definition_json, scope, editable, owner_user_id, created_by_user_id) VALUES ('custom_startup_test', 'Custom startup', ?, 'user', 1, ?, ?)`, definition, ownerID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitionID, _ := result.LastInsertId()
+	server := NewServer(db, config.Config{})
+	actor := account.User{ID: ownerID, Permissions: []string{"workflows:run"}}
+
+	startupBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Run at startup","triggerType":"startup","enabled":true,"scheduleJson":"{}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
+	startupRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(startupBody))
+	startupRequest = startupRequest.WithContext(context.WithValue(startupRequest.Context(), currentUserKey, actor))
+	startupResponse := httptest.NewRecorder()
+	server.createWorkflowTrigger(startupResponse, startupRequest)
+	if startupResponse.Code != http.StatusCreated {
+		t.Fatalf("startup trigger response = %d, %s", startupResponse.Code, startupResponse.Body.String())
+	}
+	var startupTrigger workflowTriggerRecord
+	if err := json.Unmarshal(startupResponse.Body.Bytes(), &startupTrigger); err != nil {
+		t.Fatal(err)
+	}
+
+	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(startupBody))
+	duplicateRequest = duplicateRequest.WithContext(context.WithValue(duplicateRequest.Context(), currentUserKey, actor))
+	duplicateResponse := httptest.NewRecorder()
+	server.createWorkflowTrigger(duplicateResponse, duplicateRequest)
+	if duplicateResponse.Code != http.StatusConflict {
+		t.Fatalf("duplicate startup response = %d, %s", duplicateResponse.Code, duplicateResponse.Body.String())
+	}
+
+	scheduleBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Every hour","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":60}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
+	scheduleRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(scheduleBody))
+	scheduleRequest = scheduleRequest.WithContext(context.WithValue(scheduleRequest.Context(), currentUserKey, actor))
+	scheduleResponse := httptest.NewRecorder()
+	server.createWorkflowTrigger(scheduleResponse, scheduleRequest)
+	if scheduleResponse.Code != http.StatusCreated {
+		t.Fatalf("coexisting schedule response = %d, %s", scheduleResponse.Code, scheduleResponse.Body.String())
+	}
+
+	if err := server.dispatchStartupCustomWorkflowTriggers(context.Background()); err != nil {
+		t.Fatalf("dispatch startup trigger: %v", err)
+	}
+	if err := server.dispatchStartupCustomWorkflowTriggers(context.Background()); err != nil {
+		t.Fatalf("dispatch duplicate startup pass: %v", err)
+	}
+	var runCount int
+	var runTriggerID sql.NullInt64
+	var runType, runReason string
+	if err := db.QueryRow("SELECT COUNT(*), trigger_id, trigger_type, trigger_reason FROM workflow_run WHERE workflow_definition_id = ?", definitionID).Scan(&runCount, &runTriggerID, &runType, &runReason); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 1 || !runTriggerID.Valid || runTriggerID.Int64 != startupTrigger.ID || runType != "startup" || runReason != "application_startup" {
+		t.Fatalf("startup run = count %d trigger %#v type %s reason %s", runCount, runTriggerID, runType, runReason)
+	}
+	var lastRunAt sql.NullString
+	if err := db.QueryRow("SELECT last_run_at FROM workflow_trigger WHERE id = ?", startupTrigger.ID).Scan(&lastRunAt); err != nil {
+		t.Fatal(err)
+	}
+	if !lastRunAt.Valid || lastRunAt.String == "" {
+		t.Fatalf("startup trigger last run = %#v", lastRunAt)
+	}
+}
+
+func TestStartupLibraryRefreshAcceptsStartupAndScheduleTriggers(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ownerID := insertCustomWorkflowAPIUser(t, db, "system-schedule-owner")
+	server := NewServer(db, config.Config{})
+	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ensureStartupLibraryRefreshTrigger(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var definitionID int64
+	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'").Scan(&definitionID); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{}"}`, definitionID)
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.createWorkflowTrigger(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("system schedule response = %d, %s", response.Code, response.Body.String())
+	}
+	var triggerCount, startupCount, scheduleCount int
+	if err := db.QueryRow(`SELECT COUNT(*), SUM(trigger_type = 'startup'), SUM(trigger_type = 'schedule') FROM workflow_trigger WHERE workflow_definition_id = ?`, definitionID).Scan(&triggerCount, &startupCount, &scheduleCount); err != nil {
+		t.Fatal(err)
+	}
+	if triggerCount != 2 || startupCount != 1 || scheduleCount != 1 {
+		t.Fatalf("system triggers = total %d startup %d schedule %d", triggerCount, startupCount, scheduleCount)
+	}
+}
+
 func TestCustomWorkflowRunReadReviewAndCandidateAccessIsOwnerScoped(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ownerID := insertCustomWorkflowAPIUser(t, db, "workflow-read-owner")

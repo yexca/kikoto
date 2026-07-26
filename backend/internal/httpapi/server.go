@@ -4047,7 +4047,7 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 	return nil
 }
 
-func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType string, triggerReason string) (startupLibraryRefreshResult, error) {
+func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (startupLibraryRefreshResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return startupLibraryRefreshResult{}, err
@@ -4066,6 +4066,11 @@ func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType strin
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "startup_library_refresh", "Startup library refresh", "running", triggerType, triggerReason, input, map[string]any{})
 	if err != nil {
 		return startupLibraryRefreshResult{}, err
+	}
+	if triggerID > 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", triggerID, runID); err != nil {
+			return startupLibraryRefreshResult{}, err
+		}
 	}
 	scanNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
 		NodeID: "scan", NodeType: "dispatch_child_workflows", DisplayName: "Run local library scan", Position: 1, Status: "running",
@@ -4331,21 +4336,38 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureStartupLibraryRefreshTrigger(ctx); err != nil {
 		return err
 	}
-	var enabled int
+	var triggerID int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(trigger.enabled), 0)
+		SELECT trigger.id
 		FROM workflow_trigger AS trigger
 		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
 		WHERE definition.code = 'startup_library_refresh'
 			AND trigger.trigger_type = 'startup'
-	`).Scan(&enabled)
-	if err != nil {
+			AND trigger.enabled = 1
+		ORDER BY trigger.id
+		LIMIT 1
+	`).Scan(&triggerID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if enabled == 0 {
-		return s.syncVoiceCreditsFromSnapshots(ctx)
+	if triggerID > 0 {
+		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_run_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", triggerID)
+		result, runErr := s.runStartupLibraryRefresh(ctx, "startup", "system_startup", triggerID)
+		if runErr != nil {
+			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), triggerID)
+			return runErr
+		}
+		if result.Status == "succeeded" {
+			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_success_at = CURRENT_TIMESTAMP, last_error_message = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", triggerID)
+		} else {
+			message := strings.Join(result.Failures, "; ")
+			if message == "" {
+				message = "workflow completed with status " + result.Status
+			}
+			_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", message, triggerID)
+		}
 	}
-	if _, err = s.runStartupLibraryRefresh(ctx, "startup", "system_startup"); err != nil {
+	if err := s.dispatchStartupCustomWorkflowTriggers(ctx); err != nil {
 		return err
 	}
 	return s.syncVoiceCreditsFromSnapshots(ctx)
