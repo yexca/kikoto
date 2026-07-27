@@ -145,12 +145,30 @@ func TestListWorksSortedForwardsCompoundSearch(t *testing.T) {
 		if got := r.URL.Path; got != "/api/search/"+query {
 			t.Fatalf("path = %q, want %q", got, "/api/search/"+query)
 		}
+		if got := r.URL.Query().Get("includeTranslationWorks"); got != "true" {
+			t.Fatalf("includeTranslationWorks = %q, want true", got)
+		}
 		writeTestJSON(t, w, WorksPage{})
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
 	if _, err := client.ListWorksSorted(context.Background(), 1, 12, query, "create_date", "desc"); err != nil {
+		t.Fatalf("ListWorksSorted() error = %v", err)
+	}
+}
+
+func TestListWorksSortedDoesNotRequestTranslationsWithoutKeyword(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("includeTranslationWorks"); got != "" {
+			t.Fatalf("includeTranslationWorks = %q, want empty", got)
+		}
+		writeTestJSON(t, w, WorksPage{})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+	if _, err := client.ListWorksSorted(context.Background(), 1, 12, "", "create_date", "desc"); err != nil {
 		t.Fatalf("ListWorksSorted() error = %v", err)
 	}
 }

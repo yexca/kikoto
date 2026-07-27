@@ -439,6 +439,18 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await expect.poll(() => requests.some((url) => url.searchParams.get("page") === "2")).toBe(true);
 });
 
+test("remote source keeps alias matches returned by the backend", async ({ page }) => {
+  const requests: URL[] = [];
+  await mockRemoteSource(page, (url) => requests.push(url));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+
+  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  await search.fill("RJ01000001");
+  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ01000001")).toBe(true);
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+});
+
 test("new detail navigation starts at the top, preserves user scroll while media loads, and returning restores the library position", async ({ page }) => {
   await mockApplication(page, undefined, false, 24, 350);
   await page.goto("/");

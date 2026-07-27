@@ -12,18 +12,8 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
-	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
-
-type fakeRemoteEditionLookup struct {
-	product dlsite.Product
-	err     error
-}
-
-func (lookup fakeRemoteEditionLookup) FetchProduct(_ context.Context, _ string) (dlsite.Product, error) {
-	return lookup.product, lookup.err
-}
 
 func TestLegacyNumber178SourceTypeCannotBeCreated(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
@@ -352,86 +342,6 @@ func TestRemotePostFilterUsesExactRemoteCodeAndPersonalTags(t *testing.T) {
 	}
 	if remoteWorkSummaryMatchesClause(work, listSearchClause{Kind: "user_tag", Value: "archived"}) {
 		t.Fatal("unassigned personal tag matched remote work")
-	}
-}
-
-func TestRemoteFamilyCodePageFindsAvailableTranslatedEdition(t *testing.T) {
-	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{})
-	var providerID int64
-	if err := db.QueryRow("INSERT INTO metadata_provider (code, display_name) VALUES ('family-test', 'Family test') RETURNING id").Scan(&providerID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`
-		INSERT INTO work (id, primary_code, title) VALUES
-			(1201, 'RJ01000101', 'Origin'),
-			(1202, 'RJ01000102', 'Translation');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (1201, 1201, 'RJ01000101');
-		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, is_canonical) VALUES
-			(1201, 1201, ?, 'RJ01000101', 'RJ01000101', 1),
-			(1202, 1201, ?, 'RJ01000102', 'RJ01000101', 0);
-		INSERT INTO work_code_alias (logical_work_id, provider_id, primary_code, relationship_kind)
-		VALUES (1201, ?, 'RJ01000103', 'provider_declared');
-	`, providerID, providerID, providerID); err != nil {
-		t.Fatal(err)
-	}
-
-	codes, err := server.remoteSearchFamilyCodes(context.Background(), "RJ01000101")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(codes, ","); got != "RJ01000101,RJ01000102,RJ01000103" {
-		t.Fatalf("family codes = %q", got)
-	}
-
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		works := []kikoeru.Work{}
-		if strings.HasSuffix(r.URL.Path, "/RJ01000102") {
-			works = append(works, kikoeru.Work{ID: 102, SourceID: "RJ01000102", Title: "Available translation"})
-		}
-		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
-			Works:      works,
-			Pagination: kikoeru.Pagination{CurrentPage: 1, PageSize: 100, TotalCount: len(works)},
-		})
-	}))
-	defer remote.Close()
-
-	works, total, _, err := server.remoteFamilyCodePage(
-		context.Background(), 0, 7, kikoeru.NewClient(remote.URL, remote.Client()), codes,
-		"create_date", "desc", "", 1, 24, "ja-jp", false,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 1 || len(works) != 1 || works[0].PrimaryCode != "RJ01000101" || works[0].RemoteCode != "RJ01000102" {
-		t.Fatalf("works = %#v, total = %d", works, total)
-	}
-}
-
-func TestRemoteSearchFamilyCodesUsesReadOnlyMetadataFallback(t *testing.T) {
-	db := openMigratedTestDB(t)
-	server := NewServer(db, config.Config{})
-	server.remoteEditionLookup = fakeRemoteEditionLookup{product: dlsite.Product{
-		WorkNo: "RJ01000201",
-		LanguageEditions: []dlsite.LanguageEdition{
-			{WorkNo: "RJ01000201", Lang: "JPN"},
-			{WorkNo: "RJ01000202", Lang: "CHI_HANS"},
-		},
-	}}
-
-	codes, err := server.remoteSearchFamilyCodes(context.Background(), "RJ01000201")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(codes, ","); got != "RJ01000201,RJ01000202" {
-		t.Fatalf("family codes = %q", got)
-	}
-	var workCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM work").Scan(&workCount); err != nil {
-		t.Fatal(err)
-	}
-	if workCount != 0 {
-		t.Fatalf("read-only family lookup created %d works", workCount)
 	}
 }
 

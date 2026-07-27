@@ -158,6 +158,7 @@ func (c *Client) listWorksSortedSeeded(ctx context.Context, page int, pageSize i
 	path := "/api/works"
 	if keyword != "" {
 		path = "/api/search/" + url.PathEscape(keyword)
+		params.Set("includeTranslationWorks", "true")
 	}
 	if err := c.get(ctx, path, params, &result); err != nil {
 		if !allowCompatibilityFallback || c.compatibility != CompatibilityNumber178 {
