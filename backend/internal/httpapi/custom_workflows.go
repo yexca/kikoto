@@ -1929,7 +1929,7 @@ func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, pay
 	case "track_works":
 		return s.executeCustomTrackWorks(ctx, runID, node, inputs)
 	case "fetch_works":
-		return s.executeCustomFetchWorks(ctx, runID, node, inputs)
+		return s.executeCustomFetchWorks(ctx, runID, payload.UserID, node, inputs)
 	case "tag_works":
 		return s.executeCustomTagWorks(ctx, payload.UserID, node, inputs)
 	case "subworkflow":
@@ -2615,7 +2615,7 @@ type preparedCustomFetch struct {
 	Unknown   int
 }
 
-func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, userID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
 	maxWorks := configInt(node.Config, "maxWorks", 25)
 	maxFiles := configInt(node.Config, "maxFiles", 10000)
@@ -2740,7 +2740,7 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 			continue
 		}
 		targetRoot := strings.ReplaceAll(targetTemplate, "<work_code>", item.Candidate.Code)
-		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes, workflow.JobPriorityBackground)
+		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes, userID, workflow.JobPriorityBackground)
 		if err != nil {
 			item.Candidate.Reason = "fetch_queue_failed"
 			failed = append(failed, item.Candidate)

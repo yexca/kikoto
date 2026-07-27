@@ -105,6 +105,18 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 		return nil
 	}
+	if job.WorkerType == "remote_work_fetch" {
+		var payload remoteWorkFetchJobPayload
+		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
+			status := "succeeded"
+			if runErr != nil {
+				status = "failed"
+			}
+			if err := s.createRemoteFetchNotification(context.WithoutCancel(ctx), job.RunID, status, payload); err != nil {
+				slog.Error("create remote fetch notification", "run_id", job.RunID, "error", err)
+			}
+		}
+	}
 	return runErr
 }
 

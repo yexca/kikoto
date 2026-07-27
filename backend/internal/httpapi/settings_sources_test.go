@@ -13,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 func TestLegacyNumber178SourceTypeCannotBeCreated(t *testing.T) {
@@ -250,6 +251,52 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	}
 	if locations != 1 {
 		t.Fatalf("remote stream locations = %d, want 1", locations)
+	}
+	var trackedPresence, sourcePresence int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&trackedPresence); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE file_source_id = 1 AND presence_type = 'source' AND availability = 'available'`).Scan(&sourcePresence); err != nil {
+		t.Fatal(err)
+	}
+	if trackedPresence != 1 || sourcePresence != 1 {
+		t.Fatalf("presence counts = tracked %d source %d, want 1 each", trackedPresence, sourcePresence)
+	}
+}
+
+func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
+	db := openMigratedTestDB(t)
+	result, err := db.Exec(`
+		INSERT INTO workflow_run (workflow_code, display_name, status, trigger_type, input_json)
+		VALUES ('remote_work_fetch', 'Fetch remote work', 'queued', 'manual', '{"work_code":"RJ09999998"}')
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, _ := result.LastInsertId()
+	result, err = db.Exec(`
+		INSERT INTO workflow_job (workflow_run_id, worker_type, status)
+		VALUES (?, 'remote_work_fetch', 'queued')
+	`, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := result.LastInsertId()
+
+	server := NewServer(db, config.Config{})
+	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj09999998", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fetch.Deduplicated || fetch.RunID != runID || fetch.JobID != jobID || fetch.PrimaryCode != "RJ09999998" {
+		t.Fatalf("deduplicated fetch = %+v", fetch)
+	}
+	var runs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'remote_work_fetch'`).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 {
+		t.Fatalf("fetch runs = %d, want 1", runs)
 	}
 }
 

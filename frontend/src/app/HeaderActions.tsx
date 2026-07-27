@@ -9,6 +9,7 @@ import {
   Clock3,
   Command,
   Database,
+  Download,
   ListChecks,
   Loader2,
   LogIn,
@@ -26,6 +27,7 @@ import {
   UserRound,
   Users,
   Workflow,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -46,7 +48,7 @@ import {
 } from "@/app/theme";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { api, type CurrentUser, type WorkflowRun } from "@/lib/api";
+import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
 import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
@@ -89,6 +91,8 @@ export function HeaderActions({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [reviewRuns, setReviewRuns] = useState<WorkflowRun[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
+  const [notifications, setNotifications] = useState<WorkflowNotification[]>([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [runningAction, setRunningAction] = useState<SystemAction | null>(null);
   const mobileRuntime = useMobileRuntime();
 
@@ -117,26 +121,58 @@ export function HeaderActions({
     return () => window.removeEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
   }, []);
 
-  const refreshReviewRuns = () => {
-    if (!canRunWorkflows) return;
-    api
-      .listWorkflowRuns(1, 5, "review")
-      .then((page) => {
-        setReviewRuns(page.runs);
-        setReviewCount(page.total);
-      })
-      .catch(() => {
-        setReviewRuns([]);
-        setReviewCount(0);
-      });
+  const refreshNotificationCenter = () => {
+    if (user) {
+      api.listNotifications(20)
+        .then((page) => {
+          setNotifications(page.notifications);
+          setNotificationCount(page.total);
+        })
+        .catch(() => {
+          setNotifications([]);
+          setNotificationCount(0);
+        });
+    } else {
+      setNotifications([]);
+      setNotificationCount(0);
+    }
+    if (canRunWorkflows) {
+      api.listWorkflowRuns(1, 5, "review")
+        .then((page) => {
+          setReviewRuns(page.runs);
+          setReviewCount(page.total);
+        })
+        .catch(() => {
+          setReviewRuns([]);
+          setReviewCount(0);
+        });
+    } else {
+      setReviewRuns([]);
+      setReviewCount(0);
+    }
   };
 
   useEffect(() => {
-    refreshReviewRuns();
-    if (!canRunWorkflows) return;
-    const timer = window.setInterval(refreshReviewRuns, 30000);
+    refreshNotificationCenter();
+    if (!user && !canRunWorkflows) return;
+    const timer = window.setInterval(refreshNotificationCenter, 30000);
     return () => window.clearInterval(timer);
-  }, [canRunWorkflows]);
+  }, [canRunWorkflows, user?.id]);
+
+  const totalNotificationCount = notificationCount + reviewCount;
+
+  const dismissFetchNotification = async (id: number) => {
+    const previous = notifications;
+    const previousCount = notificationCount;
+    setNotifications((items) => items.filter((item) => item.id !== id));
+    setNotificationCount((count) => Math.max(0, count - 1));
+    try {
+      await api.dismissNotification(id);
+    } catch {
+      setNotifications(previous);
+      setNotificationCount(previousCount);
+    }
+  };
 
   const runSystemAction = async (action: SystemAction) => {
     setRunningAction(action);
@@ -145,7 +181,7 @@ export function HeaderActions({
       if (action === "dlsite_sync") await api.runDLsiteSync();
       if (action === "recover_stale") await api.recoverStaleWorkflowRuns();
       onOpenPage("activity");
-      window.setTimeout(refreshReviewRuns, 800);
+      window.setTimeout(refreshNotificationCenter, 800);
     } finally {
       setRunningAction(null);
       setActionsOpen(false);
@@ -187,7 +223,7 @@ export function HeaderActions({
           trigger={
             <Button variant="outline" size="icon" aria-label="Open menu" title="Menu" className="relative">
               <MoreHorizontal className="h-4 w-4" />
-              {reviewCount > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />}
+              {totalNotificationCount > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />}
             </Button>
           }
           align="right"
@@ -320,55 +356,90 @@ export function HeaderActions({
         </HeaderPopover></div>
       )}
 
-      {canRunWorkflows && (
-        <div className="hidden sm:block"><HeaderPopover
+      {user && (
+        <div><HeaderPopover
           open={reviewOpen}
           onOpenChange={(open) => {
             setReviewOpen(open);
-            if (open) refreshReviewRuns();
+            if (open) refreshNotificationCenter();
           }}
           trigger={
-            <Button variant="outline" size="icon" aria-label="Review runs" title="Review runs" className="relative">
+            <Button variant="outline" size="icon" aria-label="Notifications" title="Notifications" className="relative">
               <Bell className="h-4 w-4" />
-              {reviewCount > 0 && (
+              {totalNotificationCount > 0 && (
                 <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">
-                  {reviewCount > 99 ? "99+" : reviewCount}
+                  {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
                 </span>
               )}
             </Button>
           }
           align="right"
         >
-          <div className="w-80">
+          <div className="w-[min(20rem,calc(100vw-1rem))]">
             <PopoverHeader
-              title="Review runs"
-              subtitle={reviewCount > 0 ? `${reviewCount} runs need attention` : "No runs need review"}
+              title="Notifications"
+              subtitle={totalNotificationCount > 0 ? `${totalNotificationCount} items` : "Nothing new"}
             />
             <div className="app-scroll max-h-80 overflow-auto p-2">
-              {reviewRuns.length === 0 ? (
+              {notifications.length === 0 && reviewRuns.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No review items right now.
+                  No notifications right now.
                 </div>
               ) : (
-                reviewRuns.map((run) => (
-                  <button
-                    key={run.id}
-                    className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      setReviewOpen(false);
-                      onOpenPath("/activity?view=review");
-                    }}
-                  >
-                    <Workflow className="mt-0.5 h-4 w-4 text-primary" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{run.displayName}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {run.workflowCode} · {run.status}
+                <>
+                  {notifications.map((notification) => (
+                    <div key={`notification-${notification.id}`} className="mb-1 flex items-start rounded-md hover:bg-muted">
+                      <button
+                        className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
+                        onClick={() => {
+                          setReviewOpen(false);
+                          onOpenPath(`/${encodeURIComponent(notification.workCode)}?view=local`);
+                        }}
+                      >
+                        {notification.status === "succeeded" ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                        ) : (
+                          <Download className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{notification.message}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            Workflow #{notification.workflowRunId} · {notification.status}
+                          </span>
+                        </span>
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="m-1 h-8 w-8 shrink-0"
+                        aria-label={`Dismiss notification for ${notification.workCode}`}
+                        title="Dismiss notification"
+                        onClick={() => void dismissFetchNotification(notification.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {reviewRuns.map((run) => (
+                    <button
+                      key={`review-${run.id}`}
+                      className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
+                      onClick={() => {
+                        setReviewOpen(false);
+                        onOpenPath(`/activity?view=review&run=${run.id}`);
+                      }}
+                    >
+                      <Workflow className="mt-0.5 h-4 w-4 text-primary" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{run.displayName}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {run.workflowCode} · review
+                        </span>
                       </span>
-                    </span>
-                    <Badge variant="warning">{workflowReviewCount(run)}</Badge>
-                  </button>
-                ))
+                      <Badge variant="warning">{workflowReviewCount(run)}</Badge>
+                    </button>
+                  ))}
+                </>
               )}
             </div>
             <PopoverFooter>
@@ -377,7 +448,7 @@ export function HeaderActions({
                 size="sm"
                 onClick={() => {
                   setReviewOpen(false);
-                  onOpenPath("/activity?view=review");
+                  onOpenPath("/activity");
                 }}
               >
                 <Activity className="h-4 w-4" />

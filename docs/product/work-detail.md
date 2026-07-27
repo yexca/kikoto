@@ -25,7 +25,9 @@ playback actions for one work.
   first-index database statements per file. Slow collection and write phases
   are logged separately for diagnosis.
 - Loads source availability through a backend aggregate check.
-- Opens remote source trees lazily after availability is known.
+- Opens remote source trees lazily after availability is known. An explicit
+  persisted remote-source route can load its identified source before an
+  aggregate Check and marks a successful load available in the current detail.
 - Wraps complete folder and file names in variable-height Browse and Tree rows,
   including long names without spaces, without horizontal page overflow.
 - Keeps Browse breadcrumbs on one line. Mobile collapses intermediate ancestors
@@ -63,6 +65,8 @@ playback actions for one work.
 - Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.
+- Fetch records the selected source as available when it is accepted and reuses
+  an existing queued or running Fetch for the same canonical work.
 - Opens Login before any Fetch preparation request when the current visitor is
   anonymous.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file

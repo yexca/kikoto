@@ -17,6 +17,9 @@ Workflows make backend actions inspectable.
 - Review contains terminal runs with unresolved candidates that need a user
   decision. Routine partial or skipped outcomes remain in Completed and keep
   their warning status, summary, and events for inspection.
+- The header notification center combines Review items with completed or failed
+  Fetch results. Fetch notifications open the local work detail and can be
+  dismissed independently for the signed-in user.
 - Definitions groups Built-in workflows and Custom definitions. Each list item
   shows one execution status: Scheduled takes precedence over Startup, while a
   definition without either persisted trigger shows Manual.
@@ -43,6 +46,9 @@ Workflows make backend actions inspectable.
   annual runs select an explicit year and default to a template containing
   `{year}`. Runs synchronize metadata and append the previewed user tag without
   replacing existing user tags.
+- A queued or running Fetch is unique per canonical work. Repeated Fetch
+  requests reuse that run instead of downloading the same work twice, and every
+  requesting user receives the shared run's terminal notification.
 
 ## Later Work
 

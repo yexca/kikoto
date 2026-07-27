@@ -908,6 +908,22 @@ export type CurrentUser = {
   passwordManagedBy: "environment" | "account";
 };
 
+export type WorkflowNotification = {
+  id: number;
+  workflowRunId: number;
+  type: string;
+  status: string;
+  workId: number | null;
+  workCode: string;
+  message: string;
+  createdAt: string;
+};
+
+export type WorkflowNotificationsPage = {
+  notifications: WorkflowNotification[];
+  total: number;
+};
+
 export type FileSourceHealthCheckResult = {
   healthy: boolean;
   healthStatus: string;
@@ -1524,6 +1540,8 @@ export const api = {
     patchJSONBody<AuthState>("/api/auth/me", payload),
   login,
   logout,
+  listNotifications: (limit = 20) => getJSON<WorkflowNotificationsPage>(`/api/notifications?limit=${limit}`),
+  dismissNotification: (id: number) => deleteJSON<{ ok: boolean }>(`/api/notifications/${id}`),
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),
   createUser: (payload: {
     username: string;

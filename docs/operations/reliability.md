@@ -15,6 +15,9 @@
 - Fetch planning reuses complete persisted DLsite family metadata and cached
   source availability. If the requested work lacks a DLsite snapshot or edition
   relationship, preparation performs one bounded targeted family sync.
+- Fetch enqueueing checks for an active run before remote preflight and again in
+  the immediate SQLite enqueue transaction. Concurrent requests for the same
+  canonical work reuse one queued or running run.
 - Fetch, remote playback cache, and cache/local location deletion run as durable
   recoverable jobs with lease heartbeats and restart checkpoints.
 - A single cache/local deletion and a mixed batch deletion use the same queued

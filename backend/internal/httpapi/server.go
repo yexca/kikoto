@@ -71,6 +71,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/auth/me", s.updateCurrentUser)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("GET /api/notifications", s.listNotifications)
+	mux.HandleFunc("DELETE /api/notifications/{id}", s.dismissNotification)
 	mux.HandleFunc("GET /api/users", s.listUsers)
 	mux.HandleFunc("POST /api/users", s.createUser)
 	mux.HandleFunc("PATCH /api/users/{id}", s.updateUser)
@@ -3851,7 +3853,8 @@ func (s *Server) createStartupLibraryRefreshRun(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok {
 		return
 	}
 	var payload struct {
@@ -3883,7 +3886,7 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
 		return
 	}
-	result, err := s.runRemoteBulkWorkflow(context.WithoutCancel(r.Context()), payload.SourceID, payload.Action, codes)
+	result, err := s.runRemoteBulkWorkflow(context.WithoutCancel(r.Context()), actor.ID, payload.SourceID, payload.Action, codes)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -3961,7 +3964,7 @@ type startupLibraryRefreshResult struct {
 	Failures              []string `json:"failures"`
 }
 
-func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
+func (s *Server) runRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
 	action = normalizeRemoteBulkAction(action)
 	if action == "" {
 		return remoteBulkWorkflowResult{}, fmt.Errorf("invalid remote bulk action")
@@ -4018,7 +4021,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 			}
 		}
 		if !workFailed && (action == "fetch" || action == "track_fetch") {
-			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0, workflow.JobPriorityBackground)
+			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground)
 			if err != nil {
 				result.Failed++
 				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))

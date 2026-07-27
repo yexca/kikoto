@@ -115,6 +115,7 @@ async function mockWorkflows(
   page: Page,
   onRemotePopular?: (payload: unknown) => void,
   runsPage = { runs: [sampleRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 0, failed: 0, completed: 1 } },
+  notificationPage = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -134,6 +135,14 @@ async function mockWorkflows(
           },
         },
       });
+      return;
+    }
+    if (url.pathname === "/api/notifications") {
+      await route.fulfill({ json: notificationPage });
+      return;
+    }
+    if (url.pathname.startsWith("/api/notifications/") && route.request().method() === "DELETE") {
+      await route.fulfill({ json: { ok: true } });
       return;
     }
     if (url.pathname === "/api/workflow-definitions") {
@@ -188,6 +197,27 @@ async function mockWorkflows(
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
   });
 }
+
+test("mobile notification center opens fetched works and dismisses individual results", async ({ page }) => {
+  await mockWorkflows(page, undefined, undefined, {
+    total: 2,
+    notifications: [
+      { id: 2, workflowRunId: 72, type: "remote_fetch", status: "failed", workId: 12, workCode: "RJ09999996", message: "Fetch failed for RJ09999996.", createdAt: "2026-07-27T02:00:00Z" },
+      { id: 1, workflowRunId: 71, type: "remote_fetch", status: "succeeded", workId: 11, workCode: "RJ09999995", message: "Fetch completed for RJ09999995.", createdAt: "2026-07-27T01:00:00Z" },
+    ],
+  });
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: "Notifications", exact: true }).click();
+  await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toBeVisible();
+  const dismissRequest = page.waitForRequest((request) => request.method() === "DELETE" && request.url().endsWith("/api/notifications/1"));
+  await page.getByRole("button", { name: "Dismiss notification for RJ09999995" }).click();
+  await dismissRequest;
+  await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toHaveCount(0);
+
+  await page.getByText("Fetch failed for RJ09999996.", { exact: true }).click();
+  await expect(page).toHaveURL(/\/RJ09999996\?view=local$/);
+});
 
 test("definitions foreground runnable presets and configure DLsite popular collection", async ({ page }) => {
   await mockWorkflows(page);

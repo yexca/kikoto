@@ -138,13 +138,31 @@ export function useWorkSourceContext({
   }, [applyAvailability, sources.length, work?.primaryCode]);
 
   useEffect(() => {
-    if (!selectedRemoteSource || !remoteSourceCanBrowse(selectedRemoteSource.summary) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
+    const routedRemoteSource = Boolean(
+      selectedRemoteSource
+      && initialRemoteCode
+      && remoteSourceTabKey(selectedRemoteSource.source.id) === initialSourceIntent,
+    );
+    if (!selectedRemoteSource || (!remoteSourceCanBrowse(selectedRemoteSource.summary) && !routedRemoteSource) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
     const controller = new AbortController();
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
     api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode, controller.signal)
       .then((detail) => {
-        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
+        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
+          ...item,
+          detail,
+          loading: false,
+          error: "",
+          summary: {
+            ...item.summary,
+            status: "available",
+            primaryCode: detail.primaryCode,
+            remoteId: detail.remoteId,
+            title: detail.title,
+            coverUrl: detail.coverUrl,
+          },
+        } : item));
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -153,7 +171,7 @@ export function useWorkSourceContext({
           : item));
       });
     return () => controller.abort();
-  }, [remoteLoadVersion, selectedRemoteSourceID, selectedRemoteWorkCode]);
+  }, [initialRemoteCode, initialSourceIntent, remoteLoadVersion, selectedRemoteSourceID, selectedRemoteWorkCode]);
 
   useEffect(() => {
     setActiveSourceKey(initialSourceIntent);
