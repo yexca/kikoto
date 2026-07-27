@@ -103,10 +103,12 @@ import {
   libraryLocation,
   localPageSize,
   localWorkPageSizeOptions,
-  readLibraryBrowseState,
+	readLibraryBrowseState,
+	readLibrarySortPreference,
   writeLastLibraryLocation,
   withSharedLibraryQuery,
-  writeLibraryBrowseState,
+	writeLibraryBrowseState,
+	writeLibrarySortPreference,
   type LibraryBrowseState,
   type LibraryColumnSetting,
   type LibraryViewMode,
@@ -314,11 +316,14 @@ export function LibraryPage() {
   const toast = useToast();
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
-  const browseStorageScope = currentClientStorageScope(principalID);
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
+	const browseStorageScope = currentClientStorageScope(principalID);
+	const requireDownloadsManage = usePermissionGate("downloads:manage");
+	const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
+	const initialScope = useRef(localScopeFromPath(window.location.pathname)).current;
+	const initialSortPreference = readLibrarySortPreference(libraryBrowseKey(initialTab, initialScope, browseStorageScope));
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(
 		window.location.search,
-		readLibraryHistoryBrowseState(browseStorageScope) ?? defaultLibraryBrowseState,
+		readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...initialSortPreference },
 	)).current;
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
@@ -326,6 +331,7 @@ export function LibraryPage() {
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
+	const [browseHydrated, setBrowseHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
   const [isDatabaseMenuOpen, setIsDatabaseMenuOpen] = useState(false);
@@ -493,7 +499,7 @@ export function LibraryPage() {
 	}, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
 
   useEffect(() => {
-    if (activeTab.kind === "source") return;
+    if (!browseHydrated || activeTab.kind === "source") return;
     if (skipNextLibraryEffect.current) {
       skipNextLibraryEffect.current = false;
       return;
@@ -538,24 +544,36 @@ export function LibraryPage() {
 		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
 	  });
     return () => controller.abort();
-  }, [activeTab.kind, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, recordRecommendationEvents, sortDirection, workPage, workPageSize, workScope]);
+  }, [activeTab.kind, browseHydrated, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, recordRecommendationEvents, sortDirection, workPage, workPageSize, workScope]);
 
   useEffect(() => {
+    if (auth.isLoading) return;
+    let cancelled = false;
+    setBrowseHydrated(false);
+    setSourceRoutesReady(false);
     api.listLibrarySources().then((items) => {
+      if (cancelled) return;
       setSources(items);
 	  setSourceRoutesReady(true);
 	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
 	  const scope = localScopeFromPath(window.location.pathname);
 	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState(browseStorageScope) ?? stored ?? defaultLibraryBrowseState), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
+	  const sortPreference = readLibrarySortPreference(libraryBrowseKey(resolved, scope, browseStorageScope));
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference }), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
 	  setActiveTab(resolved);
       const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
       if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
     }).catch(() => {
+      if (cancelled) return;
       setSources([]);
       setSourceRoutesReady(false);
+	}).finally(() => {
+      if (!cancelled) setBrowseHydrated(true);
     });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.isLoading, browseStorageScope]);
 
   useEffect(() => {
     api.getRuntimeSettings().then((next) => {
@@ -578,6 +596,7 @@ export function LibraryPage() {
   }, [selectedCode]);
 
   useEffect(() => {
+    if (!browseHydrated) return;
     if (activeTab.kind !== "source") {
       setRemoteResult(null);
       setIsRemoteLoading(false);
@@ -614,7 +633,7 @@ export function LibraryPage() {
       if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
     });
     return () => controller.abort();
-  }, [activeTab, librarySort, randomSeed, recommendBadgesEnabled, remoteSearchQuery, remoteSourceStates, sortDirection]);
+  }, [activeTab, browseHydrated, librarySort, randomSeed, recommendBadgesEnabled, remoteSearchQuery, remoteSourceStates, sortDirection]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -667,8 +686,9 @@ export function LibraryPage() {
 	  const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
 	  const nextScope = localScopeFromPath(window.location.pathname);
 	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
+	  const sortPreference = readLibrarySortPreference(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
 	  const nextCode = codeFromLocation(window.location.pathname, window.location.search);
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState(browseStorageScope) ?? stored ?? defaultLibraryBrowseState), nextTab, nextCode === null);
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference }), nextTab, nextCode === null);
       setSelectedCode(nextCode);
       setSelectedWorkPreview(workPreviewFromHistory(nextCode));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
@@ -686,9 +706,10 @@ export function LibraryPage() {
 	}, [sources, activeTab]);
 
 	useEffect(() => {
-		if (selectedCode !== null || selectedRemoteTarget !== null) return;
+		if (!browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
 		const browseState = { ...activeBrowseState, scrollY: window.scrollY };
 		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
 		const nextSearch = libraryBrowseSearch(activeBrowseState);
 		if (sourceRoutesReady) {
 			writeLastLibraryLocation(browseStorageScope, `${pathForActiveLibrary(activeTab, localScope)}${nextSearch}`);
@@ -698,7 +719,7 @@ export function LibraryPage() {
 			libraryBrowseScope: browseStorageScope,
 			libraryBrowseState: browseState,
 		}, "", `${window.location.pathname}${nextSearch}`);
-	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, sourceRoutesReady, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
+	}, [activeTab, browseHydrated, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, sourceRoutesReady, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
     if (activeTab.kind === "source" || isLibraryLoading) return;
@@ -816,7 +837,8 @@ export function LibraryPage() {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
 	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
 	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(tab, nextScope, browseStorageScope)) ?? defaultLibraryBrowseState, searchQuery);
+	const nextKey = libraryBrowseKey(tab, nextScope, browseStorageScope);
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) }, searchQuery);
     setActiveTab(tab);
 	if (tab.kind === "all") setLocalScope(nextScope);
 	applyBrowseState(nextState, tab);
@@ -834,7 +856,8 @@ export function LibraryPage() {
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
 	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
 	const nextTab: LibraryTab = { kind: "all" };
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(nextTab, scope, browseStorageScope)) ?? defaultLibraryBrowseState, searchQuery);
+	const nextKey = libraryBrowseKey(nextTab, scope, browseStorageScope);
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) }, searchQuery);
     setActiveTab({ kind: "all" });
     setLocalScope(scope);
 	applyBrowseState(nextState, nextTab);
@@ -1177,6 +1200,7 @@ export function LibraryPage() {
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
 		else setWorkPage(1);
 		if (sort === "random") setRandomSeed(createRandomSortSeed());
+		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), sort, sortDirection);
 		setLibrarySort(sort);
 	};
 	const toggleRecommendBadges = () => {
@@ -1200,6 +1224,7 @@ export function LibraryPage() {
 		queueResultsScroll();
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
 		else setWorkPage(1);
+		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, direction);
 		setSortDirection(direction);
 	};
 	const changeStatusFilter = (status: ListeningStatus | "all") => {
@@ -2748,6 +2773,7 @@ function RemoteOnlyWorkDetailController({
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
+  const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
@@ -2790,6 +2816,7 @@ function RemoteOnlyWorkDetailController({
 
   useEffect(() => {
     setDetail(null);
+	setIdentityDetail(null);
     setNotFound(false);
     setMessage("");
     setSelectedSavePaths(new Set());
@@ -2799,7 +2826,10 @@ function RemoteOnlyWorkDetailController({
     setSavePreparation(null);
     setSavePlanMessage("");
     const controller = new AbortController();
-    api.getRemoteSourceWork(source.id, code, controller.signal).then(setDetail).catch((error) => {
+    api.getRemoteSourceWork(source.id, code, controller.signal).then((next) => {
+		setDetail(next);
+		setIdentityDetail(next);
+	}).catch((error) => {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof ApiError && error.status === 404) {
         setNotFound(true);
@@ -3082,28 +3112,64 @@ function RemoteOnlyWorkDetailController({
       onAppendQueue={(track) => queueRemoteTrack(track, false)}
     />
   );
+	const remoteIdentity = identityDetail ?? detail;
+	const remoteLanguageEditions = remoteIdentity.languageEditions ?? [];
+	const remoteTranslations: WorkDetail["translations"] = remoteLanguageEditions.map((edition) => ({
+		workId: null,
+		primaryCode: edition.remoteCode,
+		title: edition.label,
+		metadataLanguage: edition.language,
+		editionLabel: edition.label,
+		origin: edition.origin,
+		official: !edition.origin,
+		translationKind: edition.origin ? "origin" : "official",
+		current: edition.current,
+		hasMedia: true,
+	}));
   const presentation: UnifiedWorkDetailPresentation = {
-    coverUrl: detail.coverUrl,
-    fallbackCode: detail.primaryCode || detail.remoteId,
-    code: detail.primaryCode || detail.remoteId,
-    title: detail.title,
-    circle: detail.circle,
-    circleExternalId: detail.circleRef?.externalId ?? "",
+    coverUrl: remoteIdentity.coverUrl,
+    fallbackCode: remoteIdentity.primaryCode || remoteIdentity.remoteId,
+    code: remoteIdentity.primaryCode || remoteIdentity.remoteId,
+    title: remoteIdentity.title,
+    circle: remoteIdentity.circle,
+    circleExternalId: remoteIdentity.circleRef?.externalId ?? "",
     series: "",
     seriesTitleId: "",
     seriesCircleExternalId: "",
     ratingLabel: "Rating",
-    rating: detail.rating,
+    rating: remoteIdentity.rating,
     ratingCount: null,
-    sales: detail.sales,
+    sales: remoteIdentity.sales,
+	baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
+	metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
+	translations: remoteTranslations,
+	activeVersionCode: remoteDetailActionCode(detail),
+	onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
+	remoteVersions: true,
     dlsiteFetchedAt: "",
-    releaseDate: detail.releaseDate || "Unknown",
-    ageRating: detail.ageRating,
+    releaseDate: remoteIdentity.releaseDate || "Unknown",
+    ageRating: remoteIdentity.ageRating,
     sourceInfo,
-    voiceActors: detail.voiceActors,
+    voiceActors: remoteIdentity.voiceActors,
     voiceCredits: [],
-    tags: detail.tags,
+    tags: remoteIdentity.tags,
   };
+
+	const selectRemoteLanguageEdition = async (editionCode: string) => {
+		if (!detail || editionCode.toUpperCase() === remoteDetailActionCode(detail).toUpperCase()) return;
+		setIsFetching(true);
+		try {
+			const nextDetail = await api.getRemoteSourceWork(source.id, editionCode);
+			setDetail(nextDetail);
+			setSelectedSavePaths(new Set());
+			setSavePlan(null);
+			setSavePreparation(null);
+		} catch (error) {
+			toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
+		} finally {
+			setIsFetching(false);
+		}
+	};
 
   return (
     <UnifiedWorkDetailPage
@@ -3168,6 +3234,7 @@ function PersistedWorkDetailController({
     setActiveSourceKey,
     selectSource,
     selectTrackedPresence,
+	selectRemoteEdition,
     trackedPresenceOptions,
     selectedTrackedPresenceKey,
     selectedSource,
@@ -3523,7 +3590,7 @@ function PersistedWorkDetailController({
     try {
       const result = await refreshAvailability();
       if (!result) return;
-      toast.success(`Checked source availability through workflow run #${result.runId}.`);
+		toast.success("Source availability updated.");
     } catch (error) {
       toast.notify(toastFromError(error, "Source check failed."));
     }
@@ -3566,6 +3633,19 @@ function PersistedWorkDetailController({
     setActiveEdition(detail);
     setActiveSourceKey("local");
   };
+
+	const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {
+		if (!selectedRemoteDetail) {
+			await selectEdition(translation);
+			return;
+		}
+		setActiveEditionCode(translation.primaryCode);
+		const selected = await selectRemoteEdition(translation.primaryCode);
+		if (!selected) {
+			setActiveEditionCode(selectedRemoteDetail.remoteCode);
+			toast.error(`The ${translation.primaryCode} edition is not available from this source.`);
+		}
+	};
 
   const changeSourceKey = (key: string) => {
     selectSource(key);
@@ -3746,6 +3826,26 @@ function PersistedWorkDetailController({
       onPreview={setPreview}
     />
   );
+	const displayTranslations = (() => {
+		const merged = new Map((work?.translations ?? []).map((translation) => [translation.primaryCode.toUpperCase(), translation]));
+		for (const edition of selectedRemoteDetail?.languageEditions ?? []) {
+			const key = edition.remoteCode.toUpperCase();
+			const local = merged.get(key);
+			merged.set(key, local ?? {
+				workId: null,
+				primaryCode: edition.remoteCode,
+				title: edition.label,
+				metadataLanguage: edition.language,
+				editionLabel: edition.label,
+				origin: edition.origin,
+				official: !edition.origin,
+				translationKind: edition.origin ? "origin" : "official",
+				current: edition.current,
+				hasMedia: false,
+			});
+		}
+		return Array.from(merged.values());
+	})();
   const presentation: UnifiedWorkDetailPresentation = {
     coverUrl: hero.coverUrl,
     fallbackCode: hero.primaryCode,
@@ -3762,9 +3862,10 @@ function PersistedWorkDetailController({
     sales: hero.sales,
     baseCode: work?.baseCode,
     metadataLanguage: work?.metadataLanguage,
-    translations: work?.translations ?? [],
-    activeVersionCode: activeEditionCode || hero.primaryCode,
-    onVersionSelect: (translation) => void selectEdition(translation),
+    translations: displayTranslations,
+    activeVersionCode: activeEditionCode || selectedRemoteDetail?.remoteCode || hero.primaryCode,
+    onVersionSelect: (translation) => void selectDisplayedEdition(translation),
+	remoteVersions: Boolean(selectedRemoteDetail),
     dlsiteFetchedAt: hero.dlsiteFetchedAt,
     releaseDate: hero.releaseDate ?? "Unknown",
     ageRating: hero.ageRating,
@@ -3858,6 +3959,7 @@ type UnifiedWorkDetailPresentation = {
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions?: boolean;
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -3933,6 +4035,7 @@ function DetailHero({
   translations,
   activeVersionCode,
   onVersionSelect,
+  remoteVersions,
   dlsiteFetchedAt,
   releaseDate,
   ageRating,
@@ -3962,6 +4065,7 @@ function DetailHero({
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions?: boolean;
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -4014,6 +4118,7 @@ function DetailHero({
           translations={translations}
           activeVersionCode={activeVersionCode}
           onVersionSelect={onVersionSelect}
+		  remoteVersions={remoteVersions}
           sourceInfo={sourceInfo}
           voiceActors={voiceActors}
           voiceCredits={voiceCredits}
@@ -4047,6 +4152,7 @@ function MobileWorkDetailLayout({
   translations,
   activeVersionCode,
   onVersionSelect,
+  remoteVersions,
   dlsiteFetchedAt,
   releaseDate,
   ageRating,
@@ -4079,6 +4185,7 @@ function MobileWorkDetailLayout({
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions?: boolean;
   dlsiteFetchedAt: string;
   releaseDate: string;
   ageRating: string;
@@ -4158,6 +4265,7 @@ function MobileWorkDetailLayout({
             translations={translations}
             activeVersionCode={activeVersionCode}
             onVersionSelect={onVersionSelect}
+			remoteVersions={remoteVersions}
           sourceInfo={sourceInfo}
             voiceActors={voiceActors}
             voiceCredits={voiceCredits}
@@ -4306,6 +4414,7 @@ function DetailMetadataContent({
   translations = [],
   activeVersionCode,
   onVersionSelect,
+  remoteVersions,
   sourceInfo,
   voiceActors,
   voiceCredits,
@@ -4327,6 +4436,7 @@ function DetailMetadataContent({
   translations?: WorkDetail["translations"];
   activeVersionCode?: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions?: boolean;
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
@@ -4347,6 +4457,7 @@ function DetailMetadataContent({
       translations={translations}
       activeVersionCode={activeVersionCode ?? code}
       onVersionSelect={onVersionSelect}
+	  remoteVersions={remoteVersions}
     />
   ) : null;
   const voiceCard = (
@@ -5269,6 +5380,7 @@ function WorkVersionSelector({
   translations,
   activeVersionCode,
   onVersionSelect,
+  remoteVersions = false,
 }: {
   metadataLanguage: string;
   baseCode: string;
@@ -5276,6 +5388,7 @@ function WorkVersionSelector({
   translations: WorkDetail["translations"];
   activeVersionCode: string;
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions?: boolean;
 }) {
   return (
     <div className="space-y-2 rounded-lg border bg-card px-3 py-2 text-xs">
@@ -5296,7 +5409,7 @@ function WorkVersionSelector({
       {translations.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {translations.map((translation) => {
-            const available = Boolean(translation.workId && translation.hasMedia);
+            const available = remoteVersions || Boolean(translation.workId && translation.hasMedia);
             const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
 			const language = translation.metadataLanguage ? languageLabel(translation.metadataLanguage) : "Unknown";
 			const label = translation.origin ? "Origin" : language;
@@ -5312,7 +5425,7 @@ function WorkVersionSelector({
                 }`}
                 disabled={active || !available}
                 onClick={() => {
-                  if (!translation.workId || active) return;
+                  if (!available || active) return;
                   if (onVersionSelect) {
                     onVersionSelect(translation);
                   } else {

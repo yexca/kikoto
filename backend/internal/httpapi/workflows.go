@@ -204,6 +204,17 @@ type systemWorkflowSpec struct {
 
 var systemWorkflowSpecs = []systemWorkflowSpec{
 	{
+		Code:        "availability_watch",
+		Name:        "Availability Watch",
+		Description: "Monitor a mutable set of work codes and dispatch Track or Fetch only when a configured remote source becomes available.",
+		Nodes: []map[string]string{
+			{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
+			{"id": "check", "type": "check_source_availability", "displayName": "Check source availability"},
+			{"id": "ready", "type": "filter_candidates", "displayName": "Ready pool"},
+			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch configured action"},
+		},
+	},
+	{
 		Code:        "startup_library_refresh",
 		Name:        "Startup library refresh",
 		Description: "Run startup library maintenance by scanning local files and then syncing metadata.",

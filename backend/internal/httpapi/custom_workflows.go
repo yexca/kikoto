@@ -1157,7 +1157,9 @@ func normalizeCustomWorkflowInputValue(inputType string, value any) (any, error)
 func customStringValues(value any) ([]string, error) {
 	switch typed := value.(type) {
 	case string:
-		return strings.FieldsFunc(typed, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t' }), nil
+		return strings.FieldsFunc(typed, func(r rune) bool {
+			return r == ',' || r == ';' || r == '，' || r == '；' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+		}), nil
 	case []string:
 		return typed, nil
 	case []any:
@@ -1367,6 +1369,7 @@ type customWorkflowCheckpoint struct {
 	ChildRunIDs      []int64                               `json:"childRunIds"`
 	Pending          *customPendingExecution               `json:"pending,omitempty"`
 	Partial          bool                                  `json:"partial"`
+	BasePriority     int                                   `json:"basePriority"`
 }
 
 type customWorkflowEnqueueOptions struct {
@@ -1423,9 +1426,10 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 		}
 	}
 	payload := customWorkflowJobPayload{DefinitionJSON: definition.DefinitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
-	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}}
+	jobPriority := workflowJobPriorityForTrigger(triggerType)
+	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}, BasePriority: jobPriority}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Priority: workflowJobPriorityForTrigger(triggerType), Payload: payload,
+		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Priority: jobPriority, Payload: payload,
 		Checkpoint: checkpoint, Recoverable: true, MaxRetries: 3, ProgressTotal: len(graph.TopologicalOrder),
 	}); err != nil {
 		return 0, err
@@ -1592,6 +1596,9 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 	if checkpoint.Outputs == nil {
 		checkpoint.Outputs = map[string]map[string]customPortValue{}
 	}
+	if checkpoint.BasePriority == 0 && job.Priority > 0 {
+		checkpoint.BasePriority = job.Priority
+	}
 	completed := map[string]bool{}
 	for _, nodeID := range checkpoint.CompletedNodeIDs {
 		completed[nodeID] = true
@@ -1634,7 +1641,7 @@ func (s *Server) executeCustomWorkflowJob(ctx context.Context, job workflowJobRe
 				}
 			}
 		} else {
-			execution, runErr = s.executeCustomWorkflowNode(ctx, job.RunID, payload, graph, node, inputs)
+			execution, runErr = s.executeCustomWorkflowNode(ctx, job.RunID, checkpoint.BasePriority, payload, graph, node, inputs)
 		}
 		if runErr != nil {
 			slog.Error("custom workflow node failed", "run_id", job.RunID, "node_id", node.ID, "node_type", node.Type, "error", runErr)
@@ -1857,9 +1864,9 @@ func (s *Server) deferCustomWorkflowJob(ctx context.Context, job workflowJobReco
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET status = 'queued', checkpoint_json = ?, available_at = ?, locked_by = '', locked_at = NULL,
-			heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
+			heartbeat_at = NULL, priority = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND status = 'running'
-	`, checkpointJSON, availableAt, job.ID); err != nil {
+	`, checkpointJSON, availableAt, workflow.JobPriorityBackground-1, job.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET status = 'queued', finished_at = NULL WHERE id = ? AND status = 'running'", job.RunID); err != nil {
@@ -1902,7 +1909,7 @@ func customRuntimeNodeInputs(graph customWorkflowGraph, node customWorkflowNode,
 	return result, nil
 }
 
-func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, payload customWorkflowJobPayload, graph customWorkflowGraph, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, jobPriority int, payload customWorkflowJobPayload, graph customWorkflowGraph, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	switch node.Type {
 	case "workflow_input", "input_text", "input_circle", "input_series", "input_voice", "input_work":
 		return executeCustomInputNode(payload, graph, node)
@@ -1929,7 +1936,7 @@ func (s *Server) executeCustomWorkflowNode(ctx context.Context, runID int64, pay
 	case "track_works":
 		return s.executeCustomTrackWorks(ctx, runID, node, inputs)
 	case "fetch_works":
-		return s.executeCustomFetchWorks(ctx, runID, payload.UserID, node, inputs)
+		return s.executeCustomFetchWorks(ctx, runID, payload.UserID, jobPriority, node, inputs)
 	case "tag_works":
 		return s.executeCustomTagWorks(ctx, payload.UserID, node, inputs)
 	case "subworkflow":
@@ -2126,7 +2133,7 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err = checkRemoteSourceHealth(healthCtx, source)
+	err = s.checkRemoteSourceHealth(healthCtx, source)
 	cancel()
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -2137,7 +2144,7 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 	maxPages := configInt(node.Config, "maxPages", 10)
 	maxWorks := configInt(node.Config, "maxWorks", 100)
 	keyword := "$va:" + voiceName + "$"
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	candidates := []customWorkCandidate{}
 	seen := map[string]bool{}
 	for pageNumber := 1; pageNumber <= maxPages && len(candidates) < maxWorks; pageNumber++ {
@@ -2212,7 +2219,7 @@ func (s *Server) executeCustomSourcePopularWorks(ctx context.Context, node custo
 		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	maxWorks := configInt(node.Config, "maxWorks", 100)
-	page, err := kikoeruClientForSource(source).PopularWorks(ctx, 1, maxWorks)
+	page, err := s.kikoeruClientForSource(source).PopularWorks(ctx, 1, maxWorks)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		return customNodeExecution{}, err
@@ -2483,7 +2490,7 @@ func (s *Server) executeCustomSourceAvailability(ctx context.Context, runID int6
 		return customNodeExecution{Partial: len(failed) > 0, Outputs: customAvailabilityOutputs(available, missing, failed)}, nil
 	}
 	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	healthErr := checkRemoteSourceHealth(healthCtx, source)
+	healthErr := s.checkRemoteSourceHealth(healthCtx, source)
 	cancel()
 	if healthErr != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -2615,7 +2622,7 @@ type preparedCustomFetch struct {
 	Unknown   int
 }
 
-func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, userID int64, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
+func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, userID int64, jobPriority int, node customWorkflowNode, inputs map[string]customPortValue) (customNodeExecution, error) {
 	candidates := uniqueCustomCandidates(inputs["works"].Candidates)
 	maxWorks := configInt(node.Config, "maxWorks", 25)
 	maxFiles := configInt(node.Config, "maxFiles", 10000)
@@ -2740,7 +2747,7 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, userI
 			continue
 		}
 		targetRoot := strings.ReplaceAll(targetTemplate, "<work_code>", item.Candidate.Code)
-		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes, userID, workflow.JobPriorityBackground)
+		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes, userID, jobPriority)
 		if err != nil {
 			item.Candidate.Reason = "fetch_queue_failed"
 			failed = append(failed, item.Candidate)

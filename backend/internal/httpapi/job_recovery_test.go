@@ -31,6 +31,28 @@ func TestClaimNextQueuedWorkflowJobUsesPersistentPriorityBeforeAge(t *testing.T)
 	}
 }
 
+func TestClaimNextQueuedWorkflowJobSkipsBusyResourceLane(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	statements := []string{
+		`INSERT OR IGNORE INTO workflow_definition (id, code, display_name) VALUES (1, 'resource-test', 'Resource test')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, 1, 'resource-test', 'Busy', 'running', 'manual'), (2, 1, 'resource-test', 'Same lane', 'queued', 'manual'), (3, 1, 'resource-test', 'Other lane', 'queued', 'manual')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, resource_key) VALUES (1, 1, 'background', 'running', 'remote:https://source.example'), (2, 2, 'background', 'queued', 'remote:https://source.example'), (3, 3, 'background', 'queued', 'local:io')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || job.ID != 3 || job.ResourceKey != "local:io" {
+		t.Fatalf("claimed job = %+v, ok=%t", job, ok)
+	}
+}
+
 func TestRecoverInterruptedWorkflowsRequeuesAndReclaimsCheckpoint(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})

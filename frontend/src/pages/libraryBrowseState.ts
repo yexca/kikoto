@@ -39,6 +39,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
 
 const storagePrefix = "kikoto:library-browse:";
 const lastLocationStoragePrefix = "kikoto:library-last-location:";
+const sortPreferenceStoragePrefix = "kikoto:library-sort:";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
 const sorts = ["recent", "release", "code", "title", "rating", "sales", "random", "recommend"] satisfies LibrarySort[];
 
@@ -56,6 +57,27 @@ export function writeLibraryBrowseState(key: string, state: LibraryBrowseState) 
     window.sessionStorage.setItem(`${storagePrefix}${key}`, JSON.stringify(state));
   } catch {
     // Browsing still works when session storage is unavailable.
+  }
+}
+
+export function readLibrarySortPreference(key: string): Pick<LibraryBrowseState, "sort" | "direction"> | null {
+  try {
+    const raw = window.localStorage.getItem(`${sortPreferenceStoragePrefix}${key}`);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as { sort?: unknown; direction?: unknown };
+    if (typeof value.sort !== "string" || !sorts.includes(value.sort as LibrarySort)) return null;
+    if (value.direction !== "asc" && value.direction !== "desc") return null;
+    return { sort: value.sort as LibrarySort, direction: value.direction };
+  } catch {
+    return null;
+  }
+}
+
+export function writeLibrarySortPreference(key: string, sort: LibrarySort, direction: SortDirection) {
+  try {
+    window.localStorage.setItem(`${sortPreferenceStoragePrefix}${key}`, JSON.stringify({ sort, direction }));
+  } catch {
+    // Sorting still works when local storage is unavailable.
   }
 }
 

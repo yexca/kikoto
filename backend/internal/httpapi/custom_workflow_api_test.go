@@ -13,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const customWorkflowAPIDefinitionJSON = `{
@@ -1173,7 +1174,7 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	node := customWorkflowNode{ID: "fetch", Type: "fetch_works", Config: map[string]any{"maxWorks": 1, "maxFiles": 10, "maxBytes": 1024}}
 	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991", SourceID: 88}}}}
 	for attempt := 0; attempt < 2; attempt++ {
-		execution, err := server.executeCustomFetchWorks(context.Background(), parentRunID, 0, node, inputs)
+		execution, err := server.executeCustomFetchWorks(context.Background(), parentRunID, 0, workflow.JobPriorityUserInitiated, node, inputs)
 		if err != nil {
 			t.Fatalf("attempt %d: %v", attempt+1, err)
 		}

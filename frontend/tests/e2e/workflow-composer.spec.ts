@@ -286,6 +286,9 @@ type MockComposerOptions = {
 };
 
 async function mockComposer(page: Page, runRequests: unknown[], options: MockComposerOptions = {}) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(`kikoto.workflows.definition-tab:v1:${encodeURIComponent(window.location.origin)}:user-1`, "custom");
+  });
   const activeDocument = options.directLaunch
     ? { ...workflowDocument, command: { enabled: true, alias: "runCircle" }, policy: { requirePreview: false } }
     : workflowDocument;

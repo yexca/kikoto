@@ -113,6 +113,20 @@ export function useWorkSourceContext({
     setActiveSourceKey("tracked");
   }, []);
 
+  const selectRemoteEdition = useCallback(async (remoteCode: string) => {
+    if (!selectedRemoteSource) return false;
+    const sourceID = selectedRemoteSource.source.id;
+    setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
+    try {
+      const detail = await api.getRemoteSourceWork(sourceID, remoteCode);
+      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
+      return true;
+    } catch (error) {
+      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
+      return false;
+    }
+  }, [selectedRemoteSource]);
+
   useEffect(() => {
     if (!work || sourceTabs.length === 0 || sourceTabs.some((source) => source.key === activeSourceKey)) return;
     if (activeSourceKey.startsWith("remote-source:") && !sourceCheckedAt) return;
@@ -185,6 +199,7 @@ export function useWorkSourceContext({
     setActiveSourceKey,
     selectSource,
     selectTrackedPresence,
+		selectRemoteEdition,
     trackedPresenceOptions,
     selectedTrackedPresenceKey: selectedTrackedOption?.key ?? "",
     selectedSource,

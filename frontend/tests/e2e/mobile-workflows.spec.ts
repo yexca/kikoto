@@ -66,6 +66,19 @@ const systemDefinitions = [
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   },
+  {
+    id: 6,
+    code: "availability_watch",
+    displayName: "Availability Watch",
+    description: "Monitor configured works without creating Activity entries.",
+    definitionJson: '{"nodes":[]}',
+    scope: "system",
+    editable: false,
+    ownerUserId: null,
+    triggerCount: 0,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
 ];
 
 const sampleRun = {
@@ -116,6 +129,7 @@ async function mockWorkflows(
   onRemotePopular?: (payload: unknown) => void,
   runsPage = { runs: [sampleRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 0, failed: 0, completed: 1 } },
   notificationPage = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
+  onAvailabilityWatch?: (payload: unknown) => void,
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -147,6 +161,24 @@ async function mockWorkflows(
     }
     if (url.pathname === "/api/workflow-definitions") {
       await route.fulfill({ json: systemDefinitions });
+      return;
+    }
+    if (url.pathname === "/api/availability-watch") {
+      const payload = route.request().method() === "PUT" ? route.request().postDataJSON() : null;
+      if (payload) onAvailabilityWatch?.(payload);
+      await route.fulfill({ json: {
+        id: 1,
+        enabled: payload ? (payload as { enabled: boolean }).enabled : true,
+        intervalMinutes: payload ? (payload as { intervalMinutes: number }).intervalMinutes : 60,
+        action: payload ? (payload as { action: string }).action : "monitor",
+        sourceId: payload ? (payload as { sourceId: number | null }).sourceId : null,
+        excludeExtensions: payload ? (payload as { excludeExtensions: string[] }).excludeExtensions : ["wav"],
+        revision: 2,
+        targets: [
+          { id: 1, workCode: "RJ09999991", state: "monitoring", nextCheckAt: "2026-07-27T01:00:00Z", lastCheckedAt: "", lastStatus: "", lastError: "", availableSourceId: null, trackRunId: null, fetchRunId: null },
+          { id: 2, workCode: "RJ09999992", state: "completed", nextCheckAt: "", lastCheckedAt: "2026-07-27T00:00:00Z", lastStatus: "available", lastError: "", availableSourceId: 8, trackRunId: null, fetchRunId: 88 },
+        ],
+      } });
       return;
     }
     if (url.pathname === "/api/workflow-node-types" || url.pathname === "/api/workflow-triggers") {
@@ -224,7 +256,11 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.goto("/workflows");
 
   await expect(page.getByText("Built-in workflows", { exact: true })).toBeVisible();
+  await expect(page.getByText("Custom definitions", { exact: true })).toHaveCount(0);
+  await page.getByRole("tab", { name: /Custom/ }).click();
   await expect(page.getByText("Custom definitions", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Built-in/ }).click();
   const dlsiteDefinition = page.getByRole("button", { name: /Collect DLsite popular voice works/ });
   await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toBeVisible();
   await expect(dlsiteDefinition.getByText("manual", { exact: true })).toBeVisible();
@@ -280,6 +316,7 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await mockWorkflows(page);
   await page.goto("/workflows");
 
+  await page.getByRole("tab", { name: /Custom/ }).click();
   await page.getByRole("button", { name: /Custom draft/ }).click();
   await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
   await expect(page.getByText("Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.", { exact: true })).toBeVisible();
@@ -293,6 +330,31 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await expect(legacyCanvas.getByLabel("Workflow minimap")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit workflow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Preview / Run", exact: true })).toHaveCount(0);
+});
+
+test("availability watch keeps monitoring and ready pools outside Activity", async ({ page }) => {
+  const updates: unknown[] = [];
+  await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: /Availability Watch/ }).click();
+  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Monitoring", exact: true }).locator("..")).toContainText("1");
+  await expect(page.getByRole("heading", { name: "Ready", exact: true }).locator("..")).toContainText("1");
+  await expect(page.getByText("dispatched", { exact: true })).toBeVisible();
+
+  const works = page.getByRole("textbox", { name: "Works" });
+  await works.fill("RJ09999991, invalid; RJ09999992");
+  await expect(page.getByText("1 invalid", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save watch", exact: true })).toBeDisabled();
+  await works.fill("RJ09999991, RJ09999992; RJ09999992");
+  await expect(page.getByText("2 valid", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 duplicate", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Save watch", exact: true }).click();
+
+  await expect.poll(() => updates).toHaveLength(1);
+  expect(updates[0]).toMatchObject({ targetCodes: ["RJ09999991", "RJ09999992"], excludeExtensions: ["wav"] });
+  await expect(page).toHaveURL(/\/workflows$/);
 });
 
 test("activity presents overview, canvas, items, and node logs vertically", async ({ page }) => {

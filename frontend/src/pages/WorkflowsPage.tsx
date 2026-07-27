@@ -44,12 +44,14 @@ import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
 import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount, type WorkflowInputDefinition } from "@/features/workflows/definitionModel";
 import { WorkflowRunDialog } from "@/features/workflows/WorkflowRunDialog";
+import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import { workflowDataTypeColor, workflowEdgeClassName, type WorkflowEdgeVisualState } from "@/features/workflows/workflowVisuals";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
   type LibrarySource,
+  type AvailabilityWatch,
   type WorkflowCandidate,
   type WorkflowEvent,
   type WorkflowDefinition,
@@ -95,6 +97,8 @@ const automationTriggerTypes: AutomationTriggerType[] = ["startup", "schedule"];
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
 const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
+const workflowDefinitionTabStorageBaseKey = "kikoto.workflows.definition-tab:v1";
+type WorkflowDefinitionTab = "built-in" | "custom";
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -173,6 +177,7 @@ type SystemWorkflowTriggerConfig = {
 };
 
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
+	availability_watch: [],
   startup_library_refresh: ["startup_refresh"],
   local_library_scan: ["local_scan"],
   metadata_sync: ["metadata_sync"],
@@ -217,6 +222,9 @@ export function WorkflowsPage({
     workflowDefinitionStorageBaseKey,
     auth.user?.id ?? null,
   );
+	const workflowDefinitionTabStorageKey = currentScopedStorageKey(workflowDefinitionTabStorageBaseKey, auth.user?.id ?? null);
+	const [definitionTab, setDefinitionTab] = useState<WorkflowDefinitionTab>(() => window.localStorage.getItem(workflowDefinitionTabStorageKey) === "custom" ? "custom" : "built-in");
+	const definitionSelectionKey = `${workflowDefinitionStorageKey}:${definitionTab}`;
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);
@@ -226,7 +234,7 @@ export function WorkflowsPage({
   const [runsView, setRunsView] = useState<ActivityView | null>(null);
   const [runPage, setRunPage] = useState(1);
   const [runQuery, setRunQuery] = useState("");
-  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() => storedPositiveInt(workflowDefinitionStorageKey));
+  const [selectedDefinitionId, setSelectedDefinitionID] = useState<number | null>(() => storedPositiveInt(`${workflowDefinitionStorageKey}:${window.localStorage.getItem(workflowDefinitionTabStorageKey) === "custom" ? "custom" : "built-in"}`));
   const [selectedRunId, setSelectedRunID] = useState<number | null>(() => activityRunIDFromLocation());
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
@@ -294,11 +302,12 @@ export function WorkflowsPage({
   const visibleDefinitions = useMemo(() => {
     return definitions.filter((definition) => definition.scope === "user" || configurableSystemWorkflowCodes.has(definition.code));
   }, [definitions]);
+	const tabDefinitions = useMemo(() => visibleDefinitions.filter((definition) => definitionTab === "built-in" ? definition.scope === "system" : definition.scope === "user"), [definitionTab, visibleDefinitions]);
   const visibleRuns = surface === "activity" && runsView !== activityView ? [] : runs;
   const activityTotals = runsPage.viewTotals ?? emptyRunViewTotals;
   const selectedDefinition = useMemo(() => {
-    return visibleDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? visibleDefinitions[0] ?? null;
-  }, [selectedDefinitionId, visibleDefinitions]);
+    return tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? tabDefinitions[0] ?? null;
+  }, [selectedDefinitionId, tabDefinitions]);
 
   useEffect(() => {
     if (surface !== "workflows" || !selectedDefinition) {
@@ -324,13 +333,19 @@ export function WorkflowsPage({
     if (selectedDefinitionId !== nextID) {
       setSelectedDefinitionID(nextID);
     }
-    storePositiveInt(workflowDefinitionStorageKey, nextID);
+    storePositiveInt(definitionSelectionKey, nextID);
   }, [isWorkflowMetaLoading, selectedDefinition?.id, selectedDefinitionId]);
 
   const selectDefinition = (definition: WorkflowDefinition) => {
     setSelectedDefinitionID(definition.id);
-    storePositiveInt(workflowDefinitionStorageKey, definition.id);
+		storePositiveInt(`${workflowDefinitionStorageKey}:${definition.scope === "system" ? "built-in" : "custom"}`, definition.id);
   };
+
+	const selectDefinitionTab = (tab: WorkflowDefinitionTab) => {
+		setDefinitionTab(tab);
+		window.localStorage.setItem(workflowDefinitionTabStorageKey, tab);
+		setSelectedDefinitionID(storedPositiveInt(`${workflowDefinitionStorageKey}:${tab}`));
+	};
 
 
   useEffect(() => {
@@ -518,14 +533,16 @@ export function WorkflowsPage({
               triggers={triggers}
               selectedId={selectedDefinition?.id ?? null}
               canCreate={!readOnly}
+						activeTab={definitionTab}
               loading={isWorkflowMetaLoading}
               emptyText={definitionEmptyText}
               onSelect={selectDefinition}
+						onTabChange={selectDefinitionTab}
               onCreate={() => setModalMode("create-workflow")}
             />
           }
           right={
-            <WorkflowDetail
+			selectedDefinition?.code === "availability_watch" ? <AvailabilityWatchPanel readOnly={readOnly} canManageDownloads={canManageDownloads} /> : <WorkflowDetail
               definition={selectedDefinition}
               definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
               nodeTypes={nodeTypes}
@@ -550,7 +567,7 @@ export function WorkflowsPage({
                 setEditingNodeIndex(index);
                 setModalMode("edit-node");
               }}
-            />
+			/>
           }
         />
       ) : (
@@ -706,6 +723,107 @@ function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactN
 	return <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">{left}{right}</div>;
 }
 
+function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: boolean; canManageDownloads: boolean }) {
+	const toast = useToast();
+	const [watch, setWatch] = useState<AvailabilityWatch | null>(null);
+	const [sources, setSources] = useState<LibrarySource[]>([]);
+	const [codes, setCodes] = useState("");
+	const [enabled, setEnabled] = useState(false);
+	const [intervalMinutes, setIntervalMinutes] = useState(60);
+	const [action, setAction] = useState<AvailabilityWatch["action"]>("monitor");
+	const [sourceId, setSourceId] = useState(0);
+	const [excluded, setExcluded] = useState("wav");
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
+	const parsed = parseWorkCodes(codes);
+
+	const applyWatch = (next: AvailabilityWatch, resetDraft: boolean) => {
+		setWatch(next);
+		if (!resetDraft) return;
+		setCodes(next.targets.map((target) => target.workCode).join("\n"));
+		setEnabled(next.enabled);
+		setIntervalMinutes(next.intervalMinutes);
+		setAction(next.action);
+		setSourceId(next.sourceId ?? 0);
+		setExcluded(next.excludeExtensions.join(", "));
+	};
+
+	useEffect(() => {
+		let cancelled = false;
+		Promise.all([api.getAvailabilityWatch(), api.listLibrarySources()]).then(([next, nextSources]) => {
+			if (cancelled) return;
+			applyWatch(next, true);
+			setSources(nextSources.filter((source) => source.enabled && source.sourceType !== "local_folder"));
+		}).catch((error) => {
+			if (!cancelled) toast.notify(toastFromError(error, "Availability Watch could not be loaded."));
+		}).finally(() => { if (!cancelled) setLoading(false); });
+		return () => { cancelled = true; };
+	}, []);
+
+	useEffect(() => {
+		if (!watch) return;
+		const timer = window.setInterval(() => {
+			void api.getAvailabilityWatch().then((next) => applyWatch(next, false)).catch(() => {});
+		}, 5000);
+		return () => window.clearInterval(timer);
+	}, [watch?.id]);
+
+	const save = async () => {
+		if (parsed.invalid.length > 0 || intervalMinutes < 5 || intervalMinutes > 10080) return;
+		setSaving(true);
+		try {
+			const next = await api.updateAvailabilityWatch({
+				enabled,
+				intervalMinutes,
+				action,
+				sourceId: sourceId || null,
+				excludeExtensions: excluded.split(/[\s,;，；]+/u).map((value) => value.trim()).filter(Boolean),
+				targetCodes: parsed.codes,
+			});
+			applyWatch(next, true);
+			toast.success("Availability Watch updated.");
+		} catch (error) {
+			toast.notify(toastFromError(error, "Availability Watch could not be saved."));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	if (loading) return <Card><CardContent className="space-y-3 p-5"><SkeletonLine className="h-6 w-48" /><SkeletonLine className="h-32 w-full" /></CardContent></Card>;
+	const monitoring = watch?.targets.filter((target) => target.state === "monitoring" || target.state === "error") ?? [];
+	const ready = watch?.targets.filter((target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled") ?? [];
+	return (
+		<div className="space-y-4">
+			<section className="border-b pb-4">
+				<div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">Availability Watch</h2><p className="text-sm text-muted-foreground">Maintain a watch pool and dispatch explicit actions when a work becomes available.</p></div><div className="flex items-center gap-2 text-sm"><Switch checked={enabled} onCheckedChange={setEnabled} disabled={readOnly} aria-label="Enable Availability Watch" /><span>{enabled ? "Enabled" : "Paused"}</span></div></div>
+			</section>
+			<section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+				<Field label="Works"><WorkCodesField value={codes} onChange={setCodes} /></Field>
+				<div className="space-y-3">
+					<Field label="Remote source"><select className="h-10 w-full rounded-md border bg-card px-3 text-sm" value={sourceId} onChange={(event) => setSourceId(Number(event.target.value))}><option value={0}>Any healthy source</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.displayName}</option>)}</select></Field>
+					<Field label="When available"><select className="h-10 w-full rounded-md border bg-card px-3 text-sm" value={action} onChange={(event) => setAction(event.target.value as AvailabilityWatch["action"])}><option value="monitor">Monitor only</option><option value="track">Track</option><option value="fetch" disabled={!canManageDownloads}>Fetch</option><option value="track_fetch" disabled={!canManageDownloads}>Track + Fetch</option></select></Field>
+					<Field label="Interval (minutes)"><input className="h-10 w-full rounded-md border bg-card px-3 text-sm" type="number" min={5} max={10080} value={intervalMinutes} onChange={(event) => setIntervalMinutes(Number(event.target.value))} /></Field>
+					<Field label="Exclude extensions"><input className="h-10 w-full rounded-md border bg-card px-3 text-sm" value={excluded} onChange={(event) => setExcluded(event.target.value)} placeholder="wav, flac" /></Field>
+					<Button className="w-full" onClick={() => void save()} disabled={readOnly || saving || parsed.invalid.length > 0 || intervalMinutes < 5 || intervalMinutes > 10080}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save watch</Button>
+				</div>
+			</section>
+			<div className="grid gap-4 lg:grid-cols-2">
+				<AvailabilityTargetPool title="Monitoring" targets={monitoring} empty="No works are waiting for availability." />
+				<AvailabilityTargetPool title="Ready" targets={ready} empty="No available works yet." />
+			</div>
+		</div>
+	);
+}
+
+function AvailabilityTargetPool({ title, targets, empty }: { title: string; targets: AvailabilityWatch["targets"]; empty: string }) {
+	return <section className="space-y-2"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{title}</h3><Badge variant="outline">{targets.length}</Badge></div><div className="divide-y rounded-md border">{targets.length === 0 ? <div className="p-4 text-sm text-muted-foreground">{empty}</div> : targets.map((target) => <div key={target.id} className="flex items-center gap-3 px-3 py-2.5"><div className="min-w-0 flex-1"><div className="font-mono text-sm font-semibold">{target.workCode}</div><div className="truncate text-xs text-muted-foreground">{target.lastError || target.lastStatus || "Waiting for first check"}</div></div><Badge variant={target.state === "error" ? "warning" : target.state === "completed" ? "default" : "secondary"}>{target.state === "completed" ? "dispatched" : target.state.replace("_", " ")}</Badge>{(target.fetchRunId || target.trackRunId) && <Button size="sm" variant="ghost" onClick={() => openActivityRunID(target.fetchRunId ?? target.trackRunId!)}>Activity</Button>}</div>)}</div></section>;
+}
+
+function openActivityRunID(runID: number) {
+	window.history.pushState({}, "", `/activity?run=${runID}`);
+	window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
 function SkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
@@ -715,18 +833,22 @@ function DefinitionSidebar({
   triggers,
   selectedId,
   canCreate,
+	activeTab,
   loading,
   emptyText,
   onSelect,
+	onTabChange,
   onCreate,
 }: {
   definitions: WorkflowDefinition[];
   triggers: WorkflowTrigger[];
   selectedId: number | null;
   canCreate: boolean;
+	activeTab: WorkflowDefinitionTab;
   loading?: boolean;
   emptyText: string;
   onSelect: (definition: WorkflowDefinition) => void;
+	onTabChange: (tab: WorkflowDefinitionTab) => void;
   onCreate: () => void;
 }) {
   const builtInDefinitions = sortDefinitionsForSidebar(
@@ -745,29 +867,35 @@ function DefinitionSidebar({
             <div className="text-sm font-semibold">Workflows</div>
             <div className="text-xs text-muted-foreground">Commands, automations, and custom definitions.</div>
           </div>
-          {canCreate && (
+          {canCreate && activeTab === "custom" && (
             <Button size="sm" onClick={onCreate}>
               <Plus className="h-4 w-4" />
               New
             </Button>
           )}
         </div>
+		<div className="grid grid-cols-2 rounded-md border bg-muted/30 p-1" role="tablist" aria-label="Workflow definition type">
+			{(["built-in", "custom"] as const).map((tab) => {
+				const count = tab === "built-in" ? builtInDefinitions.length : customDefinitions.length;
+				return <button key={tab} role="tab" aria-selected={activeTab === tab} className={`rounded px-2 py-1.5 text-xs font-medium ${activeTab === tab ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => onTabChange(tab)}>{tab === "built-in" ? "Built-in" : "Custom"} <span className="ml-1 text-muted-foreground">{count}</span></button>;
+			})}
+		</div>
         <div className="space-y-4">
           {loading ? (
             <SidebarSkeletonRows count={6} />
           ) : (
             <>
-              {builtInDefinitions.length > 0 && (
-                <DefinitionGroup label="Built-in workflows">
+				{activeTab === "built-in" && builtInDefinitions.length > 0 && (
+				<DefinitionGroup label="Built-in workflows">
                   {builtInDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
                 </DefinitionGroup>
               )}
-              <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
+				{activeTab === "custom" && <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
                 {customDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
-              </DefinitionGroup>
+				</DefinitionGroup>}
             </>
           )}
-          {!loading && definitions.length === 0 && <EmptyPanel text={emptyText} />}
+			{!loading && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && <EmptyPanel text={activeTab === "custom" ? "No custom definitions yet." : emptyText} />}
         </div>
       </CardContent>
     </Card>
@@ -2637,11 +2765,13 @@ function TriggerModal({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const missingScheduledInputs = dagDocument?.inputs.filter((input) => input.required && !(scheduledInputs[input.key]?.trim())) ?? [];
+	const invalidScheduledInputs = dagDocument?.inputs.filter((input) => input.type === "work_codes" && parseWorkCodes(scheduledInputs[input.key] ?? "").invalid.length > 0) ?? [];
 	const systemConfigBlockers = workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   const automationBlockers = [
     ...(dagDocument?.policy.requirePreview ? ["Disable Require preview in the workflow before automating it."] : []),
     ...(triggerType === "schedule" && (intervalMinutes < 5 || intervalMinutes > 10080) ? ["Interval must be between 5 and 10080 minutes."] : []),
     ...(missingScheduledInputs.length > 0 ? [`Provide required inputs: ${missingScheduledInputs.map((input) => input.label).join(", ")}.`] : []),
+		...(invalidScheduledInputs.length > 0 ? [`Fix invalid work codes in: ${invalidScheduledInputs.map((input) => input.label).join(", ")}.`] : []),
 		...systemConfigBlockers,
   ];
 
@@ -2716,7 +2846,7 @@ function TriggerModal({
         {dagDocument && dagDocument.inputs.length > 0 && <div className="grid gap-3 md:grid-cols-2">{dagDocument.inputs.map((input) => (
             <Field key={input.key} label={`${input.label}${input.required ? " *" : ""}`}>
               {input.type === "work_codes" ? (
-                <textarea className="min-h-20 rounded-md border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
+                <WorkCodesField value={scheduledInputs[input.key] ?? ""} onChange={(value) => setScheduledInputs((current) => ({ ...current, [input.key]: value }))} />
               ) : (
                 <input className="h-9 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={scheduledInputs[input.key] ?? ""} onChange={(event) => setScheduledInputs((current) => ({ ...current, [input.key]: event.target.value }))} />
               )}

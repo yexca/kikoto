@@ -122,7 +122,7 @@ func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (wor
 		return workMetadataSyncRunResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: syncNodeID, WorkerType: "metadata_family_sync", Status: "queued", Priority: workflow.JobPriorityUserInitiated, Payload: payload,
+		NodeRunID: syncNodeID, WorkerType: "metadata_family_sync", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "metadata:provider", Payload: payload,
 		Checkpoint: map[string]any{"phase": "queued", "familyCode": payload.FamilyCode}, Recoverable: true, MaxRetries: 3, ProgressTotal: 1,
 	})
 	if err != nil {

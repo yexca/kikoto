@@ -36,11 +36,12 @@ func isKikoeruSourceType(sourceType string) bool {
 	return sourceType == sourceTypeKikoeruCompatible || sourceType == sourceTypeKikoeruCompatible178
 }
 
-func kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
+func (s *Server) kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
+	httpClient := s.sourceHTTPClient(20 * time.Second)
 	if source.SourceType == sourceTypeKikoeruCompatible178 {
-		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, nil)
+		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, httpClient)
 	}
-	return kikoeru.NewClient(source.Endpoint.APIURL, nil)
+	return kikoeru.NewClient(source.Endpoint.APIURL, httpClient)
 }
 
 func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
@@ -214,30 +215,40 @@ type remoteWorkSummary struct {
 }
 
 type remoteWorkDetail struct {
-	SourceID        int64               `json:"sourceId"`
-	SourceCode      string              `json:"sourceCode"`
-	SourceName      string              `json:"sourceName"`
-	RemoteID        string              `json:"remoteId"`
-	PrimaryCode     string              `json:"primaryCode"`
-	RemoteCode      string              `json:"remoteCode"`
-	Title           string              `json:"title"`
-	CoverURL        string              `json:"coverUrl"`
-	SourceURL       string              `json:"sourceUrl"`
-	PublicWorkURL   string              `json:"publicWorkUrl"`
-	Circle          string              `json:"circle"`
-	CircleRef       *remoteEntityRef    `json:"circleRef,omitempty"`
-	Rating          *float64            `json:"rating"`
-	Sales           *int64              `json:"sales"`
-	Price           *int64              `json:"price"`
-	AgeRating       string              `json:"ageRating"`
-	ReleaseDate     string              `json:"releaseDate"`
-	DurationSeconds *int64              `json:"durationSeconds"`
-	Tags            []string            `json:"tags"`
-	VoiceActors     []string            `json:"voiceActors"`
-	VoiceRefs       []remoteEntityRef   `json:"voiceRefs"`
-	ImportStatus    string              `json:"importStatus"`
-	WorkID          *int64              `json:"workId"`
-	Tracks          []remoteTrackDetail `json:"tracks"`
+	SourceID         int64                   `json:"sourceId"`
+	SourceCode       string                  `json:"sourceCode"`
+	SourceName       string                  `json:"sourceName"`
+	RemoteID         string                  `json:"remoteId"`
+	PrimaryCode      string                  `json:"primaryCode"`
+	RemoteCode       string                  `json:"remoteCode"`
+	Title            string                  `json:"title"`
+	CoverURL         string                  `json:"coverUrl"`
+	SourceURL        string                  `json:"sourceUrl"`
+	PublicWorkURL    string                  `json:"publicWorkUrl"`
+	Circle           string                  `json:"circle"`
+	CircleRef        *remoteEntityRef        `json:"circleRef,omitempty"`
+	Rating           *float64                `json:"rating"`
+	Sales            *int64                  `json:"sales"`
+	Price            *int64                  `json:"price"`
+	AgeRating        string                  `json:"ageRating"`
+	ReleaseDate      string                  `json:"releaseDate"`
+	DurationSeconds  *int64                  `json:"durationSeconds"`
+	Tags             []string                `json:"tags"`
+	VoiceActors      []string                `json:"voiceActors"`
+	VoiceRefs        []remoteEntityRef       `json:"voiceRefs"`
+	ImportStatus     string                  `json:"importStatus"`
+	WorkID           *int64                  `json:"workId"`
+	Tracks           []remoteTrackDetail     `json:"tracks"`
+	LanguageEditions []remoteLanguageEdition `json:"languageEditions"`
+}
+
+type remoteLanguageEdition struct {
+	RemoteCode   string `json:"remoteCode"`
+	Language     string `json:"language"`
+	Label        string `json:"label"`
+	DisplayOrder int    `json:"displayOrder"`
+	Current      bool   `json:"current"`
+	Origin       bool   `json:"origin"`
 }
 
 type remoteEntityRef struct {
@@ -249,7 +260,6 @@ type remoteEntityRef struct {
 type sourceAvailabilityResponse struct {
 	WorkCode  string                      `json:"workCode"`
 	CheckedAt string                      `json:"checkedAt"`
-	RunID     int64                       `json:"runId"`
 	Sources   []sourceAvailabilitySummary `json:"sources"`
 }
 
@@ -896,7 +906,7 @@ func (s *Server) checkFileSourceHealth(w http.ResponseWriter, r *http.Request) {
 
 	started := time.Now()
 	checkCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	probeErr := checkRemoteSourceHealth(checkCtx, source)
+	probeErr := s.checkRemoteSourceHealth(checkCtx, source)
 	cancel()
 	status := "healthy"
 	if probeErr != nil {
@@ -965,7 +975,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	plan := planRemoteSourceQuery(r.URL.Query().Get("q"), source.SourceType)
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
 	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
 	if s.cfg.IsDemo() {
@@ -1303,13 +1313,24 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 		}
 		results = append(results, result)
 	}
-	runID, err := s.recordSourceAvailabilityWorkflow(ctx, code, checkedAt, results, triggerType, triggerReason)
-	if err != nil {
+	if err := s.recordSourceAvailabilityObservation(ctx, code, results); err != nil {
 		return sourceAvailabilityResponse{}, err
 	}
 	return sourceAvailabilityResponse{
-		WorkCode: code, CheckedAt: checkedAt, RunID: runID, Sources: results,
+		WorkCode: code, CheckedAt: checkedAt, Sources: results,
 	}, nil
+}
+
+func (s *Server) recordSourceAvailabilityObservation(ctx context.Context, code string, results []sourceAvailabilitySummary) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.recordAvailabilityPresence(ctx, tx, code, results); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, onlySourceID int64) (map[int64]bool, error) {
@@ -1330,7 +1351,7 @@ func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, only
 			continue
 		}
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := checkRemoteSourceHealth(checkCtx, source)
+		err := s.checkRemoteSourceHealth(checkCtx, source)
 		cancel()
 		if err != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -1342,8 +1363,8 @@ func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, only
 	return healthy, nil
 }
 
-func checkRemoteSourceHealth(ctx context.Context, source remoteSourceForUse) error {
-	client := kikoeruClientForSource(source)
+func (s *Server) checkRemoteSourceHealth(ctx context.Context, source remoteSourceForUse) error {
+	client := s.kikoeruClientForSource(source)
 	if err := client.Health(ctx); err == nil {
 		return nil
 	}
@@ -1732,7 +1753,7 @@ func (s *Server) checkRemoteWorkAvailability(ctx context.Context, source remoteS
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
 	}
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	return remoteWork, err
 }
@@ -2315,7 +2336,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return remoteWorkSyncResult{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	remoteWork, rawWork, err := s.resolveRemoteWorkForAccess(ctx, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -2659,7 +2680,7 @@ func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID
 	}
 	jobPayload := remoteCollectionJobPayload{UserID: userID, SourceID: source.ID, Action: action, Limit: payload.Limit, TagName: payload.TagName}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: discoverNodeID, WorkerType: "remote_popular_collection", Status: "queued", Priority: workflowJobPriorityForTrigger(trigger.Type), Payload: jobPayload,
+		NodeRunID: discoverNodeID, WorkerType: "remote_popular_collection", Status: "queued", Priority: workflowJobPriorityForTrigger(trigger.Type), ResourceKey: sourceResourceKey(source.Endpoint.APIURL), Payload: jobPayload,
 		Checkpoint: remoteCollectionJobCheckpoint{CompletedCodes: []string{}, Candidates: nil, Result: result}, Recoverable: true, MaxRetries: 3,
 	}); err != nil {
 		return remoteCollectionRunResult{}, err
@@ -2713,7 +2734,7 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 
 	if checkpoint.Candidates == nil {
 		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
-		page, discoverErr := kikoeruClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
+		page, discoverErr := s.kikoeruClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
 		if discoverErr != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 			_ = s.failClaimedWorkflowJob(ctx, job, discoverErr.Error())
@@ -3282,7 +3303,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		return remoteWorkSaveResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Priority: jobPriority, Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
+		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Priority: jobPriority, ResourceKey: sourceResourceKey(source.Endpoint.APIURL), Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
 	})
 	if err != nil {
 		return remoteWorkSaveResult{}, err
@@ -4087,7 +4108,7 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	remoteWork, _, err := s.resolveRemoteWorkForAccess(ctx, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -4116,9 +4137,27 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 	if found {
 		delete(s.remoteWorkCache, key)
 	}
+	if call := s.remoteWorkCacheCalls[key]; call != nil {
+		s.remoteWorkCacheMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return remoteSourceForUse{}, kikoeru.Work{}, nil, ctx.Err()
+		case <-call.done:
+			return call.source, call.work, call.tracks, call.err
+		}
+	}
+	call := &remoteWorkTracksCall{done: make(chan struct{})}
+	s.remoteWorkCacheCalls[key] = call
 	s.remoteWorkCacheMu.Unlock()
 
 	source, work, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	call.source, call.work, call.tracks, call.err = source, work, tracks, err
+	defer func() {
+		s.remoteWorkCacheMu.Lock()
+		delete(s.remoteWorkCacheCalls, key)
+		close(call.done)
+		s.remoteWorkCacheMu.Unlock()
+	}()
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
@@ -4141,6 +4180,14 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 	s.remoteWorkCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: now.Add(2 * time.Minute)}
 	s.remoteWorkCacheMu.Unlock()
 	return source, work, tracks, nil
+}
+
+type remoteWorkTracksCall struct {
+	done   chan struct{}
+	source remoteSourceForUse
+	work   kikoeru.Work
+	tracks []kikoeru.Track
+	err    error
 }
 
 func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
@@ -4887,31 +4934,79 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		return remoteWorkDetail{}, err
 	}
 	return remoteWorkDetail{
-		SourceID:        source.ID,
-		SourceCode:      source.Code,
-		SourceName:      source.DisplayName,
-		RemoteID:        strconv.FormatInt(work.ID, 10),
-		PrimaryCode:     displayCode,
-		RemoteCode:      code,
-		Title:           firstNonEmpty(work.Title, work.Name, displayCode),
-		CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
-		SourceURL:       work.SourceURL,
-		PublicWorkURL:   publicRemoteWorkURL(source.Endpoint, code),
-		Circle:          circle,
-		CircleRef:       circleRef,
-		Rating:          work.RateAverage2DP,
-		Sales:           work.DLCount,
-		Price:           work.Price,
-		AgeRating:       work.AgeCategoryString,
-		ReleaseDate:     releaseDate,
-		DurationSeconds: duration,
-		Tags:            tags,
-		VoiceActors:     voiceActors,
-		VoiceRefs:       voiceRefs,
-		ImportStatus:    status,
-		WorkID:          workID,
-		Tracks:          remoteTrackDetails(source.Code, code, tracks, "", locationState),
+		SourceID:         source.ID,
+		SourceCode:       source.Code,
+		SourceName:       source.DisplayName,
+		RemoteID:         strconv.FormatInt(work.ID, 10),
+		PrimaryCode:      displayCode,
+		RemoteCode:       code,
+		Title:            firstNonEmpty(work.Title, work.Name, displayCode),
+		CoverURL:         firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
+		SourceURL:        work.SourceURL,
+		PublicWorkURL:    publicRemoteWorkURL(source.Endpoint, code),
+		Circle:           circle,
+		CircleRef:        circleRef,
+		Rating:           work.RateAverage2DP,
+		Sales:            work.DLCount,
+		Price:            work.Price,
+		AgeRating:        work.AgeCategoryString,
+		ReleaseDate:      releaseDate,
+		DurationSeconds:  duration,
+		Tags:             tags,
+		VoiceActors:      voiceActors,
+		VoiceRefs:        voiceRefs,
+		ImportStatus:     status,
+		WorkID:           workID,
+		Tracks:           remoteTrackDetails(source.Code, code, tracks, "", locationState),
+		LanguageEditions: normalizedRemoteLanguageEditions(work),
 	}, nil
+}
+
+func normalizedRemoteLanguageEditions(work kikoeru.Work) []remoteLanguageEdition {
+	currentCode := normalizedRemoteWorkCode(work)
+	originOrder := 0
+	for _, edition := range work.LanguageEditions {
+		if edition.DisplayOrder > 0 && (originOrder == 0 || edition.DisplayOrder < originOrder) {
+			originOrder = edition.DisplayOrder
+		}
+	}
+	result := make([]remoteLanguageEdition, 0, len(work.LanguageEditions))
+	seen := map[string]bool{}
+	for index, edition := range work.LanguageEditions {
+		code := strings.ToUpper(strings.TrimSpace(edition.WorkNo))
+		if !customWorkflowWorkCodePattern.MatchString(code) || seen[code] {
+			continue
+		}
+		seen[code] = true
+		origin := edition.DisplayOrder > 0 && edition.DisplayOrder == originOrder
+		if originOrder == 0 && index == 0 {
+			origin = true
+		}
+		result = append(result, remoteLanguageEdition{
+			RemoteCode: code, Language: strings.TrimSpace(edition.Language), Label: firstNonEmpty(strings.TrimSpace(edition.Label), strings.TrimSpace(edition.Language), code),
+			DisplayOrder: edition.DisplayOrder, Current: strings.EqualFold(code, currentCode), Origin: origin,
+		})
+	}
+	if len(result) == 0 && currentCode != "" {
+		result = append(result, remoteLanguageEdition{RemoteCode: currentCode, Label: currentCode, Current: true, Origin: true})
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Origin != result[j].Origin {
+			return result[i].Origin
+		}
+		leftOrder, rightOrder := result[i].DisplayOrder, result[j].DisplayOrder
+		if leftOrder <= 0 {
+			leftOrder = int(^uint(0) >> 1)
+		}
+		if rightOrder <= 0 {
+			rightOrder = int(^uint(0) >> 1)
+		}
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		return result[i].RemoteCode < result[j].RemoteCode
+	})
+	return result
 }
 
 type remoteTrackLocationState struct {
@@ -5251,7 +5346,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, cover
 		return err
 	}
 	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	response, err := http.DefaultClient.Do(request)
+	response, err := s.sourceHTTPClient(0).Do(request)
 	if err != nil {
 		return err
 	}

@@ -3,9 +3,25 @@ package httpapi
 import (
 	"encoding/json"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestCustomStringValuesAcceptsDocumentedWorkCodeSeparators(t *testing.T) {
+	values, err := customStringValues("RJ01234567; BJ1234，VJ12345；CC123456\nRJ01234567")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codes, err := normalizeCustomWorkCodes(values, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"RJ01234567", "BJ1234", "VJ12345", "CC123456"}
+	if !reflect.DeepEqual(codes, want) {
+		t.Fatalf("codes = %v, want %v", codes, want)
+	}
+}
 
 func TestValidateCustomWorkflowDefinitionBuildsTypedDAG(t *testing.T) {
 	raw := `{

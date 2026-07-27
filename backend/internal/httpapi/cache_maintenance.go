@@ -383,7 +383,7 @@ func (s *Server) enqueueOrphanCacheCleanup(ctx context.Context, groupKeys []stri
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "cache_orphan_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, Payload: payload, Checkpoint: cacheOrphanCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3, ProgressTotal: total})
+	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: nodeID, WorkerType: "cache_orphan_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "local:io", Payload: payload, Checkpoint: cacheOrphanCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3, ProgressTotal: total})
 	if err != nil {
 		return cacheMaintenanceResult{}, err
 	}

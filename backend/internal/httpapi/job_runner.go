@@ -7,7 +7,9 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
@@ -25,6 +27,8 @@ type workflowJobRecord struct {
 	ResumeCount    int
 	RetryCount     int
 	MaxRetries     int
+	Priority       int
+	ResourceKey    string
 }
 
 func (s *Server) StartJobRunner(ctx context.Context) {
@@ -32,9 +36,36 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 		return
 	}
 	s.jobRunnerMu.Lock()
-	defer s.jobRunnerMu.Unlock()
+	if s.jobRunnerStarted {
+		s.jobRunnerMu.Unlock()
+		return
+	}
+	s.jobRunnerStarted = true
+	s.jobRunnerMu.Unlock()
+	_, _ = s.db.ExecContext(ctx, "UPDATE availability_watch_outbox SET status = 'pending', next_attempt_at = CURRENT_TIMESTAMP WHERE status = 'running'")
+	defer func() {
+		s.jobRunnerMu.Lock()
+		s.jobRunnerStarted = false
+		s.jobRunnerMu.Unlock()
+	}()
 
-	runnerID := workflowJobRunnerID()
+	var workers sync.WaitGroup
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		s.runWorkflowCoordinator(ctx)
+	}()
+	for index := 0; index < 2; index++ {
+		workers.Add(1)
+		go func(workerIndex int) {
+			defer workers.Done()
+			s.runWorkflowJobWorker(ctx, workflowJobRunnerID()+":"+strconv.Itoa(workerIndex))
+		}(index)
+	}
+	workers.Wait()
+}
+
+func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -44,6 +75,21 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 		if _, err := workflow.NewStore(s.db).RequeueExpiredJobs(ctx, 30*time.Second); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("requeue expired workflow jobs", "error", err)
 		}
+		if err := s.processAvailabilityWatchTick(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("process availability watch", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Server) runWorkflowJobWorker(ctx context.Context, runnerID string) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
 		if err := s.runNextQueuedWorkflowJob(ctx, runnerID); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("run queued workflow job", "error", err)
 		}
@@ -151,6 +197,10 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
+			AND (job.resource_key = '' OR NOT EXISTS (
+				SELECT 1 FROM workflow_job AS active
+				WHERE active.status = 'running' AND active.resource_key = job.resource_key
+			))
 		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC
 		LIMIT 1
 	`).Scan(&candidateID)
@@ -169,14 +219,18 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 	var job workflowJobRecord
 	err = tx.QueryRowContext(ctx, `
 		SELECT job.id, job.workflow_run_id, COALESCE(job.workflow_node_run_id, 0), job.worker_type, job.payload_json,
-			job.checkpoint_json, job.resume_count, job.retry_count, job.max_retries
+			job.checkpoint_json, job.resume_count, job.retry_count, job.max_retries, job.priority, job.resource_key
 		FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
 			AND job.id = ?
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-		`, candidateID).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries)
+			AND (job.resource_key = '' OR NOT EXISTS (
+				SELECT 1 FROM workflow_job AS active
+				WHERE active.status = 'running' AND active.resource_key = job.resource_key
+			))
+		`, candidateID).Scan(&job.ID, &job.RunID, &job.NodeRunID, &job.WorkerType, &job.PayloadJSON, &job.CheckpointJSON, &job.ResumeCount, &job.RetryCount, &job.MaxRetries, &job.Priority, &job.ResourceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return workflowJobRecord{}, false, tx.Commit()

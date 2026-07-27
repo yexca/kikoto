@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { parseWorkflowDefinition, type WorkflowInputDefinition } from "@/features/workflows/definitionModel";
 import { workflowRunInputPayload } from "@/features/workflows/workflowCommands";
+import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesField";
 import {
   api,
   type WorkflowDefinition,
@@ -140,7 +141,7 @@ export function WorkflowRunDialog({
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">The server validates permissions, graph limits, and current definition state before issuing a preview token.</div>
             </>
           ) : (
-            <PreviewPlan preview={preview} />
+            <PreviewPlan preview={preview} onEdit={() => setPreview(null)} />
           )}
 
           {busy && autoPreview && !preview && <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Computing preview</div>}
@@ -149,7 +150,7 @@ export function WorkflowRunDialog({
           <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
             {!preview ? (
-              <Button onClick={() => void requestPreview(false)} disabled={busy || hasMissingRequiredInputs(document.inputs, inputs)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Preview</Button>
+              <Button onClick={() => void requestPreview(false)} disabled={busy || hasMissingRequiredInputs(document.inputs, inputs) || hasInvalidWorkCodeInputs(document.inputs, inputs)}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Preview</Button>
             ) : (
               <Button onClick={() => void queue()} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}Queue run</Button>
             )}
@@ -166,7 +167,7 @@ function RunInput({ input, value, onChange }: { input: WorkflowInputDefinition; 
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium">{input.label}{input.required && <span className="text-destructive"> *</span>}</span>
       {input.type === "work_codes" ? (
-        <textarea className={`${fieldClass} min-h-20 py-2`} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} placeholder="RJ01234567, RJ07654321" autoCapitalize="off" spellCheck={false} />
+        <WorkCodesField value={typeof value === "string" ? value : ""} onChange={onChange} />
       ) : (
         <input className={`${fieldClass} h-10`} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} placeholder={input.type.replace(/_/g, " ")} autoCapitalize="off" spellCheck={input.type === "text" || input.type === "voice_name"} />
       )}
@@ -175,10 +176,14 @@ function RunInput({ input, value, onChange }: { input: WorkflowInputDefinition; 
   );
 }
 
-function PreviewPlan({ preview }: { preview: WorkflowDefinitionRunPreview }) {
+function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPreview; onEdit: () => void }) {
   const estimates = preview.plan.estimates;
   return (
     <>
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Normalized inputs</h3><Button size="sm" variant="outline" onClick={onEdit}>Edit inputs</Button></div>
+        <pre className="max-h-40 overflow-auto rounded-md border bg-muted/30 p-3 text-xs">{JSON.stringify(preview.normalizedInputs ?? {}, null, 2)}</pre>
+      </section>
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <PreviewMetric label="Candidates" value={formatEstimate(estimates?.candidateCount)} />
         <PreviewMetric label="Files" value={formatEstimate(estimates?.fileCount)} />
@@ -226,6 +231,10 @@ function actionRecord(value: unknown) {
 
 function hasMissingRequiredInputs(inputs: WorkflowInputDefinition[], values: Record<string, unknown>) {
   return inputs.some((input) => input.required && !String(values[input.key] ?? "").trim());
+}
+
+function hasInvalidWorkCodeInputs(inputs: WorkflowInputDefinition[], values: Record<string, unknown>) {
+  return inputs.some((input) => input.type === "work_codes" && parseWorkCodes(String(values[input.key] ?? "")).invalid.length > 0);
 }
 
 function formatEstimate(value: number | null | undefined) {

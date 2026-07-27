@@ -498,6 +498,16 @@ export type RemoteWorkDetail = {
   importStatus: string;
   workId: number | null;
   tracks: RemoteTrack[];
+  languageEditions: RemoteLanguageEdition[];
+};
+
+export type RemoteLanguageEdition = {
+  remoteCode: string;
+  language: string;
+  label: string;
+  displayOrder: number;
+  current: boolean;
+  origin: boolean;
 };
 
 export type SourceAvailabilitySource = {
@@ -520,7 +530,6 @@ export type SourceAvailabilitySource = {
 export type SourceAvailabilityResponse = {
   workCode: string;
   checkedAt: string;
-  runId: number;
   sources: SourceAvailabilitySource[];
 };
 
@@ -879,6 +888,30 @@ export type WorkflowDefinitionRunConfirmation = {
 };
 
 export type WorkflowDefinitionRunResponse = WorkflowDefinitionRunPreview | WorkflowDefinitionRunConfirmation;
+
+export type AvailabilityWatchTarget = {
+  id: number;
+  workCode: string;
+  state: "monitoring" | "ready" | "action_queued" | "completed" | "error" | "disabled";
+  nextCheckAt: string;
+  lastCheckedAt: string;
+  lastStatus: string;
+  lastError: string;
+  availableSourceId: number | null;
+  trackRunId: number | null;
+  fetchRunId: number | null;
+};
+
+export type AvailabilityWatch = {
+  id: number;
+  enabled: boolean;
+  intervalMinutes: number;
+  action: "monitor" | "track" | "fetch" | "track_fetch";
+  sourceId: number | null;
+  excludeExtensions: string[];
+  revision: number;
+  targets: AvailabilityWatchTarget[];
+};
 
 export type WorkflowTrigger = {
   id: number;
@@ -1849,6 +1882,8 @@ export const api = {
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   checkFileSourceHealth: (id: number) => postJSON<FileSourceHealthCheckResult>(`/api/file-sources/${id}/health-check`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
+	getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
+	updateAvailabilityWatch: (payload: { enabled: boolean; intervalMinutes: number; action: AvailabilityWatch["action"]; sourceId: number | null; excludeExtensions: string[]; targetCodes: string[] }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
   listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
   createWorkflowDefinition: (payload: {
     code: string;

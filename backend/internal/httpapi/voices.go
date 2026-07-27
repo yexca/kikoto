@@ -1199,7 +1199,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 				}
 				started := time.Now()
 				sourceCtx, cancel := context.WithTimeout(ctx, voiceRemoteSourceTimeout)
-				client := kikoeruClientForSource(source)
+				client := s.kikoeruClientForSource(source)
 				var page kikoeru.WorksPage
 				var err error
 				if s.cfg.IsDemo() {

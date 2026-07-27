@@ -2244,7 +2244,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	if err != nil {
 		return 0, err
 	}
-	client := kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(source)
 	keyword := "$circle:" + circleName + "$"
 	pageSize := 20
 	maxPages := 10

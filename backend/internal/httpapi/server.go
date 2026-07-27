@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -40,8 +39,11 @@ type Server struct {
 	circleAutoRefreshing map[int64]bool
 	remoteWorkCacheMu    sync.Mutex
 	remoteWorkCache      map[string]remoteWorkTracksSnapshot
+	remoteWorkCacheCalls map[string]*remoteWorkTracksCall
 	metadataSyncMu       sync.Mutex
 	jobRunnerMu          sync.Mutex
+	jobRunnerStarted     bool
+	sourceGate           *sourceRequestGate
 	localMediaIndexMu    sync.Mutex
 	localMediaIndexes    map[string]*localMediaIndexCall
 	localMediaWriteSlot  chan struct{}
@@ -59,8 +61,10 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		circleAutoRefreshing: map[int64]bool{},
 		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
+		remoteWorkCacheCalls: map[string]*remoteWorkTracksCall{},
 		localMediaIndexes:    map[string]*localMediaIndexCall{},
 		localMediaWriteSlot:  make(chan struct{}, 1),
+		sourceGate:           newSourceRequestGate(),
 	}
 }
 
@@ -188,6 +192,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-popular", s.createDLsitePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
+	mux.HandleFunc("GET /api/availability-watch", s.getAvailabilityWatch)
+	mux.HandleFunc("PUT /api/availability-watch", s.updateAvailabilityWatch)
 	apiHandler := s.withCORS(limitRequestBody(s.authMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(mux))), maxJSONRequestBytes))
 	if strings.TrimSpace(s.cfg.StaticDir) == "" {
 		return apiHandler
@@ -1569,7 +1575,7 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID i
 		return mediaCacheResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Priority: workflow.JobPriorityPlayback, Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
+		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Priority: workflow.JobPriorityPlayback, ResourceKey: sourceResourceKey(firstNonEmpty(target.DownloadURL, target.StreamURL)), Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
 		return mediaCacheResult{}, err
@@ -2585,7 +2591,7 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 			return 0, err
 		}
 		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-		response, err := http.DefaultClient.Do(request)
+		response, err := s.sourceHTTPClient(0).Do(request)
 		if err != nil {
 			downloadErr := remoteDownloadError{Err: err, Retryable: true}
 			lastErr = downloadErr
@@ -2655,19 +2661,7 @@ func writeDownloadResponse(body io.Reader, targetPath string) (int64, error) {
 }
 
 func (s *Server) waitRemoteDownloadDelay(ctx context.Context) error {
-	base := s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)
-	randomRange := s.settingFloatContext(ctx, "remote_request_delay_random_seconds", 1.5)
-	if base < 0 {
-		base = 0
-	}
-	if randomRange < 0 {
-		randomRange = 0
-	}
-	delay := time.Duration(base * float64(time.Second))
-	if randomRange > 0 {
-		delay += time.Duration(rand.Float64() * randomRange * float64(time.Second))
-	}
-	return sleepContext(ctx, delay)
+	return nil
 }
 
 func (s *Server) remoteBackoffDuration(ctx context.Context, response *http.Response, attempt int) time.Duration {

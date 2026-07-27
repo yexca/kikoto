@@ -502,3 +502,17 @@ func TestRemoteFetchRequestResultReturnsExistingRun(t *testing.T) {
 		t.Fatalf("remoteFetchRequestResult() = %+v, found %v", got, found)
 	}
 }
+
+func TestNormalizedRemoteLanguageEditions(t *testing.T) {
+	editions := normalizedRemoteLanguageEditions(kikoeru.Work{
+		SourceID: "RJ09999992",
+		LanguageEditions: []kikoeru.LanguageEdition{
+			{WorkNo: "RJ09999992", Language: "CHI_HANS", Label: "Chinese", DisplayOrder: 2},
+			{WorkNo: "RJ09999991", Language: "JPN", Label: "Japanese", DisplayOrder: 1},
+			{WorkNo: "invalid", Language: "ENG", Label: "Invalid", DisplayOrder: 3},
+		},
+	})
+	if len(editions) != 2 || editions[0].RemoteCode != "RJ09999991" || !editions[0].Origin || editions[1].RemoteCode != "RJ09999992" || !editions[1].Current {
+		t.Fatalf("editions = %+v", editions)
+	}
+}

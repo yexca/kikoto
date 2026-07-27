@@ -25,28 +25,36 @@ const CompatibilityNumber178 = "number178"
 const maxKikoeruJSONBytes int64 = 32 << 20
 
 type Work struct {
-	ID                 int64    `json:"id"`
-	Title              string   `json:"title"`
-	Name               string   `json:"name"`
-	SourceID           string   `json:"source_id"`
-	SourceType         string   `json:"source_type"`
-	SourceURL          string   `json:"source_url"`
-	Release            string   `json:"release"`
-	AgeCategoryString  string   `json:"age_category_string"`
-	NSFW               bool     `json:"nsfw"`
-	Duration           *float64 `json:"duration"`
-	MainCoverURL       string   `json:"mainCoverUrl"`
-	SamCoverURL        string   `json:"samCoverUrl"`
-	ThumbnailCoverURL  string   `json:"thumbnailCoverUrl"`
-	Circle             *Circle  `json:"circle"`
-	Tags               []Tag    `json:"tags"`
-	VAs                []VA     `json:"vas"`
-	RateAverage2DP     *float64 `json:"rate_average_2dp"`
-	ReviewCount        *int64   `json:"review_count"`
-	DLCount            *int64   `json:"dl_count"`
-	Price              *int64   `json:"price"`
-	OriginalWorkNumber string   `json:"original_workno"`
-	OriginalWorkID     int64    `json:"original_work_id"`
+	ID                 int64             `json:"id"`
+	Title              string            `json:"title"`
+	Name               string            `json:"name"`
+	SourceID           string            `json:"source_id"`
+	SourceType         string            `json:"source_type"`
+	SourceURL          string            `json:"source_url"`
+	Release            string            `json:"release"`
+	AgeCategoryString  string            `json:"age_category_string"`
+	NSFW               bool              `json:"nsfw"`
+	Duration           *float64          `json:"duration"`
+	MainCoverURL       string            `json:"mainCoverUrl"`
+	SamCoverURL        string            `json:"samCoverUrl"`
+	ThumbnailCoverURL  string            `json:"thumbnailCoverUrl"`
+	Circle             *Circle           `json:"circle"`
+	Tags               []Tag             `json:"tags"`
+	VAs                []VA              `json:"vas"`
+	RateAverage2DP     *float64          `json:"rate_average_2dp"`
+	ReviewCount        *int64            `json:"review_count"`
+	DLCount            *int64            `json:"dl_count"`
+	Price              *int64            `json:"price"`
+	OriginalWorkNumber string            `json:"original_workno"`
+	OriginalWorkID     int64             `json:"original_work_id"`
+	LanguageEditions   []LanguageEdition `json:"language_editions"`
+}
+
+type LanguageEdition struct {
+	WorkNo       string `json:"workno"`
+	Language     string `json:"lang"`
+	Label        string `json:"label"`
+	DisplayOrder int    `json:"display_order"`
 }
 
 type Circle struct {

@@ -380,7 +380,25 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
         primaryCode: "RJ09999991", remoteCode: "RJ09999991", title: "Remote Japanese work", coverUrl: "", sourceUrl: "",
         circle: "Remote circle", rating: 4.5, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
         tags: [], voiceActors: [], importStatus: "remote_only", workId: null,
+        languageEditions: [
+          { remoteCode: "RJ09999991", language: "JPN", label: "Japanese", displayOrder: 1, current: true, origin: true },
+          { remoteCode: "RJ09999993", language: "ENG", label: "English", displayOrder: 2, current: false, origin: false },
+        ],
         tracks: [{ type: "audio", title: "track.mp3", hash: "hash", streamUrl: "/stream", downloadUrl: "/download", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/remote-sources/1/works/RJ09999993" && route.request().method() === "GET") {
+      await route.fulfill({ json: {
+        sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "3",
+        primaryCode: "RJ09999993", remoteCode: "RJ09999993", title: "Remote English work", coverUrl: "", sourceUrl: "",
+        circle: "Remote circle", rating: 4.5, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
+        tags: [], voiceActors: [], importStatus: "remote_only", workId: null,
+        languageEditions: [
+          { remoteCode: "RJ09999991", language: "JPN", label: "Japanese", displayOrder: 1, current: false, origin: true },
+          { remoteCode: "RJ09999993", language: "ENG", label: "English", displayOrder: 2, current: true, origin: false },
+        ],
+        tracks: [{ type: "audio", title: "english.mp3", hash: "english", streamUrl: "/stream-en", downloadUrl: "/download-en", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
       } });
       return;
     }
@@ -423,7 +441,6 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await page.getByRole("button", { name: "Sort: Recently added" }).click();
   await page.getByRole("button", { name: "Code", exact: true }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
-
   await page.getByRole("button", { name: "Sort: Code" }).click();
   await page.getByRole("button", { name: "Sales", exact: true }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "sales")).toBe(true);
@@ -449,6 +466,26 @@ test("remote source keeps alias matches returned by the backend", async ({ page 
   await search.fill("RJ01000001");
   await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ01000001")).toBe(true);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+});
+
+test("remote source remembers sorting after transient browse state is cleared", async ({ page }) => {
+  const requests: URL[] = [];
+  await mockRemoteSource(page, (url) => requests.push(url));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByRole("button", { name: "Sort: Recently added" }).click();
+  await page.getByRole("button", { name: "Code", exact: true }).click();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
+
+  requests.length = 0;
+  await page.evaluate(() => {
+    window.sessionStorage.clear();
+    window.history.replaceState({}, "");
+  });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Example Remote", exact: true })).toHaveClass(/bg-primary/);
+  await expect(page.getByRole("button", { name: "Sort: Code" })).toBeVisible();
+  await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
 });
 
 test("new detail navigation starts at the top, preserves user scroll while media loads, and returning restores the library position", async ({ page }) => {
@@ -706,6 +743,10 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   await expect(page.getByRole("button", { name: "Info", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Directory", exact: true })).toBeVisible();
   await expect(page.getByText("Previewing remote files from Example Remote; temporary playback does not save progress.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  await page.getByRole("button", { name: /English/ }).click();
+  await page.getByRole("button", { name: "Directory", exact: true }).click();
+  await expect(page.getByText("english.mp3", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);
 });
 

@@ -43,6 +43,7 @@ import {
   validateWorkflowDefinition,
   workflowNodePorts,
 } from "@/features/workflows/definitionModel";
+import { WorkCodesField } from "@/features/workflows/WorkCodesField";
 import { workflowCommandUsage } from "@/features/workflows/workflowCommands";
 import { api, type LibrarySource, type WorkflowDefinition, type WorkflowNodeType, type WorkflowTrigger } from "@/lib/api";
 
@@ -527,7 +528,7 @@ function InputInspector({ input, document, node, onDocumentChange }: { input: Wo
       <InspectorField label="Input key"><input className={inputClass} value={input.key} onChange={(event) => update({ key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} /></InspectorField>
       <InspectorField label="Label"><input className={inputClass} value={input.label} onChange={(event) => update({ label: event.target.value })} /></InspectorField>
       <InspectorField label="Type"><select className={inputClass} value={input.type} onChange={(event) => update({ type: event.target.value as WorkflowInputType })}>{inputPresets.map((preset) => <option key={preset.type} value={preset.type}>{preset.type}</option>)}</select></InspectorField>
-      <InspectorField label="Default value"><input className={inputClass} value={input.defaultValue ?? ""} onChange={(event) => update({ defaultValue: event.target.value || undefined })} /></InspectorField>
+      <InspectorField label="Default value">{input.type === "work_codes" ? <WorkCodesField value={input.defaultValue ?? ""} onChange={(value) => update({ defaultValue: value || undefined })} /> : <input className={inputClass} value={input.defaultValue ?? ""} onChange={(event) => update({ defaultValue: event.target.value || undefined })} />}</InspectorField>
       <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"><span>Required</span><Switch checked={input.required} onCheckedChange={(required) => update({ required })} aria-label="Input is required" /></div>
     </section>
   );
