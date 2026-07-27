@@ -50,6 +50,11 @@ remote source management, and playback.
   grid/masonry behavior and responsive column choices should remain aligned.
 - Persist work-collection layout as one shared browser preference, rather than
   separate page-local selections.
+- Scope account-bearing browser state by the configured server identity and
+  current user (or anonymous principal). This includes player queue/progress,
+  Library and Favorites browse restoration, workflow selection, and in-memory
+  work media. Pure display preferences such as theme and player Dock mode stay
+  shared on the device.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
   content has rendered. Retry only deep history restoration, and cancel pending

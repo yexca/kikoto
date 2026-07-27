@@ -23,6 +23,7 @@ type JobSpec struct {
 	NodeRunID       int64
 	WorkerType      string
 	Status          string
+	Priority        int
 	Payload         any
 	Checkpoint      any
 	Recoverable     bool
@@ -31,6 +32,12 @@ type JobSpec struct {
 	ProgressTotal   int
 	Error           string
 }
+
+const (
+	JobPriorityBackground    = 0
+	JobPriorityUserInitiated = 50
+	JobPriorityPlayback      = 100
+)
 
 type EventSpec struct {
 	NodeRunID int64
@@ -161,6 +168,7 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 			workflow_node_run_id,
 			worker_type,
 			status,
+			priority,
 			payload_json,
 			checkpoint_json,
 			recoverable,
@@ -169,12 +177,12 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 			progress_total,
 			error_message
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, payloadJSON, checkpointJSON, spec.Recoverable, maxRetries, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, spec.Priority, payloadJSON, checkpointJSON, spec.Recoverable, maxRetries, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
 	if err != nil {
 		return 0, err
 	}
-	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "recoverable": spec.Recoverable, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
+	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "priority": spec.Priority, "recoverable": spec.Recoverable, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
 	if spec.Error != "" {
 		detail["error"] = spec.Error
 	}

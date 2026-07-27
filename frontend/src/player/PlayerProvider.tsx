@@ -31,6 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT } from "@/app/events";
 import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
+import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
 import {
   addNativeMediaListeners,
@@ -155,15 +156,26 @@ type LibraryPlayerContextValue = {
 };
 
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
-const PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
-const PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
+const PLAYER_QUEUE_STORAGE_BASE_KEY = "kikoto:player-queue:v2";
+const PLAYER_PROGRESS_STORAGE_BASE_KEY = "kikoto:player-progress:v2";
+const LEGACY_PLAYER_QUEUE_STORAGE_KEY = "kikoto:player-queue:v1";
+const LEGACY_PLAYER_PROGRESS_STORAGE_KEY = "kikoto:player-progress:v1";
 const MINI_POSITION_STORAGE_KEY = "kikoto:player-mini-position:v1";
 const DOCK_MODE_STORAGE_KEY = "kikoto:player-dock-mode:v1";
 const MAX_LOCAL_PROGRESS_CHECKPOINTS = 100;
 
-function loadLocalProgressCheckpoints(): Record<string, LocalProgressCheckpoint> {
+function discardUnscopedLegacyPlayerState() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(PLAYER_PROGRESS_STORAGE_KEY) ?? "null") as {
+    localStorage.removeItem(LEGACY_PLAYER_QUEUE_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_PLAYER_PROGRESS_STORAGE_KEY);
+  } catch {
+    // Playback remains usable when browser storage is unavailable.
+  }
+}
+
+function loadLocalProgressCheckpoints(storageKey: string): Record<string, LocalProgressCheckpoint> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
       version?: number;
       items?: Record<string, LocalProgressCheckpoint>;
     } | null;
@@ -183,6 +195,7 @@ function loadLocalProgressCheckpoints(): Record<string, LocalProgressCheckpoint>
 }
 
 function persistLocalProgressCheckpoint(
+  storageKey: string,
   checkpoints: Record<string, LocalProgressCheckpoint>,
   checkpoint: LocalProgressCheckpoint,
 ) {
@@ -196,7 +209,7 @@ function persistLocalProgressCheckpoint(
     if (!(key in items)) delete checkpoints[key];
   }
   try {
-    localStorage.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify({ version: 1, items }));
+    localStorage.setItem(storageKey, JSON.stringify({ version: 1, items }));
   } catch {
     // Playback should continue when browser storage is unavailable or full.
   }
@@ -240,7 +253,7 @@ function persistDockMode(isMobile: boolean, mode: DockMode) {
   localStorage.setItem(DOCK_MODE_STORAGE_KEY, JSON.stringify(stored));
 }
 
-function loadPersistedQueue(): {
+function loadPersistedQueue(queueStorageKey: string, progressStorageKey: string): {
   queue: PlayerTrack[];
   currentIndex: number;
   mode: PlayMode;
@@ -248,8 +261,8 @@ function loadPersistedQueue(): {
   sleepTimer: SleepTimerState;
 } {
   try {
-    const localProgress = loadLocalProgressCheckpoints();
-    const parsed = JSON.parse(localStorage.getItem(PLAYER_QUEUE_STORAGE_KEY) ?? "null") as {
+    const localProgress = loadLocalProgressCheckpoints(progressStorageKey);
+    const parsed = JSON.parse(localStorage.getItem(queueStorageKey) ?? "null") as {
       version?: number;
       queue?: PlayerTrack[];
       currentIndex?: number;
@@ -316,25 +329,37 @@ async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressS
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
+  const principalID = auth.user?.id ?? null;
+  const playerQueueStorageKey = currentScopedStorageKey(PLAYER_QUEUE_STORAGE_BASE_KEY, principalID);
+  const playerProgressStorageKey = currentScopedStorageKey(PLAYER_PROGRESS_STORAGE_BASE_KEY, principalID);
   const toast = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const restoredQueueRef = useRef(loadPersistedQueue());
-  const [queue, setQueue] = useState<PlayerTrack[]>(restoredQueueRef.current.queue);
-  const [currentIndex, setCurrentIndex] = useState(restoredQueueRef.current.currentIndex);
+  const restoredQueueRef = useRef<ReturnType<typeof loadPersistedQueue> | null>(null);
+  if (restoredQueueRef.current === null) {
+    discardUnscopedLegacyPlayerState();
+    restoredQueueRef.current = loadPersistedQueue(playerQueueStorageKey, playerProgressStorageKey);
+  }
+  const restoredQueue = restoredQueueRef.current;
+  const [queue, setQueue] = useState<PlayerTrack[]>(restoredQueue.queue);
+  const [currentIndex, setCurrentIndex] = useState(restoredQueue.currentIndex);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [durationLocationId, setDurationLocationId] = useState<number | null>(null);
-  const [playbackRate, setPlaybackRate] = useState(restoredQueueRef.current.playbackRate);
-  const [mode, setMode] = useState<PlayMode>(restoredQueueRef.current.mode);
-  const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueueRef.current.sleepTimer);
+  const [playbackRate, setPlaybackRate] = useState(restoredQueue.playbackRate);
+  const [mode, setMode] = useState<PlayMode>(restoredQueue.mode);
+  const [sleepTimer, setSleepTimer] = useState<SleepTimerState>(restoredQueue.sleepTimer);
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const restoredMediaItemRef = useRef<number | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
   const lastLocalSavedRef = useRef<ProgressSaveMarker | null>(null);
-  const localProgressRef = useRef(loadLocalProgressCheckpoints());
+  const localProgressRef = useRef<Record<string, LocalProgressCheckpoint> | null>(null);
+  if (localProgressRef.current === null) {
+    localProgressRef.current = loadLocalProgressCheckpoints(playerProgressStorageKey);
+  }
+  const localProgress = localProgressRef.current;
   const progressSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
   const progressSaveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, ProgressSavePayload> }>({
     inFlight: false,
@@ -356,7 +381,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   currentIndexRef.current = currentIndex;
 
   useEffect(() => {
-    const restored = restoredQueueRef.current.queue;
+    const restored = restoredQueue.queue;
     if (restored.length === 0) return;
     let cancelled = false;
     void revalidatePersistedQueue(restored, async (workID) => (await api.getWorkMedia(workID)).mediaItems).then((validated) => {
@@ -398,19 +423,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       0,
       persistentQueue.findIndex((track) => track.queueItemId === currentQueueItemId),
     );
-    localStorage.setItem(
-      PLAYER_QUEUE_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        queue: persistentQueue,
-        currentIndex: persistedCurrentIndex,
-        mode,
-        playbackRate,
-        sleepTimer,
-        sleepRemainingSeconds,
-      }),
-    );
-  }, [queue, currentIndex, mode, playbackRate, sleepTimer]);
+    try {
+      localStorage.setItem(
+        playerQueueStorageKey,
+        JSON.stringify({
+          version: 1,
+          queue: persistentQueue,
+          currentIndex: persistedCurrentIndex,
+          mode,
+          playbackRate,
+          sleepTimer,
+          sleepRemainingSeconds,
+        }),
+      );
+    } catch {
+      // Playback should continue when browser storage is unavailable or full.
+    }
+  }, [queue, currentIndex, mode, playbackRate, playerQueueStorageKey, sleepTimer]);
 
   useEffect(() => {
     failedLocationIDsRef.current.clear();
@@ -552,7 +581,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const marker = { mediaItemId: currentTrack.mediaItemId, position, completed, at: now };
     const lastLocalSaved = lastLocalSavedRef.current;
     if (shouldSaveLocalProgress(lastLocalSaved, marker, force)) {
-      persistLocalProgressCheckpoint(localProgressRef.current, {
+      persistLocalProgressCheckpoint(playerProgressStorageKey, localProgress, {
         mediaItemId: currentTrack.mediaItemId,
         positionSeconds: position,
         durationSeconds: durationValue,

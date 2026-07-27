@@ -1425,7 +1425,7 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 	payload := customWorkflowJobPayload{DefinitionJSON: definition.DefinitionJSON, Inputs: inputs, UserID: userID, Permissions: append([]string{}, permissions...), PreviewToken: previewToken, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), OwnerUserID: ownerUserID, DefinitionStack: stack}
 	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{}, Outputs: map[string]map[string]customPortValue{}, ChildRunIDs: []int64{}}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Payload: payload,
+		NodeRunID: firstNodeRunID, WorkerType: "custom_workflow", Status: "queued", Priority: workflowJobPriorityForTrigger(triggerType), Payload: payload,
 		Checkpoint: checkpoint, Recoverable: true, MaxRetries: 3, ProgressTotal: len(graph.TopologicalOrder),
 	}); err != nil {
 		return 0, err
@@ -1434,6 +1434,17 @@ func (s *Server) enqueueCustomWorkflow(ctx context.Context, definition workflowD
 		return 0, err
 	}
 	return runID, nil
+}
+
+func workflowJobPriorityForTrigger(triggerType string) int {
+	switch strings.ToLower(strings.TrimSpace(triggerType)) {
+	case "playback":
+		return workflow.JobPriorityPlayback
+	case "manual":
+		return workflow.JobPriorityUserInitiated
+	default:
+		return workflow.JobPriorityBackground
+	}
 }
 
 func publicCustomWorkflowConfig(config map[string]any) map[string]any {
@@ -2729,7 +2740,7 @@ func (s *Server) executeCustomFetchWorks(ctx context.Context, runID int64, node 
 			continue
 		}
 		targetRoot := strings.ReplaceAll(targetTemplate, "<work_code>", item.Candidate.Code)
-		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes)
+		result, err := s.enqueueRemoteWorkSave(ctx, item.Candidate.SourceID, item.Candidate.Code, item.Paths, nil, targetRoot, requestID, nil, minFreeBytes, workflow.JobPriorityBackground)
 		if err != nil {
 			item.Candidate.Reason = "fetch_queue_failed"
 			failed = append(failed, item.Candidate)

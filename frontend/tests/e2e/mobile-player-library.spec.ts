@@ -53,6 +53,8 @@ const persistedTrack = {
 };
 
 const persistedPlayerTracks = new WeakMap<Page, typeof persistedTrack[]>();
+const playerQueueStorageBaseKey = "kikoto:player-queue:v2";
+const playerProgressStorageBaseKey = "kikoto:player-progress:v2";
 
 type MockApplicationFixture = {
   work?: typeof work;
@@ -267,11 +269,21 @@ async function mockApplication(
   });
 }
 
-async function seedPlayer(page: Page, track = persistedTrack) {
+async function seedPlayer(page: Page, track = persistedTrack, principalID: number | null = null) {
   persistedPlayerTracks.set(page, [track]);
-  await page.addInitScript((track) => {
-    localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({ version: 1, queue: [track], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
-  }, track);
+  await page.addInitScript(({ track, principalID, baseKey }) => {
+    const principal = principalID === null ? "anonymous" : `user-${principalID}`;
+    const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:${principal}`;
+    localStorage.setItem(key, JSON.stringify({ version: 1, queue: [track], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
+  }, { track, principalID, baseKey: playerQueueStorageBaseKey });
+}
+
+async function readScopedPlayerState(page: Page, baseKey: string, principalID: number | null = null) {
+  return page.evaluate(({ baseKey, principalID }) => {
+    const principal = principalID === null ? "anonymous" : `user-${principalID}`;
+    const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:${principal}`;
+    return JSON.parse(localStorage.getItem(key) ?? "null");
+  }, { baseKey, principalID });
 }
 
 async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; authenticated?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
@@ -1114,9 +1126,10 @@ test("player scrolls overflowing metadata and closes queue options outside the m
   const longTitle = "A deliberately long track title that cannot fit inside the compact player or queue row";
   const secondTrack = { ...persistedTrack, queueItemId: "e2e-track-2", locationId: 2, title: "Second queued track" };
   persistedPlayerTracks.set(page, [{ ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, secondTrack]);
-  await page.addInitScript(({ first, second }) => {
-    localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({ version: 1, queue: [first, second], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
-  }, { first: { ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, second: secondTrack });
+  await page.addInitScript(({ first, second, baseKey }) => {
+    const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:anonymous`;
+    localStorage.setItem(key, JSON.stringify({ version: 1, queue: [first, second], currentIndex: 0, mode: "order", playbackRate: 1, sleepTimer: null }));
+  }, { first: { ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` }, second: secondTrack, baseKey: playerQueueStorageBaseKey });
   await page.goto("/");
 
   await page.getByRole("button", { name: "Playback queue" }).click();
@@ -1164,8 +1177,8 @@ test("compact player supports relative drag seeking and global playback shortcut
   });
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
   await expect.poll(() => page.evaluate(() => {
-    const stored = JSON.parse(localStorage.getItem("kikoto:player-progress:v1") ?? "null");
-    return stored?.items?.["1"]?.positionSeconds ?? 0;
+    const key = `kikoto:player-progress:v2:${encodeURIComponent(window.location.origin)}:anonymous`;
+    return JSON.parse(localStorage.getItem(key) ?? "null")?.items?.["1"]?.positionSeconds ?? 0;
   })).toBeGreaterThan(39);
   const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
   const box = await compact.boundingBox();
@@ -1227,7 +1240,7 @@ test("desktop compact player reserves the final directory action area", async ({
     mediaFixture(index + 1, `track-${index + 1}.mp3`, `RJ09999999/track-${index + 1}.mp3`, "audio"),
   );
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
-  await seedPlayer(page);
+  await seedPlayer(page, persistedTrack, 1);
   await page.goto("/RJ09999999");
   await page.getByRole("button", { name: "Collapse player" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
@@ -1309,7 +1322,8 @@ test("failed sources fall back automatically and the sleep timer survives a relo
   await customMinutes.fill("75");
   await page.getByRole("button", { name: "Set" }).click();
   await expect.poll(() => page.evaluate(() => {
-    const timer = JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer;
+    const key = `kikoto:player-queue:v2:${encodeURIComponent(window.location.origin)}:anonymous`;
+    const timer = JSON.parse(localStorage.getItem(key) ?? "null")?.sleepTimer;
     return timer ? Math.round((timer.deadline - Date.now()) / 60_000) : 0;
   })).toBe(75);
 
@@ -1323,22 +1337,23 @@ test("failed sources fall back automatically and the sleep timer survives a relo
   await page.getByRole("button", { name: "Sleep timer" }).click();
   await page.getByRole("switch", { name: "Finish current track" }).check();
   await page.getByRole("button", { name: "30 min" }).click();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer?.mode)).toBe("deadline");
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer?.finishCurrentTrack)).toBe(true);
+  await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.sleepTimer?.mode).toBe("deadline");
+  await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.sleepTimer?.finishCurrentTrack).toBe(true);
 
   const restoredPage = await page.context().newPage();
   await mockApplication(restoredPage);
   persistedPlayerTracks.set(restoredPage, [persistedTrack]);
   await restoredPage.goto("/");
-  await expect.poll(() => restoredPage.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer?.deadline > Date.now())).toBe(true);
+  await expect.poll(async () => (await readScopedPlayerState(restoredPage, playerQueueStorageBaseKey))?.sleepTimer?.deadline > Date.now()).toBe(true);
   await restoredPage.close();
 });
 
-test("legacy end-of-track sleep timers migrate without being discarded", async ({ page }) => {
+test("scoped legacy end-of-track sleep timers migrate without being discarded", async ({ page }) => {
   await mockApplication(page);
   persistedPlayerTracks.set(page, [persistedTrack]);
-  await page.addInitScript((track) => {
-    localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({
+  await page.addInitScript(({ track, baseKey }) => {
+    const key = `${baseKey}:${encodeURIComponent(window.location.origin)}:anonymous`;
+    localStorage.setItem(key, JSON.stringify({
       version: 1,
       queue: [track],
       currentIndex: 0,
@@ -1346,16 +1361,35 @@ test("legacy end-of-track sleep timers migrate without being discarded", async (
       playbackRate: 1,
       sleepTimer: { mode: "track_end" },
     }));
-  }, persistedTrack);
+  }, { track: persistedTrack, baseKey: playerQueueStorageBaseKey });
   await page.goto("/");
   await page.getByText("Test track", { exact: true }).click();
 
   await expect(page.getByRole("button", { name: "Sleep timer" })).toContainText("Track");
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("kikoto:player-queue:v1") ?? "null")?.sleepTimer)).toMatchObject({
+  await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.sleepTimer).toMatchObject({
     mode: "deadline",
     finishCurrentTrack: true,
     waitingForTrackEnd: true,
   });
+});
+
+test("unscoped player state is discarded because its owner is unknown", async ({ page }) => {
+  await mockApplication(page);
+  await page.addInitScript((track) => {
+    localStorage.setItem("kikoto:player-queue:v1", JSON.stringify({
+      version: 1,
+      queue: [track],
+      currentIndex: 0,
+      mode: "order",
+      playbackRate: 1,
+      sleepTimer: null,
+    }));
+  }, persistedTrack);
+
+  await page.goto("/");
+
+  await expect(page.getByText("Test track", { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("kikoto:player-queue:v1"))).toBeNull();
 });
 
 test("PWA metadata exposes install icons and the worker excludes API and range requests", async ({ request }) => {

@@ -48,6 +48,15 @@ Configurable built-in triggers retain the configuring user for user-owned tag
 effects and revalidate that user's permissions when dispatching. Triggered runs
 store both their trigger reference and the final resolved input.
 
+## Queue Ordering
+
+`workflow_job.priority` is persisted with each job. The single worker claims
+higher priorities first, then preserves FIFO order by creation time and id.
+Playback-triggered cache fills use the highest tier, direct user work such as
+manual workflows and cleanup uses the middle tier, and scheduled/background
+work uses the default tier. Priority does not preempt a job that is already
+running.
+
 ## Source Availability
 
 Source availability is checked by the backend instead of frontend fan-out. Batch

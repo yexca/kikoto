@@ -1508,7 +1508,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes)
+	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, workflow.JobPriorityUserInitiated)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -2655,7 +2655,7 @@ func (s *Server) runRemotePopularWorkflowWithTrigger(ctx context.Context, userID
 	}
 	jobPayload := remoteCollectionJobPayload{UserID: userID, SourceID: source.ID, Action: action, Limit: payload.Limit, TagName: payload.TagName}
 	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: discoverNodeID, WorkerType: "remote_popular_collection", Status: "queued", Payload: jobPayload,
+		NodeRunID: discoverNodeID, WorkerType: "remote_popular_collection", Status: "queued", Priority: workflowJobPriorityForTrigger(trigger.Type), Payload: jobPayload,
 		Checkpoint: remoteCollectionJobCheckpoint{CompletedCodes: []string{}, Candidates: nil, Result: result}, Recoverable: true, MaxRetries: 3,
 	}); err != nil {
 		return remoteCollectionRunResult{}, err
@@ -2761,7 +2761,7 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 			}
 		} else {
 			var fetchResult remoteWorkSaveResult
-			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0)
+			fetchResult, err = s.enqueueRemoteWorkSave(ctx, source.ID, code, []string{}, nil, "", "", nil, 0, workflow.JobPriorityBackground)
 			if err == nil {
 				workID = fetchResult.WorkID
 				result.Fetched++
@@ -3151,7 +3151,7 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	return plan, nil
 }
 
-func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64) (remoteWorkSaveResult, error) {
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, jobPriority int) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
@@ -3258,7 +3258,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		return remoteWorkSaveResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
+		NodeRunID: cacheNodeID, WorkerType: "remote_work_fetch", Status: "queued", Priority: jobPriority, Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: len(plan.Items) * 2,
 	})
 	if err != nil {
 		return remoteWorkSaveResult{}, err

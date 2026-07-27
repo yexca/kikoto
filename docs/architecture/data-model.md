@@ -60,7 +60,9 @@ Important tables:
 - `workflow_run_review`
 
 Workflow records make scans, metadata sync, source checks, remote fetches, and
-review actions inspectable.
+review actions inspectable. `workflow_job.priority` is durable queue-ordering
+metadata; higher values claim first, with creation time and id as FIFO
+tie-breakers.
 
 ## User State
 

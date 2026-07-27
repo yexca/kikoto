@@ -8,6 +8,10 @@ Playback is handled by a global browser audio player.
 - Clicking a playable file queues playable audio files in the same folder.
 - Work-level play queues all playable tracks for the work.
 - Playback continues across navigation.
+- Browser queue and local progress recovery are isolated by server identity and
+  authenticated user (or anonymous principal). Unscoped v1 state is discarded
+  because it has no reliable owner; Dock mode and Mini position remain shared
+  device preferences.
 - Progress is saved per user and logical media item. Rapid updates are
   coalesced and sent serially; a transient database-busy response receives one
   short jittered retry.

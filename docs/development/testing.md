@@ -5,6 +5,8 @@
 ```sh
 cd backend
 go test ./...
+go vet ./...
+go test -race ./...
 ```
 
 Backend tests are organized by boundary:
@@ -25,14 +27,19 @@ contract.
 ```sh
 cd frontend
 npm install
+npm audit --audit-level=moderate
+npm run format:check
 npm run lint
 npm run test:unit
 npm run build
+npm run test:e2e
 ```
 
 Vitest unit and component tests stay beside their source under `frontend/src`.
 Playwright browser tests live under `frontend/tests/e2e`; Android JVM and device
 tests use the standard Gradle `src/test` and `src/androidTest` source sets.
+CI installs Chromium and runs the complete Playwright project after the
+frontend unit and production-build gates.
 
 ## Smoke Test
 

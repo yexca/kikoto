@@ -298,7 +298,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 13 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" {
+	if len(migrations) != 14 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var rating float64
@@ -348,6 +348,13 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("column %s.%s count = %d", table, column, count)
 		}
+	}
+	var workflowPriorityColumn int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('workflow_job') WHERE name = 'priority'").Scan(&workflowPriorityColumn); err != nil {
+		t.Fatal(err)
+	}
+	if workflowPriorityColumn != 1 {
+		t.Fatalf("column workflow_job.priority count = %d", workflowPriorityColumn)
 	}
 	var preserved int
 	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ09999997'").Scan(&preserved); err != nil {

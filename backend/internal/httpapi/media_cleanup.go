@@ -136,7 +136,7 @@ func (s *Server) enqueueMediaLocationCleanup(ctx context.Context, requested []me
 		return mediaCleanupResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Payload: payload,
+		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, Payload: payload,
 		Checkpoint: mediaCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3,
 		ProgressCurrent: 0, ProgressTotal: len(targets),
 	})

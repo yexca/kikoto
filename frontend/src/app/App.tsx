@@ -16,6 +16,7 @@ import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
+import { currentClientStorageScope } from "@/lib/clientStorageScope";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -173,7 +174,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <PlayerProvider>
+    <PlayerProvider key={currentClientStorageScope(auth.user?.id ?? null)}>
       <div
         className={cn(
           "app-shell min-h-screen bg-background lg:grid",

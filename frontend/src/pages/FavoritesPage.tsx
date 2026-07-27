@@ -83,6 +83,7 @@ import {
   type FavoriteEntity,
 } from "@/pages/favoritesBrowseState";
 import { defaultLibraryBrowseState, libraryLocation } from "@/pages/libraryBrowseState";
+import { currentClientStorageScope } from "@/lib/clientStorageScope";
 
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -130,6 +131,7 @@ type PageSize = (typeof pageSizeOptions)[number];
 type AvailabilityFilter = FavoriteAvailability;
 
 type FavoritesEntryState = {
+  favoritesBrowseScope?: unknown;
   favoritesBrowseState?: FavoritesBrowseState;
   favoritesSelection?: { active: boolean; workIDs: number[] };
   favoritesAnchor?: { workID: number; viewportOffset: number };
@@ -138,11 +140,13 @@ type FavoritesEntryState = {
 export function FavoritesPage() {
   const toast = useToast();
   const auth = useAuth();
-  const initialEntryState = useRef(readFavoritesEntryState()).current;
+  const principalID = auth.user?.id ?? null;
+  const favoritesStorageScope = currentClientStorageScope(principalID);
+  const initialEntryState = useRef(readFavoritesEntryState(favoritesStorageScope)).current;
   const initialBrowseState = useRef(favoritesBrowseStateFromSearch(
     window.location.search,
     initialEntryState.favoritesBrowseState
-      ?? (auth.user ? readFavoritesBrowseState(auth.user.id) : null)
+      ?? readFavoritesBrowseState(principalID)
       ?? defaultFavoritesBrowseState,
   )).current;
   const pendingAnchor = useRef(initialEntryState.favoritesAnchor ?? null);
@@ -282,9 +286,10 @@ export function FavoritesPage() {
       randomSeed,
     };
     const search = favoritesBrowseSearch(browseState);
-    if (auth.user) writeFavoritesBrowseState(auth.user.id, browseState);
+    if (auth.user) writeFavoritesBrowseState(principalID, browseState);
     const state = {
       ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      favoritesBrowseScope: favoritesStorageScope,
       favoritesBrowseState: browseState,
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
     };
@@ -350,6 +355,7 @@ export function FavoritesPage() {
     const returnTo = favoritesLocation(browseState);
     window.history.replaceState({
       ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      favoritesBrowseScope: favoritesStorageScope,
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
       favoritesAnchor: anchor,
     }, "", returnTo);
@@ -1337,10 +1343,11 @@ function progressPercent(progress: Work["progress"]) {
   return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
-function readFavoritesEntryState(): FavoritesEntryState {
+function readFavoritesEntryState(storageScope: string): FavoritesEntryState {
   const value = window.history.state;
   if (!value || typeof value !== "object") return {};
   const state = value as FavoritesEntryState;
+  if (state.favoritesBrowseScope !== storageScope) return {};
   const browseState = favoritesBrowseStateFromValue(state.favoritesBrowseState, defaultFavoritesBrowseState);
   const selection = state.favoritesSelection;
   const anchor = state.favoritesAnchor;

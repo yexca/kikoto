@@ -203,7 +203,7 @@ func (s *Server) enqueueDLsitePopularCollectionWithTrigger(ctx context.Context, 
 	}
 	result := dlsitePopularRunResult{RunID: runID, Status: "queued", Period: payload.Period, ReleaseWindow: payload.ReleaseWindow, Year: payload.Year, TagName: payload.TagName, Failures: []string{}}
 	jobPayload := dlsitePopularJobPayload{UserID: userID, Period: payload.Period, ReleaseWindow: payload.ReleaseWindow, Year: payload.Year, TagName: payload.TagName}
-	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: discoverNodeID, WorkerType: "dlsite_popular_collection", Status: "queued", Payload: jobPayload, Checkpoint: dlsitePopularCheckpoint{WorkCodes: []string{}, CompletedCodes: []string{}, Result: result}, Recoverable: true, MaxRetries: 3}); err != nil {
+	if _, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{NodeRunID: discoverNodeID, WorkerType: "dlsite_popular_collection", Status: "queued", Priority: workflowJobPriorityForTrigger(trigger.Type), Payload: jobPayload, Checkpoint: dlsitePopularCheckpoint{WorkCodes: []string{}, CompletedCodes: []string{}, Result: result}, Recoverable: true, MaxRetries: 3}); err != nil {
 		return dlsitePopularRunResult{}, err
 	}
 	if err := tx.Commit(); err != nil {

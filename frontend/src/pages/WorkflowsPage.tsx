@@ -39,6 +39,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { activityViewForRun, type ActivityView } from "@/features/workflows/activityModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { useAuth } from "@/auth/AuthProvider";
 import { WorkflowCanvas } from "@/features/workflows/WorkflowCanvas";
 import { WorkflowComposer } from "@/features/workflows/WorkflowComposer";
 import { parseWorkflowDefinition, upgradeLegacyWorkflowDefinition, workflowDefinitionNodeCount, type WorkflowInputDefinition } from "@/features/workflows/definitionModel";
@@ -60,6 +61,7 @@ import {
   type WorkflowRunsPage,
   type WorkflowTrigger,
 } from "@/lib/api";
+import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 
 type Surface = "workflows" | "activity";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
@@ -92,7 +94,7 @@ const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", 
 const automationTriggerTypes: AutomationTriggerType[] = ["startup", "schedule"];
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
 const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
-const workflowDefinitionStorageKey = "kikoto.workflows.definition";
+const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
 
 const workflowTemplates: WorkflowTemplate[] = [
   { id: "blank", label: "Blank", nodes: [{ id: "select", type: "select_works", displayName: "Select works" }] },
@@ -210,6 +212,11 @@ export function WorkflowsPage({
   readOnly?: boolean;
 }) {
   const toast = useToast();
+  const auth = useAuth();
+  const workflowDefinitionStorageKey = currentScopedStorageKey(
+    workflowDefinitionStorageBaseKey,
+    auth.user?.id ?? null,
+  );
   const [activityView, setActivityView] = useState<ActivityView>(() => activityViewFromLocation());
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [nodeTypes, setNodeTypes] = useState<WorkflowNodeType[]>(fallbackNodeTypes);

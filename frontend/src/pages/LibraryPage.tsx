@@ -93,6 +93,7 @@ import {
 } from "@/lib/api";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { ageRatingPresentation } from "@/lib/ageRating";
+import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
@@ -284,11 +285,13 @@ function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
 }
 
 type LibraryHistoryState = {
+  libraryBrowseScope?: unknown;
   libraryBrowseState?: unknown;
 };
 
-function readLibraryHistoryBrowseState(): LibraryBrowseState | null {
+function readLibraryHistoryBrowseState(storageScope: string): LibraryBrowseState | null {
   const historyState = window.history.state as LibraryHistoryState | null;
+  if (historyState?.libraryBrowseScope !== storageScope) return null;
   const value = historyState?.libraryBrowseState;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return libraryBrowseStateFromValue(
@@ -297,9 +300,10 @@ function readLibraryHistoryBrowseState(): LibraryBrowseState | null {
   );
 }
 
-function writeLibraryHistoryBrowseState(state: LibraryBrowseState) {
+function writeLibraryHistoryBrowseState(storageScope: string, state: LibraryBrowseState) {
   window.history.replaceState({
     ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+    libraryBrowseScope: storageScope,
     libraryBrowseState: state,
   }, "");
 }
@@ -307,10 +311,12 @@ function writeLibraryHistoryBrowseState(state: LibraryBrowseState) {
 export function LibraryPage() {
   const toast = useToast();
   const auth = useAuth();
+  const principalID = auth.user?.id ?? null;
+  const browseStorageScope = currentClientStorageScope(principalID);
   const requireDownloadsManage = usePermissionGate("downloads:manage");
 	const initialBrowseState = useRef(libraryBrowseStateFromSearch(
 		window.location.search,
-		readLibraryHistoryBrowseState() ?? defaultLibraryBrowseState,
+		readLibraryHistoryBrowseState(browseStorageScope) ?? defaultLibraryBrowseState,
 	)).current;
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
@@ -538,8 +544,8 @@ export function LibraryPage() {
 	  setSourceRoutesReady(true);
 	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
 	  const scope = localScopeFromPath(window.location.pathname);
-	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope));
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState() ?? stored ?? defaultLibraryBrowseState), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
+	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState(browseStorageScope) ?? stored ?? defaultLibraryBrowseState), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
 	  setActiveTab(resolved);
       const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
       if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
@@ -627,13 +633,13 @@ export function LibraryPage() {
       setIsSelectedMediaLoading(true);
       api.getWorkSummary(workID, controller.signal).then((detail) => {
         if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-          return resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
+          return resolveAndOpenWork(selectedCode, principalID, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
         }
-        const cachedMedia = getCachedWorkMedia(detail.id);
+        const cachedMedia = getCachedWorkMedia(detail.id, principalID);
         setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
         if (cachedMedia) return;
         return api.getWorkMedia(detail.id, controller.signal).then((media) => {
-          setCachedWorkMedia(detail.id, media.mediaItems);
+          setCachedWorkMedia(detail.id, principalID, media.mediaItems);
           setSelectedWork((current) => current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current);
         }).catch((error) => {
           if (!(error instanceof DOMException && error.name === "AbortError")) {
@@ -650,7 +656,7 @@ export function LibraryPage() {
       });
       return () => controller.abort();
     }
-    void resolveAndOpenWork(selectedCode, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
+    void resolveAndOpenWork(selectedCode, principalID, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
     return () => controller.abort();
   }, [selectedCode, works.length]);
 
@@ -658,9 +664,9 @@ export function LibraryPage() {
     const syncFromPath = () => {
 	  const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
 	  const nextScope = localScopeFromPath(window.location.pathname);
-	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope));
+	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
 	  const nextCode = codeFromLocation(window.location.pathname, window.location.search);
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState() ?? stored ?? defaultLibraryBrowseState), nextTab, nextCode === null);
+	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, readLibraryHistoryBrowseState(browseStorageScope) ?? stored ?? defaultLibraryBrowseState), nextTab, nextCode === null);
       setSelectedCode(nextCode);
       setSelectedWorkPreview(workPreviewFromHistory(nextCode));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
@@ -680,10 +686,11 @@ export function LibraryPage() {
 	useEffect(() => {
 		if (selectedCode !== null || selectedRemoteTarget !== null) return;
 		const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
+		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
 		const nextSearch = libraryBrowseSearch(activeBrowseState);
 		window.history.replaceState({
 			...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+			libraryBrowseScope: browseStorageScope,
 			libraryBrowseState: browseState,
 		}, "", `${window.location.pathname}${nextSearch}`);
 	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
@@ -701,8 +708,8 @@ export function LibraryPage() {
 			if (pendingWrite !== null) window.clearTimeout(pendingWrite);
 			pendingWrite = null;
 			const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
-			writeLibraryHistoryBrowseState(browseState);
+			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+			writeLibraryHistoryBrowseState(browseStorageScope, browseState);
 		};
 		const rememberScroll = () => {
 			if (pendingWrite !== null) return;
@@ -741,8 +748,8 @@ export function LibraryPage() {
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
 	recordWorkRecommendationEvent(work, "open");
 	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
-	writeLibraryHistoryBrowseState(browseState);
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+	writeLibraryHistoryBrowseState(browseStorageScope, browseState);
     const path = `/${work.primaryCode}?view=${sourceIntent}`;
 	setSelectedRemoteTarget(null);
 	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library", workPreview: work }, "", path);
@@ -764,8 +771,8 @@ export function LibraryPage() {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
 	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), browseState);
-	writeLibraryHistoryBrowseState(browseState);
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+	writeLibraryHistoryBrowseState(browseStorageScope, browseState);
     if (work.workId !== null && work.primaryCode) {
       const preview = remoteWorkPreview(work);
       setSelectedRemoteTarget(null);
@@ -793,7 +800,7 @@ export function LibraryPage() {
 	  return;
 	}
 	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
-    window.history.pushState({ libraryBrowseState: activeBrowseState }, "", returnTarget.path);
+    window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState }, "", returnTarget.path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
@@ -801,10 +808,10 @@ export function LibraryPage() {
 
   const changeTab = (tab: LibraryTab) => {
 	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), currentState);
-	writeLibraryHistoryBrowseState(currentState);
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
+	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
 	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(tab, nextScope)) ?? defaultLibraryBrowseState, searchQuery);
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(tab, nextScope, browseStorageScope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab(tab);
 	if (tab.kind === "all") setLocalScope(nextScope);
 	applyBrowseState(nextState, tab);
@@ -812,17 +819,17 @@ export function LibraryPage() {
     setSelectedRemoteTarget(null);
 	const path = libraryLocation(pathForLibraryTab(tab), nextState);
 	if (`${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({ libraryBrowseState: nextState }, "", path);
+	  window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
 
   const changeLocalScope = (scope: LocalLibraryScope) => {
 	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope), currentState);
-	writeLibraryHistoryBrowseState(currentState);
+	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
+	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
 	const nextTab: LibraryTab = { kind: "all" };
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(nextTab, scope)) ?? defaultLibraryBrowseState, searchQuery);
+	const nextState = withSharedLibraryQuery(readLibraryBrowseState(libraryBrowseKey(nextTab, scope, browseStorageScope)) ?? defaultLibraryBrowseState, searchQuery);
     setActiveTab({ kind: "all" });
     setLocalScope(scope);
 	applyBrowseState(nextState, nextTab);
@@ -830,7 +837,7 @@ export function LibraryPage() {
 	const basePath = pathForLocalScope(scope);
 	const path = basePath ? libraryLocation(basePath, nextState) : null;
 	if (path && `${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({ libraryBrowseState: nextState }, "", path);
+	  window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
@@ -1123,6 +1130,7 @@ export function LibraryPage() {
         initialSourceIntent={detailSourceIntentFromLocation(window.location.search)}
         initialTrackedSourceID={detailTrackedSourceIDFromLocation(window.location.search)}
         initialRemoteCode={detailRemoteCodeFromLocation(window.location.search)}
+        principalID={principalID}
         onBack={backToLibrary}
         onStatusChange={updateWorkStatus}
         onPlay={() => {
@@ -1131,12 +1139,12 @@ export function LibraryPage() {
         }}
         onWorkReload={async (workID, includeMedia = false) => {
           const detail = await api.getWorkSummary(workID);
-          let mediaItems = getCachedWorkMedia(workID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
+          let mediaItems = getCachedWorkMedia(workID, principalID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
           if (includeMedia) {
-            invalidateCachedWorkMedia(workID);
+            invalidateCachedWorkMedia(workID, principalID);
             const media = await api.getWorkMedia(workID);
             mediaItems = media.mediaItems;
-            setCachedWorkMedia(workID, mediaItems);
+            setCachedWorkMedia(workID, principalID, mediaItems);
           }
           setSelectedWork({ ...detail, mediaItems });
         }}
@@ -3114,6 +3122,7 @@ function PersistedWorkDetailController({
   initialSourceIntent,
   initialTrackedSourceID,
   initialRemoteCode,
+  principalID,
   onBack,
   onStatusChange,
   onPlay,
@@ -3129,6 +3138,7 @@ function PersistedWorkDetailController({
   initialSourceIntent: DetailSourceIntent;
   initialTrackedSourceID: number | null;
   initialRemoteCode: string;
+  principalID: ClientPrincipalID;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
   onPlay: () => void;
@@ -3383,11 +3393,11 @@ function PersistedWorkDetailController({
     setMessage("");
     try {
       const result = await api.refreshWorkLocalFiles(target.id, selectedSource.fileSourceId);
-      invalidateCachedWorkMedia(target.id);
-      if (result.workId !== target.id) invalidateCachedWorkMedia(result.workId);
+      invalidateCachedWorkMedia(target.id, principalID);
+      if (result.workId !== target.id) invalidateCachedWorkMedia(result.workId, principalID);
       const refreshed = await api.getWork(result.workId);
       if (activeEdition || result.workId !== work?.id) {
-        setCachedWorkMedia(refreshed.id, refreshed.mediaItems);
+        setCachedWorkMedia(refreshed.id, principalID, refreshed.mediaItems);
         setActiveEdition(refreshed);
         setActiveEditionCode(refreshed.primaryCode);
       } else {
@@ -7573,6 +7583,7 @@ function isInternalReturnPath(path: string) {
 
 async function resolveAndOpenWork(
   code: string,
+  principalID: ClientPrincipalID,
   setSelectedWork: (work: WorkDetail | null) => void,
   setSelectedWorkPreview: (work: WorkPreview | null) => void,
   setSelectedCode: (code: string | null) => void,
@@ -7588,14 +7599,14 @@ async function resolveAndOpenWork(
     const resolved = await api.resolveWorkCode(code, signal);
     setSelectedWorkPreview(workPreviewFromResolve(resolved));
     const work = await api.getWorkSummary(resolved.workId, signal);
-    const cachedMedia = getCachedWorkMedia(resolved.workId);
+    const cachedMedia = getCachedWorkMedia(resolved.workId, principalID);
     if (cachedMedia) {
       setSelectedWork({ ...work, mediaItems: cachedMedia });
     } else {
       setSelectedWork(work);
       try {
         const media = await api.getWorkMedia(resolved.workId, signal);
-        setCachedWorkMedia(resolved.workId, media.mediaItems);
+        setCachedWorkMedia(resolved.workId, principalID, media.mediaItems);
         setSelectedWork({ ...work, mediaItems: media.mediaItems });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -7933,8 +7944,8 @@ function pathForActiveLibrary(tab: LibraryTab, scope: LocalLibraryScope) {
 	return tab.kind === "source" ? pathForLibraryTab(tab) : pathForLocalScope(scope) ?? "/";
 }
 
-function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope) {
-	return tab.kind === "source" ? `source:${tab.source.id}` : `scope:${scope}`;
+function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope, storageScope: string) {
+	return tab.kind === "source" ? `${storageScope}:source:${tab.source.id}` : `${storageScope}:scope:${scope}`;
 }
 
 function localScopeFromPath(path: string): LocalLibraryScope {

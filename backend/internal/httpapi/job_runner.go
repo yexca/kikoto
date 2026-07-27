@@ -139,7 +139,7 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 		WHERE job.status = 'queued'
 			AND run.status = 'queued'
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-		ORDER BY job.created_at ASC, job.id ASC
+		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC
 		LIMIT 1
 	`).Scan(&candidateID)
 	if errors.Is(err, sql.ErrNoRows) {

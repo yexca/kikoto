@@ -8,6 +8,29 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
+func TestClaimNextQueuedWorkflowJobUsesPersistentPriorityBeforeAge(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	statements := []string{
+		`INSERT OR IGNORE INTO workflow_definition (id, code, display_name) VALUES (1, 'priority-test', 'Priority test')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, 1, 'priority-test', 'Older background job', 'queued', 'schedule'), (2, 1, 'priority-test', 'Newer playback job', 'queued', 'playback')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, priority, created_at) VALUES (1, 1, 'background', 'queued', 0, '2000-01-01 00:00:00'), (2, 2, 'playback', 'queued', 100, '2030-01-01 00:00:00')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "priority-runner")
+	if err != nil || !ok {
+		t.Fatalf("claim = %+v, %v, %v", job, ok, err)
+	}
+	if job.ID != 2 {
+		t.Fatalf("claimed job %d, want high-priority job 2", job.ID)
+	}
+}
+
 func TestRecoverInterruptedWorkflowsRequeuesAndReclaimsCheckpoint(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})

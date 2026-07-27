@@ -12,11 +12,11 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
-The current sequence continues through `008_work_code_alias.sql`, which adds
-metadata-only logical-work code aliases and backfills existing edition metadata.
-`009_work_commercial_metadata.sql` adds normalized rating, sales, current
-commercial metadata, and permanent-free status, then backfills the projections
-from each work's latest DLsite snapshot.
+The current sequence continues through `014_workflow_job_priority.sql`.
+Migrations `008` through `013` add normalized work aliases and commercial
+metadata, terminal provider state, recommendation telemetry, and explicit video
+audio-presence data with a legacy backfill. Migration `014` adds durable
+workflow-job priority and its claim-order index.
 
 ## Guidelines
 

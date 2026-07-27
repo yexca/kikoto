@@ -1567,7 +1567,7 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID i
 		return mediaCacheResult{}, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
+		NodeRunID: cacheNodeID, WorkerType: "remote_media_cache", Status: "queued", Priority: workflow.JobPriorityPlayback, Payload: runInput, Recoverable: true, MaxRetries: 5, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {
 		return mediaCacheResult{}, err
@@ -4018,7 +4018,7 @@ func (s *Server) runRemoteBulkWorkflow(ctx context.Context, sourceID int64, acti
 			}
 		}
 		if !workFailed && (action == "fetch" || action == "track_fetch") {
-			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0)
+			saveResult, err := s.enqueueRemoteWorkSave(ctx, sourceID, code, []string{}, nil, "", "", nil, 0, workflow.JobPriorityBackground)
 			if err != nil {
 				result.Failed++
 				result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
