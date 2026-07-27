@@ -47,7 +47,7 @@ export function RemoteFetchDialog({
   const setAudioOnly = () => onChange(new Set(flattenLeaves(nodes).filter((node) => node.kind === "audio").map((node) => node.path)));
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
-      <div className="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl md:h-[86dvh]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold">Fetch selection</h3>
@@ -73,7 +73,9 @@ export function RemoteFetchDialog({
             <RemoteFetchTreeNode key={node.path} node={node} selectedPaths={selectedPaths} planByPath={planByPath} decisions={decisions} disabled={disabled} onChange={onChange} onDecisionChange={onDecisionChange} />
           )) : <div className="p-3 text-sm text-muted-foreground">No remote files detected.</div>}
         </div>
-        {message && <div className="border-t bg-destructive/10 px-3 py-2 text-sm text-destructive">{message}</div>}
+        <div aria-live="polite" className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${message ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
+          {message || <span className="invisible" aria-hidden="true">Fetch preview status</span>}
+        </div>
         <div className="flex flex-wrap justify-end gap-2 border-t p-3">
           <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>
           <Button onClick={onFetch} disabled={disabled || selectedPaths.size === 0}>

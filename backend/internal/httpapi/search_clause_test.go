@@ -42,6 +42,16 @@ func TestPlanRemoteSourceQueryPushesCompoundQueryToCompatibleSource(t *testing.T
 	}
 }
 
+func TestPlanRemoteSourceCodeQueryTrustsCompatibleSourceAliasMatches(t *testing.T) {
+	plan := planRemoteSourceQuery(`RJ01000001`, sourceTypeKikoeruCompatible)
+	if plan.PushdownQuery != "RJ01000001" {
+		t.Fatalf("PushdownQuery = %q, want code query", plan.PushdownQuery)
+	}
+	if len(plan.PostFilterClauses) != 0 {
+		t.Fatalf("PostFilterClauses = %#v, want source-owned alias matching", plan.PostFilterClauses)
+	}
+}
+
 func TestPlanLimitedRemoteSourceQueryPrioritizesLanguagePushdown(t *testing.T) {
 	plan := planRemoteSourceQuery(`RJ01234567 $lang:CHI_HANS$`, sourceTypeKikoeruCompatible178)
 	if plan.PushdownQuery != "$lang:CHI_HANS$" {

@@ -17,6 +17,7 @@ import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { readLastLibraryLocation } from "@/pages/libraryBrowseState";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -87,7 +88,11 @@ function AuthenticatedApp() {
   const openPage = (id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
-    openPath(item.path);
+    const path = id === "library"
+      ? readLastLibraryLocation(currentClientStorageScope(auth.user?.id ?? null)) ?? item.path
+      : item.path;
+    if (id === "library" && page === "library" && `${window.location.pathname}${window.location.search}` === path) return;
+    openPath(path);
   };
 
   const openPath = (path: string, state?: unknown) => {

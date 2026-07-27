@@ -38,6 +38,7 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
 };
 
 const storagePrefix = "kikoto:library-browse:";
+const lastLocationStoragePrefix = "kikoto:library-last-location:";
 const statuses = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"] satisfies ListeningStatus[];
 const sorts = ["recent", "release", "code", "title", "rating", "sales", "random", "recommend"] satisfies LibrarySort[];
 
@@ -55,6 +56,39 @@ export function writeLibraryBrowseState(key: string, state: LibraryBrowseState) 
     window.sessionStorage.setItem(`${storagePrefix}${key}`, JSON.stringify(state));
   } catch {
     // Browsing still works when session storage is unavailable.
+  }
+}
+
+export function readLastLibraryLocation(storageScope: string): string | null {
+  try {
+    return normalizeLibraryBrowseLocation(
+      window.sessionStorage.getItem(`${lastLocationStoragePrefix}${storageScope}`) ?? "",
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastLibraryLocation(storageScope: string, location: string) {
+  const normalized = normalizeLibraryBrowseLocation(location);
+  if (!normalized) return;
+  try {
+    window.sessionStorage.setItem(`${lastLocationStoragePrefix}${storageScope}`, normalized);
+  } catch {
+    // Navigation still works when session storage is unavailable.
+  }
+}
+
+export function normalizeLibraryBrowseLocation(location: string): string | null {
+  const value = location.trim();
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  const base = "http://kikoto.local";
+  try {
+    const parsed = new URL(value, base);
+    if (parsed.origin !== base || parsed.hash || !isLibraryBrowsePath(parsed.pathname)) return null;
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
   }
 }
 
@@ -145,4 +179,39 @@ export function localPageSize(value: number): LocalWorkPageSize {
 
 function parseColumnSearchValue(value: string | null) {
   return value === "auto" ? "auto" : Number(value);
+}
+
+function isLibraryBrowsePath(path: string) {
+  if (
+    [
+      "/",
+      "/tracked",
+      "/no-source",
+      "/library",
+      "/library/tracked",
+      "/library/no-source",
+      "/library/all",
+      "/library/remote",
+    ].includes(path)
+  ) {
+    return true;
+  }
+  if (/^\/library\/source\/[^/]+\/?$/.test(path)) return true;
+  if (
+    [
+      "/favorites",
+      "/circles",
+      "/voices",
+      "/workflows",
+      "/activity",
+      "/runs",
+      "/settings",
+      "/maintenance",
+      "/users",
+      "/about",
+    ].includes(path.replace(/\/$/, ""))
+  ) {
+    return false;
+  }
+  return /^\/[^/]+\/?$/.test(path) && !/^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i.test(path);
 }

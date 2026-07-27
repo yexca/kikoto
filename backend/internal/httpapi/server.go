@@ -47,6 +47,11 @@ type Server struct {
 	localMediaWriteSlot  chan struct{}
 	localDurationProbeMu sync.Mutex
 	mediaStreamCache     sync.Map
+	remoteEditionLookup  remoteEditionLookup
+}
+
+type remoteEditionLookup interface {
+	FetchProduct(ctx context.Context, workno string) (dlsite.Product, error)
 }
 
 type localMediaIndexCall struct {
@@ -61,6 +66,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
 		localMediaIndexes:    map[string]*localMediaIndexCall{},
 		localMediaWriteSlot:  make(chan struct{}, 1),
+		remoteEditionLookup:  dlsite.NewClient(nil),
 	}
 }
 

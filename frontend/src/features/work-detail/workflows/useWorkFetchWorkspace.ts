@@ -11,6 +11,7 @@ import type { RemoteSourceAvailability } from "@/features/work-detail/source/sou
 import {
   api,
   type RemoteFetchFileDecision,
+  type RemoteFetchPreparation,
   type RemoteWorkDetail,
   type RemoteWorkSavePlan,
   type RemoteWorkSaveResult,
@@ -23,6 +24,7 @@ export type WorkFetchDraft = {
   selectedLocalPaths: Set<string>;
   targetRoot: string;
   plan: RemoteWorkSavePlan | null;
+  preparation: RemoteFetchPreparation;
   decisions: Record<string, RemoteFetchFileDecision>;
   planDirty: boolean;
   message: string;
@@ -68,6 +70,7 @@ export function useWorkFetchWorkspace({
         selectedLocalPaths: new Set(),
         targetRoot: "",
         plan,
+        preparation: plan.preparation,
         decisions: {},
         planDirty: false,
         message: formatRemoteFetchPreparation(plan),

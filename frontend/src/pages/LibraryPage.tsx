@@ -77,6 +77,7 @@ import {
   type RemoteWork,
   type RemoteWorkDetail,
   type RemoteFetchFileDecision,
+  type RemoteFetchPreparation,
   type RemoteFetchResolution,
   type RemoteWorkSavePlan,
   type RemoteWorkSaveResult,
@@ -103,6 +104,7 @@ import {
   localPageSize,
   localWorkPageSizeOptions,
   readLibraryBrowseState,
+  writeLastLibraryLocation,
   withSharedLibraryQuery,
   writeLibraryBrowseState,
   type LibraryBrowseState,
@@ -361,7 +363,7 @@ export function LibraryPage() {
 	const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
-  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string; requestId: string } | null>(null);
+  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; preparation: RemoteFetchPreparation; message: string; requestId: string } | null>(null);
   const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
@@ -688,12 +690,15 @@ export function LibraryPage() {
 		const browseState = { ...activeBrowseState, scrollY: window.scrollY };
 		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
 		const nextSearch = libraryBrowseSearch(activeBrowseState);
+		if (sourceRoutesReady) {
+			writeLastLibraryLocation(browseStorageScope, `${pathForActiveLibrary(activeTab, localScope)}${nextSearch}`);
+		}
 		window.history.replaceState({
 			...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
 			libraryBrowseScope: browseStorageScope,
 			libraryBrowseState: browseState,
 		}, "", `${window.location.pathname}${nextSearch}`);
-	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
+	}, [activeTab, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, sourceRoutesReady, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
 
   useEffect(() => {
     if (activeTab.kind === "source" || isLibraryLoading) return;
@@ -886,7 +891,7 @@ export function LibraryPage() {
       const detail = await api.getRemoteSourceWork(source.id, sourcePresenceActionCode(presence, work.primaryCode));
       const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
       const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), paths);
-      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
+      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, preparation: plan.preparation, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
     } catch (error) {
       toast.notify(toastFromError(error, "Fetch preparation failed."));
     } finally {
@@ -1471,6 +1476,7 @@ export function LibraryPage() {
           selectedPaths={trackedFetchSelection.selectedPaths}
           selectedLocalPaths={trackedFetchSelection.selectedLocalPaths}
           plan={trackedFetchSelection.plan}
+          preparation={trackedFetchSelection.preparation}
           decisions={trackedFetchSelection.decisions}
           planDirty={trackedFetchSelection.planDirty}
           message={trackedFetchSelection.message}
@@ -1633,7 +1639,7 @@ function RemoteSourcePanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
-  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string; requestId: string } | null>(null);
+  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; preparation: RemoteFetchPreparation; message: string; requestId: string } | null>(null);
   const { page, pageSize } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
@@ -1655,10 +1661,9 @@ function RemoteSourcePanel({
     }
   };
 
-  const visibleWorks = useMemo(() => {
-    const works = result?.works ?? [];
-    return works.filter((work) => remoteWorkMatchesSearch(work, searchClauses));
-  }, [result, searchClauses]);
+  // The backend owns remote-source matching, including source-specific aliases and
+  // translated editions whose returned code can differ from the submitted code.
+  const visibleWorks = result?.works ?? [];
   const selectableWorks = visibleWorks.filter((work) => work.primaryCode);
   const selectedWorks = selectableWorks.filter((work) => bulkCodes.has(work.primaryCode));
   const selectedSyncable = selectedWorks.filter((work) => work.workId === null);
@@ -1754,7 +1759,7 @@ function RemoteSourcePanel({
       const root = buildRemoteTree(detail.tracks);
       const paths = remoteSelectablePaths(root);
       const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), paths);
-      setSaveSelection({ work, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
+      setSaveSelection({ work, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, preparation: plan.preparation, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
     } catch (error) {
       toast.notify(toastFromError(error, "Remote directory failed."));
     } finally {
@@ -1961,6 +1966,7 @@ function RemoteSourcePanel({
           selectedPaths={saveSelection.selectedPaths}
           selectedLocalPaths={saveSelection.selectedLocalPaths}
           plan={saveSelection.plan}
+          preparation={saveSelection.preparation}
           decisions={saveSelection.decisions}
           planDirty={saveSelection.planDirty}
           message={saveSelection.message}
@@ -2758,6 +2764,7 @@ function RemoteOnlyWorkDetailController({
   const [selectedTargetRoot, setSelectedTargetRoot] = useState("");
   const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
   const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
+  const [savePreparation, setSavePreparation] = useState<RemoteFetchPreparation | null>(null);
   const [saveDecisions, setSaveDecisions] = useState<RemoteFetchDecisions>({});
   const [savePlanDirty, setSavePlanDirty] = useState(false);
   const [savePlanMessage, setSavePlanMessage] = useState("");
@@ -2789,6 +2796,7 @@ function RemoteOnlyWorkDetailController({
     setSelectedLocalSavePaths(new Set());
     setSelectedTargetRoot("");
     setSavePlan(null);
+    setSavePreparation(null);
     setSavePlanMessage("");
     const controller = new AbortController();
     api.getRemoteSourceWork(source.id, code, controller.signal).then(setDetail).catch((error) => {
@@ -2865,6 +2873,7 @@ function RemoteOnlyWorkDetailController({
       setSaveDecisions({});
       setSavePlanDirty(false);
       setSavePlan(plan);
+      setSavePreparation(plan.preparation);
       setSavePlanMessage(formatRemoteFetchPreparation(plan));
       setIsSaveSelectionOpen(true);
     } catch (error) {
@@ -2895,6 +2904,7 @@ function RemoteOnlyWorkDetailController({
       toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
       setIsSaveSelectionOpen(false);
       setSavePlan(null);
+      setSavePreparation(null);
       setSaveDecisions({});
       setSavePlanDirty(false);
       setSavePlanMessage("");
@@ -3032,6 +3042,7 @@ function RemoteOnlyWorkDetailController({
           selectedPaths={selectedSavePaths}
           selectedLocalPaths={selectedLocalSavePaths}
           plan={savePlan}
+          preparation={savePreparation}
           decisions={saveDecisions}
           planDirty={savePlanDirty}
           message={savePlanMessage}
@@ -3059,7 +3070,10 @@ function RemoteOnlyWorkDetailController({
             setSavePlanDirty(true);
           }}
           disabled={isSaving}
-          onClose={() => setIsSaveSelectionOpen(false)}
+          onClose={() => {
+            setIsSaveSelectionOpen(false);
+            setSavePreparation(null);
+          }}
           onSave={() => void saveSelected()}
         />
       ) : null}
@@ -3605,6 +3619,7 @@ function PersistedWorkDetailController({
       selectedPaths={fetchWorkspace.draft.selectedPaths}
       selectedLocalPaths={fetchWorkspace.draft.selectedLocalPaths}
       plan={fetchWorkspace.draft.plan}
+      preparation={fetchWorkspace.draft.preparation}
       decisions={fetchWorkspace.draft.decisions}
       planDirty={fetchWorkspace.draft.planDirty}
       message={fetchWorkspace.draft.message}
@@ -5596,6 +5611,7 @@ function RemoteSaveSelectionPanel({
   selectedLocalPaths,
   disabled,
   plan,
+  preparation,
   decisions,
   planDirty,
   message,
@@ -5615,6 +5631,7 @@ function RemoteSaveSelectionPanel({
   selectedLocalPaths: Set<string>;
   disabled: boolean;
   plan?: RemoteWorkSavePlan | null;
+  preparation?: RemoteFetchPreparation | null;
   decisions?: RemoteFetchDecisions;
   planDirty?: boolean;
   message?: string;
@@ -5630,6 +5647,7 @@ function RemoteSaveSelectionPanel({
   onTargetRootChange?: (root: string) => void;
 }) {
   const [activePane, setActivePane] = useState<"local" | "remote" | "result">("remote");
+  const stablePreparation = preparation ?? plan?.preparation;
   const currentEditionCode = remoteFetchCurrentEditionCode(plan, activeEditionCode);
 	const [selectedEditionCode, setSelectedEditionCode] = useState(currentEditionCode);
   const [checkingEditionCode, setCheckingEditionCode] = useState("");
@@ -5639,7 +5657,7 @@ function RemoteSaveSelectionPanel({
   const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
   const localTree = useMemo(() => buildRemoteFetchLocalTree(plan), [plan]);
   const hasLocalFiles = Boolean(plan?.localFiles.length);
-  const activeEdition = plan?.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === (activeEditionCode ?? plan.primaryCode).toUpperCase());
+  const activeEdition = stablePreparation?.editions.find((edition) => edition.primaryCode.toUpperCase() === (activeEditionCode ?? plan?.primaryCode ?? "").toUpperCase());
   const plannedRoot = activeEdition?.localRoots.find((root) => root.rootPath === plan?.saveRoot);
   const messageIsConflict = Boolean(plan && hasRemoteFetchConflicts(plan));
   const previewNeedsRefresh = !plan || Boolean(planDirty);
@@ -5699,7 +5717,7 @@ function RemoteSaveSelectionPanel({
   }, [disabled, previewNeedsRefresh, previewRevision, selectedEditionCode, selectedLocalPaths.size, selectedPaths.size]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-      <div className="flex max-h-[90dvh] w-full max-w-7xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl md:h-[90dvh]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div>
             <h3 className="text-base font-semibold">Fetch selection</h3>
@@ -5709,52 +5727,51 @@ function RemoteSaveSelectionPanel({
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-        {plan?.preparation && (
-          <div className="border-b bg-muted/30 p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <Languages className="h-3.5 w-3.5" /> Language editions
-              <Badge variant={plan.preparation.metadataStatus === "complete" ? "secondary" : "outline"}>{plan.preparation.metadataStatus}</Badge>
+        {stablePreparation && (
+          <div className="flex shrink-0 items-stretch gap-2 overflow-x-auto border-b bg-muted/30 px-3 py-2">
+            <div className="flex min-w-28 shrink-0 flex-col justify-center text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5 font-medium uppercase tracking-wide"><Languages className="h-3.5 w-3.5" /> Languages</span>
+              <span className="mt-1"><Badge variant={stablePreparation.metadataStatus === "complete" ? "secondary" : "outline"}>{stablePreparation.metadataStatus}</Badge></span>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {plan.preparation.editions.map((edition) => {
-				const viewing = (activeEditionCode ?? plan.primaryCode).toUpperCase() === edition.primaryCode.toUpperCase();
-				const selected = selectedEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
-                const availableSources = edition.sources.filter((source) => source.status === "available").length;
-                const selectedSourceAvailable = !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
-                const checking = checkingEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
-                return (
-				  <label key={edition.primaryCode} className={`flex min-w-48 cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"}`}>
-					<Checkbox
-					  checked={selected}
-					  disabled={disabled || checking}
-					  aria-label={`Select ${edition.primaryCode}`}
-					  onCheckedChange={(checked) => {
-						if (!checked) {
-						  setSelectedEditionCode("");
-						  return;
-						}
-						if (!onEditionChange) {
-						  setSelectedEditionCode(edition.primaryCode);
-						  return;
-						}
-						setCheckingEditionCode(edition.primaryCode);
-						void onEditionChange(edition.primaryCode).then((available) => {
-						  if (available) setSelectedEditionCode(edition.primaryCode);
-						}).finally(() => setCheckingEditionCode(""));
-					  }}
-					/>
-					<span className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold">{translationKindLabel(edition.translationKind)}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground">{edition.primaryCode}</span>
-                    </div>
-                    <div className="mt-1 truncate text-xs" title={edition.title}>{edition.metadataLanguage || edition.editionLabel || "Unknown language"}</div>
-                    <div className="mt-1 flex gap-1 text-[10px] text-muted-foreground"><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span><span>·</span><span>{checking ? "checking" : viewing || selectedSourceAvailable ? "available" : "not checked"}</span></div>
-					</span>
-				  </label>
-                );
-              })}
-            </div>
+            {stablePreparation.editions.map((edition) => {
+			  const viewing = (activeEditionCode ?? plan?.primaryCode ?? "").toUpperCase() === edition.primaryCode.toUpperCase();
+			  const selected = selectedEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
+              const availableSources = edition.sources.filter((source) => source.status === "available").length;
+              const selectedSourceAvailable = !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
+              const checking = checkingEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
+              return (
+				<label key={edition.primaryCode} title={edition.title} className={`flex min-w-48 shrink-0 cursor-pointer items-start gap-2 rounded-md border px-3 py-1.5 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"}`}>
+				  <Checkbox
+					checked={selected}
+					disabled={disabled || checking}
+					aria-label={`Select ${edition.primaryCode}`}
+					onCheckedChange={(checked) => {
+					  if (!checked) {
+						setSelectedEditionCode("");
+						return;
+					  }
+					  if (!onEditionChange) {
+						setSelectedEditionCode(edition.primaryCode);
+						return;
+					  }
+					  setCheckingEditionCode(edition.primaryCode);
+					  void onEditionChange(edition.primaryCode).then((available) => {
+						if (available) setSelectedEditionCode(edition.primaryCode);
+					  }).finally(() => setCheckingEditionCode(""));
+					}}
+				  />
+				  <span className="min-w-0 flex-1 leading-tight">
+                  <span className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate font-semibold">{languageLabel(edition.metadataLanguage || edition.editionLabel)}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{translationKindLabel(edition.translationKind)}</span>
+                  </span>
+                  <span className="mt-1 flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+                    <span className="font-mono">{edition.primaryCode}</span><span>·</span><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span><span>·</span><span>{checking ? "checking" : viewing || selectedSourceAvailable ? "available" : "not checked"}</span>
+                  </span>
+				  </span>
+				</label>
+              );
+            })}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
@@ -5837,11 +5854,9 @@ function RemoteSaveSelectionPanel({
             {plan ? <RemoteFetchResultTree plan={plan} decisions={decisions ?? {}} onDecisionChange={onDecisionChange} /> : <FetchPaneEmpty label="Refresh the comparison to build the result tree." />}
           </div>
         </div>
-        {message && (
-          <div className={`border-t px-3 py-2 text-sm ${messageIsConflict ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
-            {message}
-          </div>
-        )}
+        <div aria-live="polite" className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${messageIsConflict ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
+          {message || <span className="invisible" aria-hidden="true">Fetch preview status</span>}
+        </div>
         <div className="flex flex-wrap justify-end gap-2 border-t p-3">
           <Button variant="outline" onClick={onClose} disabled={disabled}>
             Cancel
@@ -7774,42 +7789,6 @@ function workMatchesClause(work: Work, clause: SearchClause) {
 
 function workMatchesText(values: string[], needle: string) {
   return values.some((item) => item.toLowerCase().includes(needle));
-}
-
-function remoteWorkMatchesSearch(work: RemoteWork, clauses: SearchClause[]) {
-  if (clauses.length === 0) return true;
-  return clauses.every((clause) => remoteWorkMatchesClause(work, clause));
-}
-
-function remoteWorkMatchesClause(work: RemoteWork, clause: SearchClause) {
-  const value = clause.value.trim().toLowerCase();
-  if (!value) return true;
-  switch (clause.kind) {
-    case "code":
-      return work.primaryCode.toLowerCase().includes(value) || work.remoteId.toLowerCase().includes(value);
-    case "circle":
-      return work.circle.toLowerCase().includes(value);
-    case "tag":
-      return work.tags.some((tag) => tag.toLowerCase().includes(value));
-    case "exclude_tag":
-      return !work.tags.some((tag) => tag.toLowerCase().includes(value));
-    case "rating_min":
-      return work.rating !== null && work.rating >= numericClauseValue(value);
-    case "sales_min":
-      return work.sales !== null && work.sales >= numericClauseValue(value);
-    case "voice_actor":
-    case "user_tag":
-    case "exclude_user_tag":
-    case "age":
-    case "language":
-    case "duration_min":
-    case "duration_max":
-    case "shelf":
-      return true;
-    case "text":
-    default:
-      return workMatchesText([work.primaryCode, work.remoteId, work.title, work.circle, work.releaseDate, ...work.tags], value);
-  }
 }
 
 function numericClauseValue(value: string) {
