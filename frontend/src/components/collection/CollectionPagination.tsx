@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { paginationItems } from "@/components/work-collection/paginationModel";
+import { cn } from "@/lib/utils";
 
 export type CollectionPaginationProps = {
   placement: "top" | "bottom";
@@ -14,6 +15,7 @@ export type CollectionPaginationProps = {
   ariaLabel?: string;
   summary?: ReactNode;
   pageSizeOptions?: readonly number[];
+  pageSizeControlClassName?: string;
   leadingControls?: ReactNode;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
@@ -29,6 +31,7 @@ export function CollectionPagination({
   ariaLabel = "Pages",
   summary,
   pageSizeOptions,
+  pageSizeControlClassName,
   leadingControls,
   onPageChange,
   onPageSizeChange,
@@ -96,7 +99,7 @@ export function CollectionPagination({
         {leadingControls}
         {pageSizeOptions && onPageSizeChange && (
           <select
-            className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+            className={cn("h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring", pageSizeControlClassName)}
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
             aria-label={`${itemLabel} per page`}

@@ -3,19 +3,26 @@ import {
   ArrowDownZA,
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
+  Check,
+  ChevronRight,
+  Columns3,
   ExternalLink,
   Filter,
   Heart,
+  LayoutGrid,
   ListChecks,
   ListMusic,
   Mic2,
   MoreHorizontal,
+  PanelsTopLeft,
   Pencil,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Star,
   Trash2,
   UsersRound,
@@ -376,6 +383,39 @@ export function FavoritesPage() {
     setPage(1);
   };
 
+  const changeAvailabilityFilter = (value: AvailabilityFilter) => {
+    setAvailabilityFilter(value);
+    setPage(1);
+  };
+
+  const changePageSize = (value: PageSize) => {
+    setPageSize(value);
+    setPage(1);
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((value) => {
+      if (value) setSelectedWorkIDs(new Set());
+      return !value;
+    });
+  };
+
+  const changeFavoriteSort = (value: FavoriteSort) => {
+    setSort(value);
+    if (value === "random") setRandomSeed(createFavoriteRandomSeed());
+    setPage(1);
+  };
+
+  const changeFavoriteSortDirection = (value: SortDirection) => {
+    setSortDirection(value);
+    setPage(1);
+  };
+
+  const reshuffleFavorites = () => {
+    setRandomSeed(createFavoriteRandomSeed());
+    setPage(1);
+  };
+
   const openShelfUserTag = (tag: string) => {
     const tagClause = personalTagSearch(tag);
     const target = libraryLocation("/library", {
@@ -611,67 +651,71 @@ export function FavoritesPage() {
         totalItems={totalWorks}
         totalPages={totalPages}
         pageSizeOptions={pageSizeOptions}
+        pageSizeControlClassName="hidden lg:block"
         onPageChange={setPage}
-        onPageSizeChange={(value) => {
-          setPageSize(value as PageSize);
-          setPage(1);
-        }}
+        onPageSizeChange={(value) => changePageSize(value as PageSize)}
         leadingControls={(
           <>
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-              value={availabilityFilter}
-              onChange={(event) => {
-                setAvailabilityFilter(event.target.value as AvailabilityFilter);
-                setPage(1);
-              }}
-              aria-label="Availability filter"
-            >
-              {availabilityFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>
-            {hasActiveFilters && (
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearFilters} aria-label="Clear shelf filters" title="Clear shelf filters">
-                <X className="h-4 w-4" />
+            <div className="lg:hidden">
+              <FavoriteMobileOptions
+                availability={availabilityFilter}
+                sort={sort}
+                direction={sortDirection}
+                pageSize={pageSize}
+                viewMode={viewMode}
+                mobileColumns={mobileColumns}
+                selectionMode={selectionMode}
+                hasActiveFilters={Boolean(hasActiveFilters)}
+                sortDisabled={isLoading}
+                onAvailabilityChange={changeAvailabilityFilter}
+                onSortChange={changeFavoriteSort}
+                onDirectionChange={changeFavoriteSortDirection}
+                onReshuffle={reshuffleFavorites}
+                onPageSizeChange={changePageSize}
+                onViewModeChange={setViewMode}
+                onMobileColumnsChange={setMobileColumns}
+                onToggleSelection={toggleSelectionMode}
+                onClearFilters={clearFilters}
+              />
+            </div>
+            <div className="hidden items-center gap-2 lg:flex">
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                value={availabilityFilter}
+                onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
+                aria-label="Availability filter"
+              >
+                {availabilityFilters.map((filter) => (
+                  <option key={filter.value} value={filter.value}>
+                    {filter.label}
+                  </option>
+                ))}
+              </select>
+              {hasActiveFilters && (
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearFilters} aria-label="Clear shelf filters" title="Clear shelf filters">
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+              <Button variant={selectionMode ? "default" : "outline"} size="sm" className="h-8" onClick={toggleSelectionMode}>
+                Select
               </Button>
-            )}
-            <Button variant={selectionMode ? "default" : "outline"} size="sm" className="h-8" onClick={() => {
-              setSelectionMode((value) => {
-                if (value) setSelectedWorkIDs(new Set());
-                return !value;
-              });
-            }}>
-              Select
-            </Button>
-            <WorkCollectionLayoutPicker
-              viewMode={viewMode}
-              mobileColumns={mobileColumns}
-              desktopColumns={desktopColumns}
-              onViewModeChange={setViewMode}
-              onMobileColumnsChange={setMobileColumns}
-              onDesktopColumnsChange={setDesktopColumns}
-            />
-            <FavoriteSortControls
-              value={sort}
-              direction={sortDirection}
-              disabled={isLoading}
-              onChange={(value) => {
-                setSort(value);
-                if (value === "random") setRandomSeed(createFavoriteRandomSeed());
-                setPage(1);
-              }}
-              onDirectionChange={(value) => {
-                setSortDirection(value);
-                setPage(1);
-              }}
-              onReshuffle={() => {
-                setRandomSeed(createFavoriteRandomSeed());
-                setPage(1);
-              }}
-            />
+              <WorkCollectionLayoutPicker
+                viewMode={viewMode}
+                mobileColumns={mobileColumns}
+                desktopColumns={desktopColumns}
+                onViewModeChange={setViewMode}
+                onMobileColumnsChange={setMobileColumns}
+                onDesktopColumnsChange={setDesktopColumns}
+              />
+              <FavoriteSortControls
+                value={sort}
+                direction={sortDirection}
+                disabled={isLoading}
+                onChange={changeFavoriteSort}
+                onDirectionChange={changeFavoriteSortDirection}
+                onReshuffle={reshuffleFavorites}
+              />
+            </div>
           </>
         )}
       />
@@ -1072,37 +1116,273 @@ function FavoriteSortControls({
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const label = favoriteSortOptions.find((option) => option.value === value)?.label ?? "Sort";
   const directionTitle = value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
   return (
-    <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
-      <select
-        className="h-7 max-w-36 rounded-l-md bg-transparent px-2 text-xs outline-none disabled:opacity-50"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value as FavoriteSort)}
-        aria-label="Sort shelf works"
-      >
-        {favoriteSortOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+    <div className="relative" ref={anchorRef}>
+      <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
+        <button
+          type="button"
+          className="inline-flex h-7 min-w-0 max-w-40 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+          disabled={disabled}
+          onClick={() => setOpen((current) => !current)}
+          aria-label={`Sort shelf works: ${label}`}
+          title={`Sort shelf works: ${label}`}
+        >
+          <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{label}</span>
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-8 rounded-l-none border-l"
+          disabled={disabled}
+          onClick={() => value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc")}
+          aria-label={directionTitle}
+          title={directionTitle}
+        >
+          {value === "random"
+            ? <RefreshCw className="h-4 w-4" />
+            : direction === "asc"
+              ? <ArrowDownAZ className="h-4 w-4" />
+              : <ArrowDownZA className="h-4 w-4" />}
+        </Button>
+      </div>
+      <AnchoredPopover open={open && !disabled} anchorRef={anchorRef} onOpenChange={setOpen} className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm">
+        <div role="menu" aria-label="Shelf sort options">
+          {favoriteSortOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === option.value}
+              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+type FavoriteMobilePanel = "root" | "availability" | "sort" | "view" | "columns" | "page-size";
+
+function FavoriteMobileOptions({
+  availability,
+  sort,
+  direction,
+  pageSize,
+  viewMode,
+  mobileColumns,
+  selectionMode,
+  hasActiveFilters,
+  sortDisabled,
+  onAvailabilityChange,
+  onSortChange,
+  onDirectionChange,
+  onReshuffle,
+  onPageSizeChange,
+  onViewModeChange,
+  onMobileColumnsChange,
+  onToggleSelection,
+  onClearFilters,
+}: {
+  availability: AvailabilityFilter;
+  sort: FavoriteSort;
+  direction: SortDirection;
+  pageSize: PageSize;
+  viewMode: WorkCollectionViewMode;
+  mobileColumns: WorkCollectionColumnSetting;
+  selectionMode: boolean;
+  hasActiveFilters: boolean;
+  sortDisabled: boolean;
+  onAvailabilityChange: (value: AvailabilityFilter) => void;
+  onSortChange: (value: FavoriteSort) => void;
+  onDirectionChange: (value: SortDirection) => void;
+  onReshuffle: () => void;
+  onPageSizeChange: (value: PageSize) => void;
+  onViewModeChange: (value: WorkCollectionViewMode) => void;
+  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  onToggleSelection: () => void;
+  onClearFilters: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<FavoriteMobilePanel>("root");
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const availabilityLabel = availabilityFilters.find((option) => option.value === availability)?.label ?? "All sources";
+  const sortLabel = favoriteSortOptions.find((option) => option.value === sort)?.label ?? "Sort";
+  const directionLabel = sort === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
+  const viewLabel = viewMode === "masonry" ? "Masonry" : "Grid";
+  const columnsLabel = mobileColumns === "auto" ? "Auto" : String(mobileColumns);
+
+  const close = () => {
+    setOpen(false);
+    setPanel("root");
+  };
+  const runAndClose = (action: () => void) => {
+    action();
+    close();
+  };
+  const setPopoverOpen = (value: boolean) => {
+    setOpen(value);
+    if (!value) setPanel("root");
+  };
+
+  return (
+    <div className="relative" ref={anchorRef}>
       <Button
-        variant="ghost"
+        variant="outline"
         size="icon"
-        className="h-7 w-8 rounded-l-none border-l"
-        disabled={disabled}
-        onClick={() => value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc")}
-        aria-label={directionTitle}
-        title={directionTitle}
+        className="relative h-8 w-8"
+        onClick={() => setPopoverOpen(!open)}
+        aria-label="More shelf options"
+        title="More shelf options"
+        data-shelf-sort={sort}
       >
-        {value === "random"
-          ? <RefreshCw className="h-4 w-4" />
-          : direction === "asc"
-            ? <ArrowDownAZ className="h-4 w-4" />
-            : <ArrowDownZA className="h-4 w-4" />}
+        <SlidersHorizontal className="h-4 w-4" />
+        {(hasActiveFilters || selectionMode) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
       </Button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setPopoverOpen}
+        className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
+        {panel === "root" ? (
+          <div role="menu" aria-label="More shelf options">
+            <div className="px-3 py-2 text-xs font-semibold text-foreground">More options</div>
+            <FavoriteMobileMenuRow icon={<Filter className="h-4 w-4" />} label="Availability" value={availabilityLabel} onClick={() => setPanel("availability")} />
+            <FavoriteMobileMenuRow icon={<ArrowUpDown className="h-4 w-4" />} label="Sort" value={sortLabel} disabled={sortDisabled} onClick={() => setPanel("sort")} />
+            <FavoriteMobileMenuRow
+              icon={sort === "random" ? <RefreshCw className="h-4 w-4" /> : direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
+              label={sort === "random" ? "Shuffle" : "Sort direction"}
+              value={directionLabel}
+              disabled={sortDisabled}
+              trailing={false}
+              onClick={() => runAndClose(sort === "random" ? onReshuffle : () => onDirectionChange(direction === "asc" ? "desc" : "asc"))}
+            />
+            <FavoriteMobileMenuRow icon={viewMode === "masonry" ? <PanelsTopLeft className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />} label="Layout" value={viewLabel} onClick={() => setPanel("view")} />
+            <FavoriteMobileMenuRow icon={<Columns3 className="h-4 w-4" />} label="Columns" value={columnsLabel} onClick={() => setPanel("columns")} />
+            <FavoriteMobileMenuRow icon={<ListMusic className="h-4 w-4" />} label="Per page" value={String(pageSize)} onClick={() => setPanel("page-size")} />
+            <FavoriteMobileMenuRow icon={<ListChecks className="h-4 w-4" />} label="Selection mode" value={selectionMode ? "On" : "Off"} trailing={false} onClick={() => runAndClose(onToggleSelection)} />
+            {hasActiveFilters && (
+              <FavoriteMobileMenuRow icon={<X className="h-4 w-4" />} label="Clear filters" value="" trailing={false} onClick={() => runAndClose(onClearFilters)} />
+            )}
+          </div>
+        ) : (
+          <FavoriteMobileOptionPanel
+            panel={panel}
+            availability={availability}
+            sort={sort}
+            pageSize={pageSize}
+            viewMode={viewMode}
+            mobileColumns={mobileColumns}
+            onBack={() => setPanel("root")}
+            onAvailabilityChange={(value) => runAndClose(() => onAvailabilityChange(value))}
+            onSortChange={(value) => runAndClose(() => onSortChange(value))}
+            onPageSizeChange={(value) => runAndClose(() => onPageSizeChange(value))}
+            onViewModeChange={(value) => runAndClose(() => onViewModeChange(value))}
+            onMobileColumnsChange={(value) => runAndClose(() => onMobileColumnsChange(value))}
+          />
+        )}
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteMobileMenuRow({ icon, label, value, trailing = true, disabled = false, onClick }: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  trailing?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1 text-foreground">{label}</span>
+      {value && <span className="max-w-28 truncate text-xs">{value}</span>}
+      {trailing && <ChevronRight className="h-4 w-4 shrink-0" />}
+    </button>
+  );
+}
+
+function FavoriteMobileOptionPanel({
+  panel,
+  availability,
+  sort,
+  pageSize,
+  viewMode,
+  mobileColumns,
+  onBack,
+  onAvailabilityChange,
+  onSortChange,
+  onPageSizeChange,
+  onViewModeChange,
+  onMobileColumnsChange,
+}: {
+  panel: Exclude<FavoriteMobilePanel, "root">;
+  availability: AvailabilityFilter;
+  sort: FavoriteSort;
+  pageSize: PageSize;
+  viewMode: WorkCollectionViewMode;
+  mobileColumns: WorkCollectionColumnSetting;
+  onBack: () => void;
+  onAvailabilityChange: (value: AvailabilityFilter) => void;
+  onSortChange: (value: FavoriteSort) => void;
+  onPageSizeChange: (value: PageSize) => void;
+  onViewModeChange: (value: WorkCollectionViewMode) => void;
+  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
+}) {
+  const title = panel === "availability" ? "Availability" : panel === "sort" ? "Sort" : panel === "view" ? "Layout" : panel === "columns" ? "Columns" : "Per page";
+  const options = panel === "availability"
+    ? availabilityFilters.map((option) => ({ key: option.value, label: option.label, selected: option.value === availability, select: () => onAvailabilityChange(option.value) }))
+    : panel === "sort"
+      ? favoriteSortOptions.map((option) => ({ key: option.value, label: option.label, selected: option.value === sort, select: () => onSortChange(option.value) }))
+      : panel === "view"
+        ? ([
+            { key: "grid", label: "Grid", selected: viewMode === "grid", select: () => onViewModeChange("grid") },
+            { key: "masonry", label: "Masonry", selected: viewMode === "masonry", select: () => onViewModeChange("masonry") },
+          ])
+        : panel === "columns"
+          ? (["auto", 1, 2] as const).map((option) => ({ key: String(option), label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`, selected: option === mobileColumns, select: () => onMobileColumnsChange(option) }))
+          : pageSizeOptions.map((option) => ({ key: String(option), label: `${option} per page`, selected: option === pageSize, select: () => onPageSizeChange(option) }));
+  return (
+    <div role="menu" aria-label={`${title} options`}>
+      <div className="flex min-h-10 items-center gap-2 px-1">
+        <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onBack} aria-label="Back to more options">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-xs font-semibold text-foreground">{title}</span>
+      </div>
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          role="menuitemradio"
+          aria-checked={option.selected}
+          className={`flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${option.selected ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+          onClick={option.select}
+        >
+          <Check className={`h-4 w-4 shrink-0 ${option.selected ? "opacity-100" : "opacity-0"}`} />
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -223,14 +223,14 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Shelved" },
 ];
 const librarySortOptions: { value: LibrarySort; label: string }[] = [
+  { value: "recommend", label: "Recommended" },
   { value: "recent", label: "Recently added" },
   { value: "release", label: "Release date" },
-  { value: "code", label: "Code" },
-  { value: "title", label: "Title" },
-  { value: "rating", label: "Rating" },
-  { value: "sales", label: "Sales" },
   { value: "random", label: "Random" },
-  { value: "recommend", label: "Recommended" },
+  { value: "rating", label: "Rating" },
+  { value: "code", label: "Code" },
+  { value: "sales", label: "Sales" },
+  { value: "title", label: "Title" },
 ];
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {

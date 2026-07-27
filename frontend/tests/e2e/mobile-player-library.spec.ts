@@ -800,6 +800,16 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await page.getByRole("button", { name: "Sort: Recommended" }).click();
   const selectedSort = page.getByRole("button", { name: "Recommended", exact: true });
   await expect(selectedSort).toHaveClass(/bg-primary\/10/);
+	await expect(selectedSort.locator("xpath=parent::div").getByRole("button")).toHaveText([
+	  "Recommended",
+	  "Recently added",
+	  "Release date",
+	  "Random",
+	  "Rating",
+	  "Code",
+	  "Sales",
+	  "Title",
+	]);
 	await expect(selectedSort.locator("svg")).toHaveCount(0);
   expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
 });
