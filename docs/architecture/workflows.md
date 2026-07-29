@@ -16,7 +16,7 @@ workflow_definition
 
 ## Current Built-In Workflows
 
-- Local library scan.
+- Local library scan and missing metadata sync.
 - Metadata sync.
 - Remote source sync.
 - Source availability check.
@@ -59,9 +59,10 @@ running.
 
 ## Source Availability
 
-Source availability is checked by the backend instead of frontend fan-out. Batch
-startup and source-change checks first probe source health, then check candidate
-works only against reachable sources.
+Source availability is checked by the backend instead of frontend fan-out.
+Source-change checks first probe source health, then check candidate works only
+against reachable sources. The local library scan does not check remote source
+availability.
 
 ## Review Candidates
 

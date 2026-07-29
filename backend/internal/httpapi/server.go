@@ -188,7 +188,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/workflow-candidates/{id}", s.updateWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/local-cleanup", s.cleanupLocalWorkflowCandidate)
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/archived-root-review", s.reviewArchivedFetchRoots)
-	mux.HandleFunc("POST /api/workflow-runs/startup-library-refresh", s.createStartupLibraryRefreshRun)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
@@ -3829,27 +3828,15 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
 		return
 	}
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
 	result, err := s.runLocalScan(r.Context(), "manual", "manual")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, result)
-}
-
-func (s *Server) createStartupLibraryRefreshRun(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
-		return
-	}
-	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
-		return
-	}
-	result, err := s.runStartupLibraryRefresh(r.Context(), "manual", "manual", 0)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
 	writeJSON(w, http.StatusAccepted, result)
 }
 
@@ -3950,19 +3937,6 @@ func normalizeRemoteBulkAction(action string) string {
 	default:
 		return ""
 	}
-}
-
-type startupLibraryRefreshResult struct {
-	RunID                 int64    `json:"runId"`
-	Status                string   `json:"status"`
-	LocalScanRunID        int64    `json:"localScanRunId"`
-	MetadataRunID         int64    `json:"metadataRunId"`
-	DetectedWorks         int      `json:"detectedWorks"`
-	AvailabilityWorkCodes []string `json:"availabilityWorkCodes"`
-	SyncedWorks           int      `json:"syncedWorks"`
-	SkippedWorks          int      `json:"skippedWorks"`
-	FailedWorks           int      `json:"failedWorks"`
-	Failures              []string `json:"failures"`
 }
 
 func (s *Server) runRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
@@ -4068,147 +4042,6 @@ func (s *Server) finishRemoteBulkWorkflow(ctx context.Context, runID int64, disp
 	return nil
 }
 
-func (s *Server) runStartupLibraryRefresh(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (startupLibraryRefreshResult, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "startup_library_refresh", "Startup library refresh", "Run startup library maintenance by scanning local files and then syncing metadata.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "scan", "type": "dispatch_child_workflows"},
-			{"id": "metadata", "type": "dispatch_child_workflows"},
-		},
-	})
-	if err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	input := map[string]any{"trigger_reason": triggerReason}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "startup_library_refresh", "Startup library refresh", "running", triggerType, triggerReason, input, map[string]any{})
-	if err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	if triggerID > 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", triggerID, runID); err != nil {
-			return startupLibraryRefreshResult{}, err
-		}
-	}
-	scanNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "scan", NodeType: "dispatch_child_workflows", DisplayName: "Run local library scan", Position: 1, Status: "running",
-		Input: map[string]any{"workflow_code": "local_library_scan"}, Output: map[string]any{},
-	})
-	if err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	metadataNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "metadata", NodeType: "dispatch_child_workflows", DisplayName: "Run metadata sync", Position: 2, Status: "queued",
-		Input: map[string]any{"workflow_code": "metadata_sync"}, Output: map[string]any{},
-	})
-	if err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-
-	result := startupLibraryRefreshResult{RunID: runID, Status: "succeeded", Failures: []string{}}
-	scanResult, err := s.runLocalScan(ctx, triggerType, "startup_library_refresh")
-	if err != nil {
-		_ = s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, "failed", err)
-		return startupLibraryRefreshResult{}, err
-	}
-	result.LocalScanRunID = scanResult.RunID
-	result.DetectedWorks = scanResult.DetectedWorks
-	result.AvailabilityWorkCodes = s.startupAvailabilityWorkCodes(ctx, scanResult.NewWorkCodes)
-	if err := s.updateStartupChildNode(ctx, scanNodeID, "succeeded", map[string]any{
-		"child_run_id":      scanResult.RunID,
-		"detected_works":    scanResult.DetectedWorks,
-		"scanned_files":     scanResult.ScannedFiles,
-		"updated_locations": scanResult.UpdatedLocations,
-		"skipped_locations": scanResult.SkippedLocations,
-		"new_work_codes":    scanResult.NewWorkCodes,
-	}, nil); err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	metadataResult, err := s.runDLsiteMetadataSync(ctx, triggerType, "startup_library_refresh")
-	if err != nil {
-		_ = s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, "failed", err)
-		return startupLibraryRefreshResult{}, err
-	}
-	result.MetadataRunID = metadataResult.RunID
-	result.SyncedWorks = metadataResult.SyncedWorks
-	result.SkippedWorks = metadataResult.SkippedWorks
-	result.FailedWorks = metadataResult.FailedWorks
-	result.Failures = metadataResult.Failures
-	status := "succeeded"
-	if metadataResult.Status == "failed" || metadataResult.Status == "partial" {
-		status = metadataResult.Status
-	}
-	result.Status = status
-	if err := s.updateStartupChildNode(ctx, metadataNodeID, status, map[string]any{
-		"child_run_id":  metadataResult.RunID,
-		"target_works":  metadataResult.TargetWorks,
-		"synced_works":  metadataResult.SyncedWorks,
-		"skipped_works": metadataResult.SkippedWorks,
-		"failed_works":  metadataResult.FailedWorks,
-		"failures":      metadataResult.Failures,
-	}, nil); err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	if err := s.finishStartupLibraryRefresh(ctx, runID, scanNodeID, metadataNodeID, result, status, nil); err != nil {
-		return startupLibraryRefreshResult{}, err
-	}
-	if len(result.AvailabilityWorkCodes) > 0 {
-		go s.runStartupAvailabilityChecks(context.Background(), result.AvailabilityWorkCodes)
-	}
-	return result, nil
-}
-
-func (s *Server) runStartupAvailabilityChecks(ctx context.Context, codes []string) {
-	healthySourceIDs, err := s.healthyRemoteSourceIDsForAvailability(ctx, 0)
-	if err != nil || len(healthySourceIDs) == 0 {
-		return
-	}
-	seen := map[string]bool{}
-	for _, rawCode := range codes {
-		code := strings.ToUpper(strings.TrimSpace(rawCode))
-		if code == "" || seen[code] {
-			continue
-		}
-		seen[code] = true
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		_, _ = s.checkWorkSourceAvailabilityForSourcesWithHealth(checkCtx, code, 0, healthySourceIDs, "startup", "new_local_work_detected")
-		cancel()
-	}
-}
-
-func (s *Server) startupAvailabilityWorkCodes(ctx context.Context, newCodes []string) []string {
-	seen := map[string]bool{}
-	codes := make([]string, 0, len(newCodes))
-	for _, rawCode := range newCodes {
-		code := strings.ToUpper(strings.TrimSpace(rawCode))
-		if code == "" || seen[code] {
-			continue
-		}
-		seen[code] = true
-		codes = append(codes, code)
-	}
-	staleCodes, err := s.localWorkCodesNeedingRemoteAvailability(ctx, 0, 7*24*time.Hour, 50)
-	if err != nil {
-		return codes
-	}
-	for _, code := range staleCodes {
-		if !seen[code] {
-			seen[code] = true
-			codes = append(codes, code)
-		}
-	}
-	return codes
-}
-
 func (s *Server) runSourceChangeAvailabilityChecks(ctx context.Context, sourceID int64, reason string) {
 	healthySourceIDs, err := s.healthyRemoteSourceIDsForAvailability(ctx, sourceID)
 	if err != nil || len(healthySourceIDs) == 0 {
@@ -4309,47 +4142,6 @@ func (s *Server) localWorkCodesNeedingRemoteAvailability(ctx context.Context, so
 	return codes, rows.Err()
 }
 
-func (s *Server) updateStartupChildNode(ctx context.Context, nodeID int64, status string, output map[string]any, runErr error) error {
-	errorMessage := ""
-	if runErr != nil {
-		errorMessage = runErr.Error()
-		output["error"] = errorMessage
-	}
-	_, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), errorMessage, nodeID)
-	return err
-}
-
-func (s *Server) finishStartupLibraryRefresh(ctx context.Context, runID int64, scanNodeID int64, metadataNodeID int64, result startupLibraryRefreshResult, status string, runErr error) error {
-	result.Status = status
-	output := map[string]any{
-		"local_scan_run_id":       result.LocalScanRunID,
-		"metadata_run_id":         result.MetadataRunID,
-		"detected_works":          result.DetectedWorks,
-		"availability_work_codes": result.AvailabilityWorkCodes,
-		"synced_works":            result.SyncedWorks,
-		"skipped_works":           result.SkippedWorks,
-		"failed_works":            result.FailedWorks,
-		"failures":                result.Failures,
-	}
-	if runErr != nil {
-		output["error"] = runErr.Error()
-	}
-	if runErr != nil && result.LocalScanRunID == 0 {
-		if err := s.updateStartupChildNode(ctx, scanNodeID, "failed", output, runErr); err != nil {
-			return err
-		}
-		if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'skipped', finished_at = CURRENT_TIMESTAMP WHERE id = ?", metadataNodeID); err != nil {
-			return err
-		}
-	} else if runErr != nil {
-		if err := s.updateStartupChildNode(ctx, metadataNodeID, "failed", output, runErr); err != nil {
-			return err
-		}
-	}
-	_, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?", status, mustJSON(output), runID)
-	return err
-}
-
 func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
 		return err
@@ -4388,15 +4180,7 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 }
 
 func (s *Server) runDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (metasync.DLsiteSyncResult, error) {
-	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
-	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
-		WithCacheRoot(s.cfg.CacheRoot).
-		WithLanguages(dlsiteLanguageFallbacks(language)).
-		WithRequestPacing(
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
-			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
-		).
+	syncer := s.newDLsiteMetadataSyncer(ctx).
 		WithTrigger(triggerType, triggerReason).
 		WithTriggerID(triggerID)
 	result, err := syncer.SyncAll(ctx)
@@ -4407,6 +4191,18 @@ func (s *Server) runDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerTy
 		return result, err
 	}
 	return result, nil
+}
+
+func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
+	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
+	return metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithCacheRoot(s.cfg.CacheRoot).
+		WithLanguages(dlsiteLanguageFallbacks(language)).
+		WithRequestPacing(
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),
+			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_max_backoff_seconds", 300)),
+		)
 }
 
 func durationFromSettingSeconds(value float64) time.Duration {
@@ -4427,6 +4223,7 @@ func dlsiteLanguageFallbacks(language string) []string {
 type localScanResult struct {
 	RunID            int64    `json:"runId"`
 	JobID            int64    `json:"jobId"`
+	MetadataJobID    int64    `json:"metadataJobId"`
 	FileSourceID     int64    `json:"fileSourceId"`
 	Status           string   `json:"status"`
 	DetectedWorks    int      `json:"detectedWorks"`
@@ -4434,6 +4231,12 @@ type localScanResult struct {
 	UpdatedLocations int      `json:"updatedLocations"`
 	SkippedLocations int      `json:"skippedLocations"`
 	NewWorkCodes     []string `json:"newWorkCodes"`
+	TargetWorks      int      `json:"targetWorks"`
+	SyncedWorks      int      `json:"syncedWorks"`
+	SkippedWorks     int      `json:"skippedWorks"`
+	FailedWorks      int      `json:"failedWorks"`
+	UnavailableWorks int      `json:"unavailableWorks"`
+	Failures         []string `json:"failures"`
 }
 
 func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
@@ -4456,12 +4259,13 @@ func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string
 		_ = tx.Rollback()
 	}()
 
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local files, match works, and sync local file locations.", map[string]any{
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local works, sync local source presence, and synchronize missing metadata.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_local_source"},
 			{"id": "discover", "type": "discover_local_files"},
 			{"id": "match", "type": "match_works"},
 			{"id": "sync", "type": "sync_file_locations"},
+			{"id": "metadata", "type": "sync_metadata"},
 		},
 	})
 	if err != nil {
@@ -4479,7 +4283,7 @@ func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string
 		"ambiguous_folders": scanSummary.AmbiguousFolders,
 		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "succeeded", triggerType, triggerReason, runInput, runSummary)
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "running", triggerType, triggerReason, runInput, runSummary)
 	if err != nil {
 		return localScanResult{}, err
 	}
@@ -4611,6 +4415,18 @@ func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string
 	}); err != nil {
 		return localScanResult{}, err
 	}
+	metadataNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID:      "metadata",
+		NodeType:    "sync_metadata",
+		DisplayName: "Sync metadata",
+		Position:    5,
+		Status:      "running",
+		Input:       map[string]any{},
+		Output:      map[string]any{},
+	})
+	if err != nil {
+		return localScanResult{}, err
+	}
 	runSummary["updated_locations"] = updatedLocations
 	runSummary["skipped_locations"] = skippedLocations
 	runSummary["missing_locations"] = missingLocations
@@ -4623,7 +4439,7 @@ func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string
 		return localScanResult{}, err
 	}
 
-	return localScanResult{
+	result := localScanResult{
 		RunID:            runID,
 		JobID:            jobID,
 		FileSourceID:     fileSourceID,
@@ -4633,7 +4449,102 @@ func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string
 		UpdatedLocations: updatedLocations,
 		SkippedLocations: skippedLocations,
 		NewWorkCodes:     newWorkCodes,
-	}, nil
+		Failures:         []string{},
+	}
+	metadataResult, metadataErr := s.newDLsiteMetadataSyncer(ctx).SyncAllWithoutWorkflow(ctx)
+	if metadataErr == nil {
+		metadataErr = s.syncPartiesFromDLsiteSnapshots(ctx)
+	}
+	result.TargetWorks = metadataResult.TargetWorks
+	result.SyncedWorks = metadataResult.SyncedWorks
+	result.SkippedWorks = metadataResult.SkippedWorks
+	result.FailedWorks = metadataResult.FailedWorks
+	result.UnavailableWorks = metadataResult.UnavailableWorks
+	result.Failures = metadataResult.Failures
+	result.Status = metadataResult.Status
+	if metadataErr != nil {
+		result.Status = "failed"
+		result.Failures = append(result.Failures, metadataErr.Error())
+	}
+	metadataJobID, finishErr := s.finishLocalScanMetadata(ctx, metadataNodeID, &result, runSummary, metadataResult, metadataErr)
+	if finishErr != nil {
+		return localScanResult{}, finishErr
+	}
+	result.MetadataJobID = metadataJobID
+	if metadataErr != nil {
+		return localScanResult{}, metadataErr
+	}
+	return result, nil
+}
+
+func (s *Server) finishLocalScanMetadata(ctx context.Context, metadataNodeID int64, result *localScanResult, runSummary map[string]any, metadataResult metasync.DLsiteSyncResult, runErr error) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	errorMessage := strings.Join(result.Failures, "\n")
+	metadataOutput := map[string]any{
+		"target_works":      result.TargetWorks,
+		"synced_works":      result.SyncedWorks,
+		"skipped_works":     result.SkippedWorks,
+		"failed_works":      result.FailedWorks,
+		"unavailable_works": result.UnavailableWorks,
+		"review_works":      len(metadataResult.ReviewCandidates),
+		"review_candidates": metadataResult.ReviewCandidates,
+		"failures":          result.Failures,
+	}
+	if runErr != nil {
+		metadataOutput["error"] = runErr.Error()
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_node_run
+		SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, result.Status, mustJSON(metadataOutput), errorMessage, metadataNodeID); err != nil {
+		return 0, err
+	}
+	metadataJobID, err := workflow.InsertJob(ctx, tx, result.RunID, workflow.JobSpec{
+		NodeRunID:       metadataNodeID,
+		WorkerType:      "metadata_sync",
+		Status:          result.Status,
+		Payload:         map[string]any{},
+		ProgressCurrent: result.SyncedWorks,
+		ProgressTotal:   result.TargetWorks,
+		Error:           errorMessage,
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, candidate := range metadataResult.ReviewCandidates {
+		payload := map[string]any{
+			"work_id": candidate.WorkID, "code": candidate.Code, "provider": "dlsite",
+			"reason": candidate.Reason, "message": candidate.Message,
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
+			VALUES (?, ?, 'dlsite_unavailable_work', ?, 'pending', ?)
+		`, result.RunID, metadataNodeID, candidate.Code, mustJSON(payload)); err != nil {
+			return 0, err
+		}
+	}
+	runSummary["target_works"] = result.TargetWorks
+	runSummary["synced_works"] = result.SyncedWorks
+	runSummary["skipped_works"] = result.SkippedWorks
+	runSummary["failed_works"] = result.FailedWorks
+	runSummary["unavailable_works"] = result.UnavailableWorks
+	runSummary["failures"] = result.Failures
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE workflow_run
+		SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, result.Status, mustJSON(runSummary), result.RunID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return metadataJobID, nil
 }
 
 func (s *Server) configuredLocalScanDepth(ctx context.Context) int {

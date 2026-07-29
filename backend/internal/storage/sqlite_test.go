@@ -298,8 +298,26 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 17 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" {
+	if len(migrations) != 18 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" {
 		t.Fatalf("migrations = %v", migrations)
+	}
+	var localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_definition WHERE code = 'local_library_scan'").Scan(&localScanDefinitionCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_definition WHERE code = 'startup_library_refresh'").Scan(&startupRefreshDefinitionCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan' AND trigger.trigger_type = 'startup'
+	`).Scan(&localScanStartupCount); err != nil {
+		t.Fatal(err)
+	}
+	if localScanDefinitionCount != 1 || startupRefreshDefinitionCount != 0 || localScanStartupCount != 1 {
+		t.Fatalf("merged local scan definitions/triggers = %d/%d/%d", localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount)
 	}
 	var rating float64
 	var sales, regularPrice, currentPrice int64
@@ -370,6 +388,96 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if workURLTemplate != "'/work/{code}'" {
 		t.Fatalf("work_url_template default = %q", workURLTemplate)
+	}
+}
+
+func TestMergeStartupLibraryRefreshMigrationKeepsExistingLocalStartupTrigger(t *testing.T) {
+	db := openWorkflowMergeMigrationDB(t)
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		INSERT INTO workflow_trigger (
+			workflow_definition_id, trigger_type, display_name, enabled, schedule_json, config_json
+		)
+		SELECT id, 'startup', 'Existing local startup', 1, '{"type":"startup"}', '{}'
+		FROM workflow_definition
+		WHERE code = 'local_library_scan'
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	applyWorkflowMergeMigration(t, db)
+
+	var startupCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan' AND trigger.trigger_type = 'startup'
+	`).Scan(&startupCount); err != nil {
+		t.Fatal(err)
+	}
+	if startupCount != 1 {
+		t.Fatalf("local scan startup trigger count = %d, want 1", startupCount)
+	}
+}
+
+func TestMergeStartupLibraryRefreshMigrationDoesNotRestoreDeletedStartupTrigger(t *testing.T) {
+	db := openWorkflowMergeMigrationDB(t)
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		DELETE FROM workflow_trigger
+		WHERE workflow_definition_id = (
+			SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'
+		)
+		AND trigger_type = 'startup'
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	applyWorkflowMergeMigration(t, db)
+
+	var startupCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan' AND trigger.trigger_type = 'startup'
+	`).Scan(&startupCount); err != nil {
+		t.Fatal(err)
+	}
+	if startupCount != 0 {
+		t.Fatalf("local scan startup trigger count = %d, want 0", startupCount)
+	}
+}
+
+func openWorkflowMergeMigrationDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialSQL, err := os.ReadFile(filepath.Join("..", "..", "migrations", "001_initial.sql"))
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(initialSQL)); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	return db
+}
+
+func applyWorkflowMergeMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	migrationSQL, err := os.ReadFile(filepath.Join("..", "..", "migrations", "018_merge_startup_library_refresh.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(migrationSQL)); err != nil {
+		t.Fatal(err)
 	}
 }
 

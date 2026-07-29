@@ -10,8 +10,9 @@ Workflows make backend actions inspectable.
 
 ## Current Behavior
 
-- Local scan, metadata sync, source availability, remote sync, cache, fetch,
-  cleanup, circle refresh, and bulk remote actions record workflow runs.
+- Local scan records folder discovery, local source presence, and missing
+  metadata sync in one run. Source availability, remote sync, cache, fetch,
+  cleanup, circle refresh, and bulk remote actions also record workflow runs.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
 - Review contains terminal runs with unresolved candidates that need a user
@@ -23,8 +24,9 @@ Workflows make backend actions inspectable.
 - Definitions groups Built-in workflows and Custom definitions. Each list item
   shows one execution status: Scheduled takes precedence over Startup, while a
   definition without either persisted trigger shows Manual.
-- Built-in local scan, metadata sync, library refresh, remote popular, and
-  DLsite popular workflows support editable Startup and interval triggers.
+- Built-in local scan, metadata sync, remote popular, and DLsite popular
+  workflows support editable Startup and interval triggers. Local scan ships
+  with the default Startup trigger and does not check remote availability.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs

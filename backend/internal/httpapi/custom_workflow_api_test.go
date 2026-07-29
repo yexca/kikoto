@@ -415,7 +415,7 @@ func TestCustomWorkflowStartupTriggerCoexistsWithScheduleAndQueuesOnce(t *testin
 	}
 }
 
-func TestStartupLibraryRefreshAcceptsStartupAndScheduleTriggers(t *testing.T) {
+func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ownerID := insertCustomWorkflowAPIUser(t, db, "system-schedule-owner")
 	server := NewServer(db, config.Config{})
@@ -423,7 +423,7 @@ func TestStartupLibraryRefreshAcceptsStartupAndScheduleTriggers(t *testing.T) {
 		t.Fatal(err)
 	}
 	var definitionID int64
-	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'").Scan(&definitionID); err != nil {
+	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'local_library_scan'").Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{}"}`, definitionID)
@@ -448,7 +448,7 @@ func TestRunStartupWorkflowsDoesNotRecreateDeletedBuiltInTrigger(t *testing.T) {
 	if _, err := db.Exec(`
 		DELETE FROM workflow_trigger
 		WHERE workflow_definition_id = (
-			SELECT id FROM workflow_definition WHERE code = 'startup_library_refresh'
+			SELECT id FROM workflow_definition WHERE code = 'local_library_scan'
 		)
 	`); err != nil {
 		t.Fatal(err)
@@ -462,12 +462,12 @@ func TestRunStartupWorkflowsDoesNotRecreateDeletedBuiltInTrigger(t *testing.T) {
 		SELECT COUNT(*)
 		FROM workflow_trigger AS trigger
 		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
-		WHERE definition.code = 'startup_library_refresh'
+		WHERE definition.code = 'local_library_scan'
 	`).Scan(&triggerCount); err != nil {
 		t.Fatal(err)
 	}
 	if triggerCount != 0 {
-		t.Fatalf("startup refresh triggers = %d, want 0", triggerCount)
+		t.Fatalf("local scan startup triggers = %d, want 0", triggerCount)
 	}
 }
 

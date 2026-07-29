@@ -986,11 +986,18 @@ export type HealthStatus = {
 export type LocalScanResult = {
   runId: number;
   jobId: number;
+  metadataJobId: number;
   fileSourceId: number;
   status: string;
   detectedWorks: number;
   scannedFiles: number;
   updatedLocations: number;
+  targetWorks: number;
+  syncedWorks: number;
+  skippedWorks: number;
+  failedWorks: number;
+  unavailableWorks: number;
+  failures: string[];
 };
 
 export type LocalMediaRefreshResult = {
@@ -1950,7 +1957,6 @@ export const api = {
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
-	runStartupLibraryRefresh: () => postJSON<{ runId: number; status: string }>("/api/workflow-runs/startup-library-refresh"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
   runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId: number; limit: number; tagNameTemplate: string }) =>
     postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),

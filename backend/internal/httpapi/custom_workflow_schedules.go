@@ -110,7 +110,7 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 
 	requiredPermissions := []string{"workflows:run"}
 	switch definition.Code {
-	case "startup_library_refresh", "metadata_sync":
+	case "local_library_scan", "metadata_sync":
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
 	case "remote_popular_collection":
 		config, err := s.normalizeRemotePopularTriggerConfig(ctx, actor, payload.ConfigJSON, existing, now)
@@ -135,7 +135,7 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	switch code {
-	case "startup_library_refresh", "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "local_library_scan", "metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:
 		return false
@@ -385,7 +385,7 @@ func (s *Server) dispatchDueCustomWorkflowTrigger(ctx context.Context) error {
 			AND (
 				(definition.scope = 'user' AND json_extract(definition.definition_json, '$.schemaVersion') = ?)
 				OR (definition.scope = 'system' AND definition.code IN (
-					'startup_library_refresh', 'local_library_scan', 'metadata_sync',
+					'local_library_scan', 'metadata_sync',
 					'remote_popular_collection', 'dlsite_popular_collection'
 				))
 			)
@@ -498,11 +498,9 @@ func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition wo
 	var failures []string
 	var runErr error
 	switch definition.Code {
-	case "startup_library_refresh":
-		result, err := s.runStartupLibraryRefresh(ctx, triggerType, triggerReason, trigger.ID)
-		status, failures, runErr = result.Status, result.Failures, err
 	case "local_library_scan":
-		_, runErr = s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		result, err := s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		status, failures, runErr = result.Status, result.Failures, err
 	case "metadata_sync":
 		result, err := s.runDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
 		status, failures, runErr = result.Status, result.Failures, err
@@ -619,7 +617,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 			AND trigger.trigger_type = 'startup'
 			AND definition.scope = 'system'
 			AND definition.code IN (
-				'startup_library_refresh', 'local_library_scan', 'metadata_sync',
+				'local_library_scan', 'metadata_sync',
 				'remote_popular_collection', 'dlsite_popular_collection'
 			)
 		ORDER BY trigger.id

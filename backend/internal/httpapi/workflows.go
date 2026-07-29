@@ -215,23 +215,15 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
-		Code:        "startup_library_refresh",
-		Name:        "Startup library refresh",
-		Description: "Run startup library maintenance by scanning local files and then syncing metadata.",
-		Nodes: []map[string]string{
-			{"id": "scan", "type": "dispatch_child_workflows", "displayName": "Run local library scan"},
-			{"id": "metadata", "type": "dispatch_child_workflows", "displayName": "Run metadata sync"},
-		},
-	},
-	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
-		Description: "Discover local files, match works, and sync local file locations. This workflow can be run manually.",
+		Description: "Discover local works, sync local source presence, and synchronize missing metadata.",
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_local_source", "displayName": "Select local source"},
 			{"id": "discover", "type": "discover_local_files", "displayName": "Discover files"},
 			{"id": "match", "type": "match_works", "displayName": "Match works"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync locations"},
+			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
 		},
 	},
 	{
@@ -1528,6 +1520,10 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	resumedExistingRun := false
 	switch run.WorkflowCode {
 	case "local_library_scan":
+		if !userHasPermission(actor, "metadata:sync") {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+			return
+		}
 		result, err := s.runLocalScan(r.Context(), "manual", "retry_run")
 		if err != nil {
 			writeError(w, err)
@@ -1535,6 +1531,10 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		}
 		newRunID = result.RunID
 	case "metadata_sync":
+		if !userHasPermission(actor, "metadata:sync") {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+			return
+		}
 		result, err := s.runDLsiteMetadataSync(r.Context(), "manual", "retry_run")
 		if err != nil {
 			writeError(w, err)

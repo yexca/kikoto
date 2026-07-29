@@ -58,8 +58,7 @@ func TestRecoverInterruptedWorkflowsRequeuesAndReclaimsCheckpoint(t *testing.T) 
 	server := NewServer(db, config.Config{})
 	ctx := context.Background()
 	statements := []string{
-		`INSERT OR IGNORE INTO workflow_definition (id, code, display_name) VALUES (1, 'media_cache', 'Cache')`,
-		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, 1, 'media_cache', 'Cache', 'running', 'manual')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'media_cache'), 'media_cache', 'Cache', 'running', 'manual')`,
 		`INSERT INTO workflow_node_run (id, workflow_run_id, node_id, node_type, display_name, position, status) VALUES (1, 1, 'cache', 'materialize_cache', 'Cache', 1, 'running')`,
 		`INSERT INTO workflow_job (id, workflow_run_id, workflow_node_run_id, worker_type, status, payload_json, checkpoint_json, recoverable, max_retries, locked_by, locked_at, heartbeat_at) VALUES (1, 1, 1, 'remote_media_cache', 'running', '{"media_location_id":7}', '{"phase":"download","index":1}', 1, 3, 'old-runner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 	}
@@ -112,8 +111,7 @@ func TestRetryFailedWorkflowJobRequeuesSameCheckpoint(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	statements := []string{
-		`INSERT OR IGNORE INTO workflow_definition (id, code, display_name) VALUES (1, 'media_cache', 'Cache')`,
-		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, 1, 'media_cache', 'Cache', 'failed', 'manual', CURRENT_TIMESTAMP)`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'media_cache'), 'media_cache', 'Cache', 'failed', 'manual', CURRENT_TIMESTAMP)`,
 		`INSERT INTO workflow_node_run (id, workflow_run_id, node_id, node_type, display_name, position, status, error_message, finished_at) VALUES (1, 1, 'cache', 'materialize_cache', 'Cache', 1, 'failed', 'temporary source failure', CURRENT_TIMESTAMP)`,
 		`INSERT INTO workflow_job (id, workflow_run_id, workflow_node_run_id, worker_type, status, payload_json, checkpoint_json, recoverable, max_retries, retry_count, error_message) VALUES (1, 1, 1, 'remote_media_cache', 'failed', '{"media_location_id":7}', '{"phase":"download","index":1}', 1, 3, 1, 'temporary source failure')`,
 	}

@@ -17,7 +17,7 @@
 
 - Confirm files are under the configured data root.
 - Check local scan depth.
-- Run a local library scan.
+- Run a local library scan to refresh local presence and missing metadata.
 - Confirm folders contain supported product codes.
 
 ## Remote Sources Fail

@@ -148,6 +148,22 @@ func (s *DLsiteSyncer) SyncProductOnly(ctx context.Context, product dlsite.Produ
 }
 
 func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
+	result, err := s.SyncAllWithoutWorkflow(ctx)
+	if err != nil {
+		return DLsiteSyncResult{}, err
+	}
+	runID, jobID, err := s.recordWorkflow(ctx, result)
+	if err != nil {
+		return DLsiteSyncResult{}, err
+	}
+	result.RunID = runID
+	result.JobID = jobID
+	return result, nil
+}
+
+// SyncAllWithoutWorkflow applies the same metadata synchronization without
+// creating a standalone run, for callers that record it inside a parent run.
+func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncResult, error) {
 	targets, err := s.loadTargets(ctx)
 	if err != nil {
 		return DLsiteSyncResult{}, err
@@ -217,12 +233,6 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 		result.Status = "partial"
 	}
 
-	runID, jobID, err := s.recordWorkflow(ctx, result)
-	if err != nil {
-		return DLsiteSyncResult{}, err
-	}
-	result.RunID = runID
-	result.JobID = jobID
 	return result, nil
 }
 

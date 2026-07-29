@@ -132,7 +132,7 @@ const workflowTemplates: WorkflowTemplate[] = [
   },
 ];
 
-type SystemRunKind = "startup_refresh" | "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
+type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
 
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 
@@ -178,7 +178,6 @@ type SystemWorkflowTriggerConfig = {
 
 const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
 	availability_watch: [],
-  startup_library_refresh: ["startup_refresh"],
   local_library_scan: ["local_scan"],
   metadata_sync: ["metadata_sync"],
   remote_popular_collection: ["remote_popular"],
@@ -438,19 +437,6 @@ export function WorkflowsPage({
   };
 
   const runSystemAction = async (kind: SystemRunKind) => {
-    if (kind === "startup_refresh") {
-      setRunningSystemAction(kind);
-      try {
-        await api.runStartupLibraryRefresh();
-        refresh();
-        setActivityView("completed");
-        setRunPage(1);
-        refreshRuns(1, "completed", runQuery);
-      } finally {
-        setRunningSystemAction(null);
-      }
-      return;
-    }
     if (kind === "local_scan") return runLocalScan();
     if (kind === "metadata_sync") return runMetadataSync();
     if (kind === "remote_popular") return;
@@ -465,7 +451,7 @@ export function WorkflowsPage({
 
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (readOnly) return false;
-    if (kind === "startup_refresh" || kind === "metadata_sync") return canRun && canSyncMetadata;
+    if (kind === "local_scan" || kind === "metadata_sync") return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks;
     return canRun;
@@ -1393,8 +1379,6 @@ function workflowInputPlaceholder(input: WorkflowInputDefinition) {
 
 function systemRunKindLabel(kind: SystemRunKind) {
   switch (kind) {
-    case "startup_refresh":
-      return "Run library refresh";
     case "local_scan":
       return "Run local scan";
     case "metadata_sync":

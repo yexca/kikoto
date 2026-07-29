@@ -473,10 +473,10 @@ export function HeaderActions({
           <div className="w-72">
             <PopoverHeader title="Quick actions" subtitle="Run common maintenance tasks" />
             <MenuList>
-              {canRunWorkflows && (
+              {canRunWorkflows && canSyncMetadata && (
                 <ActionItem
                   icon={<ScanLine className="h-4 w-4" />}
-                  label="Run local scan"
+                  label="Scan local library"
                   busy={runningAction === "local_scan"}
                   onClick={() => void runSystemAction("local_scan")}
                 />
@@ -839,15 +839,19 @@ export function commandActions({
           },
         ]
       : []),
-    ...(hasPermission("workflows:run")
+    ...(hasPermission("workflows:run") && hasPermission("metadata:sync")
       ? [
           {
             id: "action:local_scan",
-            label: "Run local scan",
-            description: "Queue a local library scan",
+            label: "Scan local library",
+            description: "Scan local works and sync missing metadata",
             icon: <ScanLine className="h-4 w-4" />,
             run: () => void api.runLocalScan().then(() => onOpenPath("/activity")),
           },
+        ]
+      : []),
+    ...(hasPermission("workflows:run")
+      ? [
           {
             id: "action:recover_stale",
             label: "Recover stale workflow runs",

@@ -61,7 +61,8 @@ installing its APK remains an explicit user-confirmed Android system flow.
 1. Put supported audio work folders under `data/`.
 2. Start the Docker stack.
 3. Open the frontend.
-4. Run a local scan from the Workflows or Activity surface.
+4. Run the local library scan from Workflows; it discovers local works and
+   synchronizes missing metadata in the same run.
 5. Optionally run DLsite metadata sync to enrich detected works.
 
 ## Validate The Build
