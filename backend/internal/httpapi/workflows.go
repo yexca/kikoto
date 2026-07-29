@@ -1524,7 +1524,7 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 			return
 		}
-		result, err := s.runLocalScan(r.Context(), "manual", "retry_run")
+		result, err := s.enqueueLocalScan(r.Context(), "manual", "retry_run")
 		if err != nil {
 			writeError(w, err)
 			return
@@ -1535,7 +1535,7 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 			return
 		}
-		result, err := s.runDLsiteMetadataSync(r.Context(), "manual", "retry_run")
+		result, err := s.enqueueDLsiteMetadataSync(r.Context(), "manual", "retry_run")
 		if err != nil {
 			writeError(w, err)
 			return

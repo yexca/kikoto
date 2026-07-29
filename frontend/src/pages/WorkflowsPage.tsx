@@ -288,6 +288,7 @@ export function WorkflowsPage({
       setActivityView(next);
       setRunPage(1);
       setSelectedRunID(activityRunIDFromLocation());
+      refreshRuns(1, next, runQuery);
     };
     syncView();
     window.addEventListener("popstate", syncView);
@@ -308,15 +309,30 @@ export function WorkflowsPage({
     return tabDefinitions.find((definition) => definition.id === selectedDefinitionId) ?? tabDefinitions[0] ?? null;
   }, [selectedDefinitionId, tabDefinitions]);
 
+  const refreshRecentRuns = (workflowCode: string) => {
+    if (surface !== "workflows" || !workflowCode) {
+      setRecentDefinitionRuns([]);
+      return Promise.resolve();
+    }
+    return api.listWorkflowRuns(1, 5, "", "", workflowCode)
+      .then((page) => setRecentDefinitionRuns(page.runs))
+      .catch(() => undefined);
+  };
+
   useEffect(() => {
     if (surface !== "workflows" || !selectedDefinition) {
       setRecentDefinitionRuns([]);
       return;
     }
-    api.listWorkflowRuns(1, 5, "", "", selectedDefinition.code)
-      .then((page) => setRecentDefinitionRuns(page.runs))
-      .catch(() => setRecentDefinitionRuns([]));
+    void refreshRecentRuns(selectedDefinition.code);
   }, [selectedDefinition?.code, surface]);
+
+  const hasActiveRecentRun = recentDefinitionRuns.some((run) => run.status === "queued" || run.status === "running");
+  useEffect(() => {
+    if (surface !== "workflows" || !selectedDefinition || !hasActiveRecentRun) return;
+    const timer = window.setInterval(() => void refreshRecentRuns(selectedDefinition.code), 2000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveRecentRun, selectedDefinition?.code, surface]);
 
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId)
     ?? (selectedRunId === null ? visibleRuns[0] ?? null : null);
@@ -381,11 +397,11 @@ export function WorkflowsPage({
   const runLocalScan = async () => {
     setIsRunningScan(true);
     try {
-      await api.runLocalScan();
-      refresh();
-      setActivityView("completed");
-      setRunPage(1);
-      refreshRuns(1, "completed", runQuery);
+      const result = await api.runLocalScan();
+      toast.success(`Local scan run #${result.runId} created.`);
+      void refreshRecentRuns("local_library_scan");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Local scan run could not be created."));
     } finally {
       setIsRunningScan(false);
     }
@@ -394,11 +410,11 @@ export function WorkflowsPage({
   const runMetadataSync = async () => {
     setIsSyncingMetadata(true);
     try {
-      await api.runDLsiteSync();
-      refresh();
-      setActivityView("completed");
-      setRunPage(1);
-      refreshRuns(1, "completed", runQuery);
+      const result = await api.runDLsiteSync();
+      toast.success(`Metadata sync run #${result.runId} created.`);
+      void refreshRecentRuns("metadata_sync");
+    } catch (error) {
+      toast.notify(toastFromError(error, "Metadata sync run could not be created."));
     } finally {
       setIsSyncingMetadata(false);
     }
@@ -848,55 +864,32 @@ function DefinitionSidebar({
   return (
     <Card>
       <CardContent className="space-y-3 p-3">
-        <div className="flex items-center justify-between gap-2 px-1">
-          <div>
-            <div className="text-sm font-semibold">Workflows</div>
-            <div className="text-xs text-muted-foreground">Commands, automations, and custom definitions.</div>
-          </div>
-          {canCreate && activeTab === "custom" && (
-            <Button size="sm" onClick={onCreate}>
-              <Plus className="h-4 w-4" />
-              New
-            </Button>
-          )}
-        </div>
 		<div className="grid grid-cols-2 rounded-md border bg-muted/30 p-1" role="tablist" aria-label="Workflow definition type">
 			{(["built-in", "custom"] as const).map((tab) => {
 				const count = tab === "built-in" ? builtInDefinitions.length : customDefinitions.length;
 				return <button key={tab} role="tab" aria-selected={activeTab === tab} className={`rounded px-2 py-1.5 text-xs font-medium ${activeTab === tab ? "bg-background shadow-sm" : "text-muted-foreground"}`} onClick={() => onTabChange(tab)}>{tab === "built-in" ? "Built-in" : "Custom"} <span className="ml-1 text-muted-foreground">{count}</span></button>;
 			})}
 		</div>
-        <div className="space-y-4">
+        <div className="space-y-2">
           {loading ? (
             <SidebarSkeletonRows count={6} />
           ) : (
             <>
-				{activeTab === "built-in" && builtInDefinitions.length > 0 && (
-				<DefinitionGroup label="Built-in workflows">
-                  {builtInDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
-                </DefinitionGroup>
-              )}
-				{activeTab === "custom" && <DefinitionGroup label="Custom definitions" action={customDefinitions.length === 0 ? "No drafts yet" : undefined}>
-                {customDefinitions.map((definition) => <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />)}
-				</DefinitionGroup>}
+				{(activeTab === "built-in" ? builtInDefinitions : customDefinitions).map((definition) => (
+                  <DefinitionListItem key={definition.id} definition={definition} triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id)} selected={selectedId === definition.id} onSelect={onSelect} />
+                ))}
             </>
           )}
 			{!loading && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && <EmptyPanel text={activeTab === "custom" ? "No custom definitions yet." : emptyText} />}
+          {!loading && canCreate && activeTab === "custom" && (
+            <Button variant="outline" className="w-full" onClick={onCreate}>
+              <Plus className="h-4 w-4" />
+              New workflow
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function DefinitionGroup({ label, action, children }: { label: string; action?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
-        <span>{label}</span>
-        {action && <span className="font-normal">{action}</span>}
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -912,7 +905,6 @@ function DefinitionListItem({ definition, triggers, selected, onSelect }: { defi
           <div className="line-clamp-2 text-sm font-semibold">{definition.displayName}</div>
           <div className="truncate text-xs text-muted-foreground">{definition.code}</div>
         </div>
-        {definition.scope === "system" && <Badge variant="outline" className="shrink-0">Built-in</Badge>}
       </div>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -1196,9 +1188,6 @@ function WorkflowDetail({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{definition.displayName}</h3>
-              <Badge variant={definition.scope === "system" ? "outline" : "secondary"}>
-                {definition.scope === "system" ? "Built-in" : "Custom"}
-              </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{definition.description || "No description."}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -1232,7 +1221,7 @@ function WorkflowDetail({
               return (
                 <Button key={kind} size="sm" onClick={() => void onRunSystemAction(kind)} disabled={running || !allowed}>
                   <Play className="h-4 w-4" />
-                  {running ? "Running" : systemRunKindLabel(kind)}
+                  {running ? "Creating" : systemRunKindLabel(kind)}
                 </Button>
               );
             })}

@@ -499,10 +499,10 @@ func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition wo
 	var runErr error
 	switch definition.Code {
 	case "local_library_scan":
-		result, err := s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		result, err := s.enqueueLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
 		status, failures, runErr = result.Status, result.Failures, err
 	case "metadata_sync":
-		result, err := s.runDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		result, err := s.enqueueDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
 		status, failures, runErr = result.Status, result.Failures, err
 	case "remote_popular_collection":
 		config, owner, err := s.loadRemotePopularTriggerExecution(ctx, trigger)
@@ -552,7 +552,7 @@ func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition wo
 		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), trigger.ID)
 		return runErr
 	}
-	if definition.Code == "remote_popular_collection" || definition.Code == "dlsite_popular_collection" {
+	if definition.Code == "local_library_scan" || definition.Code == "metadata_sync" || definition.Code == "remote_popular_collection" || definition.Code == "dlsite_popular_collection" {
 		return nil
 	}
 	if status == "succeeded" || status == "" {

@@ -8,7 +8,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 )
 
-func TestLocalLibraryScanSynchronizesMetadataInOneRunWithoutAvailabilityChecks(t *testing.T) {
+func TestLocalLibraryScanQueuesIndependentRunsAndSynchronizesMetadataWithoutAvailabilityChecks(t *testing.T) {
 	db := openMigratedTestDB(t)
 	dataRoot := t.TempDir()
 	code := "RJ02000011"
@@ -24,12 +24,33 @@ func TestLocalLibraryScanSynchronizesMetadataInOneRunWithoutAvailabilityChecks(t
 		errors: map[string]error{},
 	}
 
-	result, err := server.runLocalScan(context.Background(), "manual", "manual")
+	first, err := server.enqueueLocalScan(context.Background(), "manual", "manual")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "succeeded" || result.DetectedWorks != 1 || result.TargetWorks != 1 || result.SyncedWorks != 1 {
-		t.Fatalf("local scan result = %#v", result)
+	second, err := server.enqueueLocalScan(context.Background(), "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != "queued" || second.Status != "queued" || first.RunID == second.RunID {
+		t.Fatalf("queued local scan results = %#v / %#v", first, second)
+	}
+	var snapshotCountBefore int
+	if err := db.QueryRow("SELECT COUNT(*) FROM metadata_snapshot").Scan(&snapshotCountBefore); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotCountBefore != 0 {
+		t.Fatalf("metadata snapshots before worker execution = %d", snapshotCountBefore)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "local-scan-test")
+	if err != nil || !ok {
+		t.Fatalf("claim local scan job = %#v, %t, %v", job, ok, err)
+	}
+	if job.RunID != first.RunID || job.WorkerType != "local_library_scan" {
+		t.Fatalf("claimed local scan job = %#v", job)
+	}
+	if err := server.executeLocalScanJob(context.Background(), job); err != nil {
+		t.Fatal(err)
 	}
 
 	var runCount, nodeCount, jobCount, snapshotCount, remotePresenceCount int
@@ -40,10 +61,10 @@ func TestLocalLibraryScanSynchronizesMetadataInOneRunWithoutAvailabilityChecks(t
 	`).Scan(&runCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_node_run WHERE workflow_run_id = ?", result.RunID).Scan(&nodeCount); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_node_run WHERE workflow_run_id = ?", first.RunID).Scan(&nodeCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_job WHERE workflow_run_id = ?", result.RunID).Scan(&jobCount); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_job WHERE workflow_run_id = ?", first.RunID).Scan(&jobCount); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`
@@ -62,7 +83,41 @@ func TestLocalLibraryScanSynchronizesMetadataInOneRunWithoutAvailabilityChecks(t
 	`, code, sourcePresenceTypeRemoteSource).Scan(&remotePresenceCount); err != nil {
 		t.Fatal(err)
 	}
-	if runCount != 1 || nodeCount != 5 || jobCount != 2 || snapshotCount != 1 || remotePresenceCount != 0 {
+	var firstStatus, secondStatus string
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", first.RunID).Scan(&firstStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status FROM workflow_run WHERE id = ?", second.RunID).Scan(&secondStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 2 || nodeCount != 5 || jobCount != 1 || snapshotCount != 1 || remotePresenceCount != 0 || firstStatus != "succeeded" || secondStatus != "queued" {
 		t.Fatalf("merged run counts = runs %d nodes %d jobs %d snapshots %d remote presence %d", runCount, nodeCount, jobCount, snapshotCount, remotePresenceCount)
+	}
+}
+
+func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+
+	first, err := server.enqueueDLsiteMetadataSync(context.Background(), "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := server.enqueueDLsiteMetadataSync(context.Background(), "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != "queued" || second.Status != "queued" || first.RunID == second.RunID {
+		t.Fatalf("queued metadata results = %#v / %#v", first, second)
+	}
+	var queuedRuns, queuedJobs int
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'metadata_sync' AND status = 'queued'").Scan(&queuedRuns); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_job WHERE worker_type = 'metadata_sync' AND status = 'queued'").Scan(&queuedJobs); err != nil {
+		t.Fatal(err)
+	}
+	if queuedRuns != 2 || queuedJobs != 2 {
+		t.Fatalf("queued metadata runs/jobs = %d/%d", queuedRuns, queuedJobs)
 	}
 }

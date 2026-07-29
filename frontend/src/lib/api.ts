@@ -986,7 +986,6 @@ export type HealthStatus = {
 export type LocalScanResult = {
   runId: number;
   jobId: number;
-  metadataJobId: number;
   fileSourceId: number;
   status: string;
   detectedWorks: number;

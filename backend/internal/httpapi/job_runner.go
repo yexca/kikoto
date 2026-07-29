@@ -121,6 +121,10 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		runErr = s.executeRemotePopularCollectionJob(jobCtx, job)
 	case "dlsite_popular_collection":
 		runErr = s.executeDLsitePopularCollectionJob(jobCtx, job)
+	case "local_library_scan":
+		runErr = s.executeLocalScanJob(jobCtx, job)
+	case "metadata_sync":
+		runErr = s.executeDLsiteMetadataSyncJob(jobCtx, job)
 	case "metadata_family_sync":
 		runErr = s.executeWorkMetadataSyncJob(jobCtx, job)
 	case "media_cache_limit_cleanup":

@@ -3770,12 +3770,6 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if !s.cfg.IsDemo() {
-		if err := s.ensureSystemWorkflowDefinitions(r.Context()); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
 	definitions, err := s.workflowStore.ListDefinitions(r.Context())
 	if err != nil {
 		writeError(w, err)
@@ -3831,7 +3825,7 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	result, err := s.runLocalScan(r.Context(), "manual", "manual")
+	result, err := s.enqueueLocalScan(r.Context(), "manual", "manual")
 	if err != nil {
 		writeError(w, err)
 		return
@@ -4166,31 +4160,13 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	result, err := s.runDLsiteMetadataSync(r.Context(), "manual", "manual")
+	result, err := s.enqueueDLsiteMetadataSync(r.Context(), "manual", "manual")
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
-}
-
-func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string) (metasync.DLsiteSyncResult, error) {
-	return s.runDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, 0)
-}
-
-func (s *Server) runDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (metasync.DLsiteSyncResult, error) {
-	syncer := s.newDLsiteMetadataSyncer(ctx).
-		WithTrigger(triggerType, triggerReason).
-		WithTriggerID(triggerID)
-	result, err := syncer.SyncAll(ctx)
-	if err != nil {
-		return result, err
-	}
-	if err := s.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
-		return result, err
-	}
-	return result, nil
 }
 
 func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSyncer {
@@ -4223,7 +4199,6 @@ func dlsiteLanguageFallbacks(language string) []string {
 type localScanResult struct {
 	RunID            int64    `json:"runId"`
 	JobID            int64    `json:"jobId"`
-	MetadataJobID    int64    `json:"metadataJobId"`
 	FileSourceID     int64    `json:"fileSourceId"`
 	Status           string   `json:"status"`
 	DetectedWorks    int      `json:"detectedWorks"`
@@ -4237,314 +4212,6 @@ type localScanResult struct {
 	FailedWorks      int      `json:"failedWorks"`
 	UnavailableWorks int      `json:"unavailableWorks"`
 	Failures         []string `json:"failures"`
-}
-
-func (s *Server) runLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
-	return s.runLocalScanWithTrigger(ctx, triggerType, triggerReason, 0)
-}
-
-func (s *Server) runLocalScanWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (localScanResult, error) {
-	scanDepth := s.configuredLocalScanDepth(ctx)
-
-	workFolders, scanSummary, err := localfs.DiscoverFolders(s.cfg.DataRoot, localfs.Options{ScanDepth: scanDepth})
-	if err != nil {
-		return localScanResult{}, err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return localScanResult{}, err
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local works, sync local source presence, and synchronize missing metadata.", map[string]any{
-		"nodes": []map[string]string{
-			{"id": "select", "type": "select_local_source"},
-			{"id": "discover", "type": "discover_local_files"},
-			{"id": "match", "type": "match_works"},
-			{"id": "sync", "type": "sync_file_locations"},
-			{"id": "metadata", "type": "sync_metadata"},
-		},
-	})
-	if err != nil {
-		return localScanResult{}, err
-	}
-
-	runInput := map[string]any{
-		"root":       s.cfg.DataRoot,
-		"scan_depth": scanDepth,
-	}
-	runSummary := map[string]any{
-		"candidate_folders": scanSummary.CandidateFolders,
-		"detected_works":    scanSummary.DetectedWorks,
-		"scanned_files":     scanSummary.ScannedFiles,
-		"ambiguous_folders": scanSummary.AmbiguousFolders,
-		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
-	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "local_library_scan", "Scan local library", "running", triggerType, triggerReason, runInput, runSummary)
-	if err != nil {
-		return localScanResult{}, err
-	}
-	if triggerID > 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET trigger_id = ? WHERE id = ?", triggerID, runID); err != nil {
-			return localScanResult{}, err
-		}
-	}
-
-	fileSourceID, err := s.upsertLocalFileSource(ctx, tx, scanDepth)
-	if err != nil {
-		return localScanResult{}, err
-	}
-
-	updatedLocations := 0
-	skippedLocations := 0
-	newWorkCodes := []string{}
-	seenWorkIDs := map[int64]bool{}
-	for _, folder := range workFolders {
-		_, existedBefore := s.workIDForCode(ctx, folder.Code)
-		workID, err := upsertDetectedWork(ctx, tx, folder)
-		if err != nil {
-			return localScanResult{}, err
-		}
-		if !existedBefore {
-			newWorkCodes = append(newWorkCodes, folder.Code)
-		}
-		seenWorkIDs[workID] = true
-		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
-			WorkID:       workID,
-			FileSourceID: fileSourceID,
-			PresenceType: "local",
-			SourceURL:    filepath.ToSlash(folder.RelPath),
-			Availability: "available",
-			RawJSON: mustJSON(map[string]any{
-				"code":              folder.Code,
-				"title":             folder.Title,
-				"rel_path":          filepath.ToSlash(folder.RelPath),
-				"files":             len(folder.Files),
-				"file_tree_scanned": false,
-			}),
-		}); err != nil {
-			return localScanResult{}, err
-		}
-	}
-	missingLocations := 0
-	if err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs); err != nil {
-		return localScanResult{}, err
-	}
-
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "select",
-		NodeType:    "select_local_source",
-		DisplayName: "Select local source",
-		Position:    1,
-		Status:      "succeeded",
-		Input:       runInput,
-		Output: map[string]any{
-			"file_source_id": fileSourceID,
-			"root":           s.cfg.DataRoot,
-		},
-	}); err != nil {
-		return localScanResult{}, err
-	}
-	discoverNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "discover",
-		NodeType:    "discover_local_files",
-		DisplayName: "Discover local files",
-		Position:    2,
-		Status:      "succeeded",
-		Input:       runInput,
-		Output: map[string]any{
-			"candidate_folders": scanSummary.CandidateFolders,
-			"detected_works":    scanSummary.DetectedWorks,
-			"scanned_files":     scanSummary.ScannedFiles,
-			"ambiguous_folders": scanSummary.AmbiguousFolders,
-			"skipped_locations": skippedLocations,
-			"missing_locations": missingLocations,
-		},
-	})
-	if err != nil {
-		return localScanResult{}, err
-	}
-	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID:       discoverNodeID,
-		WorkerType:      "local_folder_discovery",
-		Status:          "succeeded",
-		Payload:         runInput,
-		ProgressCurrent: scanSummary.ScannedFiles,
-		ProgressTotal:   scanSummary.ScannedFiles,
-	})
-	if err != nil {
-		return localScanResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "match",
-		NodeType:    "match_works",
-		DisplayName: "Match works",
-		Position:    3,
-		Status:      "succeeded",
-		Input: map[string]any{
-			"detected_works": scanSummary.DetectedWorks,
-		},
-		Output: map[string]any{
-			"matched_works":    scanSummary.DetectedWorks,
-			"duplicate_groups": len(scanSummary.DuplicateGroups),
-		},
-	}); err != nil {
-		return localScanResult{}, err
-	}
-	if err := insertLocalDuplicateCandidates(ctx, tx, runID, scanSummary.DuplicateGroups); err != nil {
-		return localScanResult{}, err
-	}
-	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "sync",
-		NodeType:    "sync_file_locations",
-		DisplayName: "Sync file locations",
-		Position:    4,
-		Status:      "succeeded",
-		Input: map[string]any{
-			"file_source_id": fileSourceID,
-		},
-		Output: map[string]any{
-			"updated_locations": updatedLocations,
-			"skipped_locations": skippedLocations,
-			"missing_locations": missingLocations,
-			"new_work_codes":    newWorkCodes,
-		},
-	}); err != nil {
-		return localScanResult{}, err
-	}
-	metadataNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID:      "metadata",
-		NodeType:    "sync_metadata",
-		DisplayName: "Sync metadata",
-		Position:    5,
-		Status:      "running",
-		Input:       map[string]any{},
-		Output:      map[string]any{},
-	})
-	if err != nil {
-		return localScanResult{}, err
-	}
-	runSummary["updated_locations"] = updatedLocations
-	runSummary["skipped_locations"] = skippedLocations
-	runSummary["missing_locations"] = missingLocations
-	runSummary["new_work_codes"] = newWorkCodes
-	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), runID); err != nil {
-		return localScanResult{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return localScanResult{}, err
-	}
-
-	result := localScanResult{
-		RunID:            runID,
-		JobID:            jobID,
-		FileSourceID:     fileSourceID,
-		Status:           "succeeded",
-		DetectedWorks:    scanSummary.DetectedWorks,
-		ScannedFiles:     scanSummary.ScannedFiles,
-		UpdatedLocations: updatedLocations,
-		SkippedLocations: skippedLocations,
-		NewWorkCodes:     newWorkCodes,
-		Failures:         []string{},
-	}
-	metadataResult, metadataErr := s.newDLsiteMetadataSyncer(ctx).SyncAllWithoutWorkflow(ctx)
-	if metadataErr == nil {
-		metadataErr = s.syncPartiesFromDLsiteSnapshots(ctx)
-	}
-	result.TargetWorks = metadataResult.TargetWorks
-	result.SyncedWorks = metadataResult.SyncedWorks
-	result.SkippedWorks = metadataResult.SkippedWorks
-	result.FailedWorks = metadataResult.FailedWorks
-	result.UnavailableWorks = metadataResult.UnavailableWorks
-	result.Failures = metadataResult.Failures
-	result.Status = metadataResult.Status
-	if metadataErr != nil {
-		result.Status = "failed"
-		result.Failures = append(result.Failures, metadataErr.Error())
-	}
-	metadataJobID, finishErr := s.finishLocalScanMetadata(ctx, metadataNodeID, &result, runSummary, metadataResult, metadataErr)
-	if finishErr != nil {
-		return localScanResult{}, finishErr
-	}
-	result.MetadataJobID = metadataJobID
-	if metadataErr != nil {
-		return localScanResult{}, metadataErr
-	}
-	return result, nil
-}
-
-func (s *Server) finishLocalScanMetadata(ctx context.Context, metadataNodeID int64, result *localScanResult, runSummary map[string]any, metadataResult metasync.DLsiteSyncResult, runErr error) (int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	errorMessage := strings.Join(result.Failures, "\n")
-	metadataOutput := map[string]any{
-		"target_works":      result.TargetWorks,
-		"synced_works":      result.SyncedWorks,
-		"skipped_works":     result.SkippedWorks,
-		"failed_works":      result.FailedWorks,
-		"unavailable_works": result.UnavailableWorks,
-		"review_works":      len(metadataResult.ReviewCandidates),
-		"review_candidates": metadataResult.ReviewCandidates,
-		"failures":          result.Failures,
-	}
-	if runErr != nil {
-		metadataOutput["error"] = runErr.Error()
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run
-		SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, mustJSON(metadataOutput), errorMessage, metadataNodeID); err != nil {
-		return 0, err
-	}
-	metadataJobID, err := workflow.InsertJob(ctx, tx, result.RunID, workflow.JobSpec{
-		NodeRunID:       metadataNodeID,
-		WorkerType:      "metadata_sync",
-		Status:          result.Status,
-		Payload:         map[string]any{},
-		ProgressCurrent: result.SyncedWorks,
-		ProgressTotal:   result.TargetWorks,
-		Error:           errorMessage,
-	})
-	if err != nil {
-		return 0, err
-	}
-	for _, candidate := range metadataResult.ReviewCandidates {
-		payload := map[string]any{
-			"work_id": candidate.WorkID, "code": candidate.Code, "provider": "dlsite",
-			"reason": candidate.Reason, "message": candidate.Message,
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO workflow_candidate (workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json)
-			VALUES (?, ?, 'dlsite_unavailable_work', ?, 'pending', ?)
-		`, result.RunID, metadataNodeID, candidate.Code, mustJSON(payload)); err != nil {
-			return 0, err
-		}
-	}
-	runSummary["target_works"] = result.TargetWorks
-	runSummary["synced_works"] = result.SyncedWorks
-	runSummary["skipped_works"] = result.SkippedWorks
-	runSummary["failed_works"] = result.FailedWorks
-	runSummary["unavailable_works"] = result.UnavailableWorks
-	runSummary["failures"] = result.Failures
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_run
-		SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, mustJSON(runSummary), result.RunID); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return metadataJobID, nil
 }
 
 func (s *Server) configuredLocalScanDepth(ctx context.Context) int {
