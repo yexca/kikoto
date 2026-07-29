@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metasync"
@@ -154,6 +155,28 @@ func (s *Server) listCircles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circleSummary, error) {
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = `
+			AND (
+				EXISTS (
+					SELECT 1
+					FROM work_party AS demo_relation
+					INNER JOIN work AS demo_work ON demo_work.id = demo_relation.work_id
+					WHERE demo_relation.party_id = party.id
+						AND demo_relation.role = 'circle'
+						AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `
+				)
+				OR EXISTS (
+					SELECT 1
+					FROM party_catalog_item AS demo_catalog
+					INNER JOIN work AS demo_work ON UPPER(demo_work.primary_code) = UPPER(demo_catalog.primary_code)
+					WHERE demo_catalog.party_id = party.id
+						AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `
+				)
+			)
+		`
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			party.id,
@@ -174,6 +197,7 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		WHERE party.party_type IN ('circle', 'brand', 'maker')
 			AND provider.code = 'dlsite'
 			AND external.id_type = 'maker_id'
+			`+demoWhere+`
 		ORDER BY party.display_name ASC
 	`, userID)
 	if err != nil {
@@ -237,8 +261,23 @@ func (s *Server) getCircle(w http.ResponseWriter, r *http.Request) {
 	}
 	partyID, err := s.ensurePlaceholderCircle(r.Context(), externalID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+			return
+		}
 		writeError(w, err)
 		return
+	}
+	if s.cfg.IsDemo() {
+		eligible, err := s.demoCircleEligible(r.Context(), partyID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if !eligible {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "circle not found"})
+			return
+		}
 	}
 
 	summary, err := s.loadCircleSummary(r.Context(), userID, partyID)
@@ -732,6 +771,16 @@ func upsertWorkPartyTx(ctx context.Context, tx *sql.Tx, providerID int64, workID
 }
 
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
+	if s.cfg.IsDemo() {
+		var partyID int64
+		err := s.db.QueryRowContext(ctx, `
+			SELECT external.party_id
+			FROM party_external_id AS external
+			INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
+			WHERE provider.code = 'dlsite' AND external.id_type = 'maker_id' AND external.external_id = ?
+		`, externalID).Scan(&partyID)
+		return partyID, err
+	}
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
 		return 0, err
@@ -749,6 +798,32 @@ func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string)
 		return 0, err
 	}
 	return s.upsertDLsiteParty(ctx, externalID, "Unfetched circle "+externalID, "{}")
+}
+
+func (s *Server) demoCircleEligible(ctx context.Context, partyID int64) (bool, error) {
+	if !s.cfg.IsDemo() {
+		return true, nil
+	}
+	var eligible bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM work_party AS relation
+				INNER JOIN work AS demo_work ON demo_work.id = relation.work_id
+				WHERE relation.party_id = ?
+					AND relation.role = 'circle'
+					AND `+contentpolicy.DemoEligibleWorkSQL("demo_work")+`
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM party_catalog_item AS catalog
+				INNER JOIN work AS demo_work ON UPPER(demo_work.primary_code) = UPPER(catalog.primary_code)
+				WHERE catalog.party_id = ?
+					AND `+contentpolicy.DemoEligibleWorkSQL("demo_work")+`
+			)
+	`, partyID, partyID).Scan(&eligible)
+	return eligible, err
 }
 
 func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID int64) (circleSummary, error) {
@@ -802,6 +877,10 @@ func (s *Server) loadCircleSummary(ctx context.Context, userID int64, partyID in
 
 func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circleSummary) error {
 	setDefaultCircleState(item)
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	var catalogWorks int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
@@ -810,6 +889,7 @@ func (s *Server) fillCircleStats(ctx context.Context, userID int64, item *circle
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id = ?
+			`+demoWhere+`
 	`, item.ID).Scan(&catalogWorks); err != nil {
 		return err
 	}
@@ -970,6 +1050,12 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 	if len(partyIDs) == 0 {
 		return result, nil
 	}
+	catalogDemoWhere := ""
+	relationDemoWhere := ""
+	if s.cfg.IsDemo() {
+		catalogDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+		relationDemoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	query, args := int64InQuery(`
 		WITH candidates AS (
 			SELECT
@@ -980,6 +1066,8 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 			FROM party_catalog_item AS catalog
 			INNER JOIN metadata_provider AS provider ON provider.id = catalog.provider_id AND provider.code = 'dlsite'
 			LEFT JOIN work ON UPPER(work.primary_code) = UPPER(catalog.primary_code)
+			WHERE 1 = 1
+				`+catalogDemoWhere+`
 			UNION ALL
 			SELECT
 				relation.party_id,
@@ -989,6 +1077,7 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 			FROM work_party AS relation
 			INNER JOIN work ON work.id = relation.work_id
 			WHERE relation.role = 'circle'
+				`+relationDemoWhere+`
 				AND NOT EXISTS (
 					SELECT 1
 					FROM party_catalog_item AS catalog
@@ -1025,6 +1114,10 @@ func (s *Server) loadCircleLatestWorks(ctx context.Context, partyIDs []int64) (m
 }
 
 func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) (map[int64]int, error) {
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	query, args := int64InQuery(`
 		SELECT catalog.party_id, COUNT(DISTINCT COALESCE(logical.canonical_code, catalog.primary_code))
 		FROM party_catalog_item AS catalog
@@ -1032,6 +1125,7 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE catalog.party_id IN (%s)
+			`+demoWhere+`
 		GROUP BY catalog.party_id
 	`, partyIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1052,6 +1146,10 @@ func (s *Server) loadCircleCatalogCounts(ctx context.Context, partyIDs []int64) 
 }
 
 func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []int64) (map[int64]int, map[int64]int, error) {
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	query, args := int64InQuery(`
 		SELECT relation.party_id, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_party AS relation
@@ -1062,6 +1160,7 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
 		WHERE relation.party_id IN (%s)
 			AND location.availability = 'available'
+			`+demoWhere+`
 		GROUP BY relation.party_id, location.location_type
 	`, partyIDs)
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1099,6 +1198,7 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 		WHERE catalog.party_id IN (%s)
 			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 			AND source.enabled = 1
+			`+demoWhere+`
 		GROUP BY catalog.party_id
 	`, partyIDs)
 	remoteRows, err := s.db.QueryContext(ctx, query, args...)
@@ -1131,6 +1231,7 @@ func (s *Server) loadCircleAvailabilityCounts(ctx context.Context, partyIDs []in
 			AND presence.presence_type = 'source'
 			AND presence.availability = 'available'
 			AND source.enabled = 1
+			`+demoWhere+`
 		GROUP BY relation.party_id
 	`, partyIDs)
 	presenceRows, err := s.db.QueryContext(ctx, query, args...)
@@ -1165,6 +1266,10 @@ func int64InQuery(template string, values []int64) (string, []any) {
 }
 
 func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circleSourceStat, error) {
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(DISTINCT COALESCE(logical.canonical_code, work.primary_code))
 		FROM work_party AS relation
@@ -1176,6 +1281,7 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
 		WHERE relation.party_id = ?
 			AND location.availability = 'available'
+			`+demoWhere+`
 		GROUP BY source.id, source.display_name, location.location_type
 		ORDER BY source.display_name ASC
 	`, partyID)
@@ -1227,6 +1333,7 @@ func (s *Server) circleSourceStats(ctx context.Context, partyID int64) ([]circle
 		WHERE catalog.party_id = ?
 			AND source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 			AND source.enabled = 1
+			`+demoWhere+`
 		GROUP BY source.id, source.display_name
 	`, partyID)
 	if err != nil {
@@ -1622,6 +1729,7 @@ func (s *Server) loadCircleSeries(ctx context.Context, partyID int64) ([]circleS
 			}
 			item.WorkCodes = filteredCodes
 			item.Works = len(filteredCodes)
+			item.DeclaredWorks = item.Works
 			item.LocalWorks = min(item.LocalWorks, item.Works)
 			item.RemoteWorks = min(item.RemoteWorks, item.Works-item.LocalWorks)
 		}

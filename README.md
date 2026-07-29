@@ -35,6 +35,19 @@ Open:
 - Frontend: `http://127.0.0.1:7655`
 - Backend: `http://127.0.0.1:7659`
 
+To run a public read-only Demo instance from the source tree, first place only
+sanitized runtime data under `./demo`, then start the isolated Demo stack:
+
+```sh
+docker compose -f docker-compose.demo.yaml up -d --build
+```
+
+The Demo stack uses `./demo/config`, `./demo/cache`, and `./demo/data`; it does
+not mount the normal production directories. At each startup, its dedicated
+scan verifies folders in `./demo/data` against DLsite and indexes only
+all-ages, permanently free works. See [Docker](docs/operations/docker.md#demo-stack)
+for the data and security requirements.
+
 Runtime data is stored in mounted local directories:
 
 - `./config:/config`

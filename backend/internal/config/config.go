@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Mode is development (root auth bypass), production (normal auth), or demo (read-only root).
+// Mode is development (root auth bypass), production (normal auth), or demo (restricted demo identity).
 type Mode string
 
 const (

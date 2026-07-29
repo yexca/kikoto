@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -87,6 +88,42 @@ func TestAuthMiddlewareDoesNotTreatDatabaseFailureAsAnonymous(t *testing.T) {
 	}
 	if response.Code == http.StatusUnauthorized || response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500 and never 401", response.Code)
+	}
+}
+
+func TestDemoRequestsUseRestrictedDemoIdentityAndIgnoreSessions(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, RootUsername: "root", RootPassword: "root-password"})
+	if err := server.BootstrapRoot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rootSession, err := server.accountStore.Authenticate(context.Background(), "root", "root-password", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	request.Header.Set("Authorization", "Bearer "+rootSession.ID)
+	response := httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("demo auth status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Authenticated bool        `json:"authenticated"`
+		User          currentUser `json:"user"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Authenticated || payload.User.Username != account.DemoUsername || !payload.User.DemoMode {
+		t.Fatalf("demo auth payload = %#v", payload)
+	}
+	if strings.Join(payload.User.Permissions, ",") != "library:read,playback:use" || payload.User.Role != "user" {
+		t.Fatalf("demo user = %#v", payload.User)
 	}
 }
 

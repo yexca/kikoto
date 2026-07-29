@@ -11,7 +11,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum local scan folder depth. |
-| `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` exposes a read-only root session with all-ages permanently-free content filtering. |
+| `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | Required in production | Authoritative root administrator password. A changed value is applied on service startup and revokes existing root sessions. |
@@ -33,9 +33,17 @@ configuration file, not in the repository.
 
 After first startup, Settings is the source of truth for configured sources.
 
-Demo mode does not recover or dispatch workflow jobs, and its HTTP API rejects
-all non-read methods. The frontend keeps administrative data inspectable while
-disabling settings, workflow, schedule, run, and review mutations.
+Demo mode does not bootstrap or expose the root identity, recover or dispatch
+workflow jobs, or accept supplied sessions. Its HTTP API rejects all non-read
+methods, and the Demo identity has only library-read and playback permissions,
+so administrator, workflow, source-management, and user-management data is not
+available. It synchronously runs only the dedicated `demo_library_scan`
+workflow at startup. That workflow scans the Demo data root, verifies each
+candidate against DLsite, and stores local works and media only when the
+provider reports both all-ages and permanently free metadata. Unknown, failed,
+adult, paid, and temporary-free candidates are discarded. Compatible remote
+sources are authoritative for the mandatory
+`$age:general$ $-price:1$` query contract.
 
 ## Source Control Boundary
 

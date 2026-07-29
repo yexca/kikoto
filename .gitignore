@@ -12,6 +12,8 @@ config/*
 !config/app.example.yaml
 !config/remote-sources.example.yml
 
+demo/
+
 backend/bin/
 backend/*.db
 backend/*.db-*

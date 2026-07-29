@@ -42,7 +42,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if err := server.BootstrapRoot(nil); err != nil {
+	if cfg.IsDemo() {
+		if err := server.BootstrapDemo(ctx); err != nil {
+			slog.Error("bootstrap demo user", "error", err)
+			os.Exit(1)
+		}
+	} else if err := server.BootstrapRoot(ctx); err != nil {
 		slog.Error("bootstrap root user", "error", err)
 		os.Exit(1)
 	}
@@ -50,11 +55,26 @@ func main() {
 		slog.Error("seed remote sources", "error", err)
 		os.Exit(1)
 	}
+	if cfg.IsDemo() {
+		result, err := server.RunDemoLibraryScan(ctx)
+		if err != nil {
+			slog.Error("run demo library scan", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("demo library scan finished",
+			"status", result.Status,
+			"detected_works", result.DetectedWorks,
+			"eligible_works", result.EligibleWorks,
+			"discarded_works", result.DiscardedWorks,
+			"failed_works", result.FailedWorks,
+			"indexed_files", result.IndexedFiles,
+		)
+	}
 	if cfg.IsDevelopment() {
 		slog.Warn("dev mode enabled; requests authenticate as root user", "username", cfg.RootUsername)
 	}
 	if cfg.IsDemo() {
-		slog.Info("demo mode enabled; requests authenticate as a read-only root user")
+		slog.Info("demo mode enabled; requests authenticate as the restricted demo user")
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
 	if !cfg.IsDemo() {

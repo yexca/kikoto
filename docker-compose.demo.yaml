@@ -1,0 +1,41 @@
+name: kikoto-demo
+
+services:
+  kikoto:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${KIKOTO_DEMO_IMAGE:-kikoto:demo}
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KIKOTO_MODE: demo
+      KIKOTO_HTTP_ADDR: 0.0.0.0:7659
+      KIKOTO_DB_PATH: /config/kikoto.db
+      KIKOTO_DATA_ROOT: /data
+      KIKOTO_CACHE_ROOT: /cache
+      KIKOTO_STATIC_DIR: /app/static
+      KIKOTO_LOCAL_SCAN_DEPTH: ${KIKOTO_LOCAL_SCAN_DEPTH:-4}
+      KIKOTO_SESSION_COOKIE_SECURE: ${KIKOTO_SESSION_COOKIE_SECURE:-false}
+      KIKOTO_REMOTE_SOURCES_ENABLED: ${KIKOTO_DEMO_REMOTE_SOURCES_ENABLED:-false}
+      KIKOTO_REMOTE_SOURCES_FILE: /config/remote-sources.yml
+    ports:
+      - "${KIKOTO_DEMO_PORT:-7655}:7659"
+    volumes:
+      - type: bind
+        source: ${KIKOTO_DEMO_CONFIG_DIR:-./demo/config}
+        target: /config
+      - type: bind
+        source: ${KIKOTO_DEMO_CACHE_DIR:-./demo/cache}
+        target: /cache
+        read_only: true
+      - type: bind
+        source: ${KIKOTO_DEMO_DATA_DIR:-./demo/data}
+        target: /data
+        read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m

@@ -51,6 +51,48 @@ needs local builds:
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
+## Demo Stack
+
+Use `docker-compose.demo.yaml` for a public, read-only Demo deployment built
+from the current source tree:
+
+```sh
+docker compose -f docker-compose.demo.yaml up -d --build
+```
+
+It listens on `http://127.0.0.1:7655` by default. Override the host port with
+`KIKOTO_DEMO_PORT`. Set `KIKOTO_DEMO_REMOTE_SOURCES_ENABLED=true` only when the
+isolated Demo configuration includes a sanitized `remote-sources.yml`.
+
+The stack deliberately uses separate mounts:
+
+- `./demo/config:/config`
+- `./demo/cache:/cache:ro`
+- `./demo/data:/data:ro`
+
+Put candidate folders containing a supported work code under `./demo/data`.
+On every container start, the synchronous `demo_library_scan` workflow reuses
+the local folder scanner, fetches current DLsite metadata, and indexes only
+works that are both all-ages and permanently free. Adult, paid, temporary-free,
+unknown, duplicate, and metadata-fetch-failed candidates are not admitted or
+indexed. Restart the container after changing `./demo/data`; live filesystem
+watching remains disabled.
+
+`./demo/config` contains the isolated Demo SQLite database and optional source
+seed file. `./demo/cache` may contain sanitized prebuilt assets, but the startup
+scan does not download covers because this mount is read-only. Never point a
+public Demo deployment at production or personal runtime directories. The
+service creates a reserved passwordless `__demo__` identity in the Demo
+database and ignores supplied login sessions. That identity has only
+library-read and playback permissions; administrator, workflow,
+source-management, and user-management APIs remain inaccessible.
+
+Stop it with:
+
+```sh
+docker compose -f docker-compose.demo.yaml down
+```
+
 ## Runtime Data
 
 Docker mounts may contain private media, SQLite databases, cached covers, and

@@ -41,6 +41,11 @@ The default runtime mounts are:
 - `./cache:/cache`
 - `./data:/data`
 
+For a public read-only instance, use `docker-compose.demo.yaml` from the source
+tree. It uses separate `./demo` mounts. Put candidate work folders under
+`./demo/data`; the dedicated startup workflow verifies and indexes only
+all-ages, permanently free works. See [Docker](operations/docker.md#demo-stack).
+
 ## Android Client
 
 Signed Android APKs are attached to the project [GitHub Releases](https://github.com/yexca/kikoto/releases).

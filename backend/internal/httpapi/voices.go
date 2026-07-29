@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -616,7 +617,7 @@ func (s *Server) setVoiceUserTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceSummary, error) {
-	rows, err := s.db.QueryContext(ctx, voiceSummaryQuery("")+" ORDER BY known_works DESC, person.display_name ASC", userID)
+	rows, err := s.db.QueryContext(ctx, voiceSummaryQuery("", s.cfg.IsDemo())+" ORDER BY known_works DESC, person.display_name ASC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -662,7 +663,7 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 }
 
 func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID int64) (voiceSummary, error) {
-	row := s.db.QueryRowContext(ctx, voiceSummaryQuery("WHERE person.id = ?"), userID, personID)
+	row := s.db.QueryRowContext(ctx, voiceSummaryQuery("WHERE person.id = ?", s.cfg.IsDemo()), userID, personID)
 	item, err := s.scanVoiceSummary(ctx, row, userID)
 	if err != nil {
 		return voiceSummary{}, err
@@ -678,7 +679,14 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 	return item, nil
 }
 
-func voiceSummaryQuery(where string) string {
+func voiceSummaryQuery(where string, demo bool) string {
+	if demo {
+		if strings.TrimSpace(where) == "" {
+			where = "WHERE " + contentpolicy.DemoEligibleWorkSQL("work")
+		} else {
+			where += " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+		}
+	}
 	return `
 		WITH work_location_flags AS (
 			SELECT
@@ -837,6 +845,10 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 	if len(personIDs) == 0 {
 		return result, nil
 	}
+	demoWhere := ""
+	if s.cfg.IsDemo() {
+		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
+	}
 	query, args := int64InQuery(`
 		WITH ranked AS (
 			SELECT
@@ -851,6 +863,7 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 			FROM work_credit AS credit
 			INNER JOIN work ON work.id = credit.work_id
 			WHERE credit.role = 'voice_actor'
+				`+demoWhere+`
 		)
 		SELECT person_id, primary_code, title, release_date
 		FROM ranked
@@ -1320,6 +1333,9 @@ func voiceRemoteSourceErrorStatus(err error, ctxErr error) (string, string) {
 }
 
 func (s *Server) recordVoiceRemoteSearchWorkflow(ctx context.Context, personID int64, voiceName string, keyword string, results []voiceRemoteSourceSet) (int64, error) {
+	if s.cfg.IsDemo() {
+		return 0, nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err

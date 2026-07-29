@@ -28,6 +28,13 @@ func (s *Server) BootstrapRoot(ctx context.Context) error {
 	return s.accountStore.BootstrapRoot(ctx, s.cfg.RootUsername, s.cfg.RootPassword)
 }
 
+func (s *Server) BootstrapDemo(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return s.accountStore.BootstrapDemo(ctx)
+}
+
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, err := s.currentUserFromRequest(r.Context(), r)
@@ -44,13 +51,21 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) currentUserFromRequest(ctx context.Context, r *http.Request) (currentUser, error) {
-	if s.cfg.IsDevelopment() || s.cfg.IsDemo() {
+	if s.cfg.IsDemo() {
+		user, err := s.accountStore.LoadByUsername(ctx, account.DemoUsername)
+		if err != nil {
+			return currentUser{}, err
+		}
+		user.Permissions = account.DemoPermissions()
+		user.DemoMode = true
+		return s.withPasswordManagement(user), nil
+	}
+	if s.cfg.IsDevelopment() {
 		user, err := s.accountStore.LoadByUsername(ctx, s.cfg.RootUsername)
 		if err != nil {
 			return currentUser{}, err
 		}
-		user.DevMode = s.cfg.IsDevelopment()
-		user.DemoMode = s.cfg.IsDemo()
+		user.DevMode = true
 		return s.withPasswordManagement(user), nil
 	}
 	if sessionID := bearerSessionID(r); sessionID != "" {

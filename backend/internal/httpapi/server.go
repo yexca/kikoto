@@ -35,6 +35,7 @@ type Server struct {
 	libraryStore         *library.Store
 	workflowStore        *workflow.Store
 	cfg                  config.Config
+	dlsiteClient         metasync.DLsiteClient
 	circleAutoRefreshMu  sync.Mutex
 	circleAutoRefreshing map[int64]bool
 	remoteWorkCacheMu    sync.Mutex
@@ -59,6 +60,7 @@ type localMediaIndexCall struct {
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
+		dlsiteClient:         dlsite.NewClient(nil),
 		circleAutoRefreshing: map[int64]bool{},
 		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
 		remoteWorkCacheCalls: map[string]*remoteWorkTracksCall{},
@@ -1247,7 +1249,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return
 	}
-	if target.LocationType == "cache" && !cached {
+	if !s.cfg.IsDemo() && target.LocationType == "cache" && !cached {
 		if _, statErr := os.Stat(path); statErr == nil {
 			_, _ = s.db.ExecContext(r.Context(), `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
 		}
@@ -3171,6 +3173,9 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 }
 
 func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) error {
+	if s.cfg.IsDemo() {
+		return nil
+	}
 	var existing int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
@@ -3766,9 +3771,11 @@ func (s *Server) listWorkflowDefinitions(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if err := s.ensureSystemWorkflowDefinitions(r.Context()); err != nil {
-		writeError(w, err)
-		return
+	if !s.cfg.IsDemo() {
+		if err := s.ensureSystemWorkflowDefinitions(r.Context()); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	definitions, err := s.workflowStore.ListDefinitions(r.Context())
 	if err != nil {
@@ -4382,7 +4389,7 @@ func (s *Server) runDLsiteMetadataSync(ctx context.Context, triggerType string, 
 
 func (s *Server) runDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (metasync.DLsiteSyncResult, error) {
 	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
-	syncer := metasync.NewDLsiteSyncer(s.db, dlsite.NewClient(nil)).
+	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithLanguages(dlsiteLanguageFallbacks(language)).
 		WithRequestPacing(

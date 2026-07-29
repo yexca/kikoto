@@ -14,6 +14,10 @@ type Store struct {
 	db *sql.DB
 }
 
+const DemoUsername = "__demo__"
+
+var ErrDemoAccountConflict = errors.New("reserved demo account username is already in use")
+
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
@@ -79,6 +83,55 @@ func (s *Store) BootstrapRoot(ctx context.Context, username string, password str
 		if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID); err != nil {
 			return err
 		}
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) BootstrapDemo(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var userID int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM user_account WHERE username = ?", DemoUsername).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		result, insertErr := tx.ExecContext(ctx, `
+			INSERT INTO user_account (username, display_name, role, enabled)
+			VALUES (?, 'Demo', 'user', 1)
+		`, DemoUsername)
+		if insertErr != nil {
+			return insertErr
+		}
+		userID, err = result.LastInsertId()
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+		var credentialCount int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM user_password_credential WHERE user_id = ?", userID).Scan(&credentialCount); err != nil {
+			return err
+		}
+		if credentialCount != 0 {
+			return ErrDemoAccountConflict
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE user_account
+			SET display_name = 'Demo', role = 'user', enabled = 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, userID); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE user_id = ?", userID); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO favorite_list (user_id, name, sort_order) VALUES (?, 'Favorites', 0)", userID); err != nil {
 		return err
@@ -166,6 +219,10 @@ func PermissionsForRole(role string) []string {
 	default:
 		return base
 	}
+}
+
+func DemoPermissions() []string {
+	return []string{"library:read", "playback:use"}
 }
 
 func newSessionID() (string, error) {

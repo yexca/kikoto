@@ -5476,6 +5476,9 @@ func syncRemoteTrackTree(ctx context.Context, tx *sql.Tx, fileSourceID int64, wo
 }
 
 func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status string) error {
+	if s.cfg.IsDemo() {
+		return nil
+	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE file_source_endpoint
 		SET health_status = ?,

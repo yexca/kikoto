@@ -127,6 +127,26 @@ func (s *DLsiteSyncer) WithTriggerID(triggerID int64) *DLsiteSyncer {
 	return s
 }
 
+// FetchProduct fetches one product using the syncer's language, pacing, and
+// retry policy without writing anything to the database.
+func (s *DLsiteSyncer) FetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
+	return s.fetchProduct(ctx, strings.ToUpper(strings.TrimSpace(workno)))
+}
+
+// SyncProductOnly stores exactly the supplied product. Unlike SyncProduct, it
+// does not fetch related editions or download a cover, which makes it suitable
+// for callers that have already applied their own admission policy.
+func (s *DLsiteSyncer) SyncProductOnly(ctx context.Context, product dlsite.Product) (int64, error) {
+	workID, err := s.ensureWorkForProduct(ctx, product)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.applyProduct(ctx, workID, product); err != nil {
+		return 0, err
+	}
+	return workID, nil
+}
+
 func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 	targets, err := s.loadTargets(ctx)
 	if err != nil {
@@ -207,11 +227,8 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 }
 
 func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) (int64, error) {
-	workID, err := s.ensureWorkForProduct(ctx, product)
+	workID, err := s.SyncProductOnly(ctx, product)
 	if err != nil {
-		return 0, err
-	}
-	if err := s.applyProduct(ctx, workID, product); err != nil {
 		return 0, err
 	}
 	if s.cacheRoot != "" {

@@ -12,6 +12,7 @@ sample/
 data/
 cache/
 config/
+demo/
 
 backend/bin/
 backend/*.db

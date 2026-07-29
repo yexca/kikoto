@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +76,50 @@ func TestBootstrapRootSynchronizesEnvironmentPasswordAndRevokesSessions(t *testi
 	}
 	if _, err := store.UserForSession(ctx, session.ID, time.Now()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("environment password synchronization left an old session active: %v", err)
+	}
+}
+
+func TestBootstrapDemoCreatesPasswordlessRestrictedIdentity(t *testing.T) {
+	db := openMigratedTestDB(t, "account-demo.db")
+	store := account.NewStore(db)
+	ctx := context.Background()
+
+	if err := store.BootstrapDemo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	demo, err := store.LoadByUsername(ctx, account.DemoUsername)
+	if err != nil {
+		t.Fatal(err)
+	}
+	permissions := account.DemoPermissions()
+	if demo.Role != "user" || strings.Join(permissions, ",") != "library:read,playback:use" {
+		t.Fatalf("demo = %#v, permissions = %#v", demo, permissions)
+	}
+	var credentials int
+	if err := db.QueryRow("SELECT COUNT(*) FROM user_password_credential WHERE user_id = ?", demo.ID).Scan(&credentials); err != nil {
+		t.Fatal(err)
+	}
+	if credentials != 0 {
+		t.Fatalf("demo credential count = %d, want 0", credentials)
+	}
+	if _, err := store.Authenticate(ctx, account.DemoUsername, "anything", time.Now()); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("demo authentication error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestBootstrapDemoRejectsExistingLoginAccount(t *testing.T) {
+	db := openMigratedTestDB(t, "account-demo-conflict.db")
+	store := account.NewStore(db)
+	ctx := context.Background()
+	if err := store.BootstrapRoot(ctx, account.DemoUsername, "existing-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.BootstrapDemo(ctx); !errors.Is(err, account.ErrDemoAccountConflict) {
+		t.Fatalf("BootstrapDemo() error = %v, want ErrDemoAccountConflict", err)
+	}
+	if _, err := store.Authenticate(ctx, account.DemoUsername, "existing-password", time.Now()); err != nil {
+		t.Fatalf("conflicting account credential was modified: %v", err)
 	}
 }
 
