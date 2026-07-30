@@ -261,6 +261,7 @@ export type WorkTranslation = {
   translationKind: "origin" | "official" | "community" | "third_party" | "unknown";
   current: boolean;
   hasMedia: boolean;
+  mediaState: "metadata_only" | "present_unindexed" | "indexed_available" | "unavailable";
 };
 
 export type FavoriteList = {

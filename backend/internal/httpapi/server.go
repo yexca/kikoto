@@ -591,7 +591,15 @@ type workTranslation struct {
 	TranslationKind  string `json:"translationKind"`
 	Current          bool   `json:"current"`
 	HasMedia         bool   `json:"hasMedia"`
+	MediaState       string `json:"mediaState"`
 }
+
+const (
+	workMediaStateMetadataOnly     = "metadata_only"
+	workMediaStatePresentUnindexed = "present_unindexed"
+	workMediaStateIndexedAvailable = "indexed_available"
+	workMediaStateUnavailable      = "unavailable"
+)
 
 type workResolveResponse struct {
 	RequestedCode    string   `json:"requestedCode"`
@@ -2944,60 +2952,14 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 
 func (s *Server) resolveMediaWorkIDForRequest(ctx context.Context, workID int64) (int64, error) {
 	var primaryCode string
-	var snapshot sql.NullString
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT work.primary_code, (
-			SELECT metadata_snapshot.snapshot_json
-			FROM metadata_snapshot
-			INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-			WHERE metadata_snapshot.work_id = work.id
-				AND metadata_provider.code = 'dlsite'
-			ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-			LIMIT 1
-		)
-		FROM work
-		WHERE work.id = ?
-	`, workID).Scan(&primaryCode, &snapshot); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&primaryCode); err != nil {
 		return 0, err
 	}
-	metadata := parseDLsiteSnapshot(snapshot.String)
-	candidates := []int64{workID}
-	seen := map[int64]bool{workID: true}
-	addCode := func(code string) {
-		if candidateID, ok := s.workIDForCode(ctx, code); ok && !seen[candidateID] {
-			seen[candidateID] = true
-			candidates = append(candidates, candidateID)
-		}
-	}
-	for _, edition := range metadata.LanguageEditions {
-		addCode(edition.PrimaryCode)
-	}
-	addCode(metadata.BaseCode)
-	familyIDs, err := s.familyWorkIDsForCode(ctx, primaryCode)
+	translations, err := s.loadLogicalWorkTranslations(ctx, primaryCode)
 	if err != nil {
 		return 0, err
 	}
-	for _, candidateID := range familyIDs {
-		if candidateID > 0 && !seen[candidateID] {
-			seen[candidateID] = true
-			candidates = append(candidates, candidateID)
-		}
-	}
-	for _, candidateID := range candidates {
-		if hasLocal, err := s.workHasAvailableLocalMedia(ctx, candidateID); err != nil {
-			return 0, err
-		} else if hasLocal {
-			return candidateID, nil
-		}
-	}
-	for _, candidateID := range candidates {
-		if hasMedia, err := s.workHasMedia(ctx, candidateID); err != nil {
-			return 0, err
-		} else if hasMedia {
-			return candidateID, nil
-		}
-	}
-	return workID, nil
+	return s.resolveMediaWorkID(ctx, workID, translations)
 }
 
 func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWorkID int64) ([]mediaItemDetail, error) {
@@ -3176,18 +3138,10 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 		SELECT COUNT(*)
 		FROM media_item AS item
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
-		WHERE (
-				item.work_id = ?
-				OR item.work_id IN (
-					SELECT sibling.work_id
-					FROM work_edition AS current_edition
-					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-					WHERE current_edition.work_id = ?
-				)
-			)
+		WHERE item.work_id = ?
 			AND location.location_type = 'local'
 			AND location.availability = 'available'
-	`, workID, workID).Scan(&existing); err != nil {
+	`, workID).Scan(&existing); err != nil {
 		return err
 	}
 	if existing > 0 {
@@ -3199,21 +3153,13 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 			SELECT 1
 			FROM work_source_presence AS presence
 			INNER JOIN file_source AS source ON source.id = presence.file_source_id
-			WHERE (
-					presence.work_id = ?
-					OR presence.work_id IN (
-						SELECT sibling.work_id
-						FROM work_edition AS current_edition
-						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-						WHERE current_edition.work_id = ?
-					)
-				)
+			WHERE presence.work_id = ?
 				AND presence.presence_type = 'local'
 				AND presence.availability = 'available'
 				AND source.source_type = 'local_folder'
 				AND COALESCE(json_extract(presence.raw_json, '$.file_tree_scanned'), 0) = 1
 		)
-	`, workID, workID).Scan(&alreadyScanned); err != nil {
+	`, workID).Scan(&alreadyScanned); err != nil {
 		return err
 	}
 	if alreadyScanned != 0 {
@@ -3227,21 +3173,13 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 		SELECT presence.work_id, presence.file_source_id, presence.source_url
 		FROM work_source_presence AS presence
 		INNER JOIN file_source AS source ON source.id = presence.file_source_id
-		WHERE (
-				presence.work_id = ?
-				OR presence.work_id IN (
-					SELECT sibling.work_id
-					FROM work_edition AS current_edition
-					INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-					WHERE current_edition.work_id = ?
-				)
-			)
+		WHERE presence.work_id = ?
 			AND presence.presence_type = 'local'
 			AND presence.availability = 'available'
 			AND source.source_type = 'local_folder'
-		ORDER BY CASE WHEN presence.work_id = ? THEN 0 ELSE 1 END, source.priority ASC, presence.updated_at DESC
+		ORDER BY source.priority ASC, presence.updated_at DESC
 		LIMIT 1
-	`, workID, workID, workID).Scan(&targetWorkID, &fileSourceID, &relPath); err != nil {
+	`, workID).Scan(&targetWorkID, &fileSourceID, &relPath); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -3516,6 +3454,7 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 		}
 		seen[item.PrimaryCode] = true
 		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+		item.MediaState = normalizedWorkMediaState(item.WorkID, item.HasMedia, false, item.MediaState)
 		translations = append(translations, item)
 	}
 	for _, edition := range editions {
@@ -3532,6 +3471,7 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 						translations[index].WorkID = item.WorkID
 						translations[index].Title = item.Title
 						translations[index].HasMedia = item.HasMedia
+						translations[index].MediaState = item.MediaState
 						translations[index].EditionLabel = firstNonEmpty(translations[index].EditionLabel, item.EditionLabel)
 						translations[index].TranslationKind = item.TranslationKind
 						translations[index].Official = item.Official
@@ -3605,6 +3545,11 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 						return nil, err
 					}
 					translations[index].HasMedia = hasMedia
+					hasLocalPresence, err := s.workHasAvailableLocalPresence(ctx, workID)
+					if err != nil {
+						return nil, err
+					}
+					translations[index].MediaState = normalizedWorkMediaState(item.WorkID, hasMedia, hasLocalPresence, "")
 					if translations[index].MetadataLanguage == "" {
 						translations[index].MetadataLanguage = item.MetadataLanguage
 					}
@@ -3619,6 +3564,11 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 			return nil, err
 		}
 		item.HasMedia = hasMedia
+		hasLocalPresence, err := s.workHasAvailableLocalPresence(ctx, workID)
+		if err != nil {
+			return nil, err
+		}
+		item.MediaState = normalizedWorkMediaState(item.WorkID, hasMedia, hasLocalPresence, "")
 		addTranslation(item)
 	}
 	if err := rows.Err(); err != nil {
@@ -3639,8 +3589,21 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 			edition.metadata_language,
 			edition.edition_label,
 			edition.is_canonical,
-			edition.translation_kind,
-			EXISTS (SELECT 1 FROM media_item WHERE media_item.work_id = edition.work_id)
+			 edition.translation_kind,
+			EXISTS (
+				SELECT 1
+				FROM media_file_location AS location
+				INNER JOIN media_item AS media ON media.id = location.media_item_id
+				WHERE media.work_id = edition.work_id
+					AND location.availability = 'available'
+			),
+			EXISTS (
+				SELECT 1
+				FROM work_source_presence AS presence
+				WHERE presence.work_id = edition.work_id
+					AND presence.presence_type = 'local'
+					AND presence.availability = 'available'
+			)
 		FROM work_edition AS current
 		INNER JOIN work_edition AS edition ON edition.logical_work_id = current.logical_work_id
 		INNER JOIN work ON work.id = edition.work_id
@@ -3655,12 +3618,14 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 	for rows.Next() {
 		var item workTranslation
 		var workID int64
-		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.EditionLabel, &item.Origin, &item.TranslationKind, &item.HasMedia); err != nil {
+		var hasLocalPresence bool
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.MetadataLanguage, &item.EditionLabel, &item.Origin, &item.TranslationKind, &item.HasMedia, &hasLocalPresence); err != nil {
 			return nil, err
 		}
 		item.WorkID = &workID
 		item.Official = item.TranslationKind == "official"
 		item.Current = strings.EqualFold(item.PrimaryCode, primaryCode)
+		item.MediaState = normalizedWorkMediaState(item.WorkID, item.HasMedia, hasLocalPresence, "")
 		translations = append(translations, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -3670,9 +3635,16 @@ func (s *Server) loadLogicalWorkTranslations(ctx context.Context, primaryCode st
 }
 
 func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, translations []workTranslation) (int64, error) {
-	if hasLocal, err := s.workHasAvailableLocalMedia(ctx, currentWorkID); err != nil {
+	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
 		return 0, err
-	} else if hasLocal {
+	} else if hasMedia {
+		return currentWorkID, nil
+	}
+	canonical, err := s.workIsCanonicalEdition(ctx, currentWorkID)
+	if err != nil {
+		return 0, err
+	}
+	if !canonical {
 		return currentWorkID, nil
 	}
 	for _, translation := range translations {
@@ -3686,11 +3658,6 @@ func (s *Server) resolveMediaWorkID(ctx context.Context, currentWorkID int64, tr
 		if hasLocal {
 			return *translation.WorkID, nil
 		}
-	}
-	if hasMedia, err := s.workHasMedia(ctx, currentWorkID); err != nil {
-		return 0, err
-	} else if hasMedia {
-		return currentWorkID, nil
 	}
 	for _, translation := range translations {
 		if translation.WorkID != nil && *translation.WorkID != currentWorkID && translation.HasMedia {
@@ -3722,13 +3689,60 @@ func (s *Server) workHasMedia(ctx context.Context, workID int64) (bool, error) {
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM media_item
-			WHERE work_id = ?
+			FROM media_item AS item
+			INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+			WHERE item.work_id = ?
+				AND location.availability = 'available'
 		)
 	`, workID).Scan(&exists); err != nil {
 		return false, err
 	}
 	return exists, nil
+}
+
+func (s *Server) workHasAvailableLocalPresence(ctx context.Context, workID int64) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM work_source_presence AS presence
+			INNER JOIN file_source AS source ON source.id = presence.file_source_id
+			WHERE presence.work_id = ?
+				AND presence.presence_type = 'local'
+				AND presence.availability = 'available'
+				AND source.source_type = 'local_folder'
+		)
+	`, workID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (s *Server) workIsCanonicalEdition(ctx context.Context, workID int64) (bool, error) {
+	var isCanonical bool
+	if err := s.db.QueryRowContext(ctx, "SELECT is_canonical FROM work_edition WHERE work_id = ?", workID).Scan(&isCanonical); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return isCanonical, nil
+}
+
+func normalizedWorkMediaState(workID *int64, hasMedia bool, hasLocalPresence bool, current string) string {
+	if current != "" {
+		return current
+	}
+	if workID == nil {
+		return workMediaStateMetadataOnly
+	}
+	if hasMedia {
+		return workMediaStateIndexedAvailable
+	}
+	if hasLocalPresence {
+		return workMediaStatePresentUnindexed
+	}
+	return workMediaStateUnavailable
 }
 
 func (s *Server) listFileSources(w http.ResponseWriter, r *http.Request) {

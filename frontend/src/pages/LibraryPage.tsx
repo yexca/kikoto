@@ -158,6 +158,13 @@ import {
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
 import {
+  groupWorkVersions,
+  metadataOnlyVersionCount,
+  workVersionAvailable,
+  workVersionKindLabel,
+  workVersionMediaState,
+} from "@/features/work-detail/workVersionModel";
+import {
   buildRemoteTree,
   buildTree,
   countTreeFiles,
@@ -2786,6 +2793,7 @@ function RemoteOnlyWorkDetailController({
 		translationKind: edition.origin ? "origin" : "official",
 		current: edition.current,
 		hasMedia: true,
+		mediaState: "indexed_available",
 	}));
   const presentation: UnifiedWorkDetailPresentation = {
     coverUrl: remoteIdentity.coverUrl,
@@ -3051,8 +3059,8 @@ function PersistedWorkDetailController({
     if (!work || activeEditionCode) return;
     const translations = work.translations ?? [];
     const currentVersion = translations.find((translation) => translation.primaryCode.toUpperCase() === work.primaryCode.toUpperCase());
-    if (currentVersion?.hasMedia) return;
-    const firstPlayableVersion = translations.find((translation) => translation.hasMedia && translation.workId);
+    if (currentVersion && workVersionAvailable(currentVersion)) return;
+    const firstPlayableVersion = translations.find((translation) => translation.workId && workVersionAvailable(translation));
     if (firstPlayableVersion) {
       void selectEdition(firstPlayableVersion);
     }
@@ -3474,7 +3482,7 @@ function PersistedWorkDetailController({
     />
   );
 	const displayTranslations = (() => {
-		const merged = new Map((work?.translations ?? []).map((translation) => [translation.primaryCode.toUpperCase(), translation]));
+		const merged = new Map((localDirectoryWork?.translations ?? []).map((translation) => [translation.primaryCode.toUpperCase(), translation]));
 		for (const edition of selectedRemoteDetail?.languageEditions ?? []) {
 			const key = edition.remoteCode.toUpperCase();
 			const local = merged.get(key);
@@ -3488,7 +3496,8 @@ function PersistedWorkDetailController({
 				official: !edition.origin,
 				translationKind: edition.origin ? "origin" : "official",
 				current: edition.current,
-				hasMedia: false,
+				hasMedia: true,
+				mediaState: "indexed_available",
 			});
 		}
 		return Array.from(merged.values());
@@ -5037,56 +5046,92 @@ function WorkVersionSelector({
   onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
   remoteVersions?: boolean;
 }) {
+  const [showMetadataOnly, setShowMetadataOnly] = useState(false);
+  const metadataOnlyCount = metadataOnlyVersionCount(translations);
+  const groups = groupWorkVersions(translations, {
+    activeCode: activeVersionCode,
+    remoteVersions,
+    includeMetadataOnly: showMetadataOnly,
+  });
+
   return (
     <div className="space-y-2 rounded-lg border bg-card px-3 py-2 text-xs">
-      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-        <Languages className="h-3.5 w-3.5" />
-        <span className="font-medium text-foreground">Versions</span>
-		<span>Metadata <span className="font-semibold text-foreground">Origin</span></span>
-        {baseCode && (
-          baseAvailable ? (
-            <button className="font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
-              Base {baseCode}
-            </button>
-          ) : (
-            <span className="font-semibold text-foreground">Base {baseCode}</span>
-          )
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+          <Languages className="h-3.5 w-3.5" />
+          <span className="font-medium text-foreground">Versions</span>
+          <span>Metadata <span className="font-semibold text-foreground">Origin</span></span>
+          {baseCode && (
+            baseAvailable ? (
+              <button className="font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
+                Base {baseCode}
+              </button>
+            ) : (
+              <span className="font-semibold text-foreground">Base {baseCode}</span>
+            )
+          )}
+        </div>
+        {metadataOnlyCount > 0 && (
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            aria-expanded={showMetadataOnly}
+            onClick={() => setShowMetadataOnly((shown) => !shown)}
+          >
+            {showMetadataOnly ? "Hide" : "Show"} {metadataOnlyCount} metadata-only {metadataOnlyCount === 1 ? "edition" : "editions"}
+          </button>
         )}
       </div>
-      {translations.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {translations.map((translation) => {
-            const available = remoteVersions || Boolean(translation.workId && translation.hasMedia);
-            const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
-			const language = translation.metadataLanguage ? languageLabel(translation.metadataLanguage) : "Unknown";
-			const label = translation.origin ? "Origin" : language;
-            return (
-              <button
-                key={translation.primaryCode}
-                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
-                  active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : available
-                      ? "border-primary/30 text-primary hover:bg-primary/10"
-                      : "border-muted bg-muted text-muted-foreground"
-                }`}
-                disabled={active || !available}
-                onClick={() => {
-                  if (!available || active) return;
-                  if (onVersionSelect) {
-                    onVersionSelect(translation);
-                  } else {
-                    openWorkCodeRoute(translation.primaryCode);
-                  }
-                }}
-              >
-                <span className="font-semibold">{translation.primaryCode}</span>
-                <span>{label}</span>
-				{translation.official && <span>Official</span>}
-                {!available && <span>not local</span>}
-              </button>
-            );
-          })}
+      {groups.length > 0 && (
+        <div className="space-y-2">
+          {groups.map((group) => (
+            <div
+              key={group.key}
+              className="space-y-1"
+              role="group"
+              aria-label={`${group.language ? languageLabel(group.language) : "Unknown language"} versions`}
+            >
+              <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
+                <span>{group.language ? languageLabel(group.language) : "Unknown language"}</span>
+                {group.versions.length > 1 && <span>· {group.versions.length} variants</span>}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {group.versions.map((translation) => {
+                  const available = workVersionAvailable(translation, remoteVersions);
+                  const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
+                  const mediaState = workVersionMediaState(translation);
+                  return (
+                    <button
+                      key={translation.primaryCode}
+                      type="button"
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : available
+                            ? "border-primary/30 text-primary hover:bg-primary/10"
+                            : "border-muted bg-muted text-muted-foreground"
+                      }`}
+                      disabled={active || !available}
+                      onClick={() => {
+                        if (!available || active) return;
+                        if (onVersionSelect) {
+                          onVersionSelect(translation);
+                        } else {
+                          openWorkCodeRoute(translation.primaryCode);
+                        }
+                      }}
+                    >
+                      <span className="font-semibold">{translation.primaryCode}</span>
+                      <span>{workVersionKindLabel(translation)}</span>
+                      {!remoteVersions && mediaState === "present_unindexed" && <span>index on open</span>}
+                      {!remoteVersions && mediaState === "metadata_only" && <span>metadata only</span>}
+                      {!remoteVersions && mediaState === "unavailable" && <span>unavailable</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -6664,8 +6709,44 @@ function languageLabel(value: string) {
     return "Traditional Chinese";
   case "ko":
   case "ko-kr":
-	case "ko_kr":
+  case "ko_kr":
     return "Korean";
+  case "id":
+  case "id-id":
+  case "ind":
+    return "Indonesian";
+  case "es":
+  case "es-es":
+  case "spa":
+    return "Spanish";
+  case "vi":
+  case "vi-vn":
+  case "vie":
+    return "Vietnamese";
+  case "pt":
+  case "pt-br":
+  case "por":
+    return "Portuguese";
+  case "fr":
+  case "fr-fr":
+  case "fre":
+    return "French";
+  case "de":
+  case "de-de":
+  case "ger":
+    return "German";
+  case "it":
+  case "it-it":
+  case "ita":
+    return "Italian";
+  case "th":
+  case "th-th":
+  case "tha":
+    return "Thai";
+  case "sv":
+  case "sv-se":
+  case "swe":
+    return "Swedish";
   default:
     return value || "Unknown";
   }

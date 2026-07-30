@@ -99,6 +99,107 @@ func TestEnsureLocalMediaIndexedHonorsCompletedEmptyScan(t *testing.T) {
 	}
 }
 
+func TestEnsureLocalMediaIndexedIndexesRequestedEditionDespiteSiblingMedia(t *testing.T) {
+	dataRoot := t.TempDir()
+	originPath := filepath.Join(dataRoot, "RJ01000081")
+	translationPath := filepath.Join(dataRoot, "RJ01000082")
+	for _, path := range []string{originPath, translationPath} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(translationPath, "translated.mp3"), []byte("translated audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(81, 'RJ01000081', 'Origin work'),
+			(82, 'RJ01000082', 'Translated work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (81, 81, 'RJ01000081');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical) VALUES
+			(81, 81, 'RJ01000081', 'RJ01000081', 'JPN', 1),
+			(82, 81, 'RJ01000082', 'RJ01000081', 'ENG', 0);
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (91, 'edition-local', 'Edition local', 'local_folder');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json) VALUES
+			(81, 91, 'local', 'RJ01000081', 'available', '{"file_tree_scanned":true}'),
+			(82, 91, 'local', 'RJ01000082', 'available', '{"file_tree_scanned":false}');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (101, 81, 'audio', 'Origin track', 'origin-track');
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (101, 91, 'local', 'RJ01000081/origin.mp3', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	before, err := server.loadLogicalWorkTranslations(context.Background(), "RJ01000081")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := translationMediaStateForCode(before, "RJ01000082"); state != workMediaStatePresentUnindexed {
+		t.Fatalf("translation state before indexing = %q, want %q", state, workMediaStatePresentUnindexed)
+	}
+	if err := server.ensureLocalMediaIndexed(context.Background(), 82); err != nil {
+		t.Fatal(err)
+	}
+
+	var translatedLocations int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id
+		WHERE item.work_id = 82 AND location.location_type = 'local' AND location.availability = 'available'
+	`).Scan(&translatedLocations); err != nil {
+		t.Fatal(err)
+	}
+	if translatedLocations != 1 {
+		t.Fatalf("translated locations = %d, want 1", translatedLocations)
+	}
+	after, err := server.loadLogicalWorkTranslations(context.Background(), "RJ01000081")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := translationMediaStateForCode(after, "RJ01000082"); state != workMediaStateIndexedAvailable {
+		t.Fatalf("translation state after indexing = %q, want %q", state, workMediaStateIndexedAvailable)
+	}
+}
+
+func TestLoadWorkTranslationsPromotesMaterializedEditionMediaState(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(83, 'RJ01000083', 'Origin work'),
+			(84, 'RJ01000084', 'Translated work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (83, 83, 'RJ01000083');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical, translation_kind) VALUES
+			(83, 83, 'RJ01000083', 'RJ01000083', 'JPN', 1, 'origin'),
+			(84, 83, 'RJ01000084', 'RJ01000083', 'ENG', 0, 'third_party');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (92, 'translated-local', 'Translated local', 'local_folder');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
+		VALUES (84, 92, 'local', 'RJ01000084', 'available', '{"file_tree_scanned":false}');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	translations, err := server.loadWorkTranslations(context.Background(), "RJ01000083", "RJ01000083", []workTranslation{
+		{PrimaryCode: "RJ01000083", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
+		{PrimaryCode: "RJ01000084", MetadataLanguage: "ENG", TranslationKind: "unknown"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := translationMediaStateForCode(translations, "RJ01000084"); state != workMediaStatePresentUnindexed {
+		t.Fatalf("merged translation state = %q, want %q", state, workMediaStatePresentUnindexed)
+	}
+	for _, item := range translations {
+		if item.PrimaryCode == "RJ01000084" && item.TranslationKind != "third_party" {
+			t.Fatalf("merged translation kind = %q, want third_party", item.TranslationKind)
+		}
+	}
+}
+
 func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
@@ -109,7 +210,10 @@ func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
 			(51, 51, 'RJ01000051', 'RJ01000051', 1),
 			(52, 51, 'RJ01000052', 'RJ01000051', 0);
-		INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (52, 'audio', 'Track', 'edition-track');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (53, 'media-edition', 'Media edition', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (54, 52, 'audio', 'Track', 'edition-track');
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (54, 53, 'local', 'RJ01000052/track.mp3', 'available');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +225,42 @@ func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
 	if mediaWorkID != 52 {
 		t.Fatalf("media work id = %d, want 52", mediaWorkID)
 	}
+}
+
+func TestResolveMediaWorkIDForRequestDoesNotFallbackFromSelectedTranslation(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(61, 'RJ01000071', 'Origin work'),
+			(62, 'RJ01000072', 'Selected translation');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (61, 61, 'RJ01000071');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
+			(61, 61, 'RJ01000071', 'RJ01000071', 1),
+			(62, 61, 'RJ01000072', 'RJ01000071', 0);
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (63, 'origin-media', 'Origin media', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (64, 61, 'audio', 'Origin track', 'origin-track-71');
+		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
+		VALUES (64, 63, 'local', 'RJ01000071/track.mp3', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	mediaWorkID, err := server.resolveMediaWorkIDForRequest(context.Background(), 62)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mediaWorkID != 62 {
+		t.Fatalf("media work id = %d, want selected translation 62", mediaWorkID)
+	}
+}
+
+func translationMediaStateForCode(items []workTranslation, code string) string {
+	for _, item := range items {
+		if item.PrimaryCode == code {
+			return item.MediaState
+		}
+	}
+	return ""
 }
 
 func TestIndexLocalMediaForWorkCoalescesConcurrentRequests(t *testing.T) {

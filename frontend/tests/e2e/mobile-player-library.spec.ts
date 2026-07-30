@@ -744,7 +744,9 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   await expect(page.getByRole("button", { name: "Directory", exact: true })).toBeVisible();
   await expect(page.getByText("Previewing remote files from Example Remote; temporary playback does not save progress.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Info", exact: true }).click();
-  await page.getByRole("button", { name: /English/ }).click();
+  const englishVersions = page.getByRole("group", { name: "English versions" });
+  await expect(englishVersions.getByText("English", { exact: true })).toBeVisible();
+  await englishVersions.getByRole("button", { name: "RJ09999993 Official", exact: true }).click();
   await page.getByRole("button", { name: "Directory", exact: true }).click();
   await expect(page.getByText("english.mp3", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);
