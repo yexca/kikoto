@@ -200,6 +200,44 @@ func TestLoadWorkTranslationsPromotesMaterializedEditionMediaState(t *testing.T)
 	}
 }
 
+func TestLoadWorkTranslationsOnlyResolvesDeclaredLegacyCodes(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(85, 'RJ09999885', 'Legacy origin'),
+			(86, 'RJ09999886', 'Declared translation'),
+			(87, 'RJ09999887', 'Unrelated snapshot');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (93, 'legacy-local', 'Legacy local', 'local_folder');
+		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
+		VALUES (86, 93, 'local', 'RJ09999886', 'available', '{"file_tree_scanned":false}');
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		SELECT 87, id, 'RJ09999887', '{"product_id":"RJ09999887","base_code":"RJ09999885","language":"ENG"}'
+		FROM metadata_provider WHERE code = 'dlsite';
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	translations, err := server.loadWorkTranslations(context.Background(), "RJ09999885", "RJ09999885", []workTranslation{
+		{PrimaryCode: "RJ09999885", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
+		{PrimaryCode: "RJ09999886", MetadataLanguage: "ENG", TranslationKind: "official"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(translations) != 2 {
+		t.Fatalf("translations = %+v, want only the two declared codes", translations)
+	}
+	if state := translationMediaStateForCode(translations, "RJ09999886"); state != workMediaStatePresentUnindexed {
+		t.Fatalf("declared translation state = %q, want %q", state, workMediaStatePresentUnindexed)
+	}
+	for _, item := range translations {
+		if item.PrimaryCode == "RJ09999887" {
+			t.Fatalf("unrelated snapshot was included: %+v", item)
+		}
+	}
+}
+
 func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`

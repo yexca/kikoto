@@ -3488,94 +3488,103 @@ func (s *Server) loadWorkTranslations(ctx context.Context, primaryCode string, b
 		}
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT work.id, work.primary_code, work.title, snapshot.snapshot_json
-		FROM work
-		LEFT JOIN metadata_snapshot AS snapshot ON snapshot.id = (
-			SELECT metadata_snapshot.id
-			FROM metadata_snapshot
-			INNER JOIN metadata_provider ON metadata_provider.id = metadata_snapshot.provider_id
-			WHERE metadata_snapshot.work_id = work.id
-				AND metadata_provider.code = 'dlsite'
-			ORDER BY metadata_snapshot.fetched_at DESC, metadata_snapshot.id DESC
-			LIMIT 1
-		)
-		WHERE UPPER(work.primary_code) = UPPER(?)
-			OR EXISTS (
-				SELECT 1
-				FROM metadata_snapshot AS family_snapshot
-				INNER JOIN metadata_provider ON metadata_provider.id = family_snapshot.provider_id
-				WHERE family_snapshot.work_id = work.id
-					AND metadata_provider.code = 'dlsite'
-					AND family_snapshot.id = snapshot.id
-			)
-		ORDER BY work.primary_code ASC
-	`, familyCode)
+	unresolvedCodes := make([]string, 0, len(translations)+2)
+	unresolvedSeen := map[string]bool{}
+	addUnresolvedCode := func(code string) {
+		code = normalizeDLsiteCode(code)
+		if code == "" || unresolvedSeen[code] {
+			return
+		}
+		unresolvedSeen[code] = true
+		unresolvedCodes = append(unresolvedCodes, code)
+	}
+	for _, item := range translations {
+		if item.WorkID == nil {
+			addUnresolvedCode(item.PrimaryCode)
+		}
+	}
+	addUnresolvedCode(primaryCode)
+	addUnresolvedCode(familyCode)
+	materialized, err := s.loadMaterializedWorkTranslationsByCodes(ctx, unresolvedCodes)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var workID int64
-		var item workTranslation
-		var snapshot sql.NullString
-		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &snapshot); err != nil {
-			return nil, err
-		}
-		item.WorkID = &workID
-		metadata := parseDLsiteSnapshot(snapshot.String)
-		if item.MetadataLanguage == "" {
-			item.MetadataLanguage = metadata.MetadataLanguage
-		}
-		translationBaseCode := metadata.BaseCode
-		if translationBaseCode == "" {
-			translationBaseCode = item.PrimaryCode
-		}
-		if !strings.EqualFold(translationBaseCode, familyCode) && !strings.EqualFold(item.PrimaryCode, familyCode) {
-			continue
-		}
+	for _, item := range materialized {
 		if seen[strings.ToUpper(strings.TrimSpace(item.PrimaryCode))] {
 			for index := range translations {
 				if strings.EqualFold(translations[index].PrimaryCode, item.PrimaryCode) {
 					translations[index].WorkID = item.WorkID
 					translations[index].Title = item.Title
-					hasMedia, err := s.workHasMedia(ctx, workID)
-					if err != nil {
-						return nil, err
-					}
-					translations[index].HasMedia = hasMedia
-					hasLocalPresence, err := s.workHasAvailableLocalPresence(ctx, workID)
-					if err != nil {
-						return nil, err
-					}
-					translations[index].MediaState = normalizedWorkMediaState(item.WorkID, hasMedia, hasLocalPresence, "")
-					if translations[index].MetadataLanguage == "" {
-						translations[index].MetadataLanguage = item.MetadataLanguage
-					}
+					translations[index].HasMedia = item.HasMedia
+					translations[index].MediaState = item.MediaState
 					translations[index].Current = strings.EqualFold(item.PrimaryCode, primaryCode)
 					break
 				}
 			}
 			continue
 		}
-		hasMedia, err := s.workHasMedia(ctx, workID)
-		if err != nil {
-			return nil, err
-		}
-		item.HasMedia = hasMedia
-		hasLocalPresence, err := s.workHasAvailableLocalPresence(ctx, workID)
-		if err != nil {
-			return nil, err
-		}
-		item.MediaState = normalizedWorkMediaState(item.WorkID, hasMedia, hasLocalPresence, "")
 		addTranslation(item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	if len(translations) <= 1 {
 		return []workTranslation{}, nil
+	}
+	return translations, nil
+}
+
+func (s *Server) loadMaterializedWorkTranslationsByCodes(ctx context.Context, codes []string) ([]workTranslation, error) {
+	if len(codes) == 0 {
+		return []workTranslation{}, nil
+	}
+	marks := make([]string, len(codes))
+	args := make([]any, len(codes))
+	for index, code := range codes {
+		marks[index] = "?"
+		args[index] = normalizeDLsiteCode(code)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			work.id,
+			work.primary_code,
+			work.title,
+			EXISTS (
+				SELECT 1
+				FROM media_file_location AS location
+				INNER JOIN media_item AS media ON media.id = location.media_item_id
+				WHERE media.work_id = work.id
+					AND location.availability = 'available'
+			),
+			EXISTS (
+				SELECT 1
+				FROM work_source_presence AS presence
+				INNER JOIN file_source AS source ON source.id = presence.file_source_id
+				WHERE presence.work_id = work.id
+					AND presence.presence_type = 'local'
+					AND presence.availability = 'available'
+					AND source.source_type = 'local_folder'
+			)
+		FROM work
+		WHERE UPPER(work.primary_code) IN (`+strings.Join(marks, ",")+`)
+		ORDER BY work.primary_code ASC
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	translations := make([]workTranslation, 0, len(codes))
+	for rows.Next() {
+		var item workTranslation
+		var workID int64
+		var hasLocalPresence bool
+		if err := rows.Scan(&workID, &item.PrimaryCode, &item.Title, &item.HasMedia, &hasLocalPresence); err != nil {
+			return nil, err
+		}
+		item.WorkID = &workID
+		item.MediaState = normalizedWorkMediaState(item.WorkID, item.HasMedia, hasLocalPresence, "")
+		translations = append(translations, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return translations, nil
 }

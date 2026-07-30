@@ -32,8 +32,6 @@ export function groupWorkVersions(
   const activeCode = normalizedCode(options.activeCode);
   const groups = new Map<string, WorkVersionGroup>();
   for (const version of translations) {
-    const active = normalizedCode(version.primaryCode) === activeCode;
-    if (!options.includeMetadataOnly && workVersionMediaState(version) === "metadata_only" && !active) continue;
     const language = normalizedLanguage(version.metadataLanguage);
     const key = language ? `language:${language}` : `edition:${normalizedCode(version.primaryCode)}`;
     const group = groups.get(key) ?? { key, language: version.metadataLanguage, origin: false, versions: [] };
@@ -44,11 +42,27 @@ export function groupWorkVersions(
   for (const group of groups.values()) {
     group.versions.sort((left, right) =>
       versionRank(left, activeCode, options.remoteVersions) - versionRank(right, activeCode, options.remoteVersions)
-      || translationKindRank(left.translationKind) - translationKindRank(right.translationKind)
-      || left.primaryCode.localeCompare(right.primaryCode),
+      || compareWorkCodes(left.primaryCode, right.primaryCode),
     );
   }
-  return Array.from(groups.values());
+  const result = Array.from(groups.values());
+  if (options.includeMetadataOnly) return result;
+  return result.filter((group) => group.versions.some((version) =>
+    normalizedCode(version.primaryCode) === activeCode
+    || workVersionMediaState(version) !== "metadata_only",
+  ));
+}
+
+export function preferredWorkVersion(
+  versions: WorkTranslation[],
+  activeCode: string,
+  remoteVersions = false,
+) {
+  const normalizedActiveCode = normalizedCode(activeCode);
+  return [...versions].sort((left, right) =>
+    versionRank(left, normalizedActiveCode, remoteVersions) - versionRank(right, normalizedActiveCode, remoteVersions)
+    || compareWorkCodes(left.primaryCode, right.primaryCode),
+  )[0] ?? null;
 }
 
 export function metadataOnlyVersionCount(translations: WorkTranslation[]) {
@@ -67,19 +81,25 @@ export function workVersionKindLabel(version: WorkTranslation) {
 
 function versionRank(version: WorkTranslation, activeCode: string, remoteVersions: boolean) {
   if (normalizedCode(version.primaryCode) === activeCode) return 0;
-  if (workVersionAvailable(version, remoteVersions)) return 1;
-  if (version.workId) return 2;
-  return 3;
+  if (remoteVersions) return 1;
+  switch (workVersionMediaState(version)) {
+    case "indexed_available": return 1;
+    case "present_unindexed": return 2;
+    case "unavailable": return 3;
+    case "metadata_only": return 4;
+  }
 }
 
-function translationKindRank(kind: WorkTranslation["translationKind"]) {
-  switch (kind) {
-    case "origin": return 0;
-    case "official": return 1;
-    case "community": return 2;
-    case "third_party": return 3;
-    default: return 4;
+function compareWorkCodes(left: string, right: string) {
+  const normalizedLeft = normalizedCode(left);
+  const normalizedRight = normalizedCode(right);
+  const leftMatch = /^([A-Z]+)(\d+)$/.exec(normalizedLeft);
+  const rightMatch = /^([A-Z]+)(\d+)$/.exec(normalizedRight);
+  if (leftMatch && rightMatch && leftMatch[1] === rightMatch[1]) {
+    const numericDifference = Number(leftMatch[2]) - Number(rightMatch[2]);
+    if (numericDifference !== 0) return numericDifference;
   }
+  return normalizedLeft.localeCompare(normalizedRight);
 }
 
 function normalizedCode(value: string) {

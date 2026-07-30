@@ -159,10 +159,11 @@ import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourc
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
 import {
   groupWorkVersions,
-  metadataOnlyVersionCount,
+  preferredWorkVersion,
   workVersionAvailable,
   workVersionKindLabel,
   workVersionMediaState,
+  type WorkVersionGroup,
 } from "@/features/work-detail/workVersionModel";
 import {
   buildRemoteTree,
@@ -5047,12 +5048,22 @@ function WorkVersionSelector({
   remoteVersions?: boolean;
 }) {
   const [showMetadataOnly, setShowMetadataOnly] = useState(false);
-  const metadataOnlyCount = metadataOnlyVersionCount(translations);
-  const groups = groupWorkVersions(translations, {
+  const collapsedGroups = groupWorkVersions(translations, {
     activeCode: activeVersionCode,
     remoteVersions,
-    includeMetadataOnly: showMetadataOnly,
+    includeMetadataOnly: false,
   });
+  const expandedGroups = groupWorkVersions(translations, {
+    activeCode: activeVersionCode,
+    remoteVersions,
+    includeMetadataOnly: true,
+  });
+  const collapsedCodes = new Set(collapsedGroups.flatMap((group) => group.versions.map((version) => version.primaryCode.toUpperCase())));
+  const hiddenMetadataOnlyCount = translations.filter((version) =>
+    workVersionMediaState(version) === "metadata_only"
+    && !collapsedCodes.has(version.primaryCode.toUpperCase()),
+  ).length;
+  const groups = showMetadataOnly ? expandedGroups : collapsedGroups;
 
   return (
     <div className="space-y-2 rounded-lg border bg-card px-3 py-2 text-xs">
@@ -5071,69 +5082,139 @@ function WorkVersionSelector({
             )
           )}
         </div>
-        {metadataOnlyCount > 0 && (
+        {hiddenMetadataOnlyCount > 0 && (
           <button
             type="button"
             className="font-medium text-primary hover:underline"
             aria-expanded={showMetadataOnly}
             onClick={() => setShowMetadataOnly((shown) => !shown)}
           >
-            {showMetadataOnly ? "Hide" : "Show"} {metadataOnlyCount} metadata-only {metadataOnlyCount === 1 ? "edition" : "editions"}
+            {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
           </button>
         )}
       </div>
       {groups.length > 0 && (
-        <div className="space-y-2">
-          {groups.map((group) => (
-            <div
-              key={group.key}
-              className="space-y-1"
-              role="group"
-              aria-label={`${group.language ? languageLabel(group.language) : "Unknown language"} versions`}
-            >
-              <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
-                <span>{group.language ? languageLabel(group.language) : "Unknown language"}</span>
-                {group.versions.length > 1 && <span>· {group.versions.length} variants</span>}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {group.versions.map((translation) => {
-                  const available = workVersionAvailable(translation, remoteVersions);
-                  const active = translation.primaryCode.toUpperCase() === activeVersionCode.toUpperCase();
-                  const mediaState = workVersionMediaState(translation);
-                  return (
-                    <button
-                      key={translation.primaryCode}
-                      type="button"
-                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
-                        active
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : available
-                            ? "border-primary/30 text-primary hover:bg-primary/10"
-                            : "border-muted bg-muted text-muted-foreground"
-                      }`}
-                      disabled={active || !available}
-                      onClick={() => {
-                        if (!available || active) return;
-                        if (onVersionSelect) {
-                          onVersionSelect(translation);
-                        } else {
-                          openWorkCodeRoute(translation.primaryCode);
-                        }
-                      }}
-                    >
-                      <span className="font-semibold">{translation.primaryCode}</span>
-                      <span>{workVersionKindLabel(translation)}</span>
-                      {!remoteVersions && mediaState === "present_unindexed" && <span>index on open</span>}
-                      {!remoteVersions && mediaState === "metadata_only" && <span>metadata only</span>}
-                      {!remoteVersions && mediaState === "unavailable" && <span>unavailable</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {groups.map((group) => <WorkLanguageVersionPicker
+            key={group.key}
+            group={group}
+            activeVersionCode={activeVersionCode}
+            onVersionSelect={onVersionSelect}
+            remoteVersions={remoteVersions}
+          />)}
         </div>
       )}
+    </div>
+  );
+}
+
+function WorkLanguageVersionPicker({
+  group,
+  activeVersionCode,
+  onVersionSelect,
+  remoteVersions,
+}: {
+  group: WorkVersionGroup;
+  activeVersionCode: string;
+  onVersionSelect?: (translation: WorkDetail["translations"][number]) => void;
+  remoteVersions: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const language = group.language ? languageLabel(group.language) : "Unknown language";
+  const preferred = preferredWorkVersion(group.versions, activeVersionCode, remoteVersions);
+  const activeCode = activeVersionCode.trim().toUpperCase();
+  const groupActive = group.versions.some((version) => version.primaryCode.trim().toUpperCase() === activeCode);
+  const preferredActive = preferred?.primaryCode.trim().toUpperCase() === activeCode;
+  const preferredAvailable = Boolean(preferred && workVersionAvailable(preferred, remoteVersions));
+  const selectVersion = (translation: WorkDetail["translations"][number]) => {
+    const active = translation.primaryCode.trim().toUpperCase() === activeCode;
+    if (active || !workVersionAvailable(translation, remoteVersions)) return;
+    setOpen(false);
+    if (onVersionSelect) {
+      onVersionSelect(translation);
+    } else {
+      openWorkCodeRoute(translation.primaryCode);
+    }
+  };
+
+  return (
+    <div ref={anchorRef} role="group" aria-label={`${language} versions`}>
+      <div className={`inline-flex overflow-hidden rounded-md border ${
+        groupActive
+          ? "border-primary bg-primary text-primary-foreground"
+          : preferredAvailable
+            ? "border-primary/30 text-primary"
+            : "border-muted bg-muted text-muted-foreground"
+      }`}>
+        <button
+          type="button"
+          className={`px-2.5 py-1 font-semibold ${!groupActive && preferredAvailable ? "hover:bg-primary/10" : ""}`}
+          disabled={!preferredAvailable || preferredActive}
+          onClick={() => {
+            if (preferred) selectVersion(preferred);
+          }}
+        >
+          {language}
+        </button>
+        <button
+          type="button"
+          className={`border-l px-1.5 ${groupActive ? "border-primary-foreground/30" : "border-current/20"} hover:bg-black/10`}
+          aria-label={`Choose ${language} DLsite code`}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        align="start"
+        className="w-[min(19rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
+        <div role="menu" aria-label={`${language} DLsite codes`} className="space-y-1">
+          {group.versions.map((translation) => {
+            const available = workVersionAvailable(translation, remoteVersions);
+            const active = translation.primaryCode.trim().toUpperCase() === activeCode;
+            const mediaState = workVersionMediaState(translation);
+            const stateLabel = remoteVersions
+              ? "Available"
+              : mediaState === "indexed_available"
+                ? "Ready"
+                : mediaState === "present_unindexed"
+                  ? "Index on open"
+                  : mediaState === "metadata_only"
+                    ? "Metadata only"
+                    : "Unavailable";
+            return (
+              <button
+                key={translation.primaryCode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                aria-label={`${translation.primaryCode} ${workVersionKindLabel(translation)} ${stateLabel}`}
+                disabled={active || !available}
+                className={`flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : available
+                      ? "hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground"
+                }`}
+                onClick={() => selectVersion(translation)}
+              >
+                <span>
+                  <span className="font-semibold">{translation.primaryCode}</span>
+                  <span className="ml-2 text-xs">{workVersionKindLabel(translation)}</span>
+                </span>
+                <span className="shrink-0 text-xs opacity-80">{stateLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </AnchoredPopover>
     </div>
   );
 }

@@ -744,9 +744,21 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   await expect(page.getByRole("button", { name: "Directory", exact: true })).toBeVisible();
   await expect(page.getByText("Previewing remote files from Example Remote; temporary playback does not save progress.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Info", exact: true }).click();
+  const japaneseVersions = page.getByRole("group", { name: "Japanese versions" });
+  await japaneseVersions.getByRole("button", { name: "Choose Japanese DLsite code", exact: true }).click();
+  const japaneseCodes = page.getByRole("menu", { name: "Japanese DLsite codes", exact: true });
+  const [japaneseVersionsBox, japaneseCodesBox] = await Promise.all([
+    japaneseVersions.boundingBox(),
+    japaneseCodes.boundingBox(),
+  ]);
+  expect(japaneseVersionsBox).not.toBeNull();
+  expect(japaneseCodesBox).not.toBeNull();
+  expect(Math.abs(japaneseCodesBox!.x - Math.max(12, japaneseVersionsBox!.x))).toBeLessThanOrEqual(6);
+  await japaneseVersions.getByRole("button", { name: "Choose Japanese DLsite code", exact: true }).click();
   const englishVersions = page.getByRole("group", { name: "English versions" });
-  await expect(englishVersions.getByText("English", { exact: true })).toBeVisible();
-  await englishVersions.getByRole("button", { name: "RJ09999993 Official", exact: true }).click();
+  await englishVersions.getByRole("button", { name: "Choose English DLsite code", exact: true }).click();
+  const englishCodes = page.getByRole("menu", { name: "English DLsite codes", exact: true });
+  await englishCodes.getByRole("menuitemradio", { name: "RJ09999993 Official Available", exact: true }).click();
   await page.getByRole("button", { name: "Directory", exact: true }).click();
   await expect(page.getByText("english.mp3", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);

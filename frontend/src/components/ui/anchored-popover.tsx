@@ -10,6 +10,7 @@ export function AnchoredPopover({
   anchorRef,
   children,
   className,
+  align = "end",
   gap = 8,
   collisionPadding = 12,
 	bottomCollisionPadding = collisionPadding,
@@ -20,6 +21,7 @@ export function AnchoredPopover({
   anchorRef: RefObject<HTMLElement | null>;
   children: ReactNode;
   className?: string;
+  align?: "start" | "end";
   gap?: number;
   collisionPadding?: number;
 	bottomCollisionPadding?: number;
@@ -39,14 +41,15 @@ export function AnchoredPopover({
     const availableAbove = anchorRect.top - collisionPadding - gap;
     const openBelow = availableBelow >= contentRect.height || availableBelow >= availableAbove;
     const desiredTop = openBelow ? anchorRect.bottom + gap : anchorRect.top - contentRect.height - gap;
+    const desiredLeft = align === "start" ? anchorRect.left : anchorRect.right - contentRect.width;
     const maxLeft = Math.max(collisionPadding, window.innerWidth - contentRect.width - collisionPadding);
 	const maxTop = Math.max(collisionPadding, window.innerHeight - contentRect.height - bottomCollisionPadding);
     setPosition({
-      left: Math.max(collisionPadding, Math.min(maxLeft, anchorRect.right - contentRect.width)),
+      left: Math.max(collisionPadding, Math.min(maxLeft, desiredLeft)),
       top: Math.max(collisionPadding, Math.min(maxTop, desiredTop)),
       visible: true,
     });
-	}, [anchorRef, bottomCollisionPadding, collisionPadding, gap]);
+	}, [align, anchorRef, bottomCollisionPadding, collisionPadding, gap]);
 
   useLayoutEffect(() => {
     if (!open) {
