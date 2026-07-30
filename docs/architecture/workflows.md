@@ -48,6 +48,25 @@ Configurable built-in triggers retain the configuring user for user-owned tag
 effects and revalidate that user's permissions when dispatching. Triggered runs
 store both their trigger reference and the final resolved input.
 
+## Local Folder Trigger
+
+`local_library_scan` owns one fixed `filesystem_event` trigger created by the
+database migration and enabled by default. The API allows only pause and resume;
+it rejects manual creation, identity changes, conversion, duplication, and
+deletion.
+
+The coordinator performs one bounded walk at watcher startup to register
+visible directories through the configured scan depth. It then consumes native
+filesystem events and dynamically registers newly created or atomically moved
+directory trees; there is no recurring directory traversal. Events are
+debounced for five seconds before the existing full local-scan graph is queued.
+Kikoto's `.kikoto-staging`, `.kikoto-backup`, and `.kikoto-trash` transaction
+trees are excluded, while final Fetch publication remains visible. If a scan is
+already queued or running, later changes remain pending and are coalesced into
+at most one follow-up run. Events while the trigger is paused are discarded.
+Changes made while Kikoto is stopped are covered by the default Startup scan;
+they cannot be recovered by the native event stream alone.
+
 ## Queue Ordering
 
 `workflow_job.priority` is persisted with each job. The single worker claims

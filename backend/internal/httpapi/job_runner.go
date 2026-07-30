@@ -50,10 +50,14 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 	}()
 
 	var workers sync.WaitGroup
-	workers.Add(1)
+	workers.Add(2)
 	go func() {
 		defer workers.Done()
 		s.runWorkflowCoordinator(ctx)
+	}()
+	go func() {
+		defer workers.Done()
+		s.runFilesystemTriggerCoordinator(ctx)
 	}()
 	for index := 0; index < 2; index++ {
 		workers.Add(1)

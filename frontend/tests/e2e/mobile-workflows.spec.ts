@@ -79,6 +79,24 @@ const systemDefinitions = [
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   },
+  {
+    id: 7,
+    code: "local_library_scan",
+    displayName: "Scan local library",
+    description: "Discover local works and synchronize missing metadata.",
+    definitionJson: '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"}]}',
+    scope: "system",
+    editable: false,
+    ownerUserId: null,
+    triggerCount: 2,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
+];
+
+const workflowTriggers = [
+  { id: 71, workflowDefinitionId: 7, workflowCode: "local_library_scan", displayName: "Startup local library scan", triggerType: "startup", enabled: true, scheduleJson: '{"type":"startup"}', configJson: "{}", nextRunAt: null, lastRunAt: null, lastSuccessAt: null, lastErrorMessage: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
+  { id: 72, workflowDefinitionId: 7, workflowCode: "local_library_scan", displayName: "Watch data folders", triggerType: "filesystem_event", enabled: true, scheduleJson: '{"type":"filesystem_event"}', configJson: "{}", nextRunAt: null, lastRunAt: null, lastSuccessAt: null, lastErrorMessage: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
 ];
 
 const sampleRun = {
@@ -181,8 +199,12 @@ async function mockWorkflows(
       } });
       return;
     }
-    if (url.pathname === "/api/workflow-node-types" || url.pathname === "/api/workflow-triggers") {
+    if (url.pathname === "/api/workflow-node-types") {
       await route.fulfill({ json: [] });
+      return;
+    }
+    if (url.pathname === "/api/workflow-triggers") {
+      await route.fulfill({ json: workflowTriggers });
       return;
     }
     if (url.pathname === "/api/workflow-runs") {
@@ -255,14 +277,13 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await expect(page.getByText("Built-in workflows", { exact: true })).toBeVisible();
-  await expect(page.getByText("Custom definitions", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /Built-in/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Custom/ }).click();
-  await expect(page.getByText("Custom definitions", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Custom/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Built-in/ }).click();
   const dlsiteDefinition = page.getByRole("button", { name: /Collect DLsite popular voice works/ });
-  await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toBeVisible();
+  await expect(dlsiteDefinition.getByText("Built-in", { exact: true })).toHaveCount(0);
   await expect(dlsiteDefinition.getByText("manual", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Cache media/ })).toHaveCount(0);
@@ -310,6 +331,18 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /#51 day/ }).click();
   await expect(page).toHaveURL(/\/activity\?view=completed&run=51/);
+});
+
+test("local scan exposes its fixed folder watcher without edit controls", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.goto("/workflows");
+
+  await page.getByRole("button", { name: /Scan local library/ }).click();
+  await expect(page.getByRole("switch", { name: "Pause Watch data folders", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("When local library folders change", { exact: true })).toBeVisible();
+  await expect(page.getByText("Watching for folder changes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Watch data folders", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add filesystem trigger", exact: true })).toHaveCount(0);
 });
 
 test("legacy custom definitions remain read-only while showing their linear connections", async ({ page }) => {

@@ -26,6 +26,11 @@
 - Database contention is reported as a retryable service error and is not
   mistaken for an expired mobile login.
 - Workflow runs preserve structured status and error context.
+- The local folder watcher performs one bounded registration walk, then relies
+  on native filesystem events instead of recurring disk traversal. It debounces
+  changes for five seconds, ignores Fetch transaction directories, and retains
+  only one pending follow-up while its automatic scan is active. The default
+  Startup scan covers changes made while the service is stopped.
 
 ## Current Limits
 

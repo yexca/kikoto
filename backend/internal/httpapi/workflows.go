@@ -605,6 +605,12 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if current.TriggerType == "filesystem_event" {
+		if currentDefinition.Code != "local_library_scan" || payload.WorkflowDefinitionID != current.WorkflowDefinitionID || payload.TriggerType != current.TriggerType || payload.DisplayName != current.DisplayName || payload.ScheduleJSON != current.ScheduleJSON || payload.ConfigJSON != current.ConfigJSON {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "the local library filesystem trigger only supports enable and pause"})
+			return
+		}
+	}
 	definition, err := s.loadWorkflowDefinition(r.Context(), payload.WorkflowDefinitionID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -616,6 +622,10 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 	if !canUseWorkflowDefinition(actor, definition) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
+		return
+	}
+	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "filesystem watching is a fixed trigger for the local library scan"})
 		return
 	}
 	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, id, payload.TriggerType); err != nil {
@@ -656,6 +666,19 @@ func (s *Server) updateWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow trigger not found"})
 		return
 	}
+	if current.TriggerType == "filesystem_event" && !enabled {
+		if _, err := s.db.ExecContext(r.Context(), `
+			UPDATE filesystem_trigger_state
+			SET last_event_at = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE trigger_id = ?
+		`, id); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if current.TriggerType == "filesystem_event" {
+		s.notifyFilesystemTriggerConfigChanged()
+	}
 	trigger, err := s.loadWorkflowTrigger(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
@@ -690,6 +713,10 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 	if !canUseWorkflowDefinition(actor, definition) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow trigger belongs to another user"})
+		return
+	}
+	if current.TriggerType == "filesystem_event" && definition.Code == "local_library_scan" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "the local library filesystem trigger cannot be deleted"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_trigger WHERE id = ?", id)

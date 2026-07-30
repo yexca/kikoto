@@ -53,6 +53,7 @@ Important tables:
 
 - `workflow_definition`
 - `workflow_trigger`
+- `filesystem_trigger_state`
 - `workflow_run`
 - `workflow_node_run`
 - `workflow_job`
@@ -63,6 +64,10 @@ Workflow records make scans, metadata sync, source checks, remote fetches, and
 review actions inspectable. `workflow_job.priority` is durable queue-ordering
 metadata; higher values claim first, with creation time and id as FIFO
 tie-breakers.
+
+`filesystem_trigger_state` stores the fixed local-scan trigger's watched
+directory count and most recent event time. It is compact orchestration state,
+not a per-file index or a directory snapshot.
 
 ## User State
 

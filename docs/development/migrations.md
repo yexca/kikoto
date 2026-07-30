@@ -12,11 +12,15 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
-The current sequence continues through `014_workflow_job_priority.sql`.
+The current sequence continues through `020_filesystem_event_watcher.sql`.
 Migrations `008` through `013` add normalized work aliases and commercial
 metadata, terminal provider state, recommendation telemetry, and explicit video
 audio-presence data with a legacy backfill. Migration `014` adds durable
-workflow-job priority and its claim-order index.
+workflow-job priority and its claim-order index. Migrations `015` through `017`
+add workflow notifications, resource lanes, and Availability Watch state;
+`018` merges Startup library refresh into local scan; `019` adds the fixed
+local-scan filesystem trigger; and `020` replaces directory-snapshot polling
+state with native filesystem-event watcher state.
 
 ## Guidelines
 

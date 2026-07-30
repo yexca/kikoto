@@ -438,7 +438,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*), SUM(trigger_type = 'startup'), SUM(trigger_type = 'schedule') FROM workflow_trigger WHERE workflow_definition_id = ?`, definitionID).Scan(&triggerCount, &startupCount, &scheduleCount); err != nil {
 		t.Fatal(err)
 	}
-	if triggerCount != 2 || startupCount != 1 || scheduleCount != 1 {
+	if triggerCount != 3 || startupCount != 1 || scheduleCount != 1 {
 		t.Fatalf("system triggers = total %d startup %d schedule %d", triggerCount, startupCount, scheduleCount)
 	}
 }

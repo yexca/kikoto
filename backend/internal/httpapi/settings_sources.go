@@ -680,6 +680,9 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if payload.LocalScanDepth != nil {
+		s.notifyFilesystemTriggerConfigChanged()
+	}
 	settings, err := s.loadAppSettings(r)
 	if err != nil {
 		writeError(w, err)

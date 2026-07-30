@@ -12,8 +12,10 @@ import (
 )
 
 type localScanJobPayload struct {
-	Root      string `json:"root"`
-	ScanDepth int    `json:"scan_depth"`
+	Root                string `json:"root"`
+	ScanDepth           int    `json:"scan_depth"`
+	DirectoryEventAt    string `json:"directory_event_at,omitempty"`
+	ObservedDirectories int    `json:"observed_directories,omitempty"`
 }
 
 func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
@@ -22,7 +24,16 @@ func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, trigg
 
 func (s *Server) enqueueLocalScanWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
-	payload := localScanJobPayload{Root: s.cfg.DataRoot, ScanDepth: scanDepth}
+	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{Root: s.cfg.DataRoot, ScanDepth: scanDepth})
+}
+
+func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType string, triggerReason string, triggerID int64, payload localScanJobPayload) (localScanResult, error) {
+	if strings.TrimSpace(payload.Root) == "" {
+		payload.Root = s.cfg.DataRoot
+	}
+	if payload.ScanDepth <= 0 {
+		payload.ScanDepth = s.configuredLocalScanDepth(ctx)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return localScanResult{}, err

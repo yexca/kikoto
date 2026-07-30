@@ -22,11 +22,19 @@ Workflows make backend actions inspectable.
   Fetch results. Fetch notifications open the local work detail and can be
   dismissed independently for the signed-in user.
 - Definitions groups Built-in workflows and Custom definitions. Each list item
-  shows one execution status: Scheduled takes precedence over Startup, while a
-  definition without either persisted trigger shows Manual.
+  shows compact badges for enabled Startup, Watching, and Schedule modes, with
+  Manual as the fallback when no automatic trigger is enabled.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable Startup and interval triggers. Local scan ships
   with the default Startup trigger and does not check remote availability.
+- Local scan also ships with one fixed, enabled folder watcher. It can be paused
+  or resumed, but not created, edited, duplicated, converted, or deleted. The
+  watcher registers directories under `/data` once, listens for native
+  filesystem events afterward, and dynamically registers new directory trees.
+  It debounces events for five seconds, ignores Kikoto's staging, backup, and
+  trash trees, and queues the same full local scan used by Manual and Startup.
+  Changes during an active run produce at most one follow-up scan. Paused events
+  are discarded; offline changes rely on the default Startup scan.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs

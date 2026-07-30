@@ -30,26 +30,27 @@ import (
 )
 
 type Server struct {
-	db                   *sql.DB
-	accountStore         *account.Store
-	libraryStore         *library.Store
-	workflowStore        *workflow.Store
-	cfg                  config.Config
-	dlsiteClient         metasync.DLsiteClient
-	circleAutoRefreshMu  sync.Mutex
-	circleAutoRefreshing map[int64]bool
-	remoteWorkCacheMu    sync.Mutex
-	remoteWorkCache      map[string]remoteWorkTracksSnapshot
-	remoteWorkCacheCalls map[string]*remoteWorkTracksCall
-	metadataSyncMu       sync.Mutex
-	jobRunnerMu          sync.Mutex
-	jobRunnerStarted     bool
-	sourceGate           *sourceRequestGate
-	localMediaIndexMu    sync.Mutex
-	localMediaIndexes    map[string]*localMediaIndexCall
-	localMediaWriteSlot  chan struct{}
-	localDurationProbeMu sync.Mutex
-	mediaStreamCache     sync.Map
+	db                             *sql.DB
+	accountStore                   *account.Store
+	libraryStore                   *library.Store
+	workflowStore                  *workflow.Store
+	cfg                            config.Config
+	dlsiteClient                   metasync.DLsiteClient
+	circleAutoRefreshMu            sync.Mutex
+	circleAutoRefreshing           map[int64]bool
+	remoteWorkCacheMu              sync.Mutex
+	remoteWorkCache                map[string]remoteWorkTracksSnapshot
+	remoteWorkCacheCalls           map[string]*remoteWorkTracksCall
+	metadataSyncMu                 sync.Mutex
+	jobRunnerMu                    sync.Mutex
+	jobRunnerStarted               bool
+	sourceGate                     *sourceRequestGate
+	localMediaIndexMu              sync.Mutex
+	localMediaIndexes              map[string]*localMediaIndexCall
+	localMediaWriteSlot            chan struct{}
+	localDurationProbeMu           sync.Mutex
+	mediaStreamCache               sync.Map
+	filesystemTriggerConfigChanged chan struct{}
 }
 
 type localMediaIndexCall struct {
@@ -60,13 +61,14 @@ type localMediaIndexCall struct {
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	return &Server{
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
-		dlsiteClient:         dlsite.NewClient(nil),
-		circleAutoRefreshing: map[int64]bool{},
-		remoteWorkCache:      map[string]remoteWorkTracksSnapshot{},
-		remoteWorkCacheCalls: map[string]*remoteWorkTracksCall{},
-		localMediaIndexes:    map[string]*localMediaIndexCall{},
-		localMediaWriteSlot:  make(chan struct{}, 1),
-		sourceGate:           newSourceRequestGate(),
+		dlsiteClient:                   dlsite.NewClient(nil),
+		circleAutoRefreshing:           map[int64]bool{},
+		remoteWorkCache:                map[string]remoteWorkTracksSnapshot{},
+		remoteWorkCacheCalls:           map[string]*remoteWorkTracksCall{},
+		localMediaIndexes:              map[string]*localMediaIndexCall{},
+		localMediaWriteSlot:            make(chan struct{}, 1),
+		sourceGate:                     newSourceRequestGate(),
+		filesystemTriggerConfigChanged: make(chan struct{}, 1),
 	}
 }
 
@@ -4240,7 +4242,6 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 	`, mustJSON(map[string]any{
 		"root":             s.cfg.DataRoot,
 		"scan_depth":       scanDepth,
-		"watch_enabled":    false,
 		"code_patterns":    []string{"RJ", "BJ", "VJ", "CC"},
 		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac"},
 	})); err != nil {

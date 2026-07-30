@@ -67,7 +67,8 @@ import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 
 type Surface = "workflows" | "activity";
 type ModalMode = "create-workflow" | "edit-workflow" | "edit-node" | "create-trigger" | "edit-trigger" | null;
-type AutomationTriggerType = "startup" | "schedule";
+type AutomationTriggerType = "startup" | "filesystem_event" | "schedule";
+type CreatableAutomationTriggerType = Exclude<AutomationTriggerType, "filesystem_event">;
 
 type WorkflowNode = {
   id: string;
@@ -93,7 +94,7 @@ const fallbackNodeTypes: WorkflowNodeType[] = [
 
 const phaseOrder = ["target", "discover", "filter", "match", "plan", "execute", "verify", "commit"] as const;
 
-const automationTriggerTypes: AutomationTriggerType[] = ["startup", "schedule"];
+const automationTriggerTypes: CreatableAutomationTriggerType[] = ["startup", "schedule"];
 const activityViews: ActivityView[] = ["running", "review", "failed", "completed"];
 const emptyRunViewTotals = { running: 0, review: 0, failed: 0, completed: 0 };
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v2";
@@ -238,7 +239,7 @@ export function WorkflowsPage({
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [editingNodeIndex, setEditingNodeIndex] = useState<number | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<WorkflowTrigger | null>(null);
-  const [creatingTriggerType, setCreatingTriggerType] = useState<AutomationTriggerType>("schedule");
+  const [creatingTriggerType, setCreatingTriggerType] = useState<CreatableAutomationTriggerType>("schedule");
   const [isRunningScan, setIsRunningScan] = useState(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
@@ -473,7 +474,7 @@ export function WorkflowsPage({
     return canRun;
   };
 
-  const createAutomationTrigger = (triggerType: AutomationTriggerType) => {
+  const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType) => {
     setCreatingTriggerType(triggerType);
     setEditingTrigger(null);
     setModalMode("create-trigger");
@@ -1154,7 +1155,7 @@ function WorkflowDetail({
   onRunDefinition?: (inputs?: Record<string, unknown>, autoPreview?: boolean) => void;
   emptyText?: string;
   onEditDefinition?: () => void;
-  onCreateTrigger: (triggerType: AutomationTriggerType) => void;
+  onCreateTrigger: (triggerType: CreatableAutomationTriggerType) => void;
   onEditTrigger: (trigger: WorkflowTrigger) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
   onEditNode: (index: number) => void;
@@ -2395,21 +2396,24 @@ function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (ru
 }
 
 function supportedAutomationTriggerTypes(definition: WorkflowDefinition): AutomationTriggerType[] {
+  if (definition.scope === "system" && definition.code === "local_library_scan") return ["startup", "filesystem_event", "schedule"];
   if (definition.scope === "system" && configurableSystemWorkflowCodes.has(definition.code)) return automationTriggerTypes;
   if (definition.scope !== "user" || !definition.editable) return [];
   return parseWorkflowDefinition(definition.definitionJson).kind === "v2" ? automationTriggerTypes : [];
 }
 
-function workflowDefinitionAutomationModes(triggers: WorkflowTrigger[]): Array<"manual" | "startup" | "schedule"> {
+function workflowDefinitionAutomationModes(triggers: WorkflowTrigger[]): Array<"manual" | "startup" | "watching" | "schedule"> {
   const enabledTriggers = triggers.filter((trigger) => trigger.enabled);
-  const modes: Array<"startup" | "schedule"> = [];
+  const modes: Array<"startup" | "watching" | "schedule"> = [];
   if (enabledTriggers.some((trigger) => trigger.triggerType === "startup")) modes.push("startup");
+  if (enabledTriggers.some((trigger) => trigger.triggerType === "filesystem_event")) modes.push("watching");
   if (enabledTriggers.some((trigger) => trigger.triggerType === "schedule")) modes.push("schedule");
   return modes.length > 0 ? modes : ["manual"];
 }
 
 function workflowTriggerCondition(trigger: WorkflowTrigger) {
   if (trigger.triggerType === "startup") return "When the application service starts";
+  if (trigger.triggerType === "filesystem_event") return "When local library folders change";
   if (trigger.triggerType === "schedule") {
     const interval = parseJSONRecord(trigger.scheduleJson).intervalMinutes;
     if (typeof interval === "number") return `Every ${interval} minute${interval === 1 ? "" : "s"}`;
@@ -2421,6 +2425,7 @@ function workflowTriggerCondition(trigger: WorkflowTrigger) {
 function workflowTriggerNextRun(trigger: WorkflowTrigger) {
   if (!trigger.enabled) return "Paused";
   if (trigger.triggerType === "startup") return "Next service start";
+  if (trigger.triggerType === "filesystem_event") return "Watching for folder changes";
   return trigger.nextRunAt ?? "Pending calculation";
 }
 
@@ -2435,15 +2440,15 @@ function WorkflowAutomationPanel({
   definition: WorkflowDefinition;
   triggers: WorkflowTrigger[];
   canManage: boolean;
-  onCreate: (triggerType: AutomationTriggerType) => void;
+  onCreate: (triggerType: CreatableAutomationTriggerType) => void;
   onEdit: (trigger: WorkflowTrigger) => void;
   onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
   const supportedTypes = supportedAutomationTriggerTypes(definition);
   const hasStartup = triggers.some((trigger) => trigger.triggerType === "startup");
   const orderedTriggers = [...triggers].sort((left, right) => {
-    const leftOrder = left.triggerType === "startup" ? 0 : left.triggerType === "schedule" ? 1 : 2;
-    const rightOrder = right.triggerType === "startup" ? 0 : right.triggerType === "schedule" ? 1 : 2;
+    const leftOrder = left.triggerType === "startup" ? 0 : left.triggerType === "filesystem_event" ? 1 : left.triggerType === "schedule" ? 2 : 3;
+    const rightOrder = right.triggerType === "startup" ? 0 : right.triggerType === "filesystem_event" ? 1 : right.triggerType === "schedule" ? 2 : 3;
     return leftOrder - rightOrder || left.id - right.id;
   });
   return (
@@ -2492,7 +2497,7 @@ function WorkflowAutomationPanel({
                 <SummaryCell label="Next" value={workflowTriggerNextRun(trigger)} />
                 <SummaryCell label="Last success" value={trigger.lastSuccessAt ?? "Never"} />
               </div>
-              {canManage && supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
+              {canManage && trigger.triggerType !== "filesystem_event" && supportedTypes.includes(trigger.triggerType as AutomationTriggerType) && (
                 <Button size="icon" variant="ghost" onClick={() => onEdit(trigger)} title={`Edit ${trigger.displayName}`} aria-label={`Edit ${trigger.displayName}`}>
                   <Edit3 className="h-4 w-4" />
                 </Button>
@@ -2713,12 +2718,12 @@ function TriggerModal({
 }: {
   definition: WorkflowDefinition;
   trigger: WorkflowTrigger | null;
-  initialTriggerType: AutomationTriggerType;
+  initialTriggerType: CreatableAutomationTriggerType;
   onClose: () => void;
   onSaved: (trigger: WorkflowTrigger) => void;
   onDeleted: () => void;
 }) {
-  const triggerType: AutomationTriggerType = trigger?.triggerType === "startup" ? "startup" : initialTriggerType;
+  const triggerType: CreatableAutomationTriggerType = trigger?.triggerType === "startup" ? "startup" : initialTriggerType;
   const selectedParsed = parseWorkflowDefinition(definition.definitionJson);
   const dagDocument = selectedParsed.kind === "v2" ? selectedParsed.document : null;
 	const [systemConfig, setSystemConfig] = useState<SystemWorkflowTriggerConfig>(() => workflowSystemTriggerConfig(definition.code, trigger));

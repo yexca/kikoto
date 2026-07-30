@@ -298,10 +298,10 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 18 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" {
+	if len(migrations) != 20 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" || migrations[18] != "019_local_scan_filesystem_trigger.sql" || migrations[19] != "020_filesystem_event_watcher.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
-	var localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount int
+	var localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_definition WHERE code = 'local_library_scan'").Scan(&localScanDefinitionCount); err != nil {
 		t.Fatal(err)
 	}
@@ -316,8 +316,31 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	`).Scan(&localScanStartupCount); err != nil {
 		t.Fatal(err)
 	}
-	if localScanDefinitionCount != 1 || startupRefreshDefinitionCount != 0 || localScanStartupCount != 1 {
-		t.Fatalf("merged local scan definitions/triggers = %d/%d/%d", localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount)
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan' AND trigger.trigger_type = 'filesystem_event'
+	`).Scan(&localScanFilesystemCount); err != nil {
+		t.Fatal(err)
+	}
+	if localScanDefinitionCount != 1 || startupRefreshDefinitionCount != 0 || localScanStartupCount != 1 || localScanFilesystemCount != 1 {
+		t.Fatalf("merged local scan definitions/triggers = %d/%d/%d/%d", localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount)
+	}
+	var filesystemStateTableCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'filesystem_trigger_state'").Scan(&filesystemStateTableCount); err != nil {
+		t.Fatal(err)
+	}
+	if filesystemStateTableCount != 1 {
+		t.Fatalf("filesystem trigger state table count = %d", filesystemStateTableCount)
+	}
+	var filesystemStateCount, watchedDirectoryCount int
+	var lastEventAt sql.NullString
+	if err := db.QueryRow("SELECT COUNT(*), watched_directory_count, last_event_at FROM filesystem_trigger_state").Scan(&filesystemStateCount, &watchedDirectoryCount, &lastEventAt); err != nil {
+		t.Fatal(err)
+	}
+	if filesystemStateCount != 1 || watchedDirectoryCount != 0 || lastEventAt.Valid {
+		t.Fatalf("filesystem event state = %d/%d/%v", filesystemStateCount, watchedDirectoryCount, lastEventAt)
 	}
 	var rating float64
 	var sales, regularPrice, currentPrice int64

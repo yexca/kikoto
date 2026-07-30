@@ -104,8 +104,12 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 			break
 		}
 		prepared.NextRunAt = formatWorkflowTimestamp(now.Add(time.Duration(schedule.IntervalMinutes) * time.Minute))
+	case "filesystem_event":
+		if definition.Code != "local_library_scan" || existing == nil || existing.TriggerType != "filesystem_event" {
+			return preparedWorkflowTrigger{}, fmt.Errorf("filesystem watching is a fixed trigger for the local library scan")
+		}
 	default:
-		return preparedWorkflowTrigger{}, fmt.Errorf("built-in workflows support startup and interval schedule triggers only")
+		return preparedWorkflowTrigger{}, fmt.Errorf("unsupported built-in workflow trigger")
 	}
 
 	requiredPermissions := []string{"workflows:run"}
