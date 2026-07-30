@@ -200,3 +200,13 @@ export function remoteSourceTabKey(sourceID: number): `remote-source:${number}` 
 export function remoteAvailabilityRouteCode(summary: SourceAvailabilitySource, fallbackCode: string) {
   return fallbackCode || summary.primaryCode || summary.remoteId;
 }
+
+export function currentRemoteSourceWorkCode(
+  detail: Pick<RemoteWorkDetail, "remoteCode" | "primaryCode" | "remoteId"> | null | undefined,
+  routedCode: string,
+  summary: SourceAvailabilitySource,
+  fallbackCode: string,
+) {
+  const detailCode = detail ? detail.remoteCode || detail.primaryCode || detail.remoteId : "";
+  return detailCode || routedCode.trim() || remoteAvailabilityRouteCode(summary, fallbackCode);
+}

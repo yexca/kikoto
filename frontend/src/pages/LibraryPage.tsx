@@ -76,11 +76,6 @@ import {
   type RemoteWorksResponse,
   type RemoteWork,
   type RemoteWorkDetail,
-  type RemoteFetchFileDecision,
-  type RemoteFetchPreparation,
-  type RemoteFetchResolution,
-  type RemoteWorkSavePlan,
-  type RemoteWorkSaveResult,
   type RecommendationBreakdown,
   type RecommendationEventInput,
   type SourceAvailabilitySource,
@@ -92,7 +87,6 @@ import {
   type WorkCoverCandidate,
   type WorkDetail,
 } from "@/lib/api";
-import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import {
@@ -188,10 +182,12 @@ import {
   useMediaCleanupWorkflow,
   type MediaDeleteTarget,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
-import { useWorkFetchWorkspace } from "@/features/work-detail/workflows/useWorkFetchWorkspace";
+import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { useAuth } from "@/auth/AuthProvider";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { openWorkDetail } from "@/app/workDetailNavigation";
 import {
   MediaContextActionBar,
   WorkIdentityActionBar,
@@ -241,53 +237,16 @@ function createRandomSortSeed() {
   return window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
 }
 
-function createFetchRequestID() {
-  const random = typeof window.crypto?.randomUUID === "function"
-    ? window.crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `fetch:${random}`;
-}
-
-function openActivity() {
-  window.history.pushState({}, "", "/activity");
-  window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
 function openActivityRun(runId: number) {
   window.history.pushState({}, "", `/activity?run=${runId}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
-function notifyFetchQueued(toast: ReturnType<typeof useToast>, result: RemoteWorkSaveResult) {
-  toast.notify({
-    kind: "success",
-    message: result.deduplicated
-      ? `Fetch was already queued as workflow run #${result.runId}.`
-      : `Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`,
-    actionLabel: "Activity",
-    onAction: () => openActivityRun(result.runId),
-  });
-}
-
-function notifyFetchUnconfirmed(toast: ReturnType<typeof useToast>) {
-  toast.notify({
-    kind: "warning",
-    message: "Fetch submission could not be confirmed. It may still be running; check Activity or retry this selection.",
-    actionLabel: "Activity",
-    onAction: openActivity,
-  });
-}
 const librarySearchDebounceMs = 400;
 const remoteSearchDebounceMs = 600;
 
 type RemoteSourceViewState = { page: number; pageSize: number; query: string };
 const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
-type RemoteFetchDecisions = Record<string, RemoteFetchFileDecision>;
-
-function remoteFetchDecisionList(decisions: RemoteFetchDecisions) {
-  return Object.values(decisions);
-}
-
 type LibraryHistoryState = {
   libraryBrowseScope?: unknown;
   libraryBrowseState?: unknown;
@@ -317,7 +276,6 @@ export function LibraryPage() {
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
 	const browseStorageScope = currentClientStorageScope(principalID);
-	const requireDownloadsManage = usePermissionGate("downloads:manage");
 	const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
 	const initialScope = useRef(localScopeFromPath(window.location.pathname)).current;
 	const initialSortPreference = readLibrarySortPreference(libraryBrowseKey(initialTab, initialScope, browseStorageScope));
@@ -369,8 +327,6 @@ export function LibraryPage() {
 	const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
-  const [trackedFetchSelection, setTrackedFetchSelection] = useState<{ work: Work; source: LibrarySource; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; preparation: RemoteFetchPreparation; message: string; requestId: string } | null>(null);
-  const [isTrackedFetching, setIsTrackedFetching] = useState(false);
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
@@ -776,10 +732,16 @@ export function LibraryPage() {
 	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
 	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
 	writeLibraryHistoryBrowseState(browseStorageScope, browseState);
-    const path = `/${work.primaryCode}?view=${sourceIntent}`;
 	setSelectedRemoteTarget(null);
-	window.history.pushState({ returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), returnLabel: "Back to library", workPreview: work }, "", path);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    openWorkDetail({
+      kind: "known",
+      canonicalCode: work.primaryCode,
+      view: sourceIntent === "tracked" ? "tracked" : "local",
+    }, {
+      returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+      returnLabel: "Back to library",
+      workPreview: work,
+    });
     setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
   };
@@ -903,65 +865,6 @@ export function LibraryPage() {
     }
   };
 
-  const openTrackedFetchSelection = async (work: Work, presence: SourcePresenceItem) => {
-    if (!presence.fileSourceId) return;
-    if (!requireDownloadsManage()) return;
-    const source = sources.find((item) => item.id === presence.fileSourceId);
-    if (!source) return;
-    setIsTrackedFetching(true);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const detail = await api.getRemoteSourceWork(source.id, sourcePresenceActionCode(presence, work.primaryCode));
-      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
-      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), paths);
-      setTrackedFetchSelection({ work, source, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, preparation: plan.preparation, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch preparation failed."));
-    } finally {
-      setIsTrackedFetching(false);
-    }
-  };
-
-  const fetchTrackedSelection = async () => {
-    if (!trackedFetchSelection) return;
-    if (!requireDownloadsManage()) return;
-    setIsTrackedFetching(true);
-    const paths = Array.from(trackedFetchSelection.selectedPaths);
-    const localPaths = Array.from(trackedFetchSelection.selectedLocalPaths);
-    try {
-      if (!trackedFetchSelection.plan || trackedFetchSelection.planDirty) {
-      const plan = await api.planRemoteSourceWorkFetch(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths, trackedFetchSelection.targetRoot, remoteFetchDecisionList(trackedFetchSelection.decisions));
-        setTrackedFetchSelection((current) => current ? { ...current, plan, planDirty: false, message: formatRemoteFetchPreparation(plan) } : current);
-        setIsTrackedFetching(false);
-        return;
-      }
-      if (hasRemoteFetchConflicts(trackedFetchSelection.plan)) {
-        setTrackedFetchSelection((current) => current ? { ...current, message: formatRemoteFetchPlanConflict(trackedFetchSelection.plan!) } : current);
-        setIsTrackedFetching(false);
-        return;
-      }
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch plan failed."));
-      setIsTrackedFetching(false);
-      return;
-    }
-    try {
-      const result = await api.fetchRemoteSourceWork(trackedFetchSelection.source.id, remoteDetailActionCode(trackedFetchSelection.detail), paths, localPaths, trackedFetchSelection.requestId, trackedFetchSelection.targetRoot || trackedFetchSelection.plan?.saveRoot || "", remoteFetchDecisionList(trackedFetchSelection.decisions));
-      notifyFetchQueued(toast, result);
-      setTrackedFetchSelection(null);
-      try {
-        await refreshCurrentWorksPage();
-      } catch (error) {
-        toast.notify({ kind: "warning", message: error instanceof Error ? `Fetch was queued, but Library refresh failed: ${error.message}` : "Fetch was queued, but Library refresh failed." });
-      }
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) toast.notify(toastFromError(error, "Fetch submission failed."));
-      else notifyFetchUnconfirmed(toast);
-    } finally {
-      setIsTrackedFetching(false);
-    }
-  };
-
   const activeRemoteSourceState =
     activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
 
@@ -1031,27 +934,25 @@ export function LibraryPage() {
     setLibraryLoadError("");
   };
 
+  const trackedFetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshCurrentWorksPage });
+  const openTrackedFetchSelection = (work: Work, presence: SourcePresenceItem) => {
+    if (!presence.fileSourceId) return;
+    const source = sources.find((item) => item.id === presence.fileSourceId);
+    if (!source) return;
+    void trackedFetchWorkspace.open({
+      sourceId: source.id,
+      remoteCode: sourcePresenceActionCode(presence, work.primaryCode),
+      canonicalCode: work.primaryCode,
+      sourceDisplayName: source.displayName,
+    });
+  };
+
   const openLibraryHome = () => {
     window.history.pushState({}, "", "/");
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
     setSelectedWorkNotFound(false);
-  };
-
-  const selectTrackedFetchEdition = async (code: string) => {
-    if (!trackedFetchSelection) return false;
-    setIsTrackedFetching(true);
-    try {
-      const detail = await api.getRemoteSourceWork(trackedFetchSelection.source.id, code);
-      setTrackedFetchSelection((current) => current ? { ...current, detail, selectedPaths: new Set(remoteSelectablePaths(buildRemoteTree(detail.tracks))), selectedLocalPaths: new Set(), targetRoot: "", plan: null, message: "", requestId: createFetchRequestID() } : current);
-      return true;
-    } catch (error) {
-      toast.notify(toastFromError(error, `The ${code} edition is not available from ${trackedFetchSelection.source.displayName}.`));
-      return false;
-    } finally {
-      setIsTrackedFetching(false);
-    }
   };
 
   const updateSearchClauses = (clauses: SearchClause[]) => {
@@ -1451,7 +1352,7 @@ export function LibraryPage() {
                     onUserTagOpen={addUserTagSearchClause}
                     onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                     onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
-                    isFetchBusy={isTrackedFetching}
+                    isFetchBusy={trackedFetchWorkspace.isBusy}
                   />
                 </div>
               ))}
@@ -1475,7 +1376,7 @@ export function LibraryPage() {
                   onUserTagOpen={addUserTagSearchClause}
                   onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
                   onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
-                  isFetchBusy={isTrackedFetching}
+                  isFetchBusy={trackedFetchWorkspace.isBusy}
                 />
               ))}
             </section>
@@ -1495,31 +1396,7 @@ export function LibraryPage() {
         />
       )}
 	  {recommendationDialog && <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />}
-      {trackedFetchSelection && (
-        <RemoteSaveSelectionPanel
-          root={buildRemoteTree(trackedFetchSelection.detail.tracks)}
-          selectedPaths={trackedFetchSelection.selectedPaths}
-          selectedLocalPaths={trackedFetchSelection.selectedLocalPaths}
-          plan={trackedFetchSelection.plan}
-          preparation={trackedFetchSelection.preparation}
-          decisions={trackedFetchSelection.decisions}
-          planDirty={trackedFetchSelection.planDirty}
-          message={trackedFetchSelection.message}
-          sourceId={trackedFetchSelection.source.id}
-          activeEditionCode={remoteDetailActionCode(trackedFetchSelection.detail)}
-          onEditionChange={selectTrackedFetchEdition}
-          targetRoot={trackedFetchSelection.targetRoot}
-          onTargetRootChange={(targetRoot) => setTrackedFetchSelection((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
-          onChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
-          onLocalChange={(paths) => setTrackedFetchSelection((current) => current ? { ...current, selectedLocalPaths: paths, plan: null, message: "" } : current)}
-          onDecisionChange={(decision) => setTrackedFetchSelection((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
-          disabled={isTrackedFetching}
-          onClose={() => {
-            if (!isTrackedFetching) setTrackedFetchSelection(null);
-          }}
-          onSave={() => void fetchTrackedSelection()}
-        />
-      )}
+      <RemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
     </div>
   );
 }
@@ -1664,7 +1541,7 @@ function RemoteSourcePanel({
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
-  const [saveSelection, setSaveSelection] = useState<{ work: RemoteWork; detail: RemoteWorkDetail; selectedPaths: Set<string>; selectedLocalPaths: Set<string>; targetRoot: string; decisions: RemoteFetchDecisions; planDirty: boolean; plan: RemoteWorkSavePlan | null; preparation: RemoteFetchPreparation; message: string; requestId: string } | null>(null);
+  const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
   const { page, pageSize } = viewState;
 
   const syncWork = async (work: RemoteWork, reason: string) => {
@@ -1771,80 +1648,6 @@ function RemoteSourcePanel({
     } finally {
       setIsBulkBusy(false);
       setSaveConfirm(null);
-    }
-  };
-
-  const openSaveSelection = async (work: RemoteWork) => {
-    if (!work.primaryCode) return;
-    if (!requireDownloadsManage()) return;
-    setIsSyncingCode(work.primaryCode);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const detail = await api.getRemoteSourceWork(source.id, remoteWorkActionCode(work));
-      const root = buildRemoteTree(detail.tracks);
-      const paths = remoteSelectablePaths(root);
-      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), paths);
-      setSaveSelection({ work, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan, preparation: plan.preparation, message: formatRemoteFetchPreparation(plan), requestId: createFetchRequestID() });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Remote directory failed."));
-    } finally {
-      setIsSyncingCode(null);
-    }
-  };
-
-  const fetchSingleSelection = async () => {
-    if (!saveSelection) return;
-    if (!requireDownloadsManage()) return;
-    const paths = Array.from(saveSelection.selectedPaths);
-    const localPaths = Array.from(saveSelection.selectedLocalPaths);
-    setIsSyncingCode(saveSelection.work.primaryCode);
-    try {
-      if (!saveSelection.plan || saveSelection.planDirty) {
-      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths, saveSelection.targetRoot, remoteFetchDecisionList(saveSelection.decisions));
-        setSaveSelection((current) => current ? { ...current, plan, planDirty: false, message: formatRemoteFetchPreparation(plan) } : current);
-        setIsSyncingCode(null);
-        return;
-      }
-      if (hasRemoteFetchConflicts(saveSelection.plan)) {
-        setSaveSelection((current) => current ? { ...current, message: formatRemoteFetchPlanConflict(saveSelection.plan!) } : current);
-        setIsSyncingCode(null);
-        return;
-      }
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch plan failed."));
-      setIsSyncingCode(null);
-      return;
-    }
-    try {
-      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(saveSelection.detail), paths, localPaths, saveSelection.requestId, saveSelection.targetRoot || saveSelection.plan?.saveRoot || "", remoteFetchDecisionList(saveSelection.decisions));
-      notifyFetchQueued(toast, result);
-      setSaveSelection(null);
-      try {
-        await onSynced(0);
-      } catch (error) {
-        toast.notify({ kind: "warning", message: error instanceof Error ? `Fetch was queued, but Library refresh failed: ${error.message}` : "Fetch was queued, but Library refresh failed." });
-      }
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) toast.notify(toastFromError(error, "Fetch submission failed."));
-      else notifyFetchUnconfirmed(toast);
-    } finally {
-      setIsSyncingCode(null);
-    }
-  };
-
-  const selectSaveEdition = async (code: string) => {
-    if (!saveSelection) return false;
-    setIsSyncingCode(code);
-    try {
-      const detail = await api.getRemoteSourceWork(source.id, code);
-      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
-      setSaveSelection((current) => current ? { ...current, detail, selectedPaths: new Set(paths), selectedLocalPaths: new Set(), targetRoot: "", decisions: {}, planDirty: false, plan: null, message: "", requestId: createFetchRequestID() } : current);
-      return true;
-    } catch (error) {
-      toast.notify(toastFromError(error, `The ${code} edition is not available from ${source.displayName}.`));
-      return false;
-    } finally {
-      setIsSyncingCode(null);
     }
   };
 
@@ -1959,13 +1762,18 @@ function RemoteSourcePanel({
                   selected={bulkCodes.has(work.primaryCode)}
                   selectable={Boolean(work.primaryCode)}
                   selectionActive={selectionActive}
-                  isBusy={isSyncingCode === work.primaryCode}
+                  isBusy={isSyncingCode === work.primaryCode || fetchWorkspace.isBusy}
                   onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
                   onOpen={() => onOpenPreview(work)}
                   onFetch={() => void syncWork(work, "manual_track")}
                   onTagOpen={onTagOpen}
                   onMark={(status) => void markRemoteWork(work, status)}
-                  onSave={() => void openSaveSelection(work)}
+                  onSave={() => void fetchWorkspace.open({
+                    sourceId: source.id,
+                    remoteCode: remoteWorkActionCode(work),
+                    canonicalCode: work.primaryCode,
+                    sourceDisplayName: source.displayName,
+                  })}
                   onEnsureWork={() => ensureRemoteWorkForList(work)}
                   onListSaved={(workId, favorite) => {
                     onWorkStateChanged(work.primaryCode, { workId, favorite });
@@ -1985,29 +1793,7 @@ function RemoteSourcePanel({
           onConfirm={() => void saveConfirm.run()}
         />
       )}
-      {saveSelection && (
-        <RemoteSaveSelectionPanel
-          root={buildRemoteTree(saveSelection.detail.tracks)}
-          selectedPaths={saveSelection.selectedPaths}
-          selectedLocalPaths={saveSelection.selectedLocalPaths}
-          plan={saveSelection.plan}
-          preparation={saveSelection.preparation}
-          decisions={saveSelection.decisions}
-          planDirty={saveSelection.planDirty}
-          message={saveSelection.message}
-          sourceId={source.id}
-          activeEditionCode={remoteDetailActionCode(saveSelection.detail)}
-          onEditionChange={selectSaveEdition}
-          targetRoot={saveSelection.targetRoot}
-          onTargetRootChange={(targetRoot) => setSaveSelection((current) => current ? { ...current, targetRoot, plan: null, message: "" } : current)}
-          onChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
-          onLocalChange={(paths) => setSaveSelection((current) => current ? { ...current, selectedLocalPaths: paths, plan: null, message: "" } : current)}
-          onDecisionChange={(decision) => setSaveSelection((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
-          disabled={isSyncingCode === saveSelection.work.primaryCode}
-          onClose={() => setSaveSelection(null)}
-          onSave={() => void fetchSingleSelection()}
-        />
-      )}
+      <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </section>
   );
 }
@@ -2771,29 +2557,18 @@ function RemoteOnlyWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
   const [isFetching, setIsFetching] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
-  const remoteFilePaths = useMemo(() => remoteSelectablePaths(tree), [tree]);
-  const [selectedSavePaths, setSelectedSavePaths] = useState<Set<string>>(new Set());
-  const [selectedLocalSavePaths, setSelectedLocalSavePaths] = useState<Set<string>>(new Set());
-  const [selectedTargetRoot, setSelectedTargetRoot] = useState("");
-  const [isSaveSelectionOpen, setIsSaveSelectionOpen] = useState(false);
-  const [savePlan, setSavePlan] = useState<RemoteWorkSavePlan | null>(null);
-  const [savePreparation, setSavePreparation] = useState<RemoteFetchPreparation | null>(null);
-  const [saveDecisions, setSaveDecisions] = useState<RemoteFetchDecisions>({});
-  const [savePlanDirty, setSavePlanDirty] = useState(false);
-  const [savePlanMessage, setSavePlanMessage] = useState("");
+  const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
@@ -2819,12 +2594,7 @@ function RemoteOnlyWorkDetailController({
 	setIdentityDetail(null);
     setNotFound(false);
     setMessage("");
-    setSelectedSavePaths(new Set());
-    setSelectedLocalSavePaths(new Set());
-    setSelectedTargetRoot("");
-    setSavePlan(null);
-    setSavePreparation(null);
-    setSavePlanMessage("");
+    fetchWorkspace.close();
     const controller = new AbortController();
     api.getRemoteSourceWork(source.id, code, controller.signal).then((next) => {
 		setDetail(next);
@@ -2888,62 +2658,15 @@ function RemoteOnlyWorkDetailController({
     }
   };
 
-  const selectedPaths = Array.from(selectedSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-  const selectedLocalPaths = Array.from(selectedLocalSavePaths).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-  const openSaveWorkspace = async () => {
-    if (!detail?.primaryCode || remoteFilePaths.length === 0) return;
-    if (!requireDownloadsManage()) return;
-    setIsSaving(true);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), remoteFilePaths);
-      setSelectedSavePaths(new Set(remoteFilePaths));
-      setSelectedLocalSavePaths(new Set());
-      setSelectedTargetRoot("");
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlan(plan);
-      setSavePreparation(plan.preparation);
-      setSavePlanMessage(formatRemoteFetchPreparation(plan));
-      setIsSaveSelectionOpen(true);
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch preparation failed."));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  const saveSelected = async () => {
-    if (!detail?.primaryCode || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
-    if (!requireDownloadsManage()) return;
-    setIsSaving(true);
-    setMessage("");
-    setSavePlanMessage("");
-    try {
-      if (!savePlan || savePlanDirty) {
-        const plan = await api.planRemoteSourceWorkFetch(source.id, remoteDetailActionCode(detail), selectedPaths, selectedLocalPaths, selectedTargetRoot, remoteFetchDecisionList(saveDecisions));
-        setSavePlan(plan);
-        setSavePlanDirty(false);
-        setSavePlanMessage(formatRemoteFetchPreparation(plan));
-        return;
-      }
-      if (hasRemoteFetchConflicts(savePlan)) {
-        setSavePlanMessage(formatRemoteFetchPlanConflict(savePlan));
-        return;
-      }
-      const result = await api.fetchRemoteSourceWork(source.id, remoteDetailActionCode(detail), selectedPaths, selectedLocalPaths, "", selectedTargetRoot || savePlan.saveRoot, remoteFetchDecisionList(saveDecisions));
-      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
-      setIsSaveSelectionOpen(false);
-      setSavePlan(null);
-      setSavePreparation(null);
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlanMessage("");
-      await onWorksChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Save failed."));
-    } finally {
-      setIsSaving(false);
-    }
+  const openSaveWorkspace = () => {
+    if (!detail) return;
+    void fetchWorkspace.open({
+      sourceId: source.id,
+      remoteCode: remoteDetailActionCode(detail),
+      canonicalCode: detail.primaryCode,
+      sourceDisplayName: source.displayName,
+      detail,
+    });
   };
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -2952,28 +2675,6 @@ function RemoteOnlyWorkDetailController({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, detail)),
       locationId,
     );
-  };
-
-  const selectPreparedRemoteEdition = async (editionCode: string) => {
-    setIsSaving(true);
-    try {
-      const nextDetail = await api.getRemoteSourceWork(source.id, editionCode);
-      const nextTree = buildRemoteTree(nextDetail.tracks);
-      setDetail(nextDetail);
-      setSelectedSavePaths(new Set(remoteSelectablePaths(nextTree)));
-      setSelectedLocalSavePaths(new Set());
-      setSelectedTargetRoot("");
-      setSavePlan(null);
-      setSaveDecisions({});
-      setSavePlanDirty(false);
-      setSavePlanMessage("");
-      return true;
-    } catch (error) {
-      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const queueRemoteTrack = (track: TreeTrack, next: boolean) => {
@@ -3014,7 +2715,7 @@ function RemoteOnlyWorkDetailController({
 
   const identityActions = (
     <WorkIdentityActionBar
-      busy={isFetching || isSaving}
+      busy={isFetching || fetchWorkspace.isBusy}
       canPlay={remotePlayableTracks.length > 0}
       listeningStatus="none"
       favorite={false}
@@ -3039,7 +2740,7 @@ function RemoteOnlyWorkDetailController({
   };
   const mediaActions = (
     <MediaContextActionBar
-      busy={isFetching || isSaving}
+      busy={isFetching || fetchWorkspace.isBusy}
       mode="remote_source"
       contextKey={remoteSourceTabKey(source.id)}
       onTrack={() => void fetchWork("manual_track")}
@@ -3066,47 +2767,7 @@ function RemoteOnlyWorkDetailController({
       currentLocationId={player.currentLocationId}
       emptyLabel="No remote files detected."
       toolbar={message ? <DirectoryMessage message={message} /> : undefined}
-      selectionModal={isSaveSelectionOpen ? (
-        <RemoteSaveSelectionPanel
-          root={tree}
-          selectedPaths={selectedSavePaths}
-          selectedLocalPaths={selectedLocalSavePaths}
-          plan={savePlan}
-          preparation={savePreparation}
-          decisions={saveDecisions}
-          planDirty={savePlanDirty}
-          message={savePlanMessage}
-          sourceId={source.id}
-          activeEditionCode={remoteDetailActionCode(detail)}
-          onEditionChange={selectPreparedRemoteEdition}
-          targetRoot={selectedTargetRoot}
-          onTargetRootChange={(targetRoot) => {
-            setSelectedTargetRoot(targetRoot);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onChange={(paths) => {
-            setSelectedSavePaths(paths);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onLocalChange={(paths) => {
-            setSelectedLocalSavePaths(paths);
-            setSavePlan(null);
-            setSavePlanMessage("");
-          }}
-          onDecisionChange={(decision) => {
-            setSaveDecisions((current) => ({ ...current, [decision.itemKey]: decision }));
-            setSavePlanDirty(true);
-          }}
-          disabled={isSaving}
-          onClose={() => {
-            setIsSaveSelectionOpen(false);
-            setSavePreparation(null);
-          }}
-          onSave={() => void saveSelected()}
-        />
-      ) : null}
+      selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onPlayFolder={playRemoteTracks}
       onPlayNext={(track) => queueRemoteTrack(track, true)}
       onAppendQueue={(track) => queueRemoteTrack(track, false)}
@@ -3161,9 +2822,7 @@ function RemoteOnlyWorkDetailController({
 		try {
 			const nextDetail = await api.getRemoteSourceWork(source.id, editionCode);
 			setDetail(nextDetail);
-			setSelectedSavePaths(new Set());
-			setSavePlan(null);
-			setSavePreparation(null);
+			fetchWorkspace.close();
 		} catch (error) {
 			toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
 		} finally {
@@ -3317,7 +2976,17 @@ function PersistedWorkDetailController({
     [isManageOpen, localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
   );
   const player = useLibraryPlayer();
-  const fetchWorkspace = useWorkFetchWorkspace({ remote: fetchRemote, remoteCode: fetchRemoteCode, onWorksChanged });
+  const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
+  const openFetchWorkspace = () => {
+    if (!fetchRemote) return;
+    void fetchWorkspace.open({
+      sourceId: fetchRemote.source.id,
+      remoteCode: fetchRemoteCode,
+      canonicalCode: work?.primaryCode ?? code,
+      sourceDisplayName: fetchRemote.source.displayName,
+      detail: fetchRemote.detail,
+    });
+  };
   const mediaCleanup = useMediaCleanupWorkflow({
     onAccepted: () => setIsManageOpen(false),
     onCompleted: async () => {
@@ -3693,29 +3362,7 @@ function PersistedWorkDetailController({
       <UserTagRow tags={work.userTags ?? []} onSave={saveWorkUserTags} />
     </div>
   ) : undefined;
-  const fetchSelectionModal = fetchWorkspace.draft ? (
-    <RemoteSaveSelectionPanel
-      root={fetchWorkspace.tree}
-      selectedPaths={fetchWorkspace.draft.selectedPaths}
-      selectedLocalPaths={fetchWorkspace.draft.selectedLocalPaths}
-      plan={fetchWorkspace.draft.plan}
-      preparation={fetchWorkspace.draft.preparation}
-      decisions={fetchWorkspace.draft.decisions}
-      planDirty={fetchWorkspace.draft.planDirty}
-      message={fetchWorkspace.draft.message}
-      sourceId={fetchRemote?.source.id}
-      activeEditionCode={remoteDetailActionCode(fetchWorkspace.draft.detail)}
-      onEditionChange={fetchWorkspace.selectEdition}
-      targetRoot={fetchWorkspace.draft.targetRoot}
-      onTargetRootChange={fetchWorkspace.setTargetRoot}
-      onChange={fetchWorkspace.setSelectedPaths}
-      onLocalChange={fetchWorkspace.setSelectedLocalPaths}
-      onDecisionChange={fetchWorkspace.setDecision}
-      disabled={fetchWorkspace.isBusy}
-      onClose={fetchWorkspace.close}
-      onSave={() => void fetchWorkspace.save()}
-    />
-  ) : null;
+  const fetchSelectionModal = <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
   const activeSourceLabel = selectedTrackedPresence?.fileSourceName
     || selectedTrackedPresence?.fileSourceCode
     || selectedSource?.sourceName
@@ -3757,7 +3404,7 @@ function PersistedWorkDetailController({
     forkSources={forkSources}
     currentForkSource={currentForkSource}
     onFork={(remote) => requestForkSource(remote)}
-    onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? () => void fetchWorkspace.open() : undefined}
+    onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? openFetchWorkspace : undefined}
     remoteSourceWorkUrl={safeExternalHTTPURL(selectedRemoteDetail?.publicWorkUrl)}
     remoteSourceName={selectedRemoteSource?.source.displayName ?? selectedRemoteDetail?.sourceName}
     sourceLabel={activeSourceLabel}
@@ -5718,272 +5365,6 @@ function DirectoryTree({
   );
 }
 
-function RemoteSaveSelectionPanel({
-  root,
-  selectedPaths,
-  selectedLocalPaths,
-  disabled,
-  plan,
-  preparation,
-  decisions,
-  planDirty,
-  message,
-  onClose,
-  onSave,
-  onChange,
-  onLocalChange,
-  onDecisionChange,
-  activeEditionCode,
-  onEditionChange,
-  sourceId,
-  targetRoot,
-  onTargetRootChange,
-}: {
-  root: TreeNode;
-  selectedPaths: Set<string>;
-  selectedLocalPaths: Set<string>;
-  disabled: boolean;
-  plan?: RemoteWorkSavePlan | null;
-  preparation?: RemoteFetchPreparation | null;
-  decisions?: RemoteFetchDecisions;
-  planDirty?: boolean;
-  message?: string;
-  onClose: () => void;
-  onSave: () => void;
-  onChange: (paths: Set<string>) => void;
-  onLocalChange: (paths: Set<string>) => void;
-  onDecisionChange?: (decision: RemoteFetchFileDecision) => void;
-  activeEditionCode?: string;
-  onEditionChange?: (code: string) => Promise<boolean>;
-  sourceId?: number;
-  targetRoot?: string;
-  onTargetRootChange?: (root: string) => void;
-}) {
-  const [activePane, setActivePane] = useState<"local" | "remote" | "result">("remote");
-  const stablePreparation = preparation ?? plan?.preparation;
-  const currentEditionCode = remoteFetchCurrentEditionCode(plan, activeEditionCode);
-	const [selectedEditionCode, setSelectedEditionCode] = useState(currentEditionCode);
-  const [checkingEditionCode, setCheckingEditionCode] = useState("");
-  const [refreshScheduled, setRefreshScheduled] = useState(false);
-  const onSaveRef = useRef(onSave);
-  const allPaths = remoteSelectablePaths(root);
-  const planByPath = useMemo(() => new Map((plan?.items ?? []).map((item) => [item.path, item])), [plan]);
-  const localTree = useMemo(() => buildRemoteFetchLocalTree(plan), [plan]);
-  const hasLocalFiles = Boolean(plan?.localFiles.length);
-  const activeEdition = stablePreparation?.editions.find((edition) => edition.primaryCode.toUpperCase() === (activeEditionCode ?? plan?.primaryCode ?? "").toUpperCase());
-  const plannedRoot = activeEdition?.localRoots.find((root) => root.rootPath === plan?.saveRoot);
-  const messageIsConflict = Boolean(plan && hasRemoteFetchConflicts(plan));
-  const previewNeedsRefresh = !plan || Boolean(planDirty);
-  const previewRevision = useMemo(() => JSON.stringify({
-    edition: selectedEditionCode,
-    remote: Array.from(selectedPaths).sort(),
-    local: Array.from(selectedLocalPaths).sort(),
-    targetRoot: targetRoot ?? "",
-    decisions: Object.values(decisions ?? {}).sort((a, b) => a.itemKey.localeCompare(b.itemKey)),
-  }), [decisions, selectedEditionCode, selectedLocalPaths, selectedPaths, targetRoot]);
-  const setAll = () => onChange(new Set(allPaths));
-  const extensionSelection = (extension: string) => {
-    const matching = allPaths.filter((path) => path.toLowerCase().endsWith(`.${extension}`));
-    const selected = matching.filter((path) => selectedPaths.has(path)).length;
-    return {
-      count: matching.length,
-      checked: matching.length > 0 && selected === matching.length,
-      indeterminate: selected > 0 && selected < matching.length,
-    };
-  };
-  const setExtensionIncluded = (extension: string, included: boolean) => {
-    const next = new Set(selectedPaths);
-    for (const path of allPaths) {
-      if (!path.toLowerCase().endsWith(`.${extension}`)) continue;
-      if (included) next.add(path);
-      else next.delete(path);
-    }
-    onChange(next);
-  };
-  const clear = () => onChange(new Set());
-  const selectLocalPath = (path: string, selected: boolean) => {
-    const next = new Set(selectedLocalPaths);
-    if (selected) next.add(path);
-    else next.delete(path);
-    onLocalChange(next);
-  };
-
-  useEffect(() => {
-    onSaveRef.current = onSave;
-  }, [onSave]);
-
-  useEffect(() => {
-    if (currentEditionCode) setSelectedEditionCode(currentEditionCode);
-  }, [currentEditionCode]);
-
-  useEffect(() => {
-    if (!selectedEditionCode || disabled || !previewNeedsRefresh || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)) {
-      setRefreshScheduled(false);
-      return;
-    }
-    setRefreshScheduled(true);
-    const timer = window.setTimeout(() => {
-      setRefreshScheduled(false);
-      onSaveRef.current();
-    }, 750);
-    return () => window.clearTimeout(timer);
-  }, [disabled, previewNeedsRefresh, previewRevision, selectedEditionCode, selectedLocalPaths.size, selectedPaths.size]);
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-      <div className="flex h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl md:h-[90dvh]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
-          <div>
-            <h3 className="text-base font-semibold">Fetch selection</h3>
-            <p className="text-xs text-muted-foreground">Compare the exact language edition, remote source, and final published directory.</p>
-          </div>
-          <IconButton title="Close" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </IconButton>
-        </div>
-        {stablePreparation && (
-          <div className="flex shrink-0 items-stretch gap-2 overflow-x-auto border-b bg-muted/30 px-3 py-2">
-            <div className="flex min-w-28 shrink-0 flex-col justify-center text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5 font-medium uppercase tracking-wide"><Languages className="h-3.5 w-3.5" /> Languages</span>
-              <span className="mt-1"><Badge variant={stablePreparation.metadataStatus === "complete" ? "secondary" : "outline"}>{stablePreparation.metadataStatus}</Badge></span>
-            </div>
-            {stablePreparation.editions.map((edition) => {
-			  const viewing = (activeEditionCode ?? plan?.primaryCode ?? "").toUpperCase() === edition.primaryCode.toUpperCase();
-			  const selected = selectedEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
-              const availableSources = edition.sources.filter((source) => source.status === "available").length;
-              const selectedSourceAvailable = !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
-              const checking = checkingEditionCode.toUpperCase() === edition.primaryCode.toUpperCase();
-              return (
-				<label key={edition.primaryCode} title={edition.title} className={`flex min-w-48 shrink-0 cursor-pointer items-start gap-2 rounded-md border px-3 py-1.5 text-left transition-colors ${selected ? "border-primary bg-primary/10" : "bg-background hover:bg-muted"}`}>
-				  <Checkbox
-					checked={selected}
-					disabled={disabled || checking}
-					aria-label={`Select ${edition.primaryCode}`}
-					onCheckedChange={(checked) => {
-					  if (!checked) {
-						setSelectedEditionCode("");
-						return;
-					  }
-					  if (!onEditionChange) {
-						setSelectedEditionCode(edition.primaryCode);
-						return;
-					  }
-					  setCheckingEditionCode(edition.primaryCode);
-					  void onEditionChange(edition.primaryCode).then((available) => {
-						if (available) setSelectedEditionCode(edition.primaryCode);
-					  }).finally(() => setCheckingEditionCode(""));
-					}}
-				  />
-				  <span className="min-w-0 flex-1 leading-tight">
-                  <span className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate font-semibold">{languageLabel(edition.metadataLanguage || edition.editionLabel)}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{translationKindLabel(edition.translationKind)}</span>
-                  </span>
-                  <span className="mt-1 flex items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
-                    <span className="font-mono">{edition.primaryCode}</span><span>·</span><span>{edition.localRoots.length} local</span><span>·</span><span>{availableSources} remote</span><span>·</span><span>{checking ? "checking" : viewing || selectedSourceAvailable ? "available" : "not checked"}</span>
-                  </span>
-				  </span>
-				</label>
-              );
-            })}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2 border-b p-3">
-          <Badge variant="secondary">{selectedPaths.size} remote / {allPaths.length}</Badge>
-          {plan && plan.localFiles.length > 0 && <Badge variant="secondary">{selectedLocalPaths.size} local</Badge>}
-          {plan && plan.summary.conflict > 0 && <Badge variant="outline" className="border-destructive/40 text-destructive">{plan.summary.conflict} conflicts</Badge>}
-          {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} to fetch</Badge>}
-          {previewNeedsRefresh && <Badge variant="outline">{disabled ? "Refreshing preview" : refreshScheduled ? "Preview scheduled" : "Preview required"}</Badge>}
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled={disabled} onClick={setAll}>All</Button>
-            {(["mp3", "wav", "flac"] as const).map((extension) => {
-              const state = extensionSelection(extension);
-              return (
-                <label key={extension} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
-                  <Checkbox
-                    checked={state.checked}
-                    indeterminate={state.indeterminate}
-                    disabled={disabled || state.count === 0}
-                    onCheckedChange={() => setExtensionIncluded(extension, !state.checked)}
-                    aria-label={`Include ${extension.toUpperCase()}`}
-                  />
-                  <span>{extension.toUpperCase()}</span>
-                </label>
-              );
-            })}
-            <Button variant="outline" size="sm" disabled={disabled} onClick={clear}>None</Button>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 border-b bg-background p-1 md:hidden">
-          {(["local", "remote", "result"] as const).map((pane) => <Button key={pane} type="button" size="sm" variant={activePane === pane ? "secondary" : "ghost"} onClick={() => setActivePane(pane)} className="capitalize">{pane}</Button>)}
-        </div>
-        <div className={hasLocalFiles ? "grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-3" : "grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-2"}>
-          {hasLocalFiles && (
-            <div className={`${activePane === "local" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
-              <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                <div className="text-sm font-medium">Local files</div>
-                <Badge variant="secondary">{selectedLocalPaths.size} selected</Badge>
-              </div>
-              {plan && (
-                <label className="mb-2 block space-y-1 px-1 text-xs text-muted-foreground">
-                  <span>Publish target</span>
-                  <select className="h-8 w-full rounded-md border bg-background px-2 text-xs text-foreground" value={targetRoot || plan.saveRoot} disabled={disabled || !onTargetRootChange} onChange={(event) => onTargetRootChange?.(event.target.value)}>
-                    <option value={plan.saveRoot}>{plannedRoot?.role === "external" ? "Existing" : "Managed"} · {plan.saveRoot}</option>
-                    {(activeEdition?.localRoots ?? []).filter((root) => root.rootPath !== plan.saveRoot).map((root) => <option key={root.id} value={root.rootPath}>{root.role === "managed_fetch" ? "Managed" : "Existing"} · {root.rootPath}</option>)}
-                  </select>
-                </label>
-              )}
-              <RemoteFetchLocalTreeNode
-                node={localTree}
-                depth={0}
-                selectedLocalPaths={selectedLocalPaths}
-                disabled={disabled}
-                onSelect={selectLocalPath}
-                isRoot
-              />
-            </div>
-          )}
-          <div className={`${activePane === "remote" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto border-b p-2 md:block md:border-b-0 md:border-r`}>
-            {hasLocalFiles && (
-              <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                <div className="text-sm font-medium">Remote files</div>
-                <Badge variant="secondary">{selectedPaths.size} selected</Badge>
-              </div>
-            )}
-            <RemoteSaveSelectionNode
-              node={root}
-              depth={0}
-              selectedPaths={selectedPaths}
-              planByPath={planByPath}
-              disabled={disabled}
-              onChange={onChange}
-              isRoot
-            />
-          </div>
-          <div className={`${activePane === "result" ? "block" : "hidden"} app-scroll min-h-0 overflow-auto p-2 md:block`}>
-            <div className="mb-2 flex items-center justify-between gap-2 px-1">
-              <div className="text-sm font-medium">After Fetch</div>
-              <Badge variant="secondary">{plan?.items.length ?? 0} files</Badge>
-            </div>
-            {plan ? <RemoteFetchResultTree plan={plan} decisions={decisions ?? {}} onDecisionChange={onDecisionChange} /> : <FetchPaneEmpty label="Refresh the comparison to build the result tree." />}
-          </div>
-        </div>
-        <div aria-live="polite" className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${messageIsConflict ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
-          {message || <span className="invisible" aria-hidden="true">Fetch preview status</span>}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t p-3">
-          <Button variant="outline" onClick={onClose} disabled={disabled}>
-            Cancel
-          </Button>
-		  <Button onClick={onSave} disabled={disabled || refreshScheduled || previewNeedsRefresh || messageIsConflict || !selectedEditionCode || (selectedPaths.size === 0 && selectedLocalPaths.size === 0)}>
-            <HardDriveDownload className="h-4 w-4" />
-            {disabled || refreshScheduled ? "Refreshing preview" : "Publish Fetch"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function openDetailTagSearch(tag: string) {
   const value = tag.trim();
   if (!value) return;
@@ -6003,297 +5384,6 @@ function openResolvedEntityRoute(route: string) {
   const returnTo = `${window.location.pathname}${window.location.search}`;
   window.history.pushState({ returnTo, returnLabel: "Back" }, "", route);
   window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
-type RemoteFetchResultNode = {
-  name: string;
-  path: string;
-  children: Map<string, RemoteFetchResultNode>;
-  items: RemoteWorkSavePlan["items"];
-};
-
-function RemoteFetchResultTree({ plan, decisions, onDecisionChange }: { plan: RemoteWorkSavePlan; decisions: RemoteFetchDecisions; onDecisionChange?: (decision: RemoteFetchFileDecision) => void }) {
-  const root = useMemo(() => {
-    const result: RemoteFetchResultNode = { name: "", path: "", children: new Map(), items: [] };
-    const prefix = `${plan.saveRoot.replace(/\\/g, "/").replace(/\/$/, "")}/`;
-    for (const item of plan.items) {
-      const normalized = item.targetPath.replace(/\\/g, "/");
-      const relative = normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
-      const parts = relative.split("/").filter(Boolean);
-      let node = result;
-      for (const folder of parts.slice(0, -1)) {
-        const path = node.path ? `${node.path}/${folder}` : folder;
-        if (!node.children.has(folder)) node.children.set(folder, { name: folder, path, children: new Map(), items: [] });
-        node = node.children.get(folder)!;
-      }
-      node.items.push({ ...item, path: parts.length > 0 ? parts[parts.length - 1] : item.path });
-    }
-    return result;
-  }, [plan]);
-  return <RemoteFetchResultNodeView node={root} depth={0} decisions={decisions} onDecisionChange={onDecisionChange} isRoot />;
-}
-
-function RemoteFetchResultNodeView({ node, depth, decisions, onDecisionChange, isRoot = false }: { node: RemoteFetchResultNode; depth: number; decisions: RemoteFetchDecisions; onDecisionChange?: (decision: RemoteFetchFileDecision) => void; isRoot?: boolean }) {
-  const [open, setOpen] = useState(true);
-  const folders = Array.from(node.children.values()).sort((a, b) => naturalCompare(a.name, b.name));
-  const items = [...node.items].sort((a, b) => naturalCompare(a.path, b.path));
-  return (
-    <div className="space-y-1">
-      {!isRoot && (
-        <button type="button" className="flex min-h-7 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-muted" style={{ paddingLeft: depth * 14 + 8 }} onClick={() => setOpen((value) => !value)}>
-          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          <Folder className="h-4 w-4 text-primary" />
-          <span className="truncate">{node.name}</span>
-        </button>
-      )}
-      {(isRoot || open) && folders.map((child) => <RemoteFetchResultNodeView key={child.path} node={child} depth={depth + 1} decisions={decisions} onDecisionChange={onDecisionChange} />)}
-      {(isRoot || open) && items.map((item) => {
-        const decision = decisions[item.itemKey] ?? { itemKey: item.itemKey, sourceId: item.remoteSourceId, resolution: (item.resolution || "auto") as RemoteFetchResolution, targetPath: item.targetPath };
-        const showEditor = item.targetConflict || decision.resolution !== "auto" || item.sourceOptions.length > 1;
-        const updateDecision = (patch: Partial<RemoteFetchFileDecision>) => onDecisionChange?.({ ...decision, ...patch });
-        return (
-          <div key={item.itemKey || item.targetPath} className="rounded hover:bg-muted/60" style={{ marginLeft: (depth + 1) * 14 + 8 }} title={item.targetPath}>
-            <div className="flex min-h-8 items-center gap-2 px-2 text-xs">
-              {item.kind === "audio" ? <FileAudio className="h-3.5 w-3.5 text-primary" /> : item.kind === "video" ? <FileVideo className="h-3.5 w-3.5 text-primary" /> : item.kind === "image" ? <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" /> : <FileText className="h-3.5 w-3.5 text-muted-foreground" />}
-              <span className="min-w-0 flex-1 truncate">{item.path}</span>
-              <Badge variant={item.action === "skip" || item.targetConflict ? "outline" : "secondary"} className={item.targetConflict ? "border-destructive/40 text-destructive" : ""}>{fetchResultActionLabel(item.action)}</Badge>
-            </div>
-            {showEditor && (
-              <div className="grid gap-2 border-t px-2 py-2 text-xs sm:grid-cols-2">
-                {item.sourceOptions.length > 1 && (
-                  <label className="space-y-1">
-                    <span className="text-muted-foreground">Remote source</span>
-                    <select className="h-8 w-full rounded-md border bg-background px-2" value={decision.sourceId || item.remoteSourceId} onChange={(event) => updateDecision({ sourceId: Number(event.target.value) })}>
-                      {item.sourceOptions.map((option) => <option key={option.sourceId} value={option.sourceId}>{option.sourceName}{option.path !== item.path ? ` · ${option.path}` : ""}</option>)}
-                    </select>
-                  </label>
-                )}
-                {(item.targetConflict || decision.resolution !== "auto") && (
-                  <label className="space-y-1">
-                    <span className="text-muted-foreground">Conflict action</span>
-                    <select className="h-8 w-full rounded-md border bg-background px-2" value={decision.resolution} onChange={(event) => updateDecision({ resolution: event.target.value as RemoteFetchResolution })}>
-                      <option value="auto">Unresolved</option>
-                      <option value="keep_local">Keep local</option>
-                      <option value="replace">Replace with selected source</option>
-                      <option value="keep_both">Keep both</option>
-                      <option value="rename">Rename incoming</option>
-                      <option value="exclude">Exclude</option>
-                    </select>
-                  </label>
-                )}
-                {decision.resolution === "rename" && (
-                  <label className="space-y-1 sm:col-span-2">
-                    <span className="text-muted-foreground">Target path inside Fetch root</span>
-                    <input className="h-8 w-full rounded-md border bg-background px-2" value={decision.targetPath} onChange={(event) => updateDecision({ targetPath: event.target.value })} />
-                  </label>
-                )}
-                {item.targetConflictReason && <div className="text-destructive sm:col-span-2">{item.targetConflictReason}</div>}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function FetchPaneEmpty({ label }: { label: string }) {
-  return <div className="grid min-h-32 place-items-center rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">{label}</div>;
-}
-
-function fetchResultActionLabel(action: string) {
-  switch (action) {
-    case "skip": return "Keep";
-    case "copy_local": return "Local";
-    case "cache_hit": return "Cached";
-    case "cache_download": return "Add";
-    case "conflict": return "Conflict";
-    case "exclude": return "Excluded";
-    default: return action;
-  }
-}
-
-function translationKindLabel(kind: string) {
-  switch (kind) {
-    case "origin": return "Origin";
-    case "official": return "Official";
-    case "community": return "Community";
-    case "third_party": return "Third-party";
-    default: return "Unknown";
-  }
-}
-
-type RemoteFetchLocalTree = {
-  name: string;
-  path: string;
-  children: Map<string, RemoteFetchLocalTree>;
-  items: RemoteFetchLocalTreeItem[];
-};
-
-type RemoteFetchLocalTreeItem = {
-  name: string;
-  path: string;
-  fullPath: string;
-  sizeBytes: number | null;
-  available: boolean;
-  remotePath: string | null;
-};
-
-function RemoteFetchLocalTreeNode({
-  node,
-  depth,
-  selectedLocalPaths,
-  disabled,
-  isRoot,
-  onSelect,
-}: {
-  node: RemoteFetchLocalTree;
-  depth: number;
-  selectedLocalPaths: Set<string>;
-  disabled: boolean;
-  isRoot?: boolean;
-  onSelect: (path: string, selected: boolean) => void;
-}) {
-  const [open, setOpen] = useState(isRoot);
-  const folders = Array.from(node.children.values()).sort((a, b) => naturalCompare(a.name, b.name));
-  const items = [...node.items].sort((a, b) => naturalCompare(a.name, b.name));
-  const descendantItems = remoteFetchLocalTreeItems(node);
-  const selectedCount = descendantItems.filter((item) => selectedLocalPaths.has(item.fullPath)).length;
-  const checked = descendantItems.length > 0 && selectedCount === descendantItems.length;
-  const mixed = selectedCount > 0 && selectedCount < descendantItems.length;
-  const toggleNode = () => {
-    const selected = !checked;
-    for (const item of descendantItems) {
-      onSelect(item.fullPath, selected);
-    }
-  };
-  return (
-    <div className="space-y-1">
-      {!isRoot && (
-        <div className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: depth * 14 + 8 }}>
-          <button className="rounded p-0.5 hover:bg-background" onClick={() => setOpen((value) => !value)} title={open ? "Collapse" : "Expand"} aria-label={open ? "Collapse" : "Expand"}>
-            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </button>
-          <Checkbox checked={checked} indeterminate={mixed} disabled={disabled || descendantItems.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
-          <Folder className="h-4 w-4 text-primary" />
-          <span className="min-w-0 flex-1 truncate" title={node.path}>{node.name}</span>
-          <span className="text-xs text-muted-foreground">{selectedCount}/{descendantItems.length}</span>
-        </div>
-      )}
-      {(isRoot || open) && folders.map((child) => (
-        <RemoteFetchLocalTreeNode
-          key={child.path}
-          node={child}
-          depth={isRoot ? 0 : depth + 1}
-          selectedLocalPaths={selectedLocalPaths}
-          disabled={disabled}
-          onSelect={onSelect}
-        />
-      ))}
-      {(isRoot || open) && items.map((item) => {
-        const selected = selectedLocalPaths.has(item.fullPath);
-        return (
-          <label key={`${item.path}:${item.remotePath ?? ""}`} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
-            <span className="w-5" />
-            <Checkbox checked={selected} disabled={disabled} onCheckedChange={(checked) => onSelect(item.fullPath, checked)} aria-label={`Select ${item.name}`} />
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate" title={item.fullPath}>{item.name}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-function RemoteSaveSelectionNode({
-  node,
-  depth,
-  selectedPaths,
-  planByPath,
-  disabled,
-  isRoot,
-  onChange,
-}: {
-  node: TreeNode;
-  depth: number;
-  selectedPaths: Set<string>;
-  planByPath: Map<string, { status: string; targetConflict: boolean; targetConflictReason: string }>;
-  disabled: boolean;
-  isRoot?: boolean;
-  onChange: (paths: Set<string>) => void;
-}) {
-  const [open, setOpen] = useState(isRoot);
-  const folders = sortedFolders(node);
-  const files = sortedFiles(node);
-  const hasChildren = folders.length > 0 || files.length > 0;
-  const nodePaths = remoteSelectablePaths(node);
-  const checkedCount = nodePaths.filter((path) => selectedPaths.has(path)).length;
-  const checked = nodePaths.length > 0 && checkedCount === nodePaths.length;
-  const mixed = checkedCount > 0 && checkedCount < nodePaths.length;
-  const toggleNode = () => {
-    const next = new Set(selectedPaths);
-    for (const path of nodePaths) {
-      if (checked) next.delete(path);
-      else next.add(path);
-    }
-    onChange(next);
-  };
-  return (
-    <div className="space-y-1">
-      {!isRoot && (
-        <div className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: depth * 14 + 8 }}>
-          <button className="rounded p-0.5 hover:bg-background" disabled={!hasChildren} onClick={() => setOpen((value) => !value)} title={open ? "Collapse" : "Expand"} aria-label={open ? "Collapse" : "Expand"}>
-            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </button>
-          <Checkbox checked={checked} indeterminate={mixed} disabled={disabled || nodePaths.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
-          <Folder className="h-4 w-4 text-primary" />
-          <span className="min-w-0 flex-1 truncate">{node.name}</span>
-          <span className="text-xs text-muted-foreground">{checkedCount}/{nodePaths.length}</span>
-        </div>
-      )}
-      {(isRoot || open) && folders.map((child) => (
-        <RemoteSaveSelectionNode
-          key={child.path}
-          node={child}
-          depth={isRoot ? 0 : depth + 1}
-          selectedPaths={selectedPaths}
-          planByPath={planByPath}
-          disabled={disabled}
-          onChange={onChange}
-        />
-      ))}
-      {(isRoot || open) && files.map((file) => {
-        const path = file.sourcePath;
-        const plan = planByPath.get(path);
-        return (
-          <label key={path} className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted" style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}>
-            <Checkbox
-              checked={selectedPaths.has(path)}
-              disabled={disabled}
-              onCheckedChange={(checked) => {
-                const next = new Set(selectedPaths);
-                if (checked) next.add(path);
-                else next.delete(path);
-                onChange(next);
-              }}
-              aria-label={`Select ${file.title}`}
-            />
-            {fileIcon(file)}
-            <span className="min-w-0 flex-1 truncate">{file.title}</span>
-            {plan && (
-              <span
-                className={plan.targetConflict ? "max-w-48 truncate text-xs text-destructive" : "text-xs text-muted-foreground"}
-                title={plan.targetConflictReason || plan.status}
-              >
-                {plan.status}
-              </span>
-            )}
-          </label>
-        );
-      })}
-    </div>
-  );
 }
 
 function ConfirmMediaDeleteModal({
@@ -7323,95 +6413,6 @@ function directoryTextMatches(text: string, alias: string) {
   return normalized !== "" && text.includes(normalized);
 }
 
-function remoteFetchLocalItems(plan?: RemoteWorkSavePlan | null) {
-  return (plan?.items ?? [])
-    .filter((item) => item.targetExists || item.localPaths.length > 0)
-    .sort((a, b) => naturalCompare(a.targetPath, b.targetPath));
-}
-
-function remoteFetchLocalDisplayPaths(item: RemoteWorkSavePlan["items"][number]) {
-  const paths = [...item.localPaths];
-  if (item.targetExists && !paths.includes(item.targetPath)) paths.unshift(item.targetPath);
-  return paths.length > 0 ? paths : [item.targetPath];
-}
-
-function buildRemoteFetchLocalTree(plan?: RemoteWorkSavePlan | null) {
-  const root: RemoteFetchLocalTree = { name: "", path: "", children: new Map(), items: [] };
-  const localFiles = plan?.localFiles ?? [];
-  const rootPrefix = commonLocalPathPrefix(localFiles.map((file) => file.path));
-  const remoteByLocalPath = remoteFetchRemotePathByLocalPath(plan);
-  for (const file of localFiles) {
-    const displayPath = trimLocalRootPrefix(file.path, rootPrefix);
-    const parts = displayPath.split(/[\\/]+/).filter(Boolean);
-    const folders = parts.slice(0, -1);
-    let cursor = root;
-    let cursorPath = "";
-    for (const folder of folders) {
-      cursorPath = cursorPath ? `${cursorPath}/${folder}` : folder;
-      let child = cursor.children.get(folder);
-      if (!child) {
-        child = { name: folder, path: cursorPath, children: new Map(), items: [] };
-        cursor.children.set(folder, child);
-      }
-      cursor = child;
-    }
-    cursor.items.push({
-      name: parts[parts.length - 1] ?? file.path,
-      path: displayPath,
-      fullPath: file.path,
-      sizeBytes: file.sizeBytes,
-      available: file.available,
-      remotePath: remoteByLocalPath.get(file.path) ?? null,
-    });
-  }
-  return root;
-}
-
-function remoteFetchLocalTreeItems(node: RemoteFetchLocalTree): RemoteFetchLocalTreeItem[] {
-  return [...node.items, ...Array.from(node.children.values()).flatMap((child) => remoteFetchLocalTreeItems(child))];
-}
-
-function remoteFetchRemotePathByLocalPath(plan?: RemoteWorkSavePlan | null) {
-  const result = new Map<string, string>();
-  for (const item of plan?.items ?? []) {
-    for (const localPath of remoteFetchLocalDisplayPaths(item)) {
-      result.set(localPath, item.path);
-    }
-  }
-  return result;
-}
-
-function commonLocalPathPrefix(paths: string[]) {
-  if (paths.length === 0) return "";
-  const splitPaths = paths.map((path) => {
-    const parts = path.split(/[\\/]+/).filter(Boolean);
-    return parts.slice(0, -1);
-  });
-  const prefix: string[] = [];
-  for (let index = 0; ; index += 1) {
-    const segment = splitPaths[0]?.[index];
-    if (!segment || splitPaths.some((parts) => parts[index] !== segment)) break;
-    prefix.push(segment);
-  }
-  if (prefix.length <= 1) return "";
-  return prefix.join("/");
-}
-
-function trimLocalRootPrefix(path: string, prefix: string) {
-  const normalized = path.replace(/\\/g, "/");
-  if (!prefix) return normalized;
-  return normalized === prefix ? normalized.split("/").pop() ?? normalized : normalized.startsWith(`${prefix}/`) ? normalized.slice(prefix.length + 1) : normalized;
-}
-
-function formatRemoteFetchPreparation(plan: RemoteWorkSavePlan) {
-  if (hasRemoteFetchConflicts(plan)) return formatRemoteFetchPlanConflict(plan);
-  const editions = plan.preparation?.editions.length ?? 0;
-  const local = plan.localFiles.length;
-  const warning = plan.preparation?.warnings[0];
-  const summary = `Review ${editions || 1} language ${editions === 1 ? "edition" : "editions"}, ${local} local files, and the planned result before fetching.`;
-  return warning ? `${summary} Metadata is ${plan.preparation.metadataStatus}: ${warning}` : summary;
-}
-
 function sortedFolders(node: TreeNode) {
   return Array.from(node.children.values()).sort((a, b) => naturalCompare(a.name, b.name));
 }
@@ -7673,9 +6674,14 @@ function languageLabel(value: string) {
 function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
-  const query = sourceIntent ? `?view=${sourceIntent}` : "";
-  window.history.pushState({ returnTo: window.location.pathname, returnLabel: "Back" }, "", `/${cleanCode}${query}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  openWorkDetail({
+    kind: "known",
+    canonicalCode: cleanCode,
+    view: sourceIntent === "tracked" ? "tracked" : sourceIntent === "local" ? "local" : undefined,
+  }, {
+    returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    returnLabel: "Back",
+  });
 }
 
 function detailSourceIntentFromLocation(search: string): DetailSourceIntent {
@@ -8076,9 +7082,8 @@ function safeExternalHTTPURL(value: string | null | undefined) {
 
 function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: string, returnLabel: string) {
   const cleanCode = code.trim();
-  if (!cleanCode || sourceID <= 0) return;
-  window.history.pushState({ returnTo, returnLabel }, "", `/${encodeURIComponent(cleanCode)}?source=${sourceID}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  if (!cleanCode) return;
+  openWorkDetail({ kind: "remote-only", sourceId: sourceID, remoteCode: cleanCode }, { returnTo, returnLabel });
 }
 
 function openPersistedRemoteSourceWorkRoute(
@@ -8089,25 +7094,11 @@ function openPersistedRemoteSourceWorkRoute(
   returnLabel: string,
   workPreview: WorkPreview,
 ) {
-  const cleanCanonicalCode = canonicalCode.trim();
-  const cleanRemoteCode = remoteCode.trim();
-  if (!cleanCanonicalCode || !cleanRemoteCode || sourceID <= 0) return;
-  const params = new URLSearchParams({
-    view: "remote",
-    source: String(sourceID),
-    remoteCode: cleanRemoteCode,
-  });
-  window.history.pushState({ returnTo, returnLabel, workPreview }, "", `/${encodeURIComponent(cleanCanonicalCode)}?${params.toString()}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
-}
-
-function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | undefined, activeEditionCode?: string) {
-  const active = (activeEditionCode ?? "").trim();
-  if (!plan) return active;
-  const activeEdition = plan.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === active.toUpperCase());
-  if (activeEdition) return activeEdition.primaryCode;
-  const plannedEdition = plan.preparation.editions.find((edition) => edition.primaryCode.toUpperCase() === plan.primaryCode.toUpperCase());
-  return plannedEdition?.primaryCode ?? plan.primaryCode;
+  openWorkDetail({
+    kind: "known",
+    canonicalCode,
+    source: { sourceId: sourceID, remoteCode },
+  }, { returnTo, returnLabel, workPreview });
 }
 
 function sourcePresenceActionCode(presence: SourcePresenceItem, fallbackCode: string) {

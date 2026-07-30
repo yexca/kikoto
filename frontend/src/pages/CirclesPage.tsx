@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
 import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
@@ -45,10 +44,12 @@ import {
   useWorkCollectionLayout,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan } from "@/lib/api";
-import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
+import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
+import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus } from "@/lib/api";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
@@ -271,7 +272,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [fetchSelection, setFetchSelection] = useState<{ work: CircleCatalogWork; sourceId: number; detail: RemoteWorkDetail; selectedPaths: Set<string>; decisions: Record<string, RemoteFetchFileDecision>; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
+  const fetchWorkspace = useRemoteFetchWorkspace({
+    onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
+  });
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
   const [workPage, setWorkPage] = useState(1);
@@ -582,49 +585,15 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
   };
 
-  const saveSingleWork = async (work: CircleCatalogWork) => {
+  const saveSingleWork = (work: CircleCatalogWork) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return;
-    if (!requireDownloadsManage()) return;
-    setIsBulkSaving(true);
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
-      const paths = remoteFetchPaths(detail.tracks);
-      const plan = await api.planRemoteSourceWorkFetch(target.sourceId, remoteDetailActionCode(detail), paths);
-      setFetchSelection({ work, sourceId: target.sourceId, detail, selectedPaths: new Set(paths), decisions: {}, planDirty: false, plan, message: "" });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Remote directory failed."));
-    } finally {
-      setIsBulkSaving(false);
-    }
-  };
-
-  const fetchSingleSelection = async () => {
-    if (!fetchSelection) return;
-    if (!requireDownloadsManage()) return;
-    setIsBulkSaving(true);
-    try {
-      const paths = Array.from(fetchSelection.selectedPaths);
-      if (!fetchSelection.plan || fetchSelection.planDirty) {
-        const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", Object.values(fetchSelection.decisions));
-        setFetchSelection((current) => current ? { ...current, plan, planDirty: false, message: hasRemoteFetchConflicts(plan) ? formatRemoteFetchPlanConflict(plan) : "" } : current);
-        return;
-      }
-      const plan = fetchSelection.plan;
-      if (hasRemoteFetchConflicts(plan)) {
-        setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
-        return;
-      }
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", plan.saveRoot, Object.values(fetchSelection.decisions));
-      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
-      setFetchSelection(null);
-      setDetail(await api.getCircle(externalId));
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch failed."));
-    } finally {
-      setIsBulkSaving(false);
-    }
+    void fetchWorkspace.open({
+      sourceId: target.sourceId,
+      remoteCode: target.code,
+      canonicalCode: work.primaryCode,
+      sourceDisplayName: target.sourceDisplayName,
+    });
   };
 
   const syncSingleWork = async (work: CircleCatalogWork) => {
@@ -835,6 +804,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                       <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
                         <CatalogWorkCard
                           work={work}
+                          busy={isBulkSaving || fetchWorkspace.isBusy}
                           selected={selectedWorkCodes.has(work.primaryCode)}
                           selectable={isCircleBulkSaveSelectable(work)}
                           selectionActive={false}
@@ -905,6 +875,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
               <CatalogWorkCard
                 work={work}
+                busy={isBulkSaving || fetchWorkspace.isBusy}
                 selected={selectedWorkCodes.has(work.primaryCode)}
                 selectable={isCircleBulkSaveSelectable(work)}
                 selectionActive={selectionMode}
@@ -952,28 +923,14 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       {saveConfirm && (
         <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />
       )}
-      {fetchSelection && (
-        <RemoteFetchDialog
-          title={`${fetchSelection.work.primaryCode} · ${fetchSelection.work.title}`}
-          tracks={fetchSelection.detail.tracks}
-          selectedPaths={fetchSelection.selectedPaths}
-          disabled={isBulkSaving}
-          plan={fetchSelection.plan}
-          decisions={fetchSelection.decisions}
-          planDirty={fetchSelection.planDirty}
-          message={fetchSelection.message}
-          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
-          onDecisionChange={(decision) => setFetchSelection((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
-          onClose={() => setFetchSelection(null)}
-          onFetch={() => void fetchSingleSelection()}
-        />
-      )}
+      <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </div>
   );
 }
 
 function CatalogWorkCard({
   work,
+  busy,
   selected,
   selectable,
   selectionActive,
@@ -987,6 +944,7 @@ function CatalogWorkCard({
   onSeriesOpen,
 }: {
   work: CircleCatalogWork;
+  busy: boolean;
   selected: boolean;
   selectable: boolean;
   selectionActive: boolean;
@@ -1020,13 +978,13 @@ function CatalogWorkCard({
           left={<WorkCardDLsiteAction href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} />}
           right={(
             <>
-            <WorkCardActionButton title="Track" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+            <WorkCardActionButton title="Track" disabled={busy || !circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSync();
             }}>
               <GitBranchPlus className="h-4 w-4" />
             </WorkCardActionButton>
-            <WorkCardActionButton title="Fetch" disabled={!circleWorkRemoteTarget(work)} onClick={(event) => {
+            <WorkCardActionButton title="Fetch" disabled={busy || !circleWorkRemoteTarget(work)} onClick={(event) => {
               event.stopPropagation();
               onSave();
             }}>
@@ -1336,9 +1294,10 @@ function listeningStatusLabel(status: string) {
   return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
 }
 
-function sourceTags(sources: CircleSourceStat[] | null | undefined) {
+function availableSourceTags(sources: CircleSourceStat[] | null | undefined) {
   const seen = new Set<string>();
   return (sources ?? []).filter((source) => {
+    if (source.status !== "available" && source.count <= 0) return false;
     if (source.key === "cache") return false;
     const key = source.key;
     if (seen.has(key)) return false;
@@ -1348,17 +1307,20 @@ function sourceTags(sources: CircleSourceStat[] | null | undefined) {
 }
 
 function preferredDirectoryTarget(work: CircleCatalogWork) {
-  const tags = sourceTags(work.sourceTags);
+  const tags = availableSourceTags(work.sourceTags);
   const local = tags.find((tag) => tag.key === "local");
   if (local && work.workId !== null) {
-    return { code: work.primaryCode, sourceId: null };
+    return { kind: "known", canonicalCode: work.primaryCode } satisfies WorkDetailIntent;
   }
   const remote = tags.find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
   if (remote?.sourceId) {
-    return { code: work.primaryCode, sourceId: remote.sourceId };
+    const remoteCode = work.remoteCode || work.primaryCode;
+    return work.workId !== null
+      ? { kind: "known", canonicalCode: work.primaryCode, source: { sourceId: remote.sourceId, remoteCode } } satisfies WorkDetailIntent
+      : { kind: "remote-only", sourceId: remote.sourceId, remoteCode } satisfies WorkDetailIntent;
   }
   if (work.workId !== null) {
-    return { code: work.primaryCode, sourceId: null };
+    return { kind: "known", canonicalCode: work.primaryCode } satisfies WorkDetailIntent;
   }
   return null;
 }
@@ -1368,23 +1330,17 @@ function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
   return circleWorkRemoteTarget(work) !== null;
 }
 
-function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number; code: string } | null {
-  const remote = sourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
-  return remote?.sourceId ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode } : null;
-}
-
-function remoteDetailActionCode(detail: RemoteWorkDetail) {
-  return detail.remoteCode || detail.primaryCode;
+function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number; code: string; sourceDisplayName: string } | null {
+  const remote = availableSourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
+  return remote?.sourceId ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode, sourceDisplayName: remote.displayName } : null;
 }
 
 function isTranslationCircle(externalId: string) {
   return externalId.toUpperCase() === TRANSLATION_CIRCLE_ID;
 }
 
-function openWorkDirectoryRoute(target: { code: string; sourceId: number | null }, work: CircleCatalogWork) {
-  const path = target.sourceId ? `/${encodeURIComponent(target.code)}?source=${target.sourceId}` : `/${encodeURIComponent(target.code)}`;
-  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back to circle", workPreview: work }, "", path);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+function openWorkDirectoryRoute(target: WorkDetailIntent, work: CircleCatalogWork) {
+  openWorkDetail(target, { returnTo: currentCircleReturnPath(), returnLabel: "Back to circle", workPreview: work });
 }
 
 function currentCircleReturnPath() {

@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+
+import type { RemoteWorkDetail, RemoteWorkSavePlan } from "@/lib/api";
+import {
+  createRemoteFetchDraft,
+  createRemoteFetchRequestId,
+  selectRemoteFetchEdition,
+} from "./remoteFetchWorkspaceModel";
+
+describe("remote fetch workspace model", () => {
+  it("creates an opaque Fetch request id", () => {
+    expect(createRemoteFetchRequestId(() => "stable-id")).toBe("fetch:stable-id");
+  });
+
+  it("keeps the request id while the same draft is reviewed", () => {
+    const remoteDetail = detail("REMOTE-1");
+    remoteDetail.primaryCode = "RJ09999991";
+    const draft = createRemoteFetchDraft({
+      intent: { sourceId: 7, remoteCode: "REMOTE-1", canonicalCode: "RJ09999991" },
+      detail: remoteDetail,
+      paths: ["Disc/01.mp3"],
+      plan: plan("REMOTE-1"),
+      requestId: "fetch:stable",
+    });
+
+    const reviewed = {
+      ...draft,
+      selectedPaths: new Set(["Disc/01.mp3", "Disc/02.mp3"]),
+      targetRoot: "/data/REMOTE-1",
+      planDirty: true,
+    };
+
+    expect(reviewed.requestId).toBe("fetch:stable");
+    expect(reviewed.intent.remoteCode).toBe("REMOTE-1");
+    expect(reviewed.intent.canonicalCode).toBe("RJ09999991");
+  });
+
+  it("starts a distinct idempotency scope when the selected edition changes", () => {
+    const draft = createRemoteFetchDraft({
+      intent: { sourceId: 7, remoteCode: "REMOTE-1" },
+      detail: detail("REMOTE-1"),
+      paths: ["01.mp3"],
+      plan: plan("REMOTE-1"),
+      requestId: "fetch:first-edition",
+    });
+
+    const changed = selectRemoteFetchEdition({
+      draft,
+      detail: detail("REMOTE-2"),
+      paths: ["02.mp3"],
+      requestId: "fetch:second-edition",
+    });
+
+    expect(changed.requestId).toBe("fetch:second-edition");
+    expect(changed.intent.remoteCode).toBe("REMOTE-2");
+    expect(changed.plan).toBeNull();
+    expect(Array.from(changed.selectedPaths)).toEqual(["02.mp3"]);
+  });
+});
+
+function detail(remoteCode: string): RemoteWorkDetail {
+  return {
+    sourceId: 7,
+    sourceCode: "example_remote",
+    sourceName: "Example Remote",
+    remoteId: remoteCode,
+    primaryCode: remoteCode,
+    remoteCode,
+    title: "Synthetic work",
+    coverUrl: "",
+    sourceUrl: "",
+    publicWorkUrl: "",
+    circle: "Synthetic circle",
+    rating: null,
+    sales: null,
+    price: null,
+    ageRating: "unknown",
+    releaseDate: "",
+    durationSeconds: null,
+    tags: [],
+    voiceActors: [],
+    importStatus: "remote",
+    workId: null,
+    tracks: [],
+    languageEditions: [],
+  };
+}
+
+function plan(code: string): RemoteWorkSavePlan {
+  return {
+    sourceId: 7,
+    primaryCode: code,
+    saveRoot: `/data/${code}`,
+    localFiles: [],
+    items: [],
+    summary: { total: 0, skipExisting: 0, cacheHit: 0, cacheDownload: 0, promote: 0, conflict: 0 },
+    preparation: {
+      requestedCode: code,
+      canonicalCode: code,
+      metadataStatus: "complete",
+      warnings: [],
+      editions: [],
+    },
+  };
+}

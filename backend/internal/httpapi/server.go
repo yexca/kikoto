@@ -2881,15 +2881,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	}
 	var partyLink sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT party.display_name || '|' || external.external_id
-		FROM work_party AS relation
-		INNER JOIN party ON party.id = relation.party_id
-		LEFT JOIN party_external_id AS external ON external.party_id = party.id
-			AND external.is_primary = 1
-		WHERE relation.work_id = ?
-			AND relation.role = 'circle'
-		ORDER BY relation.updated_at DESC
-		LIMIT 1
+		SELECT display_name || '|' || external_id
+		FROM work_primary_circle
+		WHERE work_id = ?
 	`, id).Scan(&partyLink); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return workDetail{}, err
 	}
@@ -4911,7 +4905,7 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	}
 
 	metadata.Circle = strings.TrimSpace(payload.MakerName)
-	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)))
+	metadata.CircleExternalID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)))
 	metadata.BaseCode = normalizeDLsiteCode(firstNonEmpty(payload.TranslationInfo.OriginalWorkNo, payload.TranslationInfo.ParentWorkNo, payload.OriginalWorkNo, payload.OriginalWorkNumber, payload.BaseWorkNo, payload.BaseCode))
 	currentCode := normalizeDLsiteCode(firstNonEmpty(payload.WorkNo, payload.ProductID))
 	originCode := ""

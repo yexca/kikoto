@@ -1236,6 +1236,14 @@ export type VoiceMergeReview = {
   undoneAt: string;
 };
 
+export type VoiceRemoteObservation = {
+  sourceId: number;
+  sourceCode: string;
+  sourceName: string;
+  remoteCode: string;
+  status: SourceAvailabilitySource["status"];
+};
+
 export type VoiceKnownWork = {
   workId: number;
   primaryCode: string;
@@ -1266,6 +1274,7 @@ export type VoiceKnownWork = {
   remote: boolean;
   cache: boolean;
   sourceTags: CircleSourceStat[];
+  remoteObservations?: VoiceRemoteObservation[];
   progress: WorkProgressSummary;
 };
 

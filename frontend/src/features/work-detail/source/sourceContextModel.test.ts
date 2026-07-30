@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { MediaItem, WorkDetail } from "@/lib/api";
-import { buildSourceTabs, buildTrackedPresenceOptions } from "./sourceContextModel";
+import type { MediaItem, SourceAvailabilitySource, WorkDetail } from "@/lib/api";
+import { buildSourceTabs, buildTrackedPresenceOptions, currentRemoteSourceWorkCode } from "./sourceContextModel";
 
 describe("sourceContextModel", () => {
   it("aggregates tracked presences into one tab and reflects the selected presence", () => {
@@ -48,5 +48,18 @@ describe("sourceContextModel", () => {
       status: "red",
       statusLabel: "Tracked directory unavailable",
     });
+  });
+
+  it("uses the currently loaded remote edition instead of the routed edition", () => {
+    const summary = {
+      primaryCode: "SAMPLE-ORIGIN",
+      remoteId: "origin-id",
+    } as SourceAvailabilitySource;
+
+    expect(currentRemoteSourceWorkCode({
+      remoteCode: "SAMPLE-EDITION-B",
+      primaryCode: "SAMPLE-ORIGIN",
+      remoteId: "edition-b-id",
+    }, "SAMPLE-EDITION-A", summary, "SAMPLE-ORIGIN")).toBe("SAMPLE-EDITION-B");
   });
 });

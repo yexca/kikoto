@@ -9,6 +9,7 @@ import {
 import {
   buildSourceTabs,
   buildTrackedPresenceOptions,
+  currentRemoteSourceWorkCode,
   remoteAvailabilityRouteCode,
   remoteSourceCanBrowse,
   remoteSourceForTrackedPresence,
@@ -69,9 +70,12 @@ export function useWorkSourceContext({
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource
-    ? remoteSourceTabKey(selectedRemoteSource.source.id) === initialSourceIntent && initialRemoteCode
-      ? initialRemoteCode
-      : remoteAvailabilityRouteCode(selectedRemoteSource.summary, work?.primaryCode || code)
+    ? currentRemoteSourceWorkCode(
+        selectedRemoteSource.detail,
+        remoteSourceTabKey(selectedRemoteSource.source.id) === initialSourceIntent ? initialRemoteCode : "",
+        selectedRemoteSource.summary,
+        work?.primaryCode || code,
+      )
     : work?.primaryCode || code;
 
   const applyAvailability = useCallback((result: SourceAvailabilityResponse) => {

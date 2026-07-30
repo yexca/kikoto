@@ -192,7 +192,7 @@ func (s *Server) syncPartyForWorkFromSnapshot(ctx context.Context, code string) 
 	if err := s.upsertPartyCatalogItem(ctx, partyID, primaryCode, title, nullableStringValue(release), dlsiteURL(primaryCode), "imported", raw); err != nil {
 		return err
 	}
-	return s.upsertWorkParty(ctx, workID, partyID, "circle", "dlsite_snapshot")
+	return s.upsertAuthoritativeWorkParty(ctx, workID, partyID, "dlsite_snapshot")
 }
 
 func (s *Server) findWorkEntityRoute(ctx context.Context, code string, request workEntityLinkRequest) (string, error) {
@@ -256,16 +256,10 @@ func (s *Server) workCircleIdentity(ctx context.Context, code string) (int64, st
 	var partyID int64
 	var makerID string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT party.id, external.external_id
+		SELECT projection.party_id, projection.external_id
 		FROM work
-		INNER JOIN work_party AS relation ON relation.work_id = work.id AND relation.role = 'circle'
-		INNER JOIN party ON party.id = relation.party_id
-		INNER JOIN party_external_id AS external ON external.party_id = party.id
-		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
+		INNER JOIN work_primary_circle AS projection ON projection.work_id = work.id
 		WHERE UPPER(work.primary_code) = UPPER(?)
-			AND provider.code = 'dlsite'
-			AND external.id_type = 'maker_id'
-		ORDER BY external.is_primary DESC, relation.updated_at DESC
 		LIMIT 1
 	`, code).Scan(&partyID, &makerID)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -592,7 +592,7 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 		if err := s.upsertPartyCatalogItem(ctx, partyID, snapshot.Code, snapshot.Title, nullableStringValue(snapshot.Release), dlsiteURL(snapshot.Code), "imported", snapshot.Raw); err != nil {
 			return err
 		}
-		if err := s.upsertWorkParty(ctx, snapshot.WorkID, partyID, "circle", "dlsite_snapshot"); err != nil {
+		if err := s.upsertAuthoritativeWorkParty(ctx, snapshot.WorkID, partyID, "dlsite_snapshot"); err != nil {
 			return err
 		}
 	}
@@ -626,7 +626,7 @@ func parsePartyFromDLsiteSnapshot(raw string) parsedParty {
 	if err := json.Unmarshal(rawBytes, &payload); err != nil {
 		return parsedParty{}
 	}
-	externalID := firstNonEmpty(payload.CircleID, payload.MakerID, payload.BrandID, payload.LabelID)
+	externalID := firstNonEmpty(payload.MakerID, payload.CircleID, payload.BrandID, payload.LabelID)
 	displayName := firstNonEmpty(payload.MakerName, payload.LabelName, externalID)
 	return parsedParty{ExternalID: normalizeMakerID(externalID), DisplayName: strings.TrimSpace(displayName)}
 }
@@ -742,32 +742,65 @@ func (s *Server) upsertPartyCatalogItemForProvider(ctx context.Context, partyID 
 	return err
 }
 
-func (s *Server) upsertWorkParty(ctx context.Context, workID int64, partyID int64, role string, source string) error {
+func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64, partyID int64, source string) error {
 	providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite")
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	role, err := s.authoritativeWorkPartyRole(ctx, workID)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM work_party
+		WHERE work_id = ?
+			AND role IN ('circle', 'translator_circle', 'official_translation_brand')
+			AND source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
+			AND (party_id <> ? OR role <> ?)
+	`, workID, partyID, role); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
 		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
 			provider_id = excluded.provider_id,
 			source = excluded.source,
 			updated_at = CURRENT_TIMESTAMP
-	`, workID, partyID, strings.TrimSpace(firstNonEmpty(role, "circle")), providerID, source)
-	return err
+		WHERE work_party.source <> 'manual_override'
+	`, workID, partyID, role, providerID, strings.TrimSpace(source)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func upsertWorkPartyTx(ctx context.Context, tx *sql.Tx, providerID int64, workID int64, partyID int64, role string, source string) error {
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO work_party (work_id, party_id, role, provider_id, source, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id, party_id, role) DO UPDATE SET
-			provider_id = excluded.provider_id,
-			source = excluded.source,
-			updated_at = CURRENT_TIMESTAMP
-	`, workID, partyID, strings.TrimSpace(firstNonEmpty(role, "circle")), providerID, source)
-	return err
+func (s *Server) authoritativeWorkPartyRole(ctx context.Context, workID int64) (string, error) {
+	var isCanonical int
+	var translationKind, makerID, originMakerID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT is_canonical, translation_kind, maker_id, origin_maker_id
+		FROM work_edition
+		WHERE work_id = ?
+	`, workID).Scan(&isCanonical, &translationKind, &makerID, &originMakerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "circle", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if isCanonical != 0 {
+		return "circle", nil
+	}
+	if strings.EqualFold(strings.TrimSpace(translationKind), "official") ||
+		(strings.TrimSpace(originMakerID) != "" && strings.EqualFold(strings.TrimSpace(makerID), strings.TrimSpace(originMakerID))) {
+		return "official_translation_brand", nil
+	}
+	return "translator_circle", nil
 }
 
 func (s *Server) ensurePlaceholderCircle(ctx context.Context, externalID string) (int64, error) {
@@ -2290,9 +2323,6 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 		if err != nil {
 			return result, err
 		}
-		if err := s.upsertWorkParty(ctx, workID, partyID, "circle", "circle_refresh"); err != nil {
-			return result, err
-		}
 		party := parsedParty{ExternalID: normalizeMakerID(product.MakerID), DisplayName: strings.TrimSpace(product.MakerName)}
 		if party.ExternalID == "" {
 			party.ExternalID = normalizeMakerID(product.MakerID)
@@ -2303,11 +2333,8 @@ func (s *Server) syncCircleProductJSON(ctx context.Context, partyID int64, workC
 				return result, err
 			}
 			if productPartyID := syncedPartyID; productPartyID > 0 {
-				var workID int64
-				if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE primary_code = ?", strings.ToUpper(strings.TrimSpace(product.WorkNo))).Scan(&workID); err == nil {
-					if err := s.upsertWorkParty(ctx, workID, productPartyID, "circle", "dlsite_product"); err != nil {
-						return result, err
-					}
+				if err := s.upsertAuthoritativeWorkParty(ctx, workID, productPartyID, "dlsite_product"); err != nil {
+					return result, err
 				}
 			}
 		}
@@ -2431,7 +2458,20 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
 	release := nullableStringFromText(normalizeDateText(remoteWork.Release))
-	if err := s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), true); err != nil {
+	if err := s.upsertPartyCatalogItemForProvider(ctx, partyID, providerID, code, title, release, remoteWork.SourceURL, "remote_catalog", string(raw), false); err != nil {
+		return err
+	}
+	var workID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM work
+		WHERE UPPER(primary_code) = UPPER(?)
+	`, code).Scan(&workID); errors.Is(err, sql.ErrNoRows) {
+		// A remote catalog hit is discovery provenance. Unknown codes remain in
+		// party_catalog_item until an explicit Track, Fetch, or metadata sync
+		// crosses the work-materialization boundary.
+		return nil
+	} else if err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -2439,10 +2479,6 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, raw)
-	if err != nil {
-		return err
-	}
 	if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
 		WorkID:       workID,
 		FileSourceID: source.ID,
@@ -2453,9 +2489,6 @@ func (s *Server) upsertRemoteSourceCatalogWork(ctx context.Context, partyID int6
 		Availability: "available",
 		RawJSON:      string(raw),
 	}); err != nil {
-		return err
-	}
-	if err := upsertWorkPartyTx(ctx, tx, providerID, workID, partyID, "circle", "remote_source_catalog"); err != nil {
 		return err
 	}
 	return tx.Commit()

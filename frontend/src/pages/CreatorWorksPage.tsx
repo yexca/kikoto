@@ -28,13 +28,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { RemoteFetchDialog, remoteFetchPaths } from "@/components/RemoteFetchDialog";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
 import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { openWorkDetail } from "@/app/workDetailNavigation";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -46,9 +46,12 @@ import {
   cardDate,
   dlsiteTagBadges,
   userTagBadges,
+  type WorkCardBadge,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { circleSourceBadges } from "@/components/work-card/sourceBadges";
+import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
+import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import {
   WorkCollectionLayoutPicker,
   workCollectionClassName,
@@ -57,10 +60,11 @@ import {
   useWorkCollectionLayout,
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, ApiError, assetURL, type CircleSourceStat, type ListeningStatus, type RemoteFetchFileDecision, type RemoteWorkDetail, type RemoteWorkSavePlan, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceRemoteWork, type VoiceSummary } from "@/lib/api";
-import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
+import { api, ApiError, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceSummary } from "@/lib/api";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
+import { mergeVoiceWorks, voiceWorkHasRemoteAvailability, voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
+import { voiceWorkIsExplicitlyUnavailable } from "@/pages/voiceWorkAvailabilityModel";
 
 type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing";
@@ -279,7 +283,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
-  const [fetchSelection, setFetchSelection] = useState<{ work: VoiceKnownWork | VoiceRemoteWork; sourceId: number; code: string; detail: RemoteWorkDetail; selectedPaths: Set<string>; decisions: Record<string, RemoteFetchFileDecision>; planDirty: boolean; plan: RemoteWorkSavePlan | null; message: string } | null>(null);
   const compactDetailPanels = useCompactDetailPanels();
 
   useEffect(() => {
@@ -336,15 +339,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   }, [detail?.personId]);
 
   const knownWorks = detail?.works ?? [];
-  const remoteWorks = useMemo(() => remoteMatches.flatMap((source) => source.works), [remoteMatches]);
-  const mergedWorks = useMemo(() => {
-    const map = new Map<string, VoiceKnownWork | VoiceRemoteWork>();
-    knownWorks.forEach((work) => map.set(work.primaryCode, work));
-    remoteWorks.forEach((work) => {
-      if (!map.has(work.primaryCode)) map.set(work.primaryCode, work);
-    });
-    return Array.from(map.values());
-  }, [knownWorks, remoteWorks]);
+  const remoteMatchCount = useMemo(() => remoteMatches.reduce((total, source) => total + source.works.length, 0), [remoteMatches]);
+  const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return mergedWorks.filter((work) => {
@@ -352,7 +348,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const matchesQuery = !needle || [work.primaryCode, work.title, work.circle, ...work.tags, ...userTagNames].some((value) => value.toLowerCase().includes(needle));
       if (!matchesQuery) return false;
       const local = "local" in work ? work.local : work.hasLocal;
-      const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
+      const remote = voiceWorkHasRemoteAvailability(work);
       const cache = "cache" in work ? work.cache : work.hasCache;
       switch (filter) {
       case "available":
@@ -362,7 +358,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       case "remote":
         return remote;
       case "missing":
-        return !local && !remote && !cache;
+        return voiceWorkIsExplicitlyUnavailable(work);
       default:
         return true;
       }
@@ -397,6 +393,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setDetail((current) => item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item);
     void loadRemoteMatches(false);
   };
+  const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshDetail });
 
   const saveVoiceTags = async (tags: string[]) => {
     if (!detail) return;
@@ -408,7 +405,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const updateWorkMark = async (work: VoiceKnownWork | VoiceRemoteWork, status: ListeningStatus) => {
+  const updateWorkMark = async (work: VoiceWorkView, status: ListeningStatus) => {
     const workId = "workId" in work ? work.workId : null;
     if (!workId) {
       await syncAndMarkVoiceWork(work, status);
@@ -425,7 +422,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const syncAndMarkVoiceWork = async (work: VoiceKnownWork | VoiceRemoteWork, status: ListeningStatus) => {
+  const syncAndMarkVoiceWork = async (work: VoiceWorkView, status: ListeningStatus) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkBusy(true);
@@ -442,14 +439,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const trackVoiceWorkForState = async (work: VoiceKnownWork | VoiceRemoteWork, reason: string) => {
+  const trackVoiceWorkForState = async (work: VoiceWorkView, reason: string) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return null;
     const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
   };
 
-  const ensureVoiceWorkForList = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+  const ensureVoiceWorkForList = async (work: VoiceWorkView) => {
     const workId = "workId" in work ? work.workId : null;
     if (workId) return workId;
     try {
@@ -463,7 +460,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const toggleWorkSelection = (work: VoiceKnownWork | VoiceRemoteWork, checked: boolean) => {
+  const toggleWorkSelection = (work: VoiceWorkView, checked: boolean) => {
     const key = voiceWorkSelectionKey(work);
     setSelectedWorkKeys((current) => {
       const next = new Set(current);
@@ -532,7 +529,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
   };
 
-  const runVoiceBulkBySource = (works: (VoiceKnownWork | VoiceRemoteWork)[], action: "fetch" | "track_fetch") => {
+  const runVoiceBulkBySource = (works: VoiceWorkView[], action: "fetch" | "track_fetch") => {
     const groups = new Map<number, string[]>();
     works.forEach((work) => {
       const target = voiceWorkRemoteTarget(work);
@@ -542,54 +539,18 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     return Promise.all(Array.from(groups, ([sourceId, codes]) => api.recordRemoteBulkRun({ action, sourceId, codes })));
   };
 
-  const saveSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+  const saveSingleWork = async (work: VoiceWorkView) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return;
-    if (!requireDownloadsManage()) return;
-    setIsBulkBusy(true);
-    setMessage("");
-    toast.info("Preparing language editions, source files, and the final Fetch tree…");
-    try {
-      const detail = await api.getRemoteSourceWork(target.sourceId, target.code);
-      const paths = remoteFetchPaths(detail.tracks);
-      const plan = await api.planRemoteSourceWorkFetch(target.sourceId, remoteDetailActionCode(detail), paths);
-      setFetchSelection({ work, sourceId: target.sourceId, code: target.code, detail, selectedPaths: new Set(paths), decisions: {}, planDirty: false, plan, message: "" });
-    } catch (error) {
-      toast.notify(toastFromError(error, "Remote directory failed."));
-    } finally {
-      setIsBulkBusy(false);
-    }
+    await fetchWorkspace.open({
+      sourceId: target.sourceId,
+      remoteCode: target.code,
+      canonicalCode: work.primaryCode,
+      sourceDisplayName: "sourceName" in work ? work.sourceName : undefined,
+    });
   };
 
-  const fetchSingleSelection = async () => {
-    if (!fetchSelection) return;
-    if (!requireDownloadsManage()) return;
-    setIsBulkBusy(true);
-    setMessage("");
-    try {
-      const paths = Array.from(fetchSelection.selectedPaths);
-      if (!fetchSelection.plan || fetchSelection.planDirty) {
-        const plan = await api.planRemoteSourceWorkFetch(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", Object.values(fetchSelection.decisions));
-        setFetchSelection((current) => current ? { ...current, plan, planDirty: false, message: hasRemoteFetchConflicts(plan) ? formatRemoteFetchPlanConflict(plan) : "" } : current);
-        return;
-      }
-      const plan = fetchSelection.plan;
-      if (hasRemoteFetchConflicts(plan)) {
-        setFetchSelection((current) => current ? { ...current, plan, message: formatRemoteFetchPlanConflict(plan) } : current);
-        return;
-      }
-      const result = await api.fetchRemoteSourceWork(fetchSelection.sourceId, remoteDetailActionCode(fetchSelection.detail), paths, [], "", plan.saveRoot, Object.values(fetchSelection.decisions));
-      toast.success(`Fetch queued for ${result.primaryCode} as workflow run #${result.runId}.`);
-      setFetchSelection(null);
-      await refreshDetail();
-    } catch (error) {
-      toast.notify(toastFromError(error, "Fetch failed."));
-    } finally {
-      setIsBulkBusy(false);
-    }
-  };
-
-  const syncSingleWork = async (work: VoiceKnownWork | VoiceRemoteWork) => {
+  const syncSingleWork = async (work: VoiceWorkView) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return;
     setIsBulkBusy(true);
@@ -667,7 +628,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <Stat label="Playable" value={detail.playableWorks} icon={<Layers3 className="h-4 w-4" />} />
               <Stat label="Local" value={detail.localWorks} icon={<HardDrive className="h-4 w-4" />} />
               <Stat label="Remote" value={detail.remoteWorks} icon={<Cloud className="h-4 w-4" />} />
-              <Stat label="Remote matches" value={remoteWorks.length} icon={<Search className="h-4 w-4" />} />
+              <Stat label="Remote matches" value={remoteMatchCount} icon={<Search className="h-4 w-4" />} />
             </div>
 
           </CardContent>
@@ -813,39 +774,20 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
       </section>
       {saveConfirm && <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />}
-      {fetchSelection && (
-        <RemoteFetchDialog
-          title={`${fetchSelection.code} · ${fetchSelection.work.title}`}
-          tracks={fetchSelection.detail.tracks}
-          selectedPaths={fetchSelection.selectedPaths}
-          disabled={isBulkBusy}
-          plan={fetchSelection.plan}
-          decisions={fetchSelection.decisions}
-          planDirty={fetchSelection.planDirty}
-          message={fetchSelection.message}
-          onChange={(paths) => setFetchSelection((current) => current ? { ...current, selectedPaths: paths, plan: null, message: "" } : current)}
-          onDecisionChange={(decision) => setFetchSelection((current) => current ? { ...current, decisions: { ...current.decisions, [decision.itemKey]: decision }, planDirty: true } : current)}
-          onClose={() => setFetchSelection(null)}
-          onFetch={() => void fetchSingleSelection()}
-        />
-      )}
+      <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </div>
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteSaved, onEnsureWork }: { work: VoiceKnownWork | VoiceRemoteWork; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteSaved: (favorite: boolean) => void; onEnsureWork: () => Promise<number | null> }) {
+function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteSaved, onEnsureWork }: { work: VoiceWorkView; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteSaved: (favorite: boolean) => void; onEnsureWork: () => Promise<number | null> }) {
   const isKnown = "local" in work;
   const local = "local" in work ? work.local : work.hasLocal;
-  const remote = "remote" in work ? work.remote : work.hasRemote || work.remotePlayable;
+  const remote = voiceWorkHasRemoteAvailability(work);
   const cache = "cache" in work ? work.cache : work.hasCache;
-  const cover = assetURL(work.coverUrl);
-  const tags = "sourceTags" in work ? sourceTags(work.sourceTags) : [];
-  const metadataTags = work.tags;
-  const sourceName = "sourceName" in work ? work.sourceName : "";
   const workId = "workId" in work ? work.workId : null;
   const favorite = "favorite" in work ? work.favorite : false;
   const listeningMark = "listeningMark" in work ? work.listeningMark : "none";
-  const isUnavailable = !local && !remote && !cache;
+  const isUnavailable = voiceWorkIsExplicitlyUnavailable(work);
   const canOpen = Boolean((isKnown && workId) || (!isKnown && work.primaryCode));
   const view = voiceWorkCardView(work);
 
@@ -1170,18 +1112,17 @@ function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["
   );
 }
 
-function voiceWorkCardView(work: VoiceKnownWork | VoiceRemoteWork): WorkCardViewModel {
+function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
   const isKnown = "local" in work;
   const sourceName = "sourceName" in work ? work.sourceName : "";
-  const sourceBadges = isKnown
-    ? circleSourceBadges({ local: work.local, remote: work.remote, cache: work.cache, sourceTags: work.sourceTags })
-    : circleSourceBadges({ local: work.hasLocal, remote: work.hasRemote || work.remotePlayable, cache: work.hasCache, sourceTags: work.remotePlayable && work.sourceId ? [{
-      key: String(work.sourceId),
-      displayName: sourceName || work.sourceCode || "remote source",
-      sourceId: work.sourceId,
-      status: "available",
-      count: 1,
-    }] : [] });
+  const observedSourceTags = voiceWorkObservedSourceTags(work);
+  const availableBadges = isKnown
+    ? circleSourceBadges({ local: work.local, remote: work.remote, cache: work.cache, sourceTags: observedSourceTags })
+    : circleSourceBadges({ local: work.hasLocal, remote: work.hasRemote || work.remotePlayable, cache: work.hasCache, sourceTags: observedSourceTags });
+  const observedStatusBadges = voiceObservedStatusBadges(observedSourceTags);
+  const sourceBadges = availableBadges.length > 0 || observedStatusBadges.length > 0
+    ? [...availableBadges, ...observedStatusBadges]
+    : [{ key: "source:unknown", label: "Not checked", variant: "warning" as const, title: "No source availability observation has been recorded." }];
   return {
     code: work.primaryCode || sourceName || "Source",
     title: work.title,
@@ -1319,57 +1260,34 @@ function VoiceDetailSkeleton() {
   );
 }
 
-function SourceTags({ sources }: { sources: CircleSourceStat[] }) {
-  const tags = sourceTags(sources);
-  if (tags.length === 0) return <Badge variant="warning">Unavailable</Badge>;
-  return <div className="flex min-h-6 flex-wrap gap-1">{tags.map((source) => <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>{source.displayName}{source.count > 0 ? ` ${source.count}` : ""}</Badge>)}</div>;
-}
-
-function sourceTags(sources: CircleSourceStat[]) {
-  const available = sources.filter((source) => source.status === "available" || source.count > 0);
-  const hasSpecificRemote = available.some((source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache");
-  return hasSpecificRemote ? available.filter((source) => source.key !== "remote") : available;
-}
-
-function voiceWorkSelectionKey(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkSelectionKey(work: VoiceWorkView) {
   return `${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`;
 }
 
-function isVoiceBulkSelectable(work: VoiceKnownWork | VoiceRemoteWork) {
+function isVoiceBulkSelectable(work: VoiceWorkView) {
   if ("local" in work && work.local) return false;
   return voiceWorkRemoteTarget(work) !== null;
 }
 
-function voiceWorkHasImportedRemote(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkHasImportedRemote(work: VoiceWorkView) {
   if ("remote" in work) return work.remote;
   return work.hasRemote;
 }
 
-function voiceWorkReleaseDate(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkReleaseDate(work: VoiceWorkView) {
   return "releaseDate" in work ? work.releaseDate || "" : "";
 }
 
-function voiceWorkUpdatedAt(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkUpdatedAt(work: VoiceWorkView) {
   return work.updatedAt || voiceWorkReleaseDate(work);
 }
 
-function voiceWorkSales(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkSales(work: VoiceWorkView) {
   return work.sales ?? null;
 }
 
-function voiceWorkDLsiteURL(work: VoiceKnownWork | VoiceRemoteWork) {
+function voiceWorkDLsiteURL(work: VoiceWorkView) {
   return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : `https://www.dlsite.com/maniax/work/=/product_id/${encodeURIComponent(work.primaryCode)}.html`;
-}
-
-function voiceWorkRemoteTarget(work: VoiceKnownWork | VoiceRemoteWork): { sourceId: number; code: string } | null {
-  if (!work.primaryCode) return null;
-  if ("sourceId" in work) return { sourceId: work.sourceId, code: work.remoteCode || work.primaryCode };
-  const remoteSource = work.sourceTags.find((tag) => tag.sourceId !== null && tag.sourceId !== undefined && tag.key !== "cache");
-  return remoteSource?.sourceId ? { sourceId: remoteSource.sourceId, code: work.remoteCode || work.primaryCode } : null;
-}
-
-function remoteDetailActionCode(detail: RemoteWorkDetail) {
-  return detail.remoteCode || detail.primaryCode;
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
@@ -1403,6 +1321,30 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border"><CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left"><div className="min-w-0"><div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div><div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div></div><div className="hidden text-primary sm:block">{icon}</div></CardContent></Card>;
+}
+
+function voiceObservedStatusBadges(sourceTags: CircleSourceStat[]): WorkCardBadge[] {
+  return sourceTags
+    .filter((source) => source.sourceId && source.key !== "cache" && source.status !== "available" && source.count <= 0)
+    .map((source) => {
+      const status = voiceSourceStatusLabel(source.status);
+      return {
+        key: `source:observed:${source.sourceId}`,
+        label: `${source.displayName || "Remote source"}: ${status}`,
+        variant: "warning" as const,
+        title: `Observed source status: ${status}`,
+      };
+    });
+}
+
+function voiceSourceStatusLabel(status: string) {
+  switch (status) {
+    case "not_found": return "Not found";
+    case "unavailable": return "Unavailable";
+    case "disabled": return "Disabled";
+    case "error": return "Error";
+    default: return "Not checked";
+  }
 }
 
 function MobileDetailDisclosure({ title, summary, warning = false, children }: { title: string; summary: string; warning?: boolean; children: React.ReactNode }) {
@@ -1480,15 +1422,19 @@ function navigateToVoicesList() {
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
-function openWorkRoute(work: VoiceKnownWork | VoiceRemoteWork) {
-  if ("workId" in work && work.workId) {
-    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work }, "", `/${encodeURIComponent(work.primaryCode)}`);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+function openWorkRoute(work: VoiceWorkView) {
+  const remoteTarget = voiceWorkRemoteTarget(work);
+  const options = { returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work };
+  if (work.workId) {
+    openWorkDetail({
+      kind: "known",
+      canonicalCode: work.primaryCode,
+      source: remoteTarget ? { sourceId: remoteTarget.sourceId, remoteCode: remoteTarget.code } : null,
+    }, options);
     return;
   }
-  if ("sourceId" in work && work.primaryCode) {
-    window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work }, "", `/${encodeURIComponent(work.primaryCode || work.remoteId)}?source=${work.sourceId}`);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+  if (remoteTarget) {
+    openWorkDetail({ kind: "remote-only", sourceId: remoteTarget.sourceId, remoteCode: remoteTarget.code }, options);
   }
 }
 

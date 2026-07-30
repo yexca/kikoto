@@ -2399,7 +2399,7 @@ func (s *Server) runRemoteWorkSync(ctx context.Context, sourceID int64, code str
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork, true)
 	if err != nil {
 		return remoteWorkSyncResult{}, err
 	}
@@ -2913,7 +2913,7 @@ func (s *Server) trackRemoteCollectionWork(ctx context.Context, source remoteSou
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork, true)
 	if err != nil {
 		return 0, err
 	}
@@ -3291,7 +3291,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	}); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork, true)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -5225,13 +5225,86 @@ func mediaKindFromPath(path string) string {
 	}
 }
 
-func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage) (int64, error) {
+type remoteWorkFallbackPolicy struct {
+	AttachCircleFallback     bool
+	UpdateNormalizedMetadata bool
+}
+
+func loadRemoteWorkFallbackPolicy(ctx context.Context, tx *sql.Tx, code string) (remoteWorkFallbackPolicy, error) {
+	var workID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT id
+		FROM work
+		WHERE UPPER(primary_code) = UPPER(?)
+	`, code).Scan(&workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return remoteWorkFallbackPolicy{
+			AttachCircleFallback:     true,
+			UpdateNormalizedMetadata: true,
+		}, nil
+	}
+	if err != nil {
+		return remoteWorkFallbackPolicy{}, err
+	}
+	var hasHigherPriorityMetadata, hasAuthoritativeParty, hasManualCircleOverride int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM metadata_snapshot AS snapshot
+				INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
+				WHERE snapshot.work_id = ?
+					AND provider.code NOT GLOB 'kikoeru_source_*'
+				UNION ALL
+				SELECT 1
+				FROM work_edition AS edition
+				INNER JOIN metadata_provider AS provider ON provider.id = edition.provider_id
+				WHERE edition.work_id = ? AND provider.code = 'dlsite'
+			),
+			EXISTS (
+				SELECT 1
+				FROM work_party
+				WHERE work_id = ?
+					AND role IN ('circle', 'translator_circle', 'official_translation_brand')
+					AND source NOT IN ('remote_source', 'circle_refresh', 'remote_source_catalog')
+				UNION ALL
+				SELECT 1
+				FROM work_edition
+				WHERE work_id = ? AND maker_id <> ''
+			),
+			EXISTS (
+				SELECT 1
+				FROM work_manual_override
+				WHERE work_id = ? AND field_name = 'circle'
+				UNION ALL
+				SELECT 1
+				FROM work_party
+				WHERE work_id = ? AND role = 'circle' AND source = 'manual_override'
+			)
+	`, workID, workID, workID, workID, workID, workID).Scan(
+		&hasHigherPriorityMetadata,
+		&hasAuthoritativeParty,
+		&hasManualCircleOverride,
+	); err != nil {
+		return remoteWorkFallbackPolicy{}, err
+	}
+	return remoteWorkFallbackPolicy{
+		AttachCircleFallback:     hasHigherPriorityMetadata == 0 && hasAuthoritativeParty == 0 && hasManualCircleOverride == 0,
+		UpdateNormalizedMetadata: hasHigherPriorityMetadata == 0,
+	}, nil
+}
+
+func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse, remoteWork kikoeru.Work, rawWork json.RawMessage, allowCircleFallback bool) (int64, error) {
 	code := normalizedRemoteWorkCode(remoteWork)
 	if code == "" {
 		code = strings.ToUpper(strings.TrimSpace(remoteWork.SourceID))
 	}
 	if code == "" {
 		return 0, fmt.Errorf("remote work does not expose a stable work code")
+	}
+	policy, err := loadRemoteWorkFallbackPolicy(ctx, tx, code)
+	if err != nil {
+		return 0, err
 	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
 	description := ""
@@ -5244,12 +5317,32 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		INSERT INTO work (primary_code, work_type, title, description, release_date, age_rating, duration_seconds)
 		VALUES (?, 'audio', ?, ?, ?, ?, ?)
 		ON CONFLICT(primary_code) DO UPDATE SET
-			title = excluded.title,
-			release_date = COALESCE(excluded.release_date, work.release_date),
-			age_rating = excluded.age_rating,
-			duration_seconds = COALESCE(excluded.duration_seconds, work.duration_seconds),
+			title = CASE
+				WHEN TRIM(work.title) = '' OR UPPER(TRIM(work.title)) = UPPER(TRIM(work.primary_code)) THEN excluded.title
+				WHEN ?
+					AND TRIM(excluded.title) <> ''
+					AND UPPER(TRIM(excluded.title)) <> UPPER(TRIM(work.primary_code)) THEN excluded.title
+				ELSE work.title
+			END,
+			release_date = CASE
+				WHEN ? THEN COALESCE(excluded.release_date, work.release_date)
+				ELSE COALESCE(work.release_date, excluded.release_date)
+			END,
+			age_rating = CASE
+				WHEN ? THEN COALESCE(NULLIF(excluded.age_rating, ''), work.age_rating)
+				ELSE COALESCE(NULLIF(work.age_rating, ''), excluded.age_rating)
+			END,
+			duration_seconds = CASE
+				WHEN ? THEN COALESCE(excluded.duration_seconds, work.duration_seconds)
+				ELSE COALESCE(work.duration_seconds, excluded.duration_seconds)
+			END,
 			updated_at = CURRENT_TIMESTAMP
-	`, code, title, description, releaseDate, remoteWork.AgeCategoryString, duration); err != nil {
+	`, code, title, description, releaseDate, remoteWork.AgeCategoryString, duration,
+		policy.UpdateNormalizedMetadata,
+		policy.UpdateNormalizedMetadata,
+		policy.UpdateNormalizedMetadata,
+		policy.UpdateNormalizedMetadata,
+	); err != nil {
 		return 0, err
 	}
 	workID, err := selectID(ctx, tx, "SELECT id FROM work WHERE primary_code = ?", code)
@@ -5300,7 +5393,7 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	}); err != nil {
 		return 0, err
 	}
-	if remoteWork.Circle != nil && strings.TrimSpace(remoteWork.Circle.Name) != "" {
+	if allowCircleFallback && policy.AttachCircleFallback && remoteWork.Circle != nil && strings.TrimSpace(remoteWork.Circle.Name) != "" {
 		var partyID int64
 		if err := tx.QueryRowContext(ctx, `
 			SELECT id

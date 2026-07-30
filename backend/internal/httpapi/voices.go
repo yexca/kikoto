@@ -140,36 +140,45 @@ type voiceDetail struct {
 }
 
 type voiceKnownWork struct {
-	WorkID           int64               `json:"workId"`
-	PrimaryCode      string              `json:"primaryCode"`
-	RemoteCode       string              `json:"remoteCode"`
-	Title            string              `json:"title"`
-	ReleaseDate      *string             `json:"releaseDate"`
-	UpdatedAt        string              `json:"updatedAt"`
-	CoverURL         string              `json:"coverUrl"`
-	DLsiteURL        string              `json:"dlsiteUrl"`
-	Circle           string              `json:"circle"`
-	CircleExternalID string              `json:"circleExternalId"`
-	AgeRating        string              `json:"ageRating"`
-	Rating           *float64            `json:"rating"`
-	Sales            *int64              `json:"sales"`
-	RegularPrice     *int64              `json:"regularPrice"`
-	Price            *int64              `json:"price"`
-	PriceCurrency    string              `json:"priceCurrency"`
-	PermanentlyFree  *bool               `json:"permanentlyFree"`
-	Tags             []string            `json:"tags"`
-	UserTags         []workUserTag       `json:"userTags"`
-	VoiceActors      []string            `json:"voiceActors"`
-	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
-	Series           string              `json:"series"`
-	SeriesTitleID    string              `json:"seriesTitleId"`
-	ListeningMark    string              `json:"listeningMark"`
-	Favorite         bool                `json:"favorite"`
-	Local            bool                `json:"local"`
-	Remote           bool                `json:"remote"`
-	Cache            bool                `json:"cache"`
-	SourceTags       []circleSourceStat  `json:"sourceTags"`
-	Progress         workProgressSummary `json:"progress"`
+	WorkID             int64                    `json:"workId"`
+	PrimaryCode        string                   `json:"primaryCode"`
+	RemoteCode         string                   `json:"remoteCode"`
+	Title              string                   `json:"title"`
+	ReleaseDate        *string                  `json:"releaseDate"`
+	UpdatedAt          string                   `json:"updatedAt"`
+	CoverURL           string                   `json:"coverUrl"`
+	DLsiteURL          string                   `json:"dlsiteUrl"`
+	Circle             string                   `json:"circle"`
+	CircleExternalID   string                   `json:"circleExternalId"`
+	AgeRating          string                   `json:"ageRating"`
+	Rating             *float64                 `json:"rating"`
+	Sales              *int64                   `json:"sales"`
+	RegularPrice       *int64                   `json:"regularPrice"`
+	Price              *int64                   `json:"price"`
+	PriceCurrency      string                   `json:"priceCurrency"`
+	PermanentlyFree    *bool                    `json:"permanentlyFree"`
+	Tags               []string                 `json:"tags"`
+	UserTags           []workUserTag            `json:"userTags"`
+	VoiceActors        []string                 `json:"voiceActors"`
+	VoiceCredits       []voiceCredit            `json:"voiceCredits"`
+	Series             string                   `json:"series"`
+	SeriesTitleID      string                   `json:"seriesTitleId"`
+	ListeningMark      string                   `json:"listeningMark"`
+	Favorite           bool                     `json:"favorite"`
+	Local              bool                     `json:"local"`
+	Remote             bool                     `json:"remote"`
+	Cache              bool                     `json:"cache"`
+	SourceTags         []circleSourceStat       `json:"sourceTags"`
+	RemoteObservations []voiceRemoteObservation `json:"remoteObservations"`
+	Progress           workProgressSummary      `json:"progress"`
+}
+
+type voiceRemoteObservation struct {
+	SourceID   int64  `json:"sourceId"`
+	SourceCode string `json:"sourceCode"`
+	SourceName string `json:"sourceName"`
+	RemoteCode string `json:"remoteCode"`
+	Status     string `json:"status"`
 }
 
 type voiceRemoteSourceSet struct {
@@ -933,15 +942,9 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 				LIMIT 1
 			), '') AS snapshot_json,
 			(
-				SELECT party.display_name || '|' || COALESCE(external.external_id, '')
-				FROM work_party AS relation
-				INNER JOIN party ON party.id = relation.party_id
-				LEFT JOIN party_external_id AS external ON external.party_id = party.id
-					AND external.is_primary = 1
-				WHERE relation.work_id = work.id
-					AND relation.role = 'circle'
-				ORDER BY relation.updated_at DESC
-				LIMIT 1
+				SELECT primary_circle.display_name || '|' || primary_circle.external_id
+				FROM work_primary_circle AS primary_circle
+				WHERE primary_circle.work_id = work.id
 			) AS party_link,
 			COALESCE(user_work_state.listening_status, 'none') AS listening_status,
 			COALESCE(user_work_state.favorite, 0) AS favorite,
@@ -1013,7 +1016,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			}
 		}
 		metadata := parseDLsiteSnapshot(row.Snapshot)
-		sourceTags, err := s.workSourceTagsByCode(ctx, displayCode)
+		sourceTags, remoteObservations, err := s.workSourceStateByCode(ctx, displayCode)
 		if err != nil {
 			return nil, err
 		}
@@ -1033,34 +1036,35 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			updatedAt = *releaseDate
 		}
 		item := voiceKnownWork{
-			WorkID:           displayWorkID,
-			PrimaryCode:      displayCode,
-			RemoteCode:       remoteCode,
-			Title:            row.Title,
-			ReleaseDate:      releaseDate,
-			UpdatedAt:        updatedAt,
-			CoverURL:         s.coverURL(displayCode),
-			DLsiteURL:        dlsiteURL(displayCode),
-			Circle:           metadata.Circle,
-			CircleExternalID: metadata.CircleExternalID,
-			AgeRating:        row.AgeRating,
-			Rating:           row.Rating,
-			Sales:            row.Sales,
-			RegularPrice:     row.RegularPrice,
-			Price:            row.Price,
-			PriceCurrency:    row.PriceCurrency,
-			PermanentlyFree:  row.PermanentlyFree,
-			Tags:             metadata.Tags,
-			VoiceActors:      metadata.VoiceActors,
-			Series:           metadata.Series,
-			SeriesTitleID:    row.SeriesTitleID,
-			ListeningMark:    row.ListeningStatus,
-			Favorite:         row.Favorite,
-			Local:            row.HasLocal || sourceStatsContain(sourceTags, "local"),
-			Remote:           row.HasRemote || sourceStatsContain(sourceTags, "remote"),
-			Cache:            row.HasCache || sourceStatsContain(sourceTags, "cache"),
-			SourceTags:       sourceTags,
-			Progress:         progress,
+			WorkID:             displayWorkID,
+			PrimaryCode:        displayCode,
+			RemoteCode:         remoteCode,
+			Title:              row.Title,
+			ReleaseDate:        releaseDate,
+			UpdatedAt:          updatedAt,
+			CoverURL:           s.coverURL(displayCode),
+			DLsiteURL:          dlsiteURL(displayCode),
+			Circle:             metadata.Circle,
+			CircleExternalID:   metadata.CircleExternalID,
+			AgeRating:          row.AgeRating,
+			Rating:             row.Rating,
+			Sales:              row.Sales,
+			RegularPrice:       row.RegularPrice,
+			Price:              row.Price,
+			PriceCurrency:      row.PriceCurrency,
+			PermanentlyFree:    row.PermanentlyFree,
+			Tags:               metadata.Tags,
+			VoiceActors:        metadata.VoiceActors,
+			Series:             metadata.Series,
+			SeriesTitleID:      row.SeriesTitleID,
+			ListeningMark:      row.ListeningStatus,
+			Favorite:           row.Favorite,
+			Local:              row.HasLocal || sourceStatsContain(sourceTags, "local"),
+			Remote:             row.HasRemote || sourceStatsContain(sourceTags, "remote"),
+			Cache:              row.HasCache || sourceStatsContain(sourceTags, "cache"),
+			SourceTags:         sourceTags,
+			RemoteObservations: remoteObservations,
+			Progress:           progress,
 		}
 		item.VoiceCredits, err = s.voiceCreditsForWork(ctx, displayWorkID)
 		if err != nil {
@@ -1152,19 +1156,70 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	target.Local = target.Local || item.Local
 	target.Remote = target.Remote || item.Remote
 	target.Cache = target.Cache || item.Cache
-	target.SourceTags = mergeCircleSourceStats(target.SourceTags, item.SourceTags)
+	target.SourceTags = mergeVoiceSourceStats(target.SourceTags, item.SourceTags)
+	target.RemoteObservations = mergeVoiceRemoteObservations(target.RemoteObservations, item.RemoteObservations)
 	if target.Progress.MediaItemID == nil {
 		target.Progress = item.Progress
 	}
 }
 
+func mergeVoiceRemoteObservations(left []voiceRemoteObservation, right []voiceRemoteObservation) []voiceRemoteObservation {
+	result := append([]voiceRemoteObservation{}, left...)
+	seen := map[string]int{}
+	for index, item := range result {
+		seen[voiceRemoteObservationKey(item)] = index
+	}
+	for _, item := range right {
+		key := voiceRemoteObservationKey(item)
+		if index, ok := seen[key]; ok {
+			if voiceSourceStatusPriority(item.Status) > voiceSourceStatusPriority(result[index].Status) {
+				result[index] = item
+			}
+			continue
+		}
+		seen[key] = len(result)
+		result = append(result, item)
+	}
+	return result
+}
+
+func voiceRemoteObservationKey(item voiceRemoteObservation) string {
+	return fmt.Sprintf("%d:%s", item.SourceID, strings.ToUpper(strings.TrimSpace(item.RemoteCode)))
+}
+
 func sourceStatsContain(items []circleSourceStat, key string) bool {
 	for _, item := range items {
+		if item.Status != "available" && item.Count <= 0 {
+			continue
+		}
 		if item.Key == key || (key == "remote" && strings.HasPrefix(item.Key, "source:")) {
 			return true
 		}
 	}
 	return false
+}
+
+func mergeVoiceSourceStats(left []circleSourceStat, right []circleSourceStat) []circleSourceStat {
+	result := append([]circleSourceStat{}, left...)
+	seen := map[string]int{}
+	for index, item := range result {
+		seen[circleSourceStatKey(item)] = index
+	}
+	for _, item := range right {
+		key := circleSourceStatKey(item)
+		if index, ok := seen[key]; ok {
+			if voiceSourceStatusPriority(item.Status) > voiceSourceStatusPriority(result[index].Status) {
+				result[index].Status = item.Status
+			}
+			if item.Count > result[index].Count {
+				result[index].Count = item.Count
+			}
+			continue
+		}
+		seen[key] = len(result)
+		result = append(result, item)
+	}
+	return result
 }
 
 func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, voiceName string) ([]voiceRemoteSourceSet, error) {
@@ -2271,7 +2326,7 @@ func (s *Server) loadVoiceUserTags(ctx context.Context, userID int64, personID i
 	return tags, rows.Err()
 }
 
-func (s *Server) workSourceTagsByCode(ctx context.Context, code string) ([]circleSourceStat, error) {
+func (s *Server) workSourceStateByCode(ctx context.Context, code string) ([]circleSourceStat, []voiceRemoteObservation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT source.id, source.display_name, location.location_type, COUNT(*)
 		FROM media_file_location AS location
@@ -2293,35 +2348,176 @@ func (s *Server) workSourceTagsByCode(ctx context.Context, code string) ([]circl
 		ORDER BY source.priority ASC, source.display_name ASC
 	`, code, code)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 	tags := []circleSourceStat{}
-	seenRemote := false
+	tagIndexes := map[string]int{}
 	for rows.Next() {
 		var sourceID int64
 		var name, locationType string
 		var count int
 		if err := rows.Scan(&sourceID, &name, &locationType, &count); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch locationType {
 		case "local":
-			tags = append(tags, circleSourceStat{Key: "local", DisplayName: "Local", Status: "available", Count: count})
+			mergeAvailableVoiceSourceTag(&tags, tagIndexes, circleSourceStat{Key: "local", DisplayName: "Local", Status: "available", Count: count})
 		case "cache":
-			tags = append(tags, circleSourceStat{Key: "cache", SourceID: &sourceID, DisplayName: "Cache", Status: "available", Count: count})
+			mergeAvailableVoiceSourceTag(&tags, tagIndexes, circleSourceStat{Key: "cache", SourceID: &sourceID, DisplayName: "Cache", Status: "available", Count: count})
 		case "remote_stream", "remote_download":
-			seenRemote = true
-			tags = append(tags, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: name, Status: "available", Count: count})
+			mergeAvailableVoiceSourceTag(&tags, tagIndexes, circleSourceStat{Key: fmt.Sprintf("source:%d", sourceID), SourceID: &sourceID, DisplayName: name, Status: "available", Count: count})
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if seenRemote {
+	if err := rows.Close(); err != nil {
+		return nil, nil, err
+	}
+
+	// Source presence is a work-level availability observation. It can make the
+	// remote source available without implying that concrete media rows exist.
+	presenceRows, err := s.db.QueryContext(ctx, `
+		SELECT source.id, source.code, source.display_name, presence.remote_code, presence.availability, COUNT(*)
+		FROM work_source_presence AS presence
+		INNER JOIN file_source AS source ON source.id = presence.file_source_id
+		WHERE presence.work_id IN (
+				SELECT work.id
+				FROM work
+				WHERE UPPER(work.primary_code) = UPPER(?)
+				UNION
+				SELECT sibling.work_id
+				FROM work AS current_work
+				INNER JOIN work_edition AS current_edition ON current_edition.work_id = current_work.id
+				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+				WHERE UPPER(current_work.primary_code) = UPPER(?)
+			)
+			AND presence.presence_type = ?
+		GROUP BY source.id, source.code, source.display_name, source.priority, presence.remote_code, presence.availability
+		ORDER BY source.priority ASC, source.display_name ASC, presence.availability ASC, presence.remote_code ASC
+	`, code, code, sourcePresenceTypeRemoteSource)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer presenceRows.Close()
+	observedStats := map[int64]circleSourceStat{}
+	observedSourceOrder := []int64{}
+	remoteObservations := []voiceRemoteObservation{}
+	for presenceRows.Next() {
+		var sourceID int64
+		var sourceCode, name, remoteCode, availability string
+		var count int
+		if err := presenceRows.Scan(&sourceID, &sourceCode, &name, &remoteCode, &availability, &count); err != nil {
+			return nil, nil, err
+		}
+		status := voiceSourceAvailabilityStatus(availability)
+		if status != "available" {
+			count = 0
+		}
+		item := circleSourceStat{
+			Key:         fmt.Sprintf("source:%d", sourceID),
+			SourceID:    &sourceID,
+			DisplayName: name,
+			Status:      status,
+			Count:       count,
+		}
+		existing, ok := observedStats[sourceID]
+		if !ok {
+			observedSourceOrder = append(observedSourceOrder, sourceID)
+			observedStats[sourceID] = item
+		} else if voiceSourceStatusPriority(item.Status) > voiceSourceStatusPriority(existing.Status) {
+			observedStats[sourceID] = item
+		} else if item.Status == existing.Status && item.Status == "available" {
+			existing.Count += item.Count
+			observedStats[sourceID] = existing
+		}
+		remoteCode = strings.TrimSpace(remoteCode)
+		if remoteCode != "" {
+			remoteObservations = mergeVoiceRemoteObservations(remoteObservations, []voiceRemoteObservation{{
+				SourceID:   sourceID,
+				SourceCode: sourceCode,
+				SourceName: name,
+				RemoteCode: remoteCode,
+				Status:     status,
+			}})
+		}
+	}
+	if err := presenceRows.Err(); err != nil {
+		return nil, nil, err
+	}
+	for _, sourceID := range observedSourceOrder {
+		mergeObservedVoiceSourceTag(&tags, tagIndexes, observedStats[sourceID])
+	}
+
+	if sourceStatsContain(tags, "remote") {
 		tags = append([]circleSourceStat{{Key: "remote", DisplayName: "Remote", Status: "available", Count: 1}}, tags...)
 	}
-	return tags, nil
+	return tags, remoteObservations, nil
+}
+
+func mergeAvailableVoiceSourceTag(tags *[]circleSourceStat, indexes map[string]int, item circleSourceStat) {
+	key := circleSourceStatKey(item)
+	if index, ok := indexes[key]; ok {
+		(*tags)[index].Status = "available"
+		(*tags)[index].Count += item.Count
+		return
+	}
+	indexes[key] = len(*tags)
+	*tags = append(*tags, item)
+}
+
+func mergeObservedVoiceSourceTag(tags *[]circleSourceStat, indexes map[string]int, item circleSourceStat) {
+	key := circleSourceStatKey(item)
+	if index, ok := indexes[key]; ok {
+		existing := &(*tags)[index]
+		if existing.Status == "available" {
+			return
+		}
+		if voiceSourceStatusPriority(item.Status) > voiceSourceStatusPriority(existing.Status) {
+			existing.Status = item.Status
+			existing.Count = item.Count
+		}
+		return
+	}
+	indexes[key] = len(*tags)
+	*tags = append(*tags, item)
+}
+
+func voiceSourceAvailabilityStatus(availability string) string {
+	switch strings.ToLower(strings.TrimSpace(availability)) {
+	case "available":
+		return "available"
+	case "missing", "not_found":
+		return "not_found"
+	case "unavailable":
+		return "unavailable"
+	case "disabled":
+		return "disabled"
+	case "error":
+		return "error"
+	default:
+		return "unknown"
+	}
+}
+
+func voiceSourceStatusPriority(status string) int {
+	switch status {
+	case "available":
+		return 6
+	case "disabled":
+		return 5
+	case "error":
+		return 4
+	case "unavailable":
+		return 3
+	case "not_found":
+		return 2
+	case "unknown":
+		return 1
+	default:
+		return 0
+	}
 }
 
 type voiceWorkRow struct {
