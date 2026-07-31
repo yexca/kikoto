@@ -521,6 +521,14 @@ export function FavoritesPage() {
 
   return (
     <section className="space-y-5">
+      <div className="border-b" role="tablist" aria-label="Favorite categories">
+        <div className="flex gap-6 overflow-x-auto">
+          <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
+          <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
+          <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+        </div>
+      </div>
+
       {favoriteEntity !== "works" && (
         <div className="flex justify-end">
           <div className="flex w-full items-center gap-2 sm:max-w-sm">
@@ -541,14 +549,6 @@ export function FavoritesPage() {
           </div>
         </div>
       )}
-
-      <div className="border-b" role="tablist" aria-label="Favorite categories">
-        <div className="flex gap-6 overflow-x-auto">
-          <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
-          <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
-          <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
-        </div>
-      </div>
 
       {favoriteEntity !== "works" && (
         <FavoriteEntitySection
