@@ -187,7 +187,20 @@ export function FavoritesPage() {
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
   const [listActionsOpen, setListActionsOpen] = useState(false);
   const listActionsRef = useRef<HTMLDivElement | null>(null);
+  const [entitySearchOpen, setEntitySearchOpen] = useState(false);
+  const entitySearchRef = useRef<HTMLDivElement | null>(null);
+  const entitySearchInputRef = useRef<HTMLInputElement | null>(null);
   const requestSeq = useRef(0);
+
+  useEffect(() => {
+    setEntitySearchOpen(false);
+  }, [favoriteEntity]);
+
+  useEffect(() => {
+    if (!entitySearchOpen) return;
+    const frame = window.requestAnimationFrame(() => entitySearchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [entitySearchOpen]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -521,34 +534,78 @@ export function FavoritesPage() {
 
   return (
     <section className="space-y-5">
-      <div className="border-b" role="tablist" aria-label="Favorite categories">
-        <div className="flex gap-6 overflow-x-auto">
-          <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
-          <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
-          <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+      <div className="border-b">
+        <div className="flex min-w-0 items-end gap-3">
+          <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Favorite categories">
+            <div className="flex w-max min-w-full gap-6">
+              <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
+              <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
+              <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+            </div>
+          </div>
+
+          {favoriteEntity !== "works" && (
+            <div ref={entitySearchRef} className="relative mb-1 shrink-0">
+              <div className="hidden items-center gap-2 md:flex">
+                <label className="relative block w-56">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                    aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                  />
+                </label>
+                {query.trim() && (
+                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setQuery("")} aria-label="Clear search" title="Clear search">
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="md:hidden">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={`h-9 w-9 ${query.trim() ? "text-primary" : ""}`}
+                  onClick={() => setEntitySearchOpen((open) => !open)}
+                  aria-label="Search favorites"
+                  title="Search favorites"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <AnchoredPopover
+                open={entitySearchOpen}
+                anchorRef={entitySearchRef}
+                onOpenChange={setEntitySearchOpen}
+                className="w-[min(18rem,calc(100vw-1.5rem))] p-2"
+              >
+                <div className="flex items-center gap-2">
+                  <label className="relative block min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      ref={entitySearchInputRef}
+                      className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                      aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
+                    />
+                  </label>
+                  {query.trim() && (
+                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setQuery("")} aria-label="Clear search" title="Clear search">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </AnchoredPopover>
+            </div>
+          )}
         </div>
       </div>
-
-      {favoriteEntity !== "works" && (
-        <div className="flex justify-end">
-          <div className="flex w-full items-center gap-2 sm:max-w-sm">
-            <label className="relative block min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
-              />
-            </label>
-            {query.trim() && (
-              <Button variant="outline" size="icon" onClick={() => setQuery("")} aria-label="Clear search">
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
 
       {favoriteEntity !== "works" && (
         <FavoriteEntitySection
