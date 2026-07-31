@@ -35,9 +35,11 @@ After first startup, Settings is the source of truth for configured sources.
 
 Demo mode does not bootstrap or expose the root identity, recover or dispatch
 workflow jobs, or accept supplied sessions. Its HTTP API rejects all non-read
-methods, and the Demo identity has only library-read and playback permissions,
-so administrator, workflow, source-management, and user-management data is not
-available. It synchronously runs only the dedicated `demo_library_scan`
+methods, and the Demo identity has only library-read and playback permissions.
+Read requests are nevertheless allowed through administration, workflow,
+activity, source, and user surfaces so the isolated deployment can be shown;
+the frontend keeps those controls read-only and all writes are rejected before
+handlers run. It synchronously runs only the dedicated `demo_library_scan`
 workflow at startup. That workflow scans the Demo data root, verifies each
 candidate against DLsite, and stores local works and media only when the
 provider reports both all-ages and permanently free metadata. Unknown, failed,

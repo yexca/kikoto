@@ -493,6 +493,8 @@ export function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | 
 
 function fetchResultActionLabel(action: string) {
   switch (action) {
+    case "preview":
+      return "Preview";
     case "skip":
       return "Keep";
     case "copy_local":

@@ -412,7 +412,7 @@ export function MaintenancePage({
           onSave={saveRuntimeSettings}
         />
       ) : activeTab === "users" ? (
-        <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} embedded />
+        <UsersPage currentUserId={currentUserId} isSuperAdmin={isSuperAdmin} readOnly={readOnly} embedded />
       ) : (
         <PathsSettings settings={settings} remoteSources={remoteSources} />
       )}

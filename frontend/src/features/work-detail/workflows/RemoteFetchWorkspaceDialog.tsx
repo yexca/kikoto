@@ -32,6 +32,7 @@ export function RemoteFetchWorkspaceDialog({ workspace }: { workspace: RemoteFet
       selectedPaths={draft.selectedPaths}
       selectedLocalPaths={draft.selectedLocalPaths}
       disabled={workspace.isBusy}
+      readOnly={workspace.readOnly}
       plan={draft.plan}
       preparation={draft.preparation}
       decisions={draft.decisions}
@@ -56,6 +57,7 @@ function RemoteFetchSelectionPanel({
   selectedPaths,
   selectedLocalPaths,
   disabled,
+  readOnly = false,
   plan,
   preparation,
   decisions = {},
@@ -76,6 +78,7 @@ function RemoteFetchSelectionPanel({
   selectedPaths: Set<string>;
   selectedLocalPaths: Set<string>;
   disabled: boolean;
+  readOnly?: boolean;
   plan?: RemoteWorkSavePlan | null;
   preparation?: RemoteFetchPreparation | null;
   decisions?: RemoteFetchDecisions;
@@ -191,9 +194,12 @@ function RemoteFetchSelectionPanel({
       >
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div>
-            <h3 id="remote-fetch-workspace-title" className="text-base font-semibold">
-              Fetch selection
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 id="remote-fetch-workspace-title" className="text-base font-semibold">
+                Fetch selection
+              </h3>
+              {readOnly && <Badge variant="outline">Demo preview</Badge>}
+            </div>
             <p className="text-xs text-muted-foreground">
               Compare the exact language edition, remote source, and final published directory.
             </p>
@@ -286,7 +292,7 @@ function RemoteFetchSelectionPanel({
               {plan.summary.conflict} conflicts
             </Badge>
           )}
-          {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} to fetch</Badge>}
+          {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} {readOnly ? "preview only" : "to fetch"}</Badge>}
           {previewNeedsRefresh && (
             <Badge variant="outline">
               {disabled ? "Refreshing preview" : refreshScheduled ? "Preview scheduled" : "Preview required"}
@@ -430,6 +436,7 @@ function RemoteFetchSelectionPanel({
           <Button
             onClick={onSave}
             disabled={
+              readOnly ||
               disabled ||
               refreshScheduled ||
               previewNeedsRefresh ||
@@ -439,7 +446,7 @@ function RemoteFetchSelectionPanel({
             }
           >
             <HardDriveDownload className="h-4 w-4" />
-            {disabled || refreshScheduled ? "Refreshing preview" : "Publish Fetch"}
+            {readOnly ? "Preview only" : disabled || refreshScheduled ? "Refreshing preview" : "Publish Fetch"}
           </Button>
         </div>
       </div>

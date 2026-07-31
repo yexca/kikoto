@@ -535,7 +535,7 @@ export function WorkflowsPage({
               definitions={visibleDefinitions}
               triggers={triggers}
               selectedId={selectedDefinition?.id ?? null}
-              canCreate={!readOnly}
+              canCreate
 						activeTab={definitionTab}
               loading={isWorkflowMetaLoading}
               emptyText={definitionEmptyText}
@@ -565,7 +565,7 @@ export function WorkflowsPage({
               onEditTrigger={editAutomationTrigger}
               onToggleTrigger={toggleAutomationTrigger}
               emptyText={definitionEmptyText}
-              onEditDefinition={readOnly ? undefined : () => setModalMode("edit-workflow")}
+              onEditDefinition={() => setModalMode("edit-workflow")}
               onEditNode={(index) => {
                 setEditingNodeIndex(index);
                 setModalMode("edit-node");
@@ -633,6 +633,7 @@ export function WorkflowsPage({
         <WorkflowComposer
           definition={null}
           nodeTypes={nodeTypes}
+          readOnly={readOnly}
           onClose={() => setModalMode(null)}
           onSaved={(definition) => {
             selectDefinition(definition);
@@ -646,6 +647,7 @@ export function WorkflowsPage({
           definition={selectedDefinition}
           triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
           nodeTypes={nodeTypes}
+          readOnly={readOnly}
           onClose={() => setModalMode(null)}
           onDeleted={() => {
             const deletedID = selectedDefinition.id;
@@ -1181,7 +1183,7 @@ function WorkflowDetail({
   const workflowInputs = parsedDefinition.kind === "v2" ? parsedDefinition.document.inputs : [];
   const quickRunInput = workflowInputs.length === 1 && workflowInputs[0].type !== "work_codes" ? workflowInputs[0] : null;
   const legacyUpgrade = parsedDefinition.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers) : null;
-  const composerEditable = !readonly && parsedDefinition.kind === "v2";
+  const composerEditable = parsedDefinition.kind === "v2";
   return (
     <Card>
       <CardContent className="space-y-5 p-5">

@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 
+import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { buildRemoteTree, emptyTree, remoteSelectablePaths } from "@/features/work-detail/media/mediaTreeModel";
 import {
   createRemoteFetchDraft,
+  createDemoRemoteFetchPlan,
   formatRemoteFetchPreparation,
   remoteDetailActionCode,
   selectRemoteFetchEdition,
@@ -22,6 +24,7 @@ export function useRemoteFetchWorkspace({
   onWorksChanged?: () => void | Promise<void>;
 } = {}) {
   const toast = useToast();
+  const auth = useAuth();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const [draft, setDraft] = useState<RemoteFetchDraft | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -32,7 +35,7 @@ export function useRemoteFetchWorkspace({
 
   const open = async (intent: FetchIntent) => {
     const remoteCode = intent.remoteCode.trim();
-    if (intent.sourceId <= 0 || !remoteCode || !requireDownloadsManage()) return false;
+    if (intent.sourceId <= 0 || !remoteCode || (!auth.demoMode && !requireDownloadsManage())) return false;
     if (!beginOperation()) return false;
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
@@ -44,7 +47,9 @@ export function useRemoteFetchWorkspace({
         toast.notify({ kind: "warning", message: "No remote files are available to fetch." });
         return false;
       }
-      const plan = await api.planRemoteSourceWorkFetch(intent.sourceId, remoteDetailActionCode(detail), paths);
+      const plan = auth.demoMode
+        ? createDemoRemoteFetchPlan({ detail, paths })
+        : await api.planRemoteSourceWorkFetch(intent.sourceId, remoteDetailActionCode(detail), paths);
       setDraft(createRemoteFetchDraft({ intent, detail, paths, plan }));
       return true;
     } catch (error) {
@@ -67,7 +72,18 @@ export function useRemoteFetchWorkspace({
         toast.notify({ kind: "warning", message: `No remote files are available for the ${cleanCode} edition.` });
         return false;
       }
-      setDraft((current) => (current ? selectRemoteFetchEdition({ draft: current, detail, paths }) : current));
+      setDraft((current) => {
+        if (!current) return current;
+        const next = selectRemoteFetchEdition({ draft: current, detail, paths });
+        if (!auth.demoMode) return next;
+        const plan = createDemoRemoteFetchPlan({ detail, paths });
+        return {
+          ...next,
+          plan,
+          preparation: plan.preparation,
+          message: formatRemoteFetchPreparation(plan),
+        };
+      });
       return true;
     } catch (error) {
       const sourceName = draft.intent.sourceDisplayName || draft.detail.sourceName || "this source";
@@ -80,10 +96,29 @@ export function useRemoteFetchWorkspace({
 
   const save = async () => {
     if (!draft || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
-    if (!requireDownloadsManage()) return;
+    if (!auth.demoMode && !requireDownloadsManage()) return;
     if (!beginOperation()) return;
     let publishing = false;
     try {
+      if (auth.demoMode) {
+        const plan = createDemoRemoteFetchPlan({
+          detail: draft.detail,
+          paths: selectedPaths,
+          targetRoot: draft.targetRoot,
+        });
+        setDraft((current) =>
+          current
+            ? {
+                ...current,
+                plan,
+                preparation: plan.preparation,
+                planDirty: false,
+                message: formatRemoteFetchPreparation(plan),
+              }
+            : current,
+        );
+        return;
+      }
       if (!draft.plan || draft.planDirty) {
         const plan = await api.planRemoteSourceWorkFetch(
           draft.intent.sourceId,
@@ -152,6 +187,7 @@ export function useRemoteFetchWorkspace({
     draft,
     tree,
     isBusy,
+    readOnly: auth.demoMode,
     open,
     selectEdition,
     save,

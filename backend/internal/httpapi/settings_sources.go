@@ -5694,8 +5694,10 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
-	if _, err := s.ensureLocalSourceForSettings(r); err != nil {
-		return appSettingsResponse{}, err
+	if !s.cfg.IsDemo() {
+		if _, err := s.ensureLocalSourceForSettings(r); err != nil {
+			return appSettingsResponse{}, err
+		}
 	}
 	sources, err := s.loadFileSources(r)
 	if err != nil {

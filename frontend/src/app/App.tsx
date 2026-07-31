@@ -59,9 +59,13 @@ function AuthenticatedApp() {
     (permission: string) => !auth.demoMode && auth.hasPermission(permission),
     [auth.demoMode, auth.hasPermission],
   );
+  const navigationHasPermission = useCallback(
+    (permission: string) => auth.demoMode || auth.hasPermission(permission),
+    [auth.demoMode, auth.hasPermission],
+  );
   const visibleNavItems = useMemo(
-    () => visibleNavigationItems({ state: authState, hasPermission: auth.hasPermission }),
-    [auth.hasPermission, authState],
+    () => visibleNavigationItems({ state: authState, hasPermission: navigationHasPermission }),
+    [authState, navigationHasPermission],
   );
   const mobileNavItems = useMemo(() => {
     const preferred = preferredMobileTabs
@@ -72,7 +76,7 @@ function AuthenticatedApp() {
     return [...preferred, ...additions].slice(0, 4);
   }, [visibleNavItems]);
   const activeItem = useMemo(() => visibleNavItems.find((item) => item.id === page), [page, visibleNavItems]);
-  const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, auth.hasPermission);
+  const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, navigationHasPermission);
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -268,8 +272,8 @@ function AuthenticatedApp() {
               {canAccessCurrentPage && page === "circles" && <CirclesPage />}
               {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
               {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />}
-              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.hasPermission("sources:write")} canManageUsers={!auth.demoMode && auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
-              {canAccessCurrentPage && (page === "workflows" || page === "activity") && <WorkflowsPage surface={page} canRun={auth.hasPermission("workflows:run")} canSyncMetadata={auth.hasPermission("metadata:sync")} canTagWorks={auth.hasPermission("tags:write")} canManageDownloads={auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.demoMode || auth.hasPermission("sources:write")} canManageUsers={auth.demoMode || auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
+              {canAccessCurrentPage && (page === "workflows" || page === "activity") && <WorkflowsPage surface={page} canRun={auth.demoMode || auth.hasPermission("workflows:run")} canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")} canTagWorks={auth.demoMode || auth.hasPermission("tags:write")} canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
               {canAccessCurrentPage && page === "about" && <AboutPage />}
               {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
                 <PlaceholderPage title={activeItem?.label ?? "Page"} />

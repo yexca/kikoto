@@ -11,7 +11,7 @@ import { api, type ManagedUser } from "@/lib/api";
 const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
 const USER_PAGE_SIZE = 8;
 
-export function UsersPage({ currentUserId, isSuperAdmin, embedded = false }: { currentUserId: number; isSuperAdmin: boolean; embedded?: boolean }) {
+export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embedded = false }: { currentUserId: number; isSuperAdmin: boolean; readOnly?: boolean; embedded?: boolean }) {
   const toast = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -140,7 +140,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, embedded = false }: { c
                   <RefreshCw className="h-4 w-4" />
                   Refresh
                 </Button>
-                <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+                <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
                   <Plus className="h-4 w-4" />
                   Add user
                 </Button>
@@ -240,7 +240,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, embedded = false }: { c
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{user.updatedAt}</td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="outline" size="sm" onClick={() => setSelectedUserId(user.id)}>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedUserId(user.id)} disabled={readOnly}>
                           <UserCog className="h-4 w-4" />
                           Edit
                         </Button>
@@ -267,6 +267,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, embedded = false }: { c
         user={selectedUser}
         currentUserId={currentUserId}
         isSuperAdmin={isSuperAdmin}
+        readOnly={readOnly}
         isSaving={isSaving}
         onSave={updateUser}
         onDelete={deleteUser}
@@ -296,6 +297,7 @@ function UserEditor({
   user,
   currentUserId,
   isSuperAdmin,
+  readOnly,
   isSaving,
   onSave,
   onDelete,
@@ -303,6 +305,7 @@ function UserEditor({
   user: ManagedUser | null;
   currentUserId: number;
   isSuperAdmin: boolean;
+  readOnly: boolean;
   isSaving: boolean;
   onSave: (payload: UserFormPayload) => Promise<void>;
   onDelete: (user: ManagedUser) => Promise<void>;
@@ -372,6 +375,7 @@ function UserEditor({
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
+              disabled={readOnly}
             />
           </label>
 
@@ -381,7 +385,7 @@ function UserEditor({
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
               value={role}
               onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
-              disabled={!canEditRole}
+              disabled={readOnly || !canEditRole}
             >
               {roles.map((item) => (
                 <option key={item} value={item} disabled={item === "super_admin" && !isSuperAdmin}>
@@ -398,6 +402,7 @@ function UserEditor({
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              disabled={readOnly}
               placeholder={user ? "Leave blank to keep current" : "At least 8 characters"}
               autoComplete={user ? "new-password" : "current-password"}
             />
@@ -408,6 +413,7 @@ function UserEditor({
             description="Allow this account to sign in and use assigned permissions."
             checked={enabled}
             onChange={setEnabled}
+            disabled={readOnly}
           />
 
           {(isEditingSelf || !canEditRole || (user && !canDelete)) && (
@@ -421,12 +427,12 @@ function UserEditor({
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button disabled={isSaving}>
+            <Button disabled={readOnly || isSaving}>
               <Save className="h-4 w-4" />
               {isSaving ? "Saving" : "Save"}
             </Button>
             {user && (
-              <Button type="button" variant="outline" disabled={isSaving || !canDelete} onClick={() => void onDelete(user)}>
+              <Button type="button" variant="outline" disabled={readOnly || isSaving || !canDelete} onClick={() => void onDelete(user)}>
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
@@ -659,11 +665,13 @@ function SwitchField({
   description,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex min-h-14 items-center justify-between gap-4 rounded-md border bg-card px-3 py-2">
@@ -671,7 +679,7 @@ function SwitchField({
         <div className="text-sm font-medium">{label}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>
       </div>
-      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} disabled={disabled} />
     </div>
   );
 }

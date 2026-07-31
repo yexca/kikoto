@@ -569,7 +569,12 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
 
   await page.goto("/workflows");
   await expect(page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
+  await page.getByRole("tab", { name: /Custom/ }).click();
+  await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New workflow", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "New workflow" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Preview only", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
 });

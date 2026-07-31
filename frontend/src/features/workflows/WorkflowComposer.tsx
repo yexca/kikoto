@@ -65,6 +65,7 @@ export function WorkflowComposer({
   onClose,
   onDeleted,
   onSaved,
+  readOnly = false,
 }: {
   definition: WorkflowDefinition | null;
   triggers?: WorkflowTrigger[];
@@ -72,6 +73,7 @@ export function WorkflowComposer({
   onClose: () => void;
   onDeleted?: () => void;
   onSaved: (definition: WorkflowDefinition) => void;
+  readOnly?: boolean;
 }) {
   const parsed = definition ? parseWorkflowDefinition(definition.definitionJson) : null;
   const legacyUpgrade = parsed?.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsed.nodes, triggers) : null;
@@ -197,6 +199,7 @@ export function WorkflowComposer({
   };
 
   const save = async () => {
+    if (readOnly) return;
     if (errors.length > 0) return;
     setSaving(true);
     setError("");
@@ -260,14 +263,14 @@ export function WorkflowComposer({
           <Button variant="ghost" size="icon" aria-label="Redo workflow edit" title="Redo" onClick={() => dispatchHistory({ type: "redo" })} disabled={history.future.length === 0}>
             <Redo2 className="h-4 w-4" />
           </Button>
-          {definition?.editable && definition.scope === "user" && (
+          {definition?.editable && definition.scope === "user" && !readOnly && (
             <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label="Delete workflow" title="Delete workflow" onClick={() => setConfirmingDelete(true)} disabled={saving || deleting}>
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={() => void save()} disabled={saving || errors.length > 0 || !displayName.trim()}>
-            <Save className="h-4 w-4" />{saving ? "Saving" : "Save"}
+          <Button size="sm" onClick={() => void save()} disabled={readOnly || saving || errors.length > 0 || !displayName.trim()}>
+            <Save className="h-4 w-4" />{readOnly ? "Preview only" : saving ? "Saving" : "Save"}
           </Button>
           <Button variant="ghost" size="icon" aria-label="Close workflow composer" onClick={onClose}><X className="h-4 w-4" /></Button>
         </header>

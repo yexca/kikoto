@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RemoteWorkDetail, RemoteWorkSavePlan } from "@/lib/api";
 import {
+  createDemoRemoteFetchPlan,
   createRemoteFetchDraft,
   createRemoteFetchRequestId,
   selectRemoteFetchEdition,
@@ -55,6 +56,61 @@ describe("remote fetch workspace model", () => {
     expect(changed.intent.remoteCode).toBe("REMOTE-2");
     expect(changed.plan).toBeNull();
     expect(Array.from(changed.selectedPaths)).toEqual(["02.mp3"]);
+  });
+
+  it("builds a local-only preview plan for demo Fetch", () => {
+    const remoteDetail = detail("REMOTE-1");
+    remoteDetail.primaryCode = "RJ09999991";
+    remoteDetail.languageEditions = [{
+      remoteCode: "RJ09999991",
+      language: "JPN",
+      label: "Japanese",
+      displayOrder: 0,
+      current: true,
+      origin: true,
+    }];
+    remoteDetail.tracks = [{
+      type: "folder",
+      title: "Disc",
+      hash: "",
+      streamUrl: "",
+      downloadUrl: "",
+      durationSeconds: null,
+      sizeBytes: null,
+      cacheLocationId: null,
+      cachePath: "",
+      cacheAvailable: false,
+      localLocationId: null,
+      localPath: "",
+      localAvailable: false,
+      children: [{
+        type: "audio",
+        title: "01.mp3",
+        hash: "track",
+        streamUrl: "https://demo.invalid/01.mp3",
+        downloadUrl: "https://demo.invalid/01.mp3",
+        durationSeconds: 60,
+        sizeBytes: 1024,
+        cacheLocationId: null,
+        cachePath: "",
+        cacheAvailable: false,
+        localLocationId: null,
+        localPath: "",
+        localAvailable: false,
+        children: [],
+      }],
+    }];
+
+    const preview = createDemoRemoteFetchPlan({ detail: remoteDetail, paths: ["Disc/01.mp3"] });
+
+    expect(preview.saveRoot).toBe("/data/demo-preview/RJ09999991");
+    expect(preview.summary).toMatchObject({ total: 1, promote: 1, conflict: 0 });
+    expect(preview.items[0]).toMatchObject({
+      action: "preview",
+      status: "preview only",
+      targetPath: "/data/demo-preview/RJ09999991/Disc/01.mp3",
+    });
+    expect(preview.preparation.warnings[0]).toContain("preview-only");
   });
 });
 

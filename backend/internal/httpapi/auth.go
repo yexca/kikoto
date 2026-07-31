@@ -138,6 +138,9 @@ func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, permi
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required"})
 		return currentUser{}, false
 	}
+	if s.cfg.IsDemo() && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
+		return user, true
+	}
 	for _, item := range user.Permissions {
 		if item == permission || item == "system:admin" {
 			return user, true

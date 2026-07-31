@@ -83,9 +83,13 @@ seed file. `./demo/cache` may contain sanitized prebuilt assets, but the startup
 scan does not download covers because this mount is read-only. Never point a
 public Demo deployment at production or personal runtime directories. The
 service creates a reserved passwordless `__demo__` identity in the Demo
-database and ignores supplied login sessions. That identity has only
-library-read and playback permissions; administrator, workflow,
-source-management, and user-management APIs remain inaccessible.
+database and ignores supplied login sessions. That identity still reports only
+library-read and playback permissions, but Demo GET/HEAD/OPTIONS requests may
+read every administration, workflow, activity, source, and user surface so the
+deployment can be demonstrated. Every non-read HTTP method is rejected before
+the handler runs. The frontend exposes workflow editing and Fetch selection as
+local previews; Save, Delete, Publish Fetch, health checks, and other writes
+never reach the backend.
 
 Stop it with:
 

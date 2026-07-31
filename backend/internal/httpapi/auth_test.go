@@ -127,6 +127,46 @@ func TestDemoRequestsUseRestrictedDemoIdentityAndIgnoreSessions(t *testing.T) {
 	}
 }
 
+func TestDemoReadRoutesExposeAdminSurfacesButBlockWrites(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeDemo})
+	if err := server.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Routes()
+
+	readWorkflowDefinitions := httptest.NewRecorder()
+	handler.ServeHTTP(readWorkflowDefinitions, httptest.NewRequest(http.MethodGet, "/api/workflow-definitions", nil))
+	if readWorkflowDefinitions.Code != http.StatusOK {
+		t.Fatalf("workflow read status = %d, body = %s", readWorkflowDefinitions.Code, readWorkflowDefinitions.Body.String())
+	}
+
+	var sourcesBefore int
+	if err := db.QueryRow("SELECT COUNT(*) FROM file_source").Scan(&sourcesBefore); err != nil {
+		t.Fatal(err)
+	}
+	readSettings := httptest.NewRecorder()
+	handler.ServeHTTP(readSettings, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	if readSettings.Code != http.StatusOK {
+		t.Fatalf("settings read status = %d, body = %s", readSettings.Code, readSettings.Body.String())
+	}
+	var sourcesAfter int
+	if err := db.QueryRow("SELECT COUNT(*) FROM file_source").Scan(&sourcesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if sourcesAfter != sourcesBefore {
+		t.Fatalf("settings read created file sources: before=%d after=%d", sourcesBefore, sourcesAfter)
+	}
+
+	writeWorkflowDefinition := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-definitions", strings.NewReader(`{"code":"demo_preview_only","displayName":"Demo preview","definitionJson":"{}"}`))
+	request.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(writeWorkflowDefinition, request)
+	if writeWorkflowDefinition.Code != http.StatusForbidden || !strings.Contains(writeWorkflowDefinition.Body.String(), `"code":"demo_read_only"`) {
+		t.Fatalf("workflow write status = %d, body = %s", writeWorkflowDefinition.Code, writeWorkflowDefinition.Body.String())
+	}
+}
+
 func TestUpdateCurrentUserChangesAccountManagedProfileAndPasswordAndKeepsCurrentSession(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RootPassword: "old-password"})
