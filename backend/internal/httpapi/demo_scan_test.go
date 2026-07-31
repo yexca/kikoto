@@ -30,6 +30,9 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 		writeDemoScanFile(t, dataRoot, code, "track.mp3", "audio "+code)
 	}
 	writeDemoScanFile(t, dataRoot, "RJ02000006", "track.mp3", "unverified audio")
+	eligible := products["RJ02000001"]
+	eligible.TranslationInfo.OriginalWorkNo = "RJ09999998"
+	products["RJ02000001"] = eligible
 
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
 		t.Fatal(err)
@@ -41,10 +44,11 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, LocalScanDepth: 2})
+	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, CacheRoot: t.TempDir(), LocalScanDepth: 2})
 	client := &fakeDemoScanDLsiteClient{
 		products: products,
 		errors:   map[string]error{"RJ02000006": errors.New("provider unavailable")},
+		calls:    map[string]int{},
 	}
 	server.dlsiteClient = client
 
@@ -55,8 +59,11 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	if result.Status != "partial" || result.DetectedWorks != 6 || result.EligibleWorks != 1 || result.DiscardedWorks != 4 || result.FailedWorks != 1 || result.IndexedFiles != 1 {
 		t.Fatalf("demo scan result = %#v", result)
 	}
-	if client.coverDownloads != 0 {
-		t.Fatalf("Demo scan downloaded %d covers", client.coverDownloads)
+	if client.coverDownloads != 1 {
+		t.Fatalf("Demo scan attempted %d cover downloads, want 1", client.coverDownloads)
+	}
+	if client.calls["RJ09999998"] != 0 {
+		t.Fatalf("Demo scan fetched unverified related product %d times", client.calls["RJ09999998"])
 	}
 
 	for _, code := range []string{"RJ02000002", "RJ02000003", "RJ02000004", "RJ02000005", "RJ02000006"} {
@@ -85,6 +92,18 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ02000001" {
 		t.Fatalf("Demo library page = %#v", page)
 	}
+	var voiceCredits int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM work_credit AS credit
+		INNER JOIN work ON work.id = credit.work_id
+		WHERE work.primary_code = 'RJ02000001' AND credit.role = 'voice_actor'
+	`).Scan(&voiceCredits); err != nil {
+		t.Fatal(err)
+	}
+	if voiceCredits != 1 {
+		t.Fatalf("Demo voice credits = %d, want 1", voiceCredits)
+	}
 
 	var locationID int64
 	if err := db.QueryRow(`
@@ -110,6 +129,9 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	}
 	if second.EligibleWorks != 1 || second.IndexedFiles != 1 {
 		t.Fatalf("second demo scan = %#v", second)
+	}
+	if client.coverDownloads != 2 {
+		t.Fatalf("second Demo scan attempted %d cover downloads, want 2", client.coverDownloads)
 	}
 	var works, locations, demoRuns, ordinaryRuns int
 	if err := db.QueryRow("SELECT COUNT(*) FROM work").Scan(&works); err != nil {
@@ -139,6 +161,7 @@ func TestDemoLibraryScanCannotRunOutsideDemoMode(t *testing.T) {
 type fakeDemoScanDLsiteClient struct {
 	products       map[string]dlsite.Product
 	errors         map[string]error
+	calls          map[string]int
 	coverDownloads int
 }
 
@@ -148,6 +171,9 @@ func (client *fakeDemoScanDLsiteClient) FetchProduct(ctx context.Context, workno
 
 func (client *fakeDemoScanDLsiteClient) FetchProductWithOptions(_ context.Context, workno string, _ dlsite.ProductOptions) (dlsite.Product, error) {
 	workno = strings.ToUpper(strings.TrimSpace(workno))
+	if client.calls != nil {
+		client.calls[workno]++
+	}
 	if err := client.errors[workno]; err != nil {
 		return dlsite.Product{}, err
 	}

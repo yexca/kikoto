@@ -32,7 +32,7 @@ services:
       - type: bind
         source: ${KIKOTO_DEMO_CACHE_DIR:-./demo/cache}
         target: /cache
-        read_only: true
+        read_only: false
       - type: bind
         source: ${KIKOTO_DEMO_DATA_DIR:-./demo/data}
         target: /data

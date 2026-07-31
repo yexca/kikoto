@@ -67,21 +67,23 @@ isolated Demo configuration includes a sanitized `remote-sources.yml`.
 The stack deliberately uses separate mounts:
 
 - `./demo/config:/config`
-- `./demo/cache:/cache:ro`
+- `./demo/cache:/cache`
 - `./demo/data:/data:ro`
 
 Put candidate folders containing a supported work code under `./demo/data`.
 On every container start, the synchronous `demo_library_scan` workflow reuses
-the local folder scanner, fetches current DLsite metadata, and indexes only
-works that are both all-ages and permanently free. Adult, paid, temporary-free,
-unknown, duplicate, and metadata-fetch-failed candidates are not admitted or
-indexed. Restart the container after changing `./demo/data`; live filesystem
-watching remains disabled.
+the local folder scanner, fetches current DLsite metadata, best-effort caches
+the accepted covers, and indexes only works that are both all-ages and
+permanently free. It never follows related editions or origin products during
+this admission path. Adult, paid, temporary-free, unknown, duplicate, and
+metadata-fetch-failed candidates are not admitted or indexed. Restart the
+container after changing `./demo/data`; live filesystem watching remains
+disabled.
 
 `./demo/config` contains the isolated Demo SQLite database and optional source
-seed file. `./demo/cache` may contain sanitized prebuilt assets, but the startup
-scan does not download covers because this mount is read-only. Never point a
-public Demo deployment at production or personal runtime directories. The
+seed file. `./demo/cache` contains only isolated or sanitized assets; startup
+may add covers after the provider eligibility check. Never point a public Demo
+deployment at production or personal runtime directories. The
 service creates a reserved passwordless `__demo__` identity in the Demo
 database and ignores supplied login sessions. That identity still reports only
 library-read and playback permissions, but Demo GET/HEAD/OPTIONS requests may

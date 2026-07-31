@@ -60,6 +60,7 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 
 	language := normalizeDLsiteLanguage(s.settingStringContext(ctx, "dlsite_metadata_language", "ja-jp"))
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
+		WithCacheRoot(s.cfg.CacheRoot).
 		WithLanguages(dlsiteLanguageFallbacks(language)).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
@@ -91,9 +92,12 @@ func (s *Server) RunDemoLibraryScan(ctx context.Context) (DemoLibraryScanResult,
 			continue
 		}
 
-		workID, syncErr := syncer.SyncProductOnly(ctx, product)
+		workID, syncErr := syncer.SyncProductForDemo(ctx, product)
 		if syncErr == nil {
 			syncErr = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
+		}
+		if syncErr == nil {
+			syncErr = s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
 		}
 		if syncErr != nil {
 			_ = s.hideDemoWork(ctx, workID)

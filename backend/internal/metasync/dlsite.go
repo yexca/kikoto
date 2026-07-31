@@ -263,6 +263,24 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	return workID, nil
 }
 
+// SyncProductForDemo synchronizes one product that the caller has already
+// admitted. It refreshes the accepted product and its cover, but deliberately
+// does not follow base-product or language-edition relationships. Demo
+// admission must be evaluated independently for every product that could be
+// materialized.
+func (s *DLsiteSyncer) SyncProductForDemo(ctx context.Context, product dlsite.Product) (int64, error) {
+	workID, err := s.SyncProductOnly(ctx, product)
+	if err != nil {
+		return 0, err
+	}
+	if s.cacheRoot != "" {
+		// A cover is presentation-only. Keep the admitted work playable when a
+		// provider image is temporarily unavailable or the cache is unwritable.
+		_, _ = s.downloadCover(ctx, product)
+	}
+	return workID, nil
+}
+
 // SyncFamily refreshes a requested product and every language edition that can
 // be reached from its DLsite relationship payload. Discovery is bounded and
 // de-duplicated so malformed provider relationships cannot loop forever.
