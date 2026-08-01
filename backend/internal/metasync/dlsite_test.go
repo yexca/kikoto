@@ -18,6 +18,72 @@ type fakeDLsiteClient struct {
 	calls    map[string]int
 }
 
+type localizedFakeDLsiteClient struct {
+	products map[string]map[string]dlsite.Product
+	calls    []string
+}
+
+func (f *localizedFakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite.Product, error) {
+	return f.product(workno, "")
+}
+
+func (f *localizedFakeDLsiteClient) FetchProductWithOptions(_ context.Context, workno string, options dlsite.ProductOptions) (dlsite.Product, error) {
+	for _, language := range options.Languages {
+		if product, err := f.product(workno, language); err == nil {
+			product.Language = language
+			return product, nil
+		}
+	}
+	return f.product(workno, "")
+}
+
+func (f *localizedFakeDLsiteClient) product(workno string, language string) (dlsite.Product, error) {
+	workno = strings.ToUpper(strings.TrimSpace(workno))
+	f.calls = append(f.calls, workno+":"+language)
+	products := f.products[workno]
+	product, ok := products[language]
+	if !ok {
+		return dlsite.Product{}, dlsite.ErrNoProduct
+	}
+	return product, nil
+}
+
+func (f *localizedFakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ string) (string, error) {
+	return "", nil
+}
+
+func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing.T) {
+	db := openTestDB(t)
+	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{
+		"RJ0123678": {
+			"zh-cn": {WorkNo: "RJ0123678", ProductName: "中文本地化标题", Raw: json.RawMessage(`{"workno":"RJ0123678","product_name":"中文本地化标题"}`)},
+			"ja-jp": {WorkNo: "RJ0123678", ProductName: "Origin Japanese title", Raw: json.RawMessage(`{"workno":"RJ0123678","product_name":"Origin Japanese title"}`)},
+		},
+	}}
+	syncer := NewDLsiteSyncer(db, client).WithLanguages([]string{"zh-cn", "ja-jp", ""}).WithRequestPacing(0, 0, 0)
+	if _, err := syncer.SyncFamily(context.Background(), "RJ0123678"); err != nil {
+		t.Fatal(err)
+	}
+
+	var title string
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123678'").Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Origin Japanese title" {
+		t.Fatalf("origin title = %q", title)
+	}
+	foundOriginRefresh := false
+	for _, call := range client.calls {
+		if call == "RJ0123678:ja-jp" {
+			foundOriginRefresh = true
+			break
+		}
+	}
+	if !foundOriginRefresh {
+		t.Fatalf("calls = %v, want a ja-jp origin refresh", client.calls)
+	}
+}
+
 func (f fakeDLsiteClient) FetchProduct(_ context.Context, workno string) (dlsite.Product, error) {
 	if f.calls != nil {
 		f.calls[workno]++

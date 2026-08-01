@@ -506,6 +506,19 @@ test("new detail navigation starts at the top, preserves user scroll while media
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);
 });
 
+test("mobile library pagination returns to the page top after detail return", async ({ page }) => {
+  await mockApplication(page, undefined, false, 48);
+  await page.goto("/");
+  const target = page.getByText("Mobile work 18", { exact: true });
+  await target.scrollIntoViewIfNeeded();
+  await target.click();
+  await expect(page).toHaveURL(/\/RJ09990016/);
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+  await page.getByRole("button", { name: "Next page" }).last().click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
+});
+
 test("mobile Fetch prepares language editions and switches between local, remote, and result steps", async ({ page }) => {
   await mockRemoteSource(page, () => undefined);
   await page.goto("/");

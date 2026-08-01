@@ -89,6 +89,7 @@ import {
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
@@ -403,13 +404,18 @@ export function LibraryPage() {
 		if (!pendingResultsScroll.current) return;
 		pendingResultsScroll.current = false;
 		window.requestAnimationFrame(() => {
+			const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+			if (window.matchMedia("(max-width: 1023px)").matches) {
+				window.scrollTo({ top: 0, behavior });
+				return;
+			}
 			const anchor = resultsAnchorRef.current;
 			if (!anchor) return;
-			const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 			anchor.scrollIntoView({ behavior, block: "start" });
 		});
 	};
 	const queueResultsScroll = () => {
+		pendingScrollRestore.current = null;
 		pendingResultsScroll.current = true;
 	};
 	const recordRecommendationEvents = useCallback((events: RecommendationEventInput[]) => {
@@ -1168,6 +1174,7 @@ export function LibraryPage() {
           <input
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
             value={searchQuery}
+            onKeyDown={dismissKeyboardOnEnter}
             onChange={(event) => {
               setOptimisticLibrarySearchClauses(null);
               setSearchQuery(event.target.value);

@@ -37,6 +37,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -552,6 +553,7 @@ export function FavoritesPage() {
                   <input
                     className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                     value={query}
+                    onKeyDown={dismissKeyboardOnEnter}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
                     aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
@@ -590,6 +592,7 @@ export function FavoritesPage() {
                       ref={entitySearchInputRef}
                       className="h-9 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                       value={query}
+                      onKeyDown={dismissKeyboardOnEnter}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}
                       aria-label={favoriteEntity === "circles" ? "Search circles" : "Search voice actors"}

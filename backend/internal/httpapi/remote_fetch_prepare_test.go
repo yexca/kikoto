@@ -40,7 +40,7 @@ func TestPrepareRemoteFetchUsesPersistedMetadata(t *testing.T) {
 	}
 	if _, err := db.Exec(`
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, 'RJ09999996', '{}')
+		VALUES (?, ?, 'RJ09999996', '{"_kikoto":{"response_language":"ja-jp"}}')
 	`, workID, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +63,51 @@ func TestPrepareRemoteFetchUsesPersistedMetadata(t *testing.T) {
 	}
 	if after != before {
 		t.Fatalf("metadata snapshots changed from %d to %d during Fetch preparation", before, after)
+	}
+}
+
+func TestRemoteFetchMetadataReadyRejectsLocalizedOriginSnapshot(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999993', '中文标题')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	logical, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09999993')", workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalID, err := logical.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, metadata_language, edition_label, is_canonical, translation_kind)
+		VALUES (?, ?, ?, 'RJ09999993', 'ja-jp', 'Japanese', 1, 'origin')
+	`, workID, logicalID, providerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		VALUES (?, ?, 'RJ09999993', '{"_kikoto":{"response_language":"zh-cn"}}')
+	`, workID, providerID); err != nil {
+		t.Fatal(err)
+	}
+
+	ready, err := server.remoteFetchMetadataReady(context.Background(), "RJ09999993")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ready {
+		t.Fatal("localized Origin snapshot was treated as complete Fetch metadata")
 	}
 }
 

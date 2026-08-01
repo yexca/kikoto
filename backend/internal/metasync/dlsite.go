@@ -199,23 +199,12 @@ func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncRe
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error()))
 			continue
 		}
-		if baseCode := baseProductCode(product); baseCode != "" && !strings.EqualFold(baseCode, product.WorkNo) {
-			baseProduct, err := s.fetchProduct(ctx, baseCode)
-			if err != nil {
-				result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
-			} else {
-				baseWorkID, err := s.ensureWorkForProduct(ctx, baseProduct)
-				if err != nil {
-					result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
-				} else {
-					if err := s.applyProduct(ctx, baseWorkID, baseProduct); err != nil {
-						result.Failures = append(result.Failures, fmt.Sprintf("%s base %s: %s", target.PrimaryCode, baseCode, err.Error()))
-					} else if s.cacheRoot != "" {
-						if _, err := s.downloadCover(ctx, baseProduct); err != nil {
-							result.Failures = append(result.Failures, fmt.Sprintf("%s base cover: %s", baseCode, err.Error()))
-						}
-					}
-				}
+		originProduct, _, originFetched, err := s.syncOriginProduct(ctx, product)
+		if err != nil {
+			result.Failures = append(result.Failures, fmt.Sprintf("%s origin metadata: %s", target.PrimaryCode, err.Error()))
+		} else if originFetched && s.cacheRoot != "" {
+			if _, err := s.downloadCover(ctx, originProduct); err != nil {
+				result.Failures = append(result.Failures, fmt.Sprintf("%s origin cover: %s", target.PrimaryCode, err.Error()))
 			}
 		}
 		if s.cacheRoot != "" {
@@ -244,21 +233,12 @@ func (s *DLsiteSyncer) SyncProduct(ctx context.Context, product dlsite.Product) 
 	if s.cacheRoot != "" {
 		_, _ = s.downloadCover(ctx, product)
 	}
-	if baseCode := baseProductCode(product); baseCode != "" && !strings.EqualFold(baseCode, product.WorkNo) {
-		baseProduct, err := s.fetchProduct(ctx, baseCode)
-		if err != nil {
-			return 0, fmt.Errorf("fetch origin %s: %w", baseCode, err)
-		}
-		baseWorkID, err := s.ensureWorkForProduct(ctx, baseProduct)
-		if err != nil {
-			return 0, err
-		}
-		if err := s.applyProduct(ctx, baseWorkID, baseProduct); err != nil {
-			return 0, err
-		}
-		if s.cacheRoot != "" {
-			_, _ = s.downloadCover(ctx, baseProduct)
-		}
+	originProduct, _, originFetched, err := s.syncOriginProduct(ctx, product)
+	if err != nil {
+		return 0, fmt.Errorf("sync origin metadata: %w", err)
+	}
+	if originFetched && s.cacheRoot != "" {
+		_, _ = s.downloadCover(ctx, originProduct)
 	}
 	return workID, nil
 }
@@ -293,6 +273,7 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 	queue := []string{requestedCode}
 	seen := map[string]bool{}
 	skipped := map[string]bool{}
+	products := map[string]dlsite.Product{}
 	const maxFamilyEditions = 32
 	for len(queue) > 0 && len(seen) < maxFamilyEditions {
 		code := strings.ToUpper(strings.TrimSpace(queue[0]))
@@ -330,6 +311,7 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
 			continue
 		}
+		products[code] = product
 		result.SyncedCodes = append(result.SyncedCodes, code)
 		if s.cacheRoot != "" {
 			if _, err := s.downloadCover(ctx, product); err != nil {
@@ -357,6 +339,25 @@ func (s *DLsiteSyncer) SyncFamily(ctx context.Context, requestedCode string) (DL
 	}
 	if result.CanonicalCode == "" {
 		result.CanonicalCode = requestedCode
+	}
+	if len(products) > 0 {
+		origin, ok := products[result.CanonicalCode]
+		if !ok || !originResponseLanguage(origin.Language) {
+			originProduct, _, originFetched, err := s.syncOriginProductForCode(ctx, result.CanonicalCode)
+			if err != nil {
+				result.Failures = append(result.Failures, fmt.Sprintf("%s origin metadata: %s", result.CanonicalCode, err.Error()))
+			} else {
+				products[result.CanonicalCode] = originProduct
+				if originFetched && s.cacheRoot != "" {
+					if _, err := s.downloadCover(ctx, originProduct); err != nil {
+						result.Failures = append(result.Failures, fmt.Sprintf("%s origin cover: %s", result.CanonicalCode, err.Error()))
+					}
+				}
+				if !containsCode(result.SyncedCodes, result.CanonicalCode) {
+					result.SyncedCodes = append(result.SyncedCodes, result.CanonicalCode)
+				}
+			}
+		}
 	}
 	if err := s.classifyFamilyEditions(ctx, result.CanonicalCode); err != nil {
 		return result, err
@@ -421,6 +422,10 @@ func (s *DLsiteSyncer) classifyFamilyEditions(ctx context.Context, canonicalCode
 }
 
 func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
+	return s.fetchProductWithLanguages(ctx, workno, s.languages)
+}
+
+func (s *DLsiteSyncer) fetchProductWithLanguages(ctx context.Context, workno string, languages []string) (dlsite.Product, error) {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := s.waitRequestDelay(ctx); err != nil {
@@ -429,7 +434,7 @@ func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.
 		var product dlsite.Product
 		var err error
 		if client, ok := s.client.(DLsiteClientWithOptions); ok {
-			product, err = client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: s.languages})
+			product, err = client.FetchProductWithOptions(ctx, workno, dlsite.ProductOptions{Languages: languages})
 		} else {
 			product, err = s.client.FetchProduct(ctx, workno)
 		}
@@ -445,6 +450,62 @@ func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.
 		}
 	}
 	return dlsite.Product{}, lastErr
+}
+
+func (s *DLsiteSyncer) fetchOriginProduct(ctx context.Context, workno string) (dlsite.Product, error) {
+	return s.fetchProductWithLanguages(ctx, workno, []string{"ja-jp", ""})
+}
+
+func (s *DLsiteSyncer) syncOriginProduct(ctx context.Context, product dlsite.Product) (dlsite.Product, int64, bool, error) {
+	currentCode := strings.ToUpper(strings.TrimSpace(firstNonEmptyText(product.WorkNo, product.ProductID)))
+	canonicalCode := strings.ToUpper(strings.TrimSpace(baseProductCode(product)))
+	if canonicalCode == "" {
+		canonicalCode = currentCode
+	}
+	if currentCode == "" || canonicalCode == "" {
+		return dlsite.Product{}, 0, false, fmt.Errorf("product does not expose a stable origin code")
+	}
+	if strings.EqualFold(currentCode, canonicalCode) && originResponseLanguage(product.Language) {
+		return product, 0, false, nil
+	}
+	return s.syncOriginProductForCode(ctx, canonicalCode)
+}
+
+func (s *DLsiteSyncer) syncOriginProductForCode(ctx context.Context, code string) (dlsite.Product, int64, bool, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if !dlsiteWorkNoPattern.MatchString(code) {
+		return dlsite.Product{}, 0, false, fmt.Errorf("invalid origin work code %q", code)
+	}
+	product, err := s.fetchOriginProduct(ctx, code)
+	if err != nil {
+		return dlsite.Product{}, 0, false, err
+	}
+	workID, err := s.ensureWorkForProduct(ctx, product)
+	if err != nil {
+		return dlsite.Product{}, 0, false, err
+	}
+	if err := s.applyProduct(ctx, workID, product); err != nil {
+		return dlsite.Product{}, 0, false, err
+	}
+	return product, workID, true, nil
+}
+
+func originResponseLanguage(language string) bool {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "", "ja", "jp", "ja-jp", "jpn", "japanese", "日本語":
+		return true
+	default:
+		return false
+	}
+}
+
+func containsCode(values []string, code string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, code) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *DLsiteSyncer) downloadCover(ctx context.Context, product dlsite.Product) (string, error) {

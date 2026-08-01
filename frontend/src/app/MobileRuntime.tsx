@@ -1,5 +1,5 @@
 import { Network } from "@capacitor/network";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_CLIENT_VERSION, appVersionStatus, githubReleaseURL } from "@/lib/appInfo";
 import { api, type HealthStatus } from "@/lib/api";
@@ -28,6 +28,7 @@ type MobileConnection = {
 
 type MobileRuntimeContextValue = {
   connection: MobileConnection;
+  keyboardOpen: boolean;
   reconnect: () => Promise<HealthStatus | null>;
 };
 
@@ -43,11 +44,14 @@ const initialConnection: MobileConnection = {
 
 const MobileRuntimeContext = createContext<MobileRuntimeContextValue>({
   connection: initialConnection,
+  keyboardOpen: false,
   reconnect: async () => null,
 });
 
 export function MobileRuntimeProvider({ children }: { children: React.ReactNode }) {
   const [connection, setConnection] = useState<MobileConnection>(initialConnection);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const keyboardBaselineHeight = useRef(0);
 
   const applyHealth = useCallback((health: HealthStatus) => {
     const minimumClientVersion = health.minAndroidClientVersion || health.minClientVersion || "";
@@ -114,6 +118,47 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
   }, [applyHealth]);
 
   useEffect(() => {
+    const viewport = window.visualViewport;
+    const isTextInput = (element: Element | null) => {
+      if (!(element instanceof HTMLElement)) return false;
+      return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable;
+    };
+    const currentViewportHeight = () => viewport?.height ?? window.innerHeight;
+    keyboardBaselineHeight.current = Math.max(window.innerHeight, currentViewportHeight());
+    let frame: number | null = null;
+    const updateKeyboardState = () => {
+      frame = null;
+      const height = currentViewportHeight();
+      const baseline = keyboardBaselineHeight.current || height;
+      const focused = isTextInput(document.activeElement);
+      const compactViewport = window.matchMedia("(max-width: 1023px)").matches;
+      const open = compactViewport && focused && baseline - height > 120;
+      setKeyboardOpen(open);
+      if (!focused && baseline - height <= 120) {
+        keyboardBaselineHeight.current = Math.max(window.innerHeight, height);
+      }
+    };
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(updateKeyboardState);
+    };
+    updateKeyboardState();
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("focusin", scheduleUpdate);
+    window.addEventListener("focusout", scheduleUpdate);
+    viewport?.addEventListener("resize", scheduleUpdate);
+    viewport?.addEventListener("scroll", scheduleUpdate);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("focusin", scheduleUpdate);
+      window.removeEventListener("focusout", scheduleUpdate);
+      viewport?.removeEventListener("resize", scheduleUpdate);
+      viewport?.removeEventListener("scroll", scheduleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isNativeApp()) return;
     void reconnect();
     const timer = window.setInterval(() => {
@@ -153,7 +198,7 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
     };
   }, [reconnect]);
 
-  const value = useMemo<MobileRuntimeContextValue>(() => ({ connection, reconnect }), [connection, reconnect]);
+  const value = useMemo<MobileRuntimeContextValue>(() => ({ connection, keyboardOpen, reconnect }), [connection, keyboardOpen, reconnect]);
   return <MobileRuntimeContext.Provider value={value}>{children}</MobileRuntimeContext.Provider>;
 }
 

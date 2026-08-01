@@ -3189,6 +3189,12 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		}
 		return existing, nil
 	}
+	if s.db != nil {
+		// Fetch can be queued by background workflows without a preceding plan
+		// request. Give canonical DLsite metadata one shared chance before the
+		// remote source fallback is materialized.
+		_ = s.ensureRemoteFetchMetadata(ctx, requestedCode)
+	}
 	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSaveResult{}, err

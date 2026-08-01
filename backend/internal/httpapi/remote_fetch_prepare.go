@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -96,20 +98,48 @@ func (s *Server) ensureRemoteFetchMetadata(ctx context.Context, requestedCode st
 }
 
 func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode string) (bool, error) {
-	var ready bool
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM work
-			INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
-			INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id AND provider.code = 'dlsite'
-			INNER JOIN work_edition AS edition ON edition.work_id = work.id
-			WHERE UPPER(work.primary_code) = UPPER(?)
-		)
-	`, requestedCode).Scan(&ready); err != nil {
+	var originLanguage, snapshotJSON string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT origin.metadata_language, snapshot.snapshot_json
+		FROM work_edition AS requested
+		INNER JOIN work_edition AS origin
+			ON origin.logical_work_id = requested.logical_work_id
+			AND origin.is_canonical = 1
+		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = origin.work_id
+		INNER JOIN metadata_provider AS provider
+			ON provider.id = snapshot.provider_id AND provider.code = 'dlsite'
+		WHERE UPPER(requested.primary_code) = UPPER(?)
+		ORDER BY snapshot.fetched_at DESC, snapshot.id DESC
+		LIMIT 1
+	`, requestedCode).Scan(&originLanguage, &snapshotJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
 		return false, err
 	}
-	return ready, nil
+	return originSnapshotUsesJapaneseLocale(snapshotJSON, originLanguage), nil
+}
+
+func originSnapshotUsesJapaneseLocale(snapshotJSON string, editionLanguage string) bool {
+	var payload struct {
+		Kikoto struct {
+			ResponseLanguage string `json:"response_language"`
+		} `json:"_kikoto"`
+	}
+	if err := json.Unmarshal([]byte(snapshotJSON), &payload); err != nil {
+		return false
+	}
+	responseLanguage := strings.ToLower(strings.TrimSpace(payload.Kikoto.ResponseLanguage))
+	if responseLanguage != "" {
+		return responseLanguage == "ja" || responseLanguage == "jp" || responseLanguage == "ja-jp"
+	}
+	switch strings.ToLower(strings.TrimSpace(editionLanguage)) {
+	case "ja", "jp", "ja-jp", "jpn", "japanese", "日本語":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) loadRemoteFetchEditions(ctx context.Context, requestedCode string) ([]remoteFetchEdition, error) {

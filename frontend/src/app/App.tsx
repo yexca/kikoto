@@ -282,7 +282,7 @@ function AuthenticatedApp() {
           </Suspense>
         </main>
 
-        <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
+        {!mobileRuntime.keyboardOpen && <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
           <nav className="grid grid-cols-4">
             {mobileNavItems.map((item) => {
               return (
@@ -300,8 +300,8 @@ function AuthenticatedApp() {
               );
             })}
           </nav>
-        </footer>
-        <PlayerDock />
+        </footer>}
+        {!mobileRuntime.keyboardOpen && <PlayerDock />}
         <CommandPalette
           open={commandPaletteOpen}
           onOpenChange={setCommandPaletteOpen}

@@ -61,6 +61,7 @@ import {
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { api, ApiError, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceSummary } from "@/lib/api";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 import { mergeVoiceWorks, voiceWorkHasRemoteAvailability, voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
@@ -204,7 +205,7 @@ function VoiceListPage() {
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices or tags" />
+            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onKeyDown={dismissKeyboardOnEnter} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices or tags" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={filter} onChange={(event) => setFilter(event.target.value as VoiceFilter)} aria-label="Voice filter">
@@ -688,7 +689,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
             <Search className="h-4 w-4" />
-            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voice works" />
+            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onKeyDown={dismissKeyboardOnEnter} onChange={(event) => setQuery(event.target.value)} placeholder="Search voice works" />
           </div>
           <div className="flex flex-wrap gap-2">
             <WorkCollectionLayoutPicker
@@ -984,6 +985,7 @@ function AliasReviewPanel({
                 ref={inputRef}
                 className="min-w-0 flex-1 bg-transparent text-sm outline-none"
                 value={aliasDraft}
+                onKeyDown={dismissKeyboardOnEnter}
                 onChange={(event) => {
                   setAliasDraft(event.target.value);
                   setIsSuggestOpen(true);

@@ -47,6 +47,7 @@ import {
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus } from "@/lib/api";
+import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
@@ -197,6 +198,7 @@ function CircleListPage() {
             <input
               className="min-w-0 flex-1 bg-transparent outline-none"
               value={query}
+              onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search circles"
             />
@@ -731,6 +733,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <input
                 className="min-w-0 flex-1 bg-transparent outline-none"
                 value={workQuery}
+                onKeyDown={dismissKeyboardOnEnter}
                 onChange={(event) => setWorkQuery(event.target.value)}
                 placeholder="Search circle catalog works"
               />
