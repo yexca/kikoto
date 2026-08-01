@@ -207,6 +207,10 @@ type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | 
   id?: number;
 };
 
+type RemoteWorkPreview = WorkPreview & Pick<RemoteWork, "remoteCode" | "ageRating"> & {
+  remoteId?: string;
+};
+
 type ActiveSourceInfoModel = {
   label: string;
   kind: SourceTabInfo["kind"];
@@ -313,7 +317,7 @@ export function LibraryPage() {
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() => workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)));
   const [isSelectedMediaLoading, setIsSelectedMediaLoading] = useState(false);
   const [selectedMediaError, setSelectedMediaError] = useState("");
-  const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string } | null>(null);
+  const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string; preview?: RemoteWorkPreview } | null>(null);
   const [libraryLoadError, setLibraryLoadError] = useState("");
 	const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
 	const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
@@ -790,8 +794,9 @@ export function LibraryPage() {
       setSelectedCode(work.primaryCode);
       return;
     }
-    setSelectedRemoteTarget({ source, code });
-    openRemoteSourceWorkRoute(source.id, code, libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), "Back to library");
+    const preview = remoteOnlyWorkPreview(work);
+    setSelectedRemoteTarget({ source, code, preview });
+    openRemoteSourceWorkRoute(source.id, code, libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), "Back to library", preview);
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
@@ -1034,6 +1039,7 @@ export function LibraryPage() {
       <RemoteOnlyWorkDetailController
         source={selectedRemoteTarget.source}
         code={selectedRemoteTarget.code}
+        preview={selectedRemoteTarget.preview ?? null}
         onBack={backToLibrary}
         onOpenLocal={(workID) => {
           const work = works.find((item) => item.id === workID);
@@ -2561,12 +2567,14 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
 function RemoteOnlyWorkDetailController({
   source,
   code,
+  preview,
   onBack,
   onOpenLocal,
   onWorksChanged,
 }: {
   source: LibrarySource;
   code: string;
+  preview: RemoteWorkPreview | null;
   onBack: () => void;
   onOpenLocal: (workID: number) => void;
   onWorksChanged: () => Promise<void>;
@@ -2582,6 +2590,11 @@ function RemoteOnlyWorkDetailController({
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
+  const remoteIdentity = identityDetail ?? detail;
+  const displaySourceName = remoteIdentity?.sourceName ?? source.displayName;
+  const displayPrimaryCode = remoteIdentity?.primaryCode || preview?.primaryCode || code;
+  const displayRemoteCode = detail ? remoteDetailActionCode(detail) : preview?.remoteCode || preview?.primaryCode || code;
+  const isDetailLoading = !detail;
   const tree = useMemo(
     () => detail
       ? buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) })
@@ -2592,7 +2605,15 @@ function RemoteOnlyWorkDetailController({
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
-  const remoteTabs = useMemo<SourceTabInfo[]>(() => detail ? [{ key: remoteSourceTabKey(source.id), label: detail.sourceName, sourceName: detail.sourceName, fileSourceId: null, kind: "remote", status: "green", statusLabel: "Available" }] : [], [detail, source.id]);
+  const remoteTabs = useMemo<SourceTabInfo[]>(() => [{
+    key: remoteSourceTabKey(source.id),
+    label: displaySourceName,
+    sourceName: displaySourceName,
+    fileSourceId: null,
+    kind: "remote",
+    status: detail ? "green" : message ? "red" : "yellow",
+    statusLabel: detail ? "Available" : message ? "Unavailable" : "Loading source",
+  }], [detail, displaySourceName, message, source.id]);
   const player = useLibraryPlayer();
 
   useEffect(() => {
@@ -2719,21 +2740,7 @@ function RemoteOnlyWorkDetailController({
     );
   }
 
-  if (!detail) {
-    return (
-      <div className="space-y-4">
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ChevronLeft className="h-4 w-4" />
-          Back to source
-        </Button>
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">{message || `Loading ${code}...`}</CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const identityActions = (
+  const identityActions = detail ? (
     <WorkIdentityActionBar
       busy={isFetching || fetchWorkspace.isBusy}
       canPlay={remotePlayableTracks.length > 0}
@@ -2748,17 +2755,17 @@ function RemoteOnlyWorkDetailController({
       onMark={(status) => void updateRemoteMark(status)}
       dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
     />
-  );
+  ) : <DetailSkeletonActions />;
   const sourceInfo: ActiveSourceInfoModel = {
-    label: detail.sourceName,
+    label: displaySourceName,
     kind: "remote",
-    status: "green",
-    statusLabel: "Available",
+    status: detail ? "green" : message ? "red" : "yellow",
+    statusLabel: detail ? "Available" : message ? "Unavailable" : "Loading source",
     stats: directoryStats,
-    loading: false,
-    metadataDurationSeconds: detail.durationSeconds,
+    loading: isDetailLoading,
+    metadataDurationSeconds: detail?.durationSeconds ?? null,
   };
-  const mediaActions = (
+  const mediaActions = detail ? (
     <MediaContextActionBar
       busy={isFetching || fetchWorkspace.isBusy}
       mode="remote_source"
@@ -2770,12 +2777,14 @@ function RemoteOnlyWorkDetailController({
       sourceLabel={detail.sourceName}
       sourceStatus="Available"
     />
-  );
+  ) : undefined;
   const heroActions = <>{identityActions}{mediaActions}</>;
   const directoryPanel = (
     <SourceDirectoryPanel
       title="Directory"
-      description={`Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`}
+      description={detail
+        ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
+        : `Loading remote files from ${displaySourceName}...`}
       statsLabel={formatTreeStats(directoryStats)}
       tabs={remoteTabs}
       activeKey={remoteSourceTabKey(source.id)}
@@ -2788,14 +2797,15 @@ function RemoteOnlyWorkDetailController({
       currentPlaybackKey={player.currentPlaybackKey}
       emptyLabel="No remote files detected."
       toolbar={message ? <DirectoryMessage message={message} /> : undefined}
+      emptyState={isDetailLoading ? <DirectorySkeleton /> : undefined}
+      loadingMessage={isDetailLoading && !message ? `Loading ${displayRemoteCode}...` : undefined}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onPlayFolder={playRemoteTracks}
       onPlayNext={(track) => queueRemoteTrack(track, true)}
       onAppendQueue={(track) => queueRemoteTrack(track, false)}
     />
   );
-	const remoteIdentity = identityDetail ?? detail;
-	const remoteLanguageEditions = remoteIdentity.languageEditions ?? [];
+	const remoteLanguageEditions = remoteIdentity?.languageEditions ?? [];
 	const remoteTranslations: WorkDetail["translations"] = remoteLanguageEditions.map((edition) => ({
 		workId: null,
 		primaryCode: edition.remoteCode,
@@ -2808,34 +2818,35 @@ function RemoteOnlyWorkDetailController({
 		current: edition.current,
 		hasMedia: true,
 		mediaState: "indexed_available",
-	}));
+  }));
   const presentation: UnifiedWorkDetailPresentation = {
-    coverUrl: remoteIdentity.coverUrl,
-    fallbackCode: remoteIdentity.primaryCode || remoteIdentity.remoteId,
-    code: remoteIdentity.primaryCode || remoteIdentity.remoteId,
-    title: remoteIdentity.title,
-    circle: remoteIdentity.circle,
-    circleExternalId: remoteIdentity.circleRef?.externalId ?? "",
+    coverUrl: remoteIdentity?.coverUrl ?? preview?.coverUrl ?? "",
+    fallbackCode: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
+    code: displayPrimaryCode || remoteIdentity?.remoteId || preview?.remoteId || code,
+    title: remoteIdentity?.title ?? preview?.title ?? code,
+    circle: remoteIdentity?.circle ?? preview?.circle ?? "",
+    circleExternalId: remoteIdentity?.circleRef?.externalId ?? preview?.circleExternalId ?? "",
     series: "",
     seriesTitleId: "",
     seriesCircleExternalId: "",
     ratingLabel: "Rating",
-    rating: remoteIdentity.rating,
+    rating: remoteIdentity?.rating ?? preview?.rating ?? null,
     ratingCount: null,
-    sales: remoteIdentity.sales,
+    sales: remoteIdentity?.sales ?? preview?.sales ?? null,
 	baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
 	metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
 	translations: remoteTranslations,
-	activeVersionCode: remoteDetailActionCode(detail),
+	activeVersionCode: displayRemoteCode,
 	onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
 	remoteVersions: true,
     dlsiteFetchedAt: "",
-    releaseDate: remoteIdentity.releaseDate || "Unknown",
-    ageRating: remoteIdentity.ageRating,
+    releaseDate: remoteIdentity?.releaseDate || preview?.releaseDate || "Unknown",
+    ageRating: remoteIdentity?.ageRating ?? preview?.ageRating ?? "",
     sourceInfo,
-    voiceActors: remoteIdentity.voiceActors,
+    voiceActors: remoteIdentity?.voiceActors ?? preview?.voiceActors ?? [],
     voiceCredits: [],
-    tags: remoteIdentity.tags,
+    tags: remoteIdentity?.tags ?? preview?.tags ?? [],
+    loading: isDetailLoading,
   };
 
 	const selectRemoteLanguageEdition = async (editionCode: string) => {
@@ -7022,6 +7033,44 @@ function remoteWorkPreview(work: RemoteWork): WorkPreview {
   };
 }
 
+function remoteOnlyWorkPreview(work: RemoteWork): RemoteWorkPreview {
+  return {
+    ...remoteWorkPreview(work),
+    remoteId: work.remoteId,
+    remoteCode: work.remoteCode,
+    ageRating: work.ageRating,
+  };
+}
+
+function remoteWorkPreviewFromHistory(code: string | null): RemoteWorkPreview | null {
+  const value = (window.history.state as { workPreview?: unknown } | null)?.workPreview;
+  if (!code || !value || typeof value !== "object") return null;
+  const preview = value as Partial<RemoteWorkPreview>;
+  const routeCode = typeof preview.remoteCode === "string" && preview.remoteCode
+    ? preview.remoteCode
+    : typeof preview.primaryCode === "string" && preview.primaryCode
+      ? preview.primaryCode
+      : typeof preview.remoteId === "string" ? preview.remoteId : "";
+  if (!routeCode || routeCode.toUpperCase() !== code.toUpperCase()) return null;
+  if (typeof preview.primaryCode !== "string" || typeof preview.remoteCode !== "string") return null;
+  return {
+    id: typeof preview.id === "number" && Number.isInteger(preview.id) && preview.id > 0 ? preview.id : undefined,
+    primaryCode: preview.primaryCode,
+    title: typeof preview.title === "string" ? preview.title : preview.primaryCode,
+    coverUrl: typeof preview.coverUrl === "string" ? preview.coverUrl : "",
+    circle: typeof preview.circle === "string" ? preview.circle : "",
+    circleExternalId: typeof preview.circleExternalId === "string" ? preview.circleExternalId : "",
+    rating: typeof preview.rating === "number" ? preview.rating : null,
+    sales: typeof preview.sales === "number" ? preview.sales : null,
+    releaseDate: typeof preview.releaseDate === "string" ? preview.releaseDate : null,
+    tags: Array.isArray(preview.tags) ? preview.tags.filter((item): item is string => typeof item === "string") : [],
+    voiceActors: Array.isArray(preview.voiceActors) ? preview.voiceActors.filter((item): item is string => typeof item === "string") : [],
+    remoteId: typeof preview.remoteId === "string" ? preview.remoteId : undefined,
+    remoteCode: preview.remoteCode,
+    ageRating: typeof preview.ageRating === "string" ? preview.ageRating : "",
+  };
+}
+
 function listeningStatusLabel(status: ListeningStatus) {
   return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
@@ -7162,7 +7211,8 @@ function remoteTargetFromLocation(path: string, search: string, sources: Library
   const sourceID = Number(params.get("source"));
   if (!Number.isFinite(sourceID) || sourceID <= 0) return null;
   const source = sources.find((candidate) => candidate.id === sourceID);
-  return source ? { source, code } : null;
+  const preview = remoteWorkPreviewFromHistory(code);
+  return source ? { source, code, ...(preview ? { preview } : {}) } : null;
 }
 
 function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTab = { kind: "all" }): LibraryTab {
@@ -7264,10 +7314,13 @@ function safeExternalHTTPURL(value: string | null | undefined) {
   }
 }
 
-function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: string, returnLabel: string) {
+function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: string, returnLabel: string, workPreview?: RemoteWorkPreview) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
-  openWorkDetail({ kind: "remote-only", sourceId: sourceID, remoteCode: cleanCode }, { returnTo, returnLabel });
+  openWorkDetail(
+    { kind: "remote-only", sourceId: sourceID, remoteCode: cleanCode },
+    { returnTo, returnLabel, ...(workPreview ? { workPreview } : {}) },
+  );
 }
 
 function openPersistedRemoteSourceWorkRoute(
