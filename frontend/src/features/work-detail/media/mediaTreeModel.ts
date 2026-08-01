@@ -1,6 +1,6 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
-import { findLyricsMatches } from "../../../player/lyricsMatching";
+import { findLyricsMatches, findRemoteLyricsMatches } from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
 import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
@@ -23,6 +23,7 @@ export type TreeTrack = {
   streamUrl: string;
   downloadUrl: string;
   assetUrl: string;
+  textPreviewUrl?: string;
   sizeBytes: number | null;
   durationSeconds: number | null;
   hasAudio: boolean | null;
@@ -91,6 +92,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       streamUrl: location.streamUrl,
       downloadUrl: location.downloadUrl,
       assetUrl: location.locationType === "local" ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes) : location.downloadUrl,
+      textPreviewUrl: "",
       sizeBytes: location.sizeBytes,
       durationSeconds: location.durationSeconds ?? item.durationSeconds,
       hasAudio: item.hasAudio ?? null,
@@ -147,6 +149,9 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
         streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : node.streamUrl,
         downloadUrl: node.downloadUrl,
         assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
+        textPreviewUrl: identity && (node.type === "text" || mediaKindFromRemotePath(title) === "text")
+          ? `/api/remote-sources/${identity.sourceId}/works/${encodeURIComponent(identity.workCode)}/text?path=${encodeURIComponent(sourcePath)}`
+          : "",
         sizeBytes: node.sizeBytes,
         durationSeconds: node.durationSeconds,
         hasAudio: null,
@@ -197,6 +202,16 @@ export function flattenTracks(root: TreeNode) {
   };
   visit(root);
   return tracks;
+}
+
+export function flattenTreeFiles(root: TreeNode) {
+  const files: TreeTrack[] = [];
+  const visit = (node: TreeNode) => {
+    files.push(...node.files);
+    for (const child of node.children.values()) visit(child);
+  };
+  visit(root);
+  return files;
 }
 
 export function latestResumeTrack(tracks: TreeTrack[]) {
@@ -315,8 +330,19 @@ export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): Play
   return preferredLocation ? applyTrackLocation(playerTrack, preferredLocation) : playerTrack;
 }
 
-export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
+export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail, files: TreeTrack[] = []): PlayerTrack {
   const remoteWorkCode = detail.remoteCode || detail.primaryCode || detail.remoteId;
+  const remoteLyrics = findRemoteLyricsMatches(
+    track.sourcePath || track.title,
+    files.map((file) => ({
+      mediaItemId: file.mediaItemId,
+      locationId: file.locationId,
+      title: file.title,
+      path: file.sourcePath,
+      url: file.textPreviewUrl || file.streamUrl || file.downloadUrl,
+    })),
+  );
+  const automaticLyrics = remoteLyrics[0] ?? null;
   return {
     ...track,
     kind: track.kind === "video" ? "video" : "audio",
@@ -327,10 +353,10 @@ export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkD
     circle: detail.circle,
     progress: null,
     progressRecordable: false,
-    lyricsLocationId: null,
-    lyricsTitle: "",
-    lyricsChoices: [],
-    autoLyricsLocationId: null,
+    lyricsLocationId: automaticLyrics?.locationId ?? null,
+    lyricsTitle: automaticLyrics?.title ?? "",
+    lyricsChoices: remoteLyrics,
+    autoLyricsLocationId: automaticLyrics?.locationId ?? null,
     preferredLyricsMediaItemId: null,
     remoteSourceId: detail.sourceId,
     remoteWorkCode,
@@ -386,6 +412,14 @@ function collapseSingleChildFolders(node: TreeNode, isRoot = false): TreeNode {
 function baseNameWithoutExtension(name: string) {
   const index = name.lastIndexOf(".");
   return index > 0 ? name.slice(0, index) : name;
+}
+
+function mediaKindFromRemotePath(path: string) {
+  const index = path.lastIndexOf(".");
+  const extension = index >= 0 ? path.slice(index).toLowerCase() : "";
+  return [".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml"].includes(extension)
+    ? "text"
+    : "file";
 }
 
 function versionedMediaAssetURL(locationId: number, fingerprint: string, sizeBytes: number | null) {

@@ -5,6 +5,7 @@ import {
   buildRemoteTree,
   buildTree,
   flattenTracks,
+  flattenTreeFiles,
   formatDuration,
   formatTrackDuration,
   remoteSelectablePaths,
@@ -263,6 +264,62 @@ describe("mediaTreeModel", () => {
       tracks: remoteTracks,
       languageEditions: [],
     }).playbackKey).toBe(first.playbackKey);
+  });
+
+  it("matches remote sidecar lyrics and keeps the remote URL on the player track", () => {
+    const remoteTracks = [{
+      type: "audio",
+      title: "01.wma",
+      streamUrl: "https://media.invalid/01.wma",
+      downloadUrl: "",
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+    }, {
+      type: "text",
+      title: "01.lrc",
+      streamUrl: "https://media.invalid/01.lrc",
+      downloadUrl: "",
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+    }] as RemoteTrack[];
+    const tree = buildRemoteTree(remoteTracks, { sourceId: 7, workCode: "RJ00000000" });
+    const files = flattenTreeFiles(tree);
+    const audio = flattenTracks(tree)[0];
+    const playerTrack = toRemotePreviewPlayerTrack(audio, {
+      sourceId: 7,
+      sourceCode: "remote_a",
+      sourceName: "Remote A",
+      remoteId: "remote-1",
+      primaryCode: "RJ00000000",
+      remoteCode: "RJ00000000",
+      title: "Work",
+      coverUrl: "",
+      sourceUrl: "",
+      publicWorkUrl: "",
+      circle: "",
+      rating: null,
+      sales: null,
+      price: null,
+      ageRating: "",
+      releaseDate: "",
+      durationSeconds: null,
+      tags: [],
+      voiceActors: [],
+      importStatus: "remote_only",
+      workId: null,
+      tracks: remoteTracks,
+      languageEditions: [],
+    }, files);
+    expect(playerTrack.lyricsChoices?.[0]).toMatchObject({ title: "01.lrc", url: "/api/remote-sources/7/works/RJ00000000/text?path=01.lrc" });
+    expect(playerTrack.lyricsLocationId).toBeLessThan(0);
   });
 
   it("includes video with audio in playback and excludes known silent video", () => {

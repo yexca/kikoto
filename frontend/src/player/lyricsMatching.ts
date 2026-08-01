@@ -1,7 +1,7 @@
 import type { MediaItem } from "@/lib/api";
 
 const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"];
-const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac"];
+const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"];
 const sharedLyricNames = new Set(["lyrics", "lyric", "subtitle", "subtitles", "字幕", "翻译", "翻譯"]);
 
 export type LyricsMatch = {
@@ -11,6 +11,16 @@ export type LyricsMatch = {
   path: string;
   reason: "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
 };
+
+export type RemoteLyricsCandidate = {
+  mediaItemId: number;
+  locationId: number;
+  title: string;
+  path: string;
+  url: string;
+};
+
+export type RemoteLyricsMatch = LyricsMatch & { url: string };
 
 export function findLyricsMatch(audioPath: string, items: MediaItem[]): LyricsMatch | null {
   return findLyricsMatches(audioPath, items)[0] ?? null;
@@ -27,6 +37,36 @@ export function findLyricsMatches(audioPath: string, items: MediaItem[]): Lyrics
     .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
     .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }));
   return candidates.map((candidate) => ({ mediaItemId: candidate.mediaItemId, locationId: candidate.locationId, title: fileName(candidate.path), path: candidate.path, reason: candidate.reason }));
+}
+
+export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyricsCandidate[]): RemoteLyricsMatch[] {
+  const audioName = fileName(audioPath);
+  const audioDirectory = directoryName(audioPath);
+  const audioStem = stripLastExtension(audioName);
+  const normalizedAudioStem = normalizeMediaName(audioStem);
+  const scored = candidates.flatMap((candidate) => {
+    if (!candidate.url || !isLyricsPath(candidate.path)) return [];
+    const match = scoreCandidate(
+      candidate.mediaItemId,
+      candidate.locationId,
+      candidate.path,
+      audioName,
+      audioStem,
+      normalizedAudioStem,
+      audioDirectory,
+    );
+    return match ? [{ ...match, url: candidate.url }] : [];
+  });
+  return scored
+    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }))
+    .map(({ mediaItemId, locationId, path, reason, url }) => ({
+      mediaItemId,
+      locationId,
+      title: fileName(path),
+      path,
+      reason,
+      url,
+    }));
 }
 
 export function isLyricsPath(path: string) {

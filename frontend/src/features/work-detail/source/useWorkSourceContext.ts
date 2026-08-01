@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   api,
@@ -36,12 +36,13 @@ export function useWorkSourceContext({
   initialTrackedSourceID: number | null;
   initialRemoteCode: string;
 }) {
-  const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>([]);
+  const [remoteSources, setRemoteSources] = useState<RemoteSourceAvailability[]>(() => seedRemoteSources(sources, code));
   const [isCheckingSources, setIsCheckingSources] = useState(false);
   const [sourceCheckedAt, setSourceCheckedAt] = useState("");
   const [activeSourceKey, setActiveSourceKey] = useState<string>(initialSourceIntent);
   const [selectedTrackedPresenceKey, setSelectedTrackedPresenceKey] = useState("");
   const [remoteLoadVersion, setRemoteLoadVersion] = useState(0);
+  const remoteRequestSequence = useRef(0);
   const trackedPresenceOptions = useMemo(
     () => buildTrackedPresenceOptions(work?.mediaItems ?? [], remoteSources, work?.sourcePresence ?? []),
     [remoteSources, work?.mediaItems, work?.sourcePresence],
@@ -82,10 +83,12 @@ export function useWorkSourceContext({
     : work?.primaryCode || code;
 
   const applyAvailability = useCallback((result: SourceAvailabilityResponse) => {
-    const knownSources = result.sources.flatMap((summary) => {
-      const source = sources.find((candidate) => candidate.id === summary.sourceId);
-      return source ? [{ source, summary }] : [];
-    });
+    const knownSources = sources
+      .filter((source) => source.sourceType.startsWith("kikoeru"))
+      .map((source) => ({
+        source,
+        summary: result.sources.find((summary) => summary.sourceId === source.id) ?? seedRemoteSources([source], result.workCode)[0].summary,
+      }));
     setRemoteSources((current) => knownSources.map((next) => {
       const previous = current.find((item) => item.source.id === next.source.id);
       return previous?.detail
@@ -137,8 +140,16 @@ export function useWorkSourceContext({
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID
       ? { ...item, loading: true, error: "", treeLoading: false, treeError: "" }
       : item));
+    const requestID = ++remoteRequestSequence.current;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 20_000);
     try {
-      const metadata = await api.getRemoteSourceWorkMetadata(sourceID, remoteCode);
+      const metadata = await api.getRemoteSourceWorkMetadata(sourceID, remoteCode, controller.signal);
+      if (requestID !== remoteRequestSequence.current) return false;
       const detail: RemoteWorkDetail = { ...metadata, tracks: [] };
       setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
         ...item,
@@ -156,7 +167,8 @@ export function useWorkSourceContext({
           coverUrl: detail.coverUrl,
         },
       } : item));
-      const tree = await api.getRemoteSourceWorkTracks(sourceID, metadata.remoteCode || remoteCode);
+      const tree = await api.getRemoteSourceWorkTracks(sourceID, metadata.remoteCode || remoteCode, controller.signal);
+      if (requestID !== remoteRequestSequence.current) return false;
       setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
         ...item,
         detail: item.detail ? { ...item.detail, tracks: tree.tracks } : { ...detail, tracks: tree.tracks },
@@ -165,16 +177,20 @@ export function useWorkSourceContext({
       } : item));
       return true;
     } catch (error) {
+      if (requestID !== remoteRequestSequence.current) return false;
+      if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return false;
       setRemoteSources((items) => items.map((item) => item.source.id === sourceID
         ? {
           ...item,
           loading: false,
-          error: item.detail ? "" : error instanceof Error ? error.message : "Remote detail failed.",
+          error: item.detail ? "" : timedOut ? "Remote source timed out. Retry to try again." : error instanceof Error ? error.message : "Remote detail failed.",
           treeLoading: false,
-          treeError: item.detail ? (error instanceof Error ? error.message : "Remote directory failed.") : "",
+          treeError: item.detail ? (timedOut ? "Remote directory timed out. Retry to try again." : error instanceof Error ? error.message : "Remote directory failed.") : "",
         }
         : item));
       return false;
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, [selectedRemoteSource]);
 
@@ -186,7 +202,7 @@ export function useWorkSourceContext({
   }, [activeSourceKey, sourceCheckedAt, sourceTabs, work]);
 
   useEffect(() => {
-    setRemoteSources([]);
+    setRemoteSources(seedRemoteSources(sources, work?.primaryCode ?? code));
     setSourceCheckedAt("");
     if (!work?.primaryCode || sources.length === 0) return;
     let cancelled = false;
@@ -195,7 +211,7 @@ export function useWorkSourceContext({
         if (!cancelled) applyAvailability(result);
       })
       .catch(() => {
-        if (!cancelled) setRemoteSources([]);
+        if (!cancelled) setRemoteSources(seedRemoteSources(sources, work.primaryCode));
       });
     return () => {
       cancelled = true;
@@ -210,6 +226,12 @@ export function useWorkSourceContext({
     );
     if (!selectedRemoteSource || (!remoteSourceCanBrowse(selectedRemoteSource.summary) && !routedRemoteSource) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
     const controller = new AbortController();
+    const requestID = ++remoteRequestSequence.current;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 20_000);
     const sourceID = selectedRemoteSource.source.id;
     setRemoteSources((items) => items.map((item) => item.source.id === sourceID
       ? { ...item, loading: true, error: "", treeLoading: false, treeError: "" }
@@ -242,19 +264,30 @@ export function useWorkSourceContext({
           treeError: "",
         } : item));
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (requestID !== remoteRequestSequence.current) return;
+        if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID
           ? {
             ...item,
             loading: false,
-            error: item.detail ? "" : error instanceof Error ? error.message : "Remote detail failed.",
+            error: item.detail ? "" : timedOut ? "Remote source timed out. Retry to try again." : error instanceof Error ? error.message : "Remote detail failed.",
             treeLoading: false,
-            treeError: item.detail ? (error instanceof Error ? error.message : "Remote directory failed.") : "",
+            treeError: item.detail ? (timedOut ? "Remote directory timed out. Retry to try again." : error instanceof Error ? error.message : "Remote directory failed.") : "",
           }
           : item));
+      } finally {
+        window.clearTimeout(timeout);
+        if (requestID === remoteRequestSequence.current) {
+          setRemoteSources((items) => items.map((item) => item.source.id === sourceID
+            ? { ...item, loading: false, treeLoading: false }
+            : item));
+        }
       }
     })();
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [initialRemoteCode, initialSourceIntent, remoteLoadVersion, selectedRemoteSourceID, selectedRemoteWorkCode]);
 
   useEffect(() => {
@@ -288,4 +321,28 @@ export function useWorkSourceContext({
     sourceCheckedAt,
     refreshAvailability,
   };
+}
+
+function seedRemoteSources(sources: LibrarySource[], workCode: string): RemoteSourceAvailability[] {
+  return sources
+    .filter((source) => source.sourceType.startsWith("kikoeru"))
+    .map((source) => ({
+      source,
+      summary: {
+        sourceId: source.id,
+        sourceCode: source.code,
+        displayName: source.displayName,
+        status: "unknown" as const,
+        remoteId: "",
+        primaryCode: workCode,
+        title: "",
+        coverUrl: "",
+        workId: null,
+        hasRemote: false,
+        hasCache: false,
+        hasLocal: false,
+        error: "",
+        elapsedMs: 0,
+      },
+    }));
 }

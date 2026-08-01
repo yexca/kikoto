@@ -145,6 +145,7 @@ import { useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
   availableForkSources,
+  buildSourceTabs,
   remoteAvailabilityRouteCode,
   remoteSourceCanBrowse,
   remoteSourceTabKey,
@@ -172,6 +173,7 @@ import {
   countTreeFiles,
   emptyTree,
   flattenTracks,
+  flattenTreeFiles,
   formatBytes,
   formatDuration,
   formatTrackDuration,
@@ -1038,6 +1040,7 @@ export function LibraryPage() {
     return (
       <RemoteOnlyWorkDetailController
         source={selectedRemoteTarget.source}
+        sources={sources}
         code={selectedRemoteTarget.code}
         preview={selectedRemoteTarget.preview ?? null}
         onBack={backToLibrary}
@@ -2566,6 +2569,7 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
 
 function RemoteOnlyWorkDetailController({
   source,
+  sources,
   code,
   preview,
   onBack,
@@ -2573,6 +2577,7 @@ function RemoteOnlyWorkDetailController({
   onWorksChanged,
 }: {
   source: LibrarySource;
+  sources: LibrarySource[];
   code: string;
   preview: RemoteWorkPreview | null;
   onBack: () => void;
@@ -2586,6 +2591,32 @@ function RemoteOnlyWorkDetailController({
   const [message, setMessage] = useState("");
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState("");
+  const [remoteRetryToken, setRemoteRetryToken] = useState(0);
+  const [filePreview, setFilePreview] = useState<FilePreviewState | null>(null);
+  const [activeRemoteTab, setActiveRemoteTab] = useState<string>(remoteSourceTabKey(source.id));
+  const [remoteAvailability, setRemoteAvailability] = useState<RemoteSourceAvailability[]>(() =>
+    sources
+      .filter((candidate) => candidate.sourceType.startsWith("kikoeru"))
+      .map((candidate) => ({
+        source: candidate,
+        summary: {
+          sourceId: candidate.id,
+          sourceCode: candidate.code,
+          displayName: candidate.displayName,
+          status: "unknown" as const,
+          remoteId: "",
+          primaryCode: code,
+          title: preview?.title ?? "",
+          coverUrl: preview?.coverUrl ?? "",
+          workId: null,
+          hasRemote: false,
+          hasCache: false,
+          hasLocal: false,
+          error: "",
+          elapsedMs: 0,
+        },
+      })),
+  );
   const [isFetching, setIsFetching] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -2607,16 +2638,29 @@ function RemoteOnlyWorkDetailController({
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
-  const remoteTabs = useMemo<SourceTabInfo[]>(() => [{
-    key: remoteSourceTabKey(source.id),
-    label: displaySourceName,
-    sourceName: displaySourceName,
-    fileSourceId: null,
-    kind: "remote",
-    status: detail && !treeError ? "green" : message || treeError ? "red" : "yellow",
-    statusLabel: detail && !treeError ? "Available" : message || treeError ? "Unavailable" : "Loading source",
-  }], [detail, displaySourceName, message, source.id, treeError]);
+  const remoteFiles = useMemo(() => flattenTreeFiles(tree), [tree]);
+  const remoteTabs = useMemo<SourceTabInfo[]>(() => buildSourceTabs([], remoteAvailability.map((item) => item.source.id === source.id
+    ? {
+      ...item,
+      detail: detail ?? undefined,
+      error: message,
+      treeError,
+      treeLoading,
+      summary: {
+        ...item.summary,
+        status: detail && !treeError ? "available" : message || treeError ? "error" : item.summary.status,
+        primaryCode: detail?.primaryCode || item.summary.primaryCode,
+        title: detail?.title || item.summary.title,
+        coverUrl: detail?.coverUrl || item.summary.coverUrl,
+      },
+    }
+    : item), [], undefined), [detail, message, remoteAvailability, source.id, treeError, treeLoading]);
   const player = useLibraryPlayer();
+  const primaryRemoteTabKey = remoteSourceTabKey(source.id);
+  const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
+  const activeRemoteAvailability = remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
+  const visibleTree = primaryRemoteSelected ? tree : emptyTree();
+  const visibleDirectoryStats = primaryRemoteSelected ? directoryStats : treeStats(visibleTree);
 
   useEffect(() => {
     let cancelled = false;
@@ -2633,6 +2677,22 @@ function RemoteOnlyWorkDetailController({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    api.getSourceAvailability(code)
+      .then((result) => {
+        if (cancelled) return;
+        setRemoteAvailability((current) => current.map((item) => {
+          const summary = result.sources.find((candidate) => candidate.sourceId === item.source.id);
+          return summary ? { ...item, summary } : item;
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  useEffect(() => {
     setDetail(null);
 	setIdentityDetail(null);
     setNotFound(false);
@@ -2641,12 +2701,32 @@ function RemoteOnlyWorkDetailController({
     setTreeError("");
     fetchWorkspace.close();
     const controller = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 20_000);
     void (async () => {
       try {
         const metadata = await api.getRemoteSourceWorkMetadata(source.id, code, controller.signal);
         const next: RemoteWorkDetail = { ...metadata, tracks: [] };
         setDetail(next);
         setIdentityDetail(next);
+        setRemoteAvailability((items) => items.map((item) => item.source.id === source.id
+          ? {
+            ...item,
+            summary: {
+              ...item.summary,
+              status: "available",
+              remoteId: next.remoteId,
+              primaryCode: next.primaryCode,
+              title: next.title,
+              coverUrl: next.coverUrl,
+              workId: next.workId,
+              hasRemote: true,
+            },
+          }
+          : item));
         setTreeLoading(true);
         try {
           const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || code, controller.signal);
@@ -2655,24 +2735,27 @@ function RemoteOnlyWorkDetailController({
             setTreeError("");
           }
         } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
+          if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
+          setTreeError(timedOut ? "Remote directory timed out. Retry to try again." : error instanceof Error ? error.message : "Remote directory failed.");
         } finally {
           if (!controller.signal.aborted) setTreeLoading(false);
         }
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
         if (error instanceof ApiError && error.status === 404) {
           setNotFound(true);
           return;
         }
-        const text = error instanceof Error ? error.message : "Remote preview failed.";
+        const text = timedOut ? "Remote preview timed out. Retry to try again." : error instanceof Error ? error.message : "Remote preview failed.";
         setMessage(text);
         toast.notify({ kind: "error", message: text });
       }
     })();
-    return () => controller.abort();
-  }, [source.id, code]);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [source.id, code, remoteRetryToken]);
 
   const fetchWork = async (reason: string) => {
     if (!detail?.primaryCode) return;
@@ -2734,14 +2817,14 @@ function RemoteOnlyWorkDetailController({
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!detail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => toRemotePreviewPlayerTrack(track, detail)),
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, detail, remoteFiles)),
       locationId,
     );
   };
 
   const queueRemoteTrack = (track: TreeTrack, next: boolean) => {
     if (!detail) return;
-    const queuedTrack = toRemotePreviewPlayerTrack(track, detail);
+    const queuedTrack = toRemotePreviewPlayerTrack(track, detail, remoteFiles);
     if (next) player.playNext(queuedTrack);
     else player.appendQueue([queuedTrack]);
     toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
@@ -2779,14 +2862,14 @@ function RemoteOnlyWorkDetailController({
   ) : <DetailSkeletonActions />;
   const sourceInfo: ActiveSourceInfoModel = {
     label: displaySourceName,
-    kind: "remote",
-    status: detail && !treeError ? "green" : message || treeError ? "red" : "yellow",
-    statusLabel: detail && !treeError ? "Available" : message || treeError ? "Unavailable" : "Loading source",
-    stats: directoryStats,
-    loading: isDetailLoading || treeLoading,
+    kind: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind ?? "remote",
+    status: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "yellow",
+    statusLabel: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.statusLabel ?? "Loading source",
+    stats: visibleDirectoryStats,
+    loading: primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading),
     metadataDurationSeconds: detail?.durationSeconds ?? null,
   };
-  const mediaActions = detail ? (
+  const mediaActions = detail && primaryRemoteSelected ? (
     <MediaContextActionBar
       busy={isFetching || fetchWorkspace.isBusy}
       mode="remote_source"
@@ -2803,27 +2886,42 @@ function RemoteOnlyWorkDetailController({
   const directoryPanel = (
     <SourceDirectoryPanel
       title="Directory"
-      description={detail && !treeError
+      description={!primaryRemoteSelected
+        ? activeRemoteAvailability?.summary.error || `${remoteTabs.find((tab) => tab.key === activeRemoteTab)?.label ?? "Source"} is not selected for this preview.`
+        : detail && !message && !treeError
         ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
-        : treeError || `Loading remote files from ${displaySourceName}...`}
-      statsLabel={formatTreeStats(directoryStats)}
+        : message || treeError || `Loading remote files from ${displaySourceName}...`}
+      statsLabel={formatTreeStats(visibleDirectoryStats)}
       tabs={remoteTabs}
-      activeKey={remoteSourceTabKey(source.id)}
-      onActiveKeyChange={() => undefined}
+      activeKey={activeRemoteTab}
+      onActiveKeyChange={setActiveRemoteTab}
       directoryMode={directoryMode}
       onDirectoryModeChange={setDirectoryMode}
-      root={tree}
+      root={visibleTree}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
-      emptyLabel="No remote files detected."
+      emptyLabel={primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
       toolbar={message || treeError ? <DirectoryMessage message={message || treeError} /> : undefined}
-      emptyState={isDetailLoading || treeLoading ? <DirectorySkeleton /> : undefined}
-      loadingMessage={isDetailLoading || treeLoading ? `Loading ${displayRemoteCode}...` : undefined}
+      emptyState={primaryRemoteSelected
+        ? message || treeError
+          ? <DirectoryLoadErrorPanel message={message || treeError} onRetry={() => setRemoteRetryToken((value) => value + 1)} />
+          : isDetailLoading || treeLoading
+            ? <DirectorySkeleton />
+          : undefined
+        : remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind === "local"
+          ? <LocalSourceStatePanel status={remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "yellow"} remoteSources={remoteAvailability} onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))} />
+          : remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind === "tracked"
+            ? <TrackedUnforkedPanel presence={null} remoteSources={remoteAvailability} />
+            : activeRemoteAvailability
+              ? <RemoteSourceStatePanel remote={activeRemoteAvailability} />
+              : undefined}
+      loadingMessage={primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading) ? `Loading ${displayRemoteCode}...` : undefined}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
-      onPlayFolder={playRemoteTracks}
-      onPlayNext={(track) => queueRemoteTrack(track, true)}
-      onAppendQueue={(track) => queueRemoteTrack(track, false)}
+      onPlayFolder={primaryRemoteSelected ? playRemoteTracks : undefined}
+      onPlayNext={primaryRemoteSelected ? (track) => queueRemoteTrack(track, true) : undefined}
+      onAppendQueue={primaryRemoteSelected ? (track) => queueRemoteTrack(track, false) : undefined}
+      onPreview={setFilePreview}
     />
   );
 	const remoteLanguageEditions = remoteIdentity?.languageEditions ?? [];
@@ -2908,6 +3006,7 @@ function RemoteOnlyWorkDetailController({
           onClose={() => setIsManageOpen(false)}
         />
       )}
+      {filePreview && <FilePreviewModal preview={filePreview} onClose={() => setFilePreview(null)} />}
     </UnifiedWorkDetailPage>
   );
 }
@@ -3068,6 +3167,8 @@ function PersistedWorkDetailController({
     ? selectedTrackedForked
       ? `Browsing the tracked directory forked from ${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "the selected source"}.`
       : `${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "The selected source"} is tracked, but its directory has not been forked.`
+    : selectedSource?.kind === "tracked"
+    ? "This work is not tracked yet. Track a remote source to keep a browsable source relationship."
     : selectedRemoteSource
     ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
     : workHasNoLinkedSource
@@ -3078,7 +3179,9 @@ function PersistedWorkDetailController({
   const isDetailLoading = !work;
   const actionMode: DetailActionMode = selectedRemoteSource
     ? "remote_source"
-    : selectedTrackedPresence
+    : selectedSource?.kind === "tracked"
+      ? "tracked_unforked"
+      : selectedTrackedPresence
       ? selectedTrackedForked ? "tracked_forked" : "tracked_unforked"
       : "local";
   const forkSources = availableForkSources(remoteSources);
@@ -3173,7 +3276,7 @@ function PersistedWorkDetailController({
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!selectedRemoteDetail || tracks.length === 0) return;
     player.playQueue(
-      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail)),
+      tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))),
       locationId,
     );
   };
@@ -3189,7 +3292,7 @@ function PersistedWorkDetailController({
 
   const queueTrack = (track: TreeTrack, next: boolean) => {
     const queuedTrack = selectedRemoteDetail
-      ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail)
+      ? toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))
       : localDirectoryWork
         ? toPlayerTrack(track, localDirectoryWork)
         : null;
@@ -3285,6 +3388,8 @@ function PersistedWorkDetailController({
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorkReload(result.workId, true);
       await onWorksChanged();
+      const trackedDetail = await api.getWorkSummary(result.workId);
+      openWorkCodeRoute(trackedDetail.primaryCode || result.primaryCode, "tracked");
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
     } finally {
@@ -3509,7 +3614,17 @@ function PersistedWorkDetailController({
       ) : message ? <DirectoryMessage message={message} /> : undefined}
       selectionModal={fetchSelectionModal}
       emptyState={showDirectorySkeleton ? <DirectorySkeleton /> : directoryMediaError ? (
-        <DirectoryLoadErrorPanel message={directoryMediaError} />
+        <DirectoryLoadErrorPanel
+          message={directoryMediaError}
+          onRetry={() => {
+            if (selectedRemoteSource) {
+              void refreshAvailability();
+              selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
+            } else if (work) {
+              void onWorkReload(work.id, true);
+            }
+          }}
+        />
       ) : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
         <LocalSourceStatePanel
           status={selectedSource.status}
@@ -3518,8 +3633,9 @@ function PersistedWorkDetailController({
         />
       ) : selectedRemoteSource && !remoteSourceCanBrowse(selectedRemoteSource.summary) ? (
         <RemoteSourceStatePanel remote={selectedRemoteSource} />
-      ) : selectedTrackedPresence && !selectedTrackedForked ? (
+      ) : selectedSource?.kind === "tracked" ? (
         <TrackedUnforkedPanel
+          presence={selectedTrackedPresence}
           remoteSources={remoteSources}
         />
       ) : showNoSourceDirectory ? (
@@ -4271,11 +4387,12 @@ function DirectorySkeleton() {
   );
 }
 
-function DirectoryLoadErrorPanel({ message }: { message: string }) {
+function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="min-h-[22rem] rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="directory-load-error">
       <div className="font-medium">Directory unavailable</div>
       <p className="mt-1 text-amber-900">{message}</p>
+      {onRetry && <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}><RefreshCw className="h-4 w-4" /> Retry</Button>}
     </div>
   );
 }
@@ -4320,16 +4437,18 @@ function useCompactDetailLayout() {
 }
 
 function TrackedUnforkedPanel({
+  presence,
   remoteSources,
 }: {
+  presence?: NonNullable<WorkDetail["sourcePresence"]>[number] | null;
   remoteSources: RemoteSourceAvailability[];
 }) {
   const candidates = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
     <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      <div className="font-medium">Tracked directory not forked</div>
+      <div className="font-medium">{presence ? "Tracked directory not forked" : "No tracked source linked"}</div>
       <p className="mt-1 text-amber-900">
-        Choose a fork source from Source to create the browsable tracked directory.
+        {presence ? "Choose a fork source from Source to create the browsable tracked directory." : "Track a remote source from its source tab to create a browsable tracked directory."}
       </p>
       {candidates.length === 0 && <Badge variant="warning" className="mt-3">No browsable remote source</Badge>}
     </div>
@@ -4470,12 +4589,14 @@ function SourceDirectoryPanel({
   onPreview?: (preview: FilePreviewState) => void;
 }) {
   const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
+  const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
   const trackedMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => setTrackedMenuOpen(false), [activeKey, selectedTrackedPresenceKey]);
   const content = emptyState ? emptyState : directoryMode === "browse" ? (
     <DirectoryBrowser
       root={root}
       directoryRoutingRules={directoryRoutingRules}
+      routePath={requestedRoutePath ?? undefined}
       currentLocationId={currentLocationId}
       currentPlaybackKey={currentPlaybackKey}
       emptyLabel={emptyLabel}
@@ -4488,6 +4609,7 @@ function SourceDirectoryPanel({
     <DirectoryTree
       root={root}
       directoryRoutingRules={directoryRoutingRules}
+      focusPath={requestedRoutePath ?? undefined}
       currentLocationId={currentLocationId}
       currentPlaybackKey={currentPlaybackKey}
       emptyLabel={emptyLabel}
@@ -4585,7 +4707,9 @@ function SourceDirectoryPanel({
             )}
           </div>
         </div>
-        {routeSummary && <DirectoryRouteSummary summary={routeSummary} />}
+        {routeSummary && (
+          <DirectoryRouteSummary summary={routeSummary} onSelect={() => setRequestedRoutePath(routeSummary.path)} />
+        )}
       </div>
       <Card>
         <CardContent className="p-4">
@@ -4627,11 +4751,18 @@ function DirectoryModeSwitch({ mode, onChange }: { mode: DirectoryMode; onChange
   );
 }
 
-function DirectoryRouteSummary({ summary }: { summary: DirectoryRouteMatch }) {
+function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteMatch; onSelect: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
       <span className="font-medium text-muted-foreground">Default folder</span>
-      <Badge variant="secondary" className="max-w-full truncate">{summary.pathLabel}</Badge>
+      <button
+        type="button"
+        className="max-w-full truncate rounded-md border bg-secondary px-2 py-0.5 font-medium text-secondary-foreground hover:bg-secondary/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        title={`Open ${summary.pathLabel}`}
+        onClick={onSelect}
+      >
+        {summary.pathLabel}
+      </button>
       {summary.positiveMatches.length > 0 ? (
         <span className="min-w-0 text-muted-foreground">
           matched {summary.positiveMatches.join(" + ")}
@@ -5476,11 +5607,12 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 type FilePreviewState =
   | { kind: "image"; title: string; url: string; locationId: number; canSetCover: boolean }
   | { kind: "video"; title: string; url: string; locationId: number }
-  | { kind: "text"; title: string; locationId: number };
+  | { kind: "text"; title: string; locationId: number; url?: string };
 
 function DirectoryTree({
   root,
   directoryRoutingRules,
+  focusPath,
   currentLocationId,
   currentPlaybackKey,
   onPlayFolder,
@@ -5491,6 +5623,7 @@ function DirectoryTree({
 }: {
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
+  focusPath?: string[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
@@ -5505,6 +5638,19 @@ function DirectoryTree({
     setExpandedPaths(initialExpandedTreePaths(root, directoryRoutingRules));
     setVisibleLimit(160);
   }, [root, directoryRoutingRules]);
+  useEffect(() => {
+    if (!focusPath || !nodeAtPath(root, focusPath)) return;
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      let cursor: TreeNode | null = root;
+      for (const part of focusPath) {
+        cursor = cursor?.children.get(part) ?? null;
+        if (!cursor) break;
+        next.add(cursor.path);
+      }
+      return next;
+    });
+  }, [focusPath, root]);
   const rows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
   const visibleRows = rows.slice(0, visibleLimit);
   const toggleFolder = (path: string) => {
@@ -5669,6 +5815,7 @@ function ReforkConfirmModal({
 function DirectoryBrowser({
   root,
   directoryRoutingRules,
+  routePath,
   currentLocationId,
   currentPlaybackKey,
   onPlayFolder,
@@ -5679,6 +5826,7 @@ function DirectoryBrowser({
 }: {
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
+  routePath?: string[];
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
@@ -5700,6 +5848,9 @@ function DirectoryBrowser({
   useEffect(() => {
     setPath(recommendedDirectoryPath(root, directoryRoutingRules));
   }, [root, directoryRoutingRules]);
+  useEffect(() => {
+    if (routePath && nodeAtPath(root, routePath)) setPath(routePath);
+  }, [routePath, root]);
 
   if (folders.length === 0 && files.length === 0) {
     return <div className="text-sm text-muted-foreground">{emptyLabel}</div>;
@@ -6501,6 +6652,7 @@ type DirectoryCandidate = {
 };
 
 type DirectoryRouteMatch = {
+  path: string[];
   pathLabel: string;
   positiveMatches: string[];
   negativeMatches: string[];
@@ -6526,6 +6678,7 @@ function directoryRouteSummary(root: TreeNode, rules: DirectoryRoutingRule[]): D
   const candidate = recommendedDirectoryCandidate(root, rules);
   if (!candidate) return null;
   return {
+    path: candidate.path,
     pathLabel: candidate.path.length > 0 ? `/${candidate.path.join("/")}` : "/",
     positiveMatches: candidate.positiveMatches,
     negativeMatches: candidate.negativeMatches,
@@ -6720,8 +6873,13 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
   if (file.kind === "video" && file.streamUrl) {
     return { kind: "video", title: file.title, url: file.streamUrl, locationId: file.locationId };
   }
-  if (file.kind === "text" && file.locationId > 0) {
-    return { kind: "text", title: file.title, locationId: file.locationId };
+  if (file.kind === "text" && (file.locationId > 0 || file.streamUrl || file.downloadUrl)) {
+    return {
+      kind: "text",
+      title: file.title,
+      locationId: file.locationId,
+      url: file.textPreviewUrl || (file.locationId > 0 ? undefined : file.streamUrl || file.downloadUrl || undefined),
+    };
   }
   return null;
 }
@@ -6736,7 +6894,17 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
     setText(null);
     setError("");
     if (preview.kind !== "text") return;
-    api.getMediaText(preview.locationId).then((result) => setText(result.content)).catch((err) => {
+    const request = preview.url
+      ? fetch(assetURL(preview.url), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
+        if (!response.ok) throw new Error(`Text preview returned HTTP ${response.status}.`);
+        const length = Number(response.headers.get("content-length") ?? 0);
+        if (length > 512 * 1024) throw new Error("Text file is too large to preview.");
+        const content = await response.text();
+        if (content.length > 512 * 1024) throw new Error("Text file is too large to preview.");
+        return { content };
+      })
+      : api.getMediaText(preview.locationId);
+    request.then((result) => setText(result.content)).catch((err) => {
       setError(err instanceof Error ? err.message : "Text preview failed.");
     });
   }, [preview]);

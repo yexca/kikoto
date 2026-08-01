@@ -166,6 +166,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}", s.getRemoteSourceWork)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}/tracks", s.getRemoteSourceWorkTracks)
+	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}/text", s.getRemoteSourceWorkText)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)
@@ -3131,6 +3132,26 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 	if err := locationRows.Close(); err != nil {
 		return nil, err
 	}
+	// Older scans may have stored files before an extension was recognized.
+	// Derive the playable kind from the concrete location so existing media
+	// becomes usable without requiring a destructive rescan.
+	for index := range mediaItems {
+		if mediaItems[index].Kind != "file" {
+			continue
+		}
+		for _, location := range mediaItems[index].Locations {
+			if location.Availability != "available" && location.Availability != "remote" {
+				continue
+			}
+			if kind := mediaKindFromPath(location.Path); kind != "file" {
+				mediaItems[index].Kind = kind
+				if mediaItems[index].DurationSeconds == nil {
+					mediaItems[index].DurationSeconds = location.DurationSeconds
+				}
+				break
+			}
+		}
+	}
 	return mediaItems, nil
 }
 
@@ -4265,7 +4286,7 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 		"root":             s.cfg.DataRoot,
 		"scan_depth":       scanDepth,
 		"code_patterns":    []string{"RJ", "BJ", "VJ", "CC"},
-		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac"},
+		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"},
 	})); err != nil {
 		return 0, err
 	}
@@ -4758,7 +4779,7 @@ func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int6
 func localFileKind(path string) string {
 	extension := strings.ToLower(filepath.Ext(path))
 	switch extension {
-	case ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac":
+	case ".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac":
 		return "audio"
 	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi":
 		return "video"

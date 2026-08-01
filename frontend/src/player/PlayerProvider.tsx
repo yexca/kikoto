@@ -90,7 +90,7 @@ export type PlayerTrack = {
   progressRecordable: boolean;
   lyricsLocationId: number | null;
   lyricsTitle: string;
-  lyricsChoices?: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
+  lyricsChoices?: { mediaItemId: number; locationId: number; title: string; path: string; reason: string; url?: string }[];
   autoLyricsLocationId?: number | null;
   preferredLyricsMediaItemId?: number | null;
   remoteSourceId?: number;
@@ -1144,6 +1144,7 @@ export function PlayerDock() {
   const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
   const suppressCollapseClickRef = useRef(false);
   const desktopFullHeight = useDesktopFullPlayerHeight(isMobile);
+  const compactFullLayout = desktopFullHeight < 540;
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(
@@ -1192,7 +1193,7 @@ export function PlayerDock() {
       setUsingAutomaticLyrics(true);
       setActiveLyricsLocationId(track.autoLyricsLocationId ?? null);
       try {
-        await api.clearMediaLyricsPreference(track.mediaItemId);
+      if (track.progressRecordable) await api.clearMediaLyricsPreference(track.mediaItemId);
       } catch (error) {
         toast.notify({
           kind: "warning",
@@ -1207,7 +1208,9 @@ export function PlayerDock() {
     setUsingAutomaticLyrics(false);
     setActiveLyricsLocationId(locationId);
     try {
-      await api.setMediaLyricsPreference(track.mediaItemId, choice.mediaItemId);
+      if (track.progressRecordable && choice.mediaItemId > 0) {
+        await api.setMediaLyricsPreference(track.mediaItemId, choice.mediaItemId);
+      }
     } catch (error) {
       toast.notify({
         kind: "warning",
@@ -1220,11 +1223,21 @@ export function PlayerDock() {
     setLyricsText(null);
     setLyricsError("");
     if (!activeLyricsLocationId) return;
-    api
-      .getMediaText(activeLyricsLocationId)
+    const lyricsURL = activeLyricsChoice?.url;
+    const request = lyricsURL
+      ? fetch(assetURL(lyricsURL), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
+        if (!response.ok) throw new Error(`Lyrics preview returned HTTP ${response.status}.`);
+        const length = Number(response.headers.get("content-length") ?? 0);
+        if (length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
+        const content = await response.text();
+        if (content.length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
+        return { content };
+      })
+      : api.getMediaText(activeLyricsLocationId);
+    request
       .then((result) => setLyricsText(result.content))
       .catch((error) => setLyricsError(error instanceof Error ? error.message : "Lyrics preview failed."));
-  }, [activeLyricsLocationId]);
+  }, [activeLyricsChoice?.url, activeLyricsLocationId]);
 
   useEffect(() => {
     if (lyricsDisplayMode === "preview" && (lyricsError || (lyricsText !== null && !parsedLyrics.timed))) {
@@ -1397,11 +1410,14 @@ export function PlayerDock() {
       const containerHeight = container.getBoundingClientRect().height;
       const coverHeight = cover?.getBoundingClientRect().height ?? 0;
       const titleHeight = title?.getBoundingClientRect().height ?? 0;
-      if (containerHeight < 320 || coverHeight < 120 || titleHeight < 24) return;
+      if (containerHeight < 180 || coverHeight < 80 || titleHeight < 20) {
+        setLyricsPreviewRows(0);
+        return;
+      }
       // Account for the main panel padding, artwork-stack padding, and both flex gaps.
-      const reservedGap = 56;
+      const reservedGap = 44;
       const available = containerHeight - coverHeight - titleHeight - reservedGap;
-      const nextRows = Math.max(1, Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT)));
+      const nextRows = available < LYRIC_PREVIEW_ROW_HEIGHT ? 0 : Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT));
       setLyricsPreviewRows((rows) => (rows === nextRows ? rows : nextRows));
     };
     const scheduleMeasure = () => {
@@ -1710,7 +1726,7 @@ export function PlayerDock() {
 
   return (
     <section
-      className="fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78"
+      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
       style={
         {
           ...(!isMobile ? { height: desktopFullHeight } : {}),
@@ -1780,7 +1796,7 @@ export function PlayerDock() {
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
 
-        <div ref={fullMainRef} className="min-h-0 flex-1 space-y-4 overflow-hidden px-4 pb-4">
+        <div ref={fullMainRef} className={`min-h-0 flex-1 overflow-hidden px-4 pb-4 ${compactFullLayout ? "space-y-2" : "space-y-4"}`}>
           {hasPanel ? (
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
               <div
@@ -1790,7 +1806,7 @@ export function PlayerDock() {
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
-                  <div className="truncate text-xs text-muted-foreground">{track.workTitle}</div>
+                  <div className="truncate text-xs text-muted-foreground" title={track.circle || track.workTitle}>{track.circle || track.workTitle}</div>
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
@@ -1844,11 +1860,11 @@ export function PlayerDock() {
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col justify-center gap-3 py-2">
+            <div className={`flex h-full flex-col justify-center py-2 ${compactFullLayout ? "gap-1" : "gap-3"}`}>
               <button
                 data-player-cover-shell
                 data-player-measure
-                className={`mx-auto w-full touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
+                className={`mx-auto w-full touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
                 title="Double-click to open work detail"
@@ -1859,11 +1875,11 @@ export function PlayerDock() {
                   className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-lg"
                 />
               </button>
-              <div data-player-title-block data-player-measure className="space-y-1 text-center">
-                <div className="line-clamp-2 text-base font-semibold">{track.title}</div>
-                <div className="line-clamp-2 text-sm text-muted-foreground">{track.workTitle}</div>
+              <div data-player-title-block data-player-measure className="min-w-0 max-w-full space-y-0.5 text-center">
+                <div className={`truncate font-semibold ${compactFullLayout ? "text-sm" : "text-base"}`} title={track.title}>{track.title}</div>
+                <div className={`truncate text-muted-foreground ${compactFullLayout ? "text-xs" : "text-sm"}`} title={track.circle || track.workTitle}>{track.circle || track.workTitle}</div>
               </div>
-              {lyricsDisplayMode === "preview" && parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
+              {lyricsDisplayMode === "preview" && lyricsPreviewRows > 0 && parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
                 <InlineLyricsPreview
                   parsed={parsedLyrics}
                   activeIndex={Math.max(0, activeLyricIndex)}
@@ -2259,7 +2275,6 @@ function useDesktopFullPlayerHeight(isMobile: boolean) {
   const [height, setHeight] = useState(() => desktopFullPlayerHeight());
 
   useEffect(() => {
-    if (isMobile) return;
     const update = () => setHeight(desktopFullPlayerHeight());
     update();
     window.addEventListener("resize", update);
@@ -2271,7 +2286,7 @@ function useDesktopFullPlayerHeight(isMobile: boolean) {
 
 function desktopFullPlayerHeight() {
   const viewportHeight = window.innerHeight;
-  return Math.round(Math.min(720, Math.max(560, viewportHeight * 0.62)));
+  return Math.round(Math.min(720, Math.max(440, viewportHeight * 0.64)));
 }
 
 function safeAreaBottom() {
@@ -2491,7 +2506,7 @@ function LyricsPanel({
   text: string;
   parsed: ParsedLyrics;
   activeIndex: number;
-  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
+  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string; url?: string }[];
   activeLocationId: number;
   automatic: boolean;
   onChoiceChange: (locationId: number | null) => void;

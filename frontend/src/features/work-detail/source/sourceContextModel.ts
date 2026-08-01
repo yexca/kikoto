@@ -95,18 +95,24 @@ export function buildSourceTabs(
   const baseTabs: SourceTabInfo[] = [...tabs];
   const trackedOptions = buildTrackedPresenceOptions(items, remoteSources, sourcePresence);
   const activeTracked = selectedTrackedOption ?? trackedOptions.find((option) => option.forked) ?? trackedOptions[0];
-  if (activeTracked) {
-    baseTabs.push({
-      key: "tracked",
-      label: "Tracked",
-      sourceName: activeTracked.label,
-      fileSourceId: null,
-      kind: "tracked",
-      presence: activeTracked.presence,
-      status: activeTracked.status,
-      statusLabel: activeTracked.statusLabel,
-    });
-  }
+  baseTabs.push(activeTracked ? {
+    key: "tracked",
+    label: "Tracked",
+    sourceName: activeTracked.label,
+    fileSourceId: null,
+    kind: "tracked",
+    presence: activeTracked.presence,
+    status: activeTracked.status,
+    statusLabel: activeTracked.statusLabel,
+  } : {
+    key: "tracked",
+    label: "Tracked",
+    sourceName: "Tracked",
+    fileSourceId: null,
+    kind: "tracked",
+    status: "yellow",
+    statusLabel: "No tracked source linked",
+  });
   for (const remote of remoteSources) {
     const status = remoteSourceTabStatus(remote.summary);
     baseTabs.push({
