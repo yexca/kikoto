@@ -36,6 +36,8 @@ export type RemoteSourceAvailability = {
   detail?: RemoteWorkDetail;
   loading?: boolean;
   error?: string;
+  treeLoading?: boolean;
+  treeError?: string;
 };
 
 export type ReforkTarget = {

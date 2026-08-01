@@ -238,8 +238,18 @@ type remoteWorkDetail struct {
 	VoiceRefs        []remoteEntityRef       `json:"voiceRefs"`
 	ImportStatus     string                  `json:"importStatus"`
 	WorkID           *int64                  `json:"workId"`
-	Tracks           []remoteTrackDetail     `json:"tracks"`
+	Tracks           []remoteTrackDetail     `json:"tracks,omitempty"`
 	LanguageEditions []remoteLanguageEdition `json:"languageEditions"`
+}
+
+type remoteWorkTracksDetail struct {
+	SourceID    int64               `json:"sourceId"`
+	SourceCode  string              `json:"sourceCode"`
+	SourceName  string              `json:"sourceName"`
+	RemoteID    string              `json:"remoteId"`
+	PrimaryCode string              `json:"primaryCode"`
+	RemoteCode  string              `json:"remoteCode"`
+	Tracks      []remoteTrackDetail `json:"tracks"`
 }
 
 type remoteLanguageEdition struct {
@@ -392,6 +402,12 @@ type remoteWorkTracksSnapshot struct {
 	Source    remoteSourceForUse
 	Work      kikoeru.Work
 	Tracks    []kikoeru.Track
+	ExpiresAt time.Time
+}
+
+type remoteWorkSnapshot struct {
+	Source    remoteSourceForUse
+	Work      kikoeru.Work
 	ExpiresAt time.Time
 }
 
@@ -1184,7 +1200,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
+	source, remoteWork, err := s.loadRemoteWorkCached(r.Context(), id, code)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
@@ -1194,7 +1210,35 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
-	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, tracks, language)
+	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, language)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) getRemoteSourceWorkTracks(w http.ResponseWriter, r *http.Request) {
+	id, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
+		return
+	}
+	code := remoteWorkCodeFromPath(r)
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
+		return
+	}
+	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(r.Context(), id, code)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeUpstreamError(w, err)
+		return
+	}
+	detail, err := s.remoteWorkTracksDetail(r.Context(), source, remoteWork, tracks)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -4142,15 +4186,28 @@ func remoteWorkCodeFromPath(r *http.Request) string {
 }
 
 func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {
+	source, remoteWork, err := s.loadRemoteWork(ctx, sourceID, code)
+	if err != nil {
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	tracks, err := s.loadRemoteTracks(ctx, source, remoteWork)
+	if err != nil {
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	return source, remoteWork, tracks, nil
+}
+
+func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, error) {
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source not found")
+			return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source not found")
 		}
-		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+		return remoteSourceForUse{}, kikoeru.Work{}, err
 	}
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return remoteSourceForUse{}, kikoeru.Work{}, nil, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+		return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
 	client := s.kikoeruClientForSource(source)
 	remoteWork, _, err := s.resolveRemoteWorkForAccess(ctx, client, code)
@@ -4158,30 +4215,84 @@ func (s *Server) loadRemoteWorkTracks(ctx context.Context, sourceID int64, code 
 		if !errors.Is(err, sql.ErrNoRows) {
 			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
 		}
-		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
-	}
-	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
-	if err != nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
-		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+		return remoteSourceForUse{}, kikoeru.Work{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
-	return source, remoteWork, tracks, nil
+	return source, remoteWork, nil
 }
 
-func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {
-	key := fmt.Sprintf("%d:%s", sourceID, strings.ToUpper(strings.TrimSpace(code)))
+func (s *Server) loadRemoteTracks(ctx context.Context, source remoteSourceForUse, work kikoeru.Work) ([]kikoeru.Track, error) {
+	tracks, _, err := s.kikoeruClientForSource(source).Tracks(ctx, work.ID)
+	if err != nil {
+		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		return nil, err
+	}
+	return tracks, nil
+}
+
+func (s *Server) loadRemoteWorkCached(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, error) {
+	key := remoteWorkCacheKey(sourceID, code)
 	now := time.Now()
 	s.remoteWorkCacheMu.Lock()
 	snapshot, found := s.remoteWorkCache[key]
 	if found && now.Before(snapshot.ExpiresAt) {
 		s.remoteWorkCacheMu.Unlock()
-		return snapshot.Source, snapshot.Work, snapshot.Tracks, nil
+		return snapshot.Source, snapshot.Work, nil
 	}
 	if found {
 		delete(s.remoteWorkCache, key)
 	}
 	if call := s.remoteWorkCacheCalls[key]; call != nil {
+		s.remoteWorkCacheMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return remoteSourceForUse{}, kikoeru.Work{}, ctx.Err()
+		case <-call.done:
+			return call.source, call.work, call.err
+		}
+	}
+	call := &remoteWorkCall{done: make(chan struct{})}
+	s.remoteWorkCacheCalls[key] = call
+	s.remoteWorkCacheMu.Unlock()
+
+	source, work, err := s.loadRemoteWork(ctx, sourceID, code)
+	call.source, call.work, call.err = source, work, err
+	defer func() {
+		s.remoteWorkCacheMu.Lock()
+		delete(s.remoteWorkCacheCalls, key)
+		close(call.done)
+		s.remoteWorkCacheMu.Unlock()
+	}()
+	if err != nil {
+		return remoteSourceForUse{}, kikoeru.Work{}, err
+	}
+	s.remoteWorkCacheMu.Lock()
+	pruneRemoteWorkSnapshots(s.remoteWorkCache, now)
+	if len(s.remoteWorkCache) >= 64 {
+		deleteOldestRemoteWorkSnapshot(s.remoteWorkCache)
+	}
+	s.remoteWorkCache[key] = remoteWorkSnapshot{Source: source, Work: work, ExpiresAt: now.Add(2 * time.Minute)}
+	s.remoteWorkCacheMu.Unlock()
+	return source, work, nil
+}
+
+func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64, code string) (remoteSourceForUse, kikoeru.Work, []kikoeru.Track, error) {
+	source, work, err := s.loadRemoteWorkCached(ctx, sourceID, code)
+	if err != nil {
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+	}
+	key := remoteWorkCacheKey(sourceID, code)
+	now := time.Now()
+	s.remoteWorkCacheMu.Lock()
+	snapshot, found := s.remoteWorkTracksCache[key]
+	if found && now.Before(snapshot.ExpiresAt) {
+		s.remoteWorkCacheMu.Unlock()
+		return snapshot.Source, snapshot.Work, snapshot.Tracks, nil
+	}
+	if found {
+		delete(s.remoteWorkTracksCache, key)
+	}
+	if call := s.remoteWorkTracksCacheCalls[key]; call != nil {
 		s.remoteWorkCacheMu.Unlock()
 		select {
 		case <-ctx.Done():
@@ -4191,14 +4302,14 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 		}
 	}
 	call := &remoteWorkTracksCall{done: make(chan struct{})}
-	s.remoteWorkCacheCalls[key] = call
+	s.remoteWorkTracksCacheCalls[key] = call
 	s.remoteWorkCacheMu.Unlock()
 
-	source, work, tracks, err := s.loadRemoteWorkTracks(ctx, sourceID, code)
+	tracks, err := s.loadRemoteTracks(ctx, source, work)
 	call.source, call.work, call.tracks, call.err = source, work, tracks, err
 	defer func() {
 		s.remoteWorkCacheMu.Lock()
-		delete(s.remoteWorkCacheCalls, key)
+		delete(s.remoteWorkTracksCacheCalls, key)
 		close(call.done)
 		s.remoteWorkCacheMu.Unlock()
 	}()
@@ -4206,24 +4317,20 @@ func (s *Server) loadRemoteWorkTracksCached(ctx context.Context, sourceID int64,
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
 	s.remoteWorkCacheMu.Lock()
-	for cachedKey, cached := range s.remoteWorkCache {
-		if !now.Before(cached.ExpiresAt) {
-			delete(s.remoteWorkCache, cachedKey)
-		}
+	pruneRemoteWorkTracksSnapshots(s.remoteWorkTracksCache, now)
+	if len(s.remoteWorkTracksCache) >= 64 {
+		deleteOldestRemoteWorkTracksSnapshot(s.remoteWorkTracksCache)
 	}
-	if len(s.remoteWorkCache) >= 64 {
-		oldestKey := ""
-		var oldestExpiry time.Time
-		for cachedKey, cached := range s.remoteWorkCache {
-			if oldestKey == "" || cached.ExpiresAt.Before(oldestExpiry) {
-				oldestKey, oldestExpiry = cachedKey, cached.ExpiresAt
-			}
-		}
-		delete(s.remoteWorkCache, oldestKey)
-	}
-	s.remoteWorkCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: now.Add(2 * time.Minute)}
+	s.remoteWorkTracksCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: now.Add(2 * time.Minute)}
 	s.remoteWorkCacheMu.Unlock()
 	return source, work, tracks, nil
+}
+
+type remoteWorkCall struct {
+	done   chan struct{}
+	source remoteSourceForUse
+	work   kikoeru.Work
+	err    error
 }
 
 type remoteWorkTracksCall struct {
@@ -4234,6 +4341,52 @@ type remoteWorkTracksCall struct {
 	err    error
 }
 
+func remoteWorkCacheKey(sourceID int64, code string) string {
+	return fmt.Sprintf("%d:%s", sourceID, strings.ToUpper(strings.TrimSpace(code)))
+}
+
+func pruneRemoteWorkSnapshots(snapshots map[string]remoteWorkSnapshot, now time.Time) {
+	for key, snapshot := range snapshots {
+		if !now.Before(snapshot.ExpiresAt) {
+			delete(snapshots, key)
+		}
+	}
+}
+
+func pruneRemoteWorkTracksSnapshots(snapshots map[string]remoteWorkTracksSnapshot, now time.Time) {
+	for key, snapshot := range snapshots {
+		if !now.Before(snapshot.ExpiresAt) {
+			delete(snapshots, key)
+		}
+	}
+}
+
+func deleteOldestRemoteWorkSnapshot(snapshots map[string]remoteWorkSnapshot) {
+	oldestKey := ""
+	var oldestExpiry time.Time
+	for key, snapshot := range snapshots {
+		if oldestKey == "" || snapshot.ExpiresAt.Before(oldestExpiry) {
+			oldestKey, oldestExpiry = key, snapshot.ExpiresAt
+		}
+	}
+	if oldestKey != "" {
+		delete(snapshots, oldestKey)
+	}
+}
+
+func deleteOldestRemoteWorkTracksSnapshot(snapshots map[string]remoteWorkTracksSnapshot) {
+	oldestKey := ""
+	var oldestExpiry time.Time
+	for key, snapshot := range snapshots {
+		if oldestKey == "" || snapshot.ExpiresAt.Before(oldestExpiry) {
+			oldestKey, oldestExpiry = key, snapshot.ExpiresAt
+		}
+	}
+	if oldestKey != "" {
+		delete(snapshots, oldestKey)
+	}
+}
+
 func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
 	prefix := strconv.FormatInt(sourceID, 10) + ":"
 	s.remoteWorkCacheMu.Lock()
@@ -4241,6 +4394,11 @@ func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
 	for key := range s.remoteWorkCache {
 		if strings.HasPrefix(key, prefix) {
 			delete(s.remoteWorkCache, key)
+		}
+	}
+	for key := range s.remoteWorkTracksCache {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.remoteWorkTracksCache, key)
 		}
 	}
 }
@@ -4987,7 +5145,7 @@ func sortedStringKeys(values map[string]bool) []string {
 	return keys
 }
 
-func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track, language string) (remoteWorkDetail, error) {
+func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, language string) (remoteWorkDetail, error) {
 	code := normalizedRemoteWorkCode(work)
 	displayCode := code
 	ref, err := s.canonicalWorkForCode(ctx, code)
@@ -5036,10 +5194,6 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 	if value, ok := normalizeDate(work.Release).(string); ok {
 		releaseDate = value
 	}
-	locationState, err := s.remoteTrackLocationState(ctx, source.ID, code)
-	if err != nil {
-		return remoteWorkDetail{}, err
-	}
 	return remoteWorkDetail{
 		SourceID:         source.ID,
 		SourceCode:       source.Code,
@@ -5064,8 +5218,27 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 		VoiceRefs:        voiceRefs,
 		ImportStatus:     status,
 		WorkID:           workID,
-		Tracks:           remoteTrackDetails(source.Code, code, tracks, "", locationState),
 		LanguageEditions: normalizedRemoteLanguageEditions(work),
+	}, nil
+}
+
+func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, tracks []kikoeru.Track) (remoteWorkTracksDetail, error) {
+	code := normalizedRemoteWorkCode(work)
+	if code == "" {
+		code = strings.TrimSpace(work.SourceID)
+	}
+	locationState, err := s.remoteTrackLocationState(ctx, source.ID, code)
+	if err != nil {
+		return remoteWorkTracksDetail{}, err
+	}
+	return remoteWorkTracksDetail{
+		SourceID:    source.ID,
+		SourceCode:  source.Code,
+		SourceName:  source.DisplayName,
+		RemoteID:    strconv.FormatInt(work.ID, 10),
+		PrimaryCode: code,
+		RemoteCode:  code,
+		Tracks:      remoteTrackDetails(source.Code, code, tracks, "", locationState),
 	}, nil
 }
 

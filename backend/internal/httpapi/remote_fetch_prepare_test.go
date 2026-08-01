@@ -129,7 +129,12 @@ func TestRemoteFetchMetadataReadyRejectsRemoteOnlyWorkShell(t *testing.T) {
 func TestRemoteWorkTrackCacheReusesSnapshot(t *testing.T) {
 	server := NewServer(nil, config.Config{})
 	key := "7:RJ09999995"
-	server.remoteWorkCache[key] = remoteWorkTracksSnapshot{
+	server.remoteWorkCache[key] = remoteWorkSnapshot{
+		Source:    remoteSourceForUse{ID: 7, Code: "cached"},
+		Work:      kikoeru.Work{ID: 95, SourceID: "RJ09999995"},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	server.remoteWorkTracksCache[key] = remoteWorkTracksSnapshot{
 		Source:    remoteSourceForUse{ID: 7, Code: "cached"},
 		Work:      kikoeru.Work{ID: 95, SourceID: "RJ09999995"},
 		Tracks:    []kikoeru.Track{{Type: "audio", Title: "Cached track"}},
@@ -147,14 +152,17 @@ func TestRemoteWorkTrackCacheReusesSnapshot(t *testing.T) {
 
 func TestInvalidateRemoteWorkCacheRemovesOnlySelectedSource(t *testing.T) {
 	server := NewServer(nil, config.Config{})
-	server.remoteWorkCache["7:RJ09999995"] = remoteWorkTracksSnapshot{}
-	server.remoteWorkCache["7:RJ09999996"] = remoteWorkTracksSnapshot{}
-	server.remoteWorkCache["8:RJ09999995"] = remoteWorkTracksSnapshot{}
+	server.remoteWorkCache["7:RJ09999995"] = remoteWorkSnapshot{}
+	server.remoteWorkCache["7:RJ09999996"] = remoteWorkSnapshot{}
+	server.remoteWorkCache["8:RJ09999995"] = remoteWorkSnapshot{}
+	server.remoteWorkTracksCache["7:RJ09999995"] = remoteWorkTracksSnapshot{}
+	server.remoteWorkTracksCache["7:RJ09999996"] = remoteWorkTracksSnapshot{}
+	server.remoteWorkTracksCache["8:RJ09999995"] = remoteWorkTracksSnapshot{}
 
 	server.invalidateRemoteWorkCache(7)
 
-	if len(server.remoteWorkCache) != 1 {
-		t.Fatalf("cache size = %d, want 1", len(server.remoteWorkCache))
+	if len(server.remoteWorkCache) != 1 || len(server.remoteWorkTracksCache) != 1 {
+		t.Fatalf("cache sizes = metadata %d, tracks %d, want 1", len(server.remoteWorkCache), len(server.remoteWorkTracksCache))
 	}
 	if _, ok := server.remoteWorkCache["8:RJ09999995"]; !ok {
 		t.Fatal("cache entry for another source was removed")

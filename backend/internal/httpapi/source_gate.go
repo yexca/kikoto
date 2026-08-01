@@ -12,19 +12,32 @@ import (
 )
 
 type sourceRequestGate struct {
-	mu    sync.Mutex
-	lanes map[string]*sourceRequestLane
+	mu      sync.Mutex
+	lanes   map[string]*sourceRequestLane
+	origins map[string]*sourceOriginState
 }
 
 type sourceRequestLane struct {
+	mu          sync.Mutex
+	lastStarted time.Time
+}
+
+type sourceOriginState struct {
 	mu           sync.Mutex
-	lastStarted  time.Time
 	blockedUntil time.Time
 }
+
+type sourceRequestClass uint8
+
+const (
+	sourceRequestInteractive sourceRequestClass = iota
+	sourceRequestDownload
+)
 
 type sourceGateTransport struct {
 	server *Server
 	base   http.RoundTripper
+	class  sourceRequestClass
 }
 
 type sourceGateBody struct {
@@ -42,26 +55,51 @@ func (body *sourceGateBody) Read(buffer []byte) (int, error) {
 }
 
 func newSourceRequestGate() *sourceRequestGate {
-	return &sourceRequestGate{lanes: map[string]*sourceRequestLane{}}
+	return &sourceRequestGate{
+		lanes:   map[string]*sourceRequestLane{},
+		origins: map[string]*sourceOriginState{},
+	}
 }
 
-func (g *sourceRequestGate) lane(key string) *sourceRequestLane {
+func (g *sourceRequestGate) lane(key string, class sourceRequestClass) *sourceRequestLane {
+	laneKey := key
+	if class == sourceRequestDownload {
+		laneKey += ":download"
+	} else {
+		laneKey += ":interactive"
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if lane := g.lanes[key]; lane != nil {
+	if lane := g.lanes[laneKey]; lane != nil {
 		return lane
 	}
 	lane := &sourceRequestLane{}
-	g.lanes[key] = lane
+	g.lanes[laneKey] = lane
 	return lane
 }
 
+func (g *sourceRequestGate) origin(key string) *sourceOriginState {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if origin := g.origins[key]; origin != nil {
+		return origin
+	}
+	origin := &sourceOriginState{}
+	g.origins[key] = origin
+	return origin
+}
+
 func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	lane := t.server.sourceGate.lane(canonicalSourceOrigin(request.URL))
+	originKey := canonicalSourceOrigin(request.URL)
+	lane := t.server.sourceGate.lane(originKey, t.class)
+	origin := t.server.sourceGate.origin(originKey)
 	lane.mu.Lock()
 	release := lane.mu.Unlock
-	delay := t.server.remoteRequestDelayDuration(request.Context())
-	waitUntil := lane.blockedUntil
+	delay := time.Duration(0)
+	if t.class == sourceRequestDownload {
+		delay = t.server.remoteRequestDelayDuration(request.Context())
+	}
+	waitUntil := origin.blockedUntilValue()
 	if next := lane.lastStarted.Add(delay); next.After(waitUntil) {
 		waitUntil = next
 	}
@@ -82,9 +120,7 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 		if blockedFor <= 0 {
 			blockedFor = t.server.remoteBackoffDuration(request.Context(), response, 0)
 		}
-		if until := time.Now().Add(blockedFor); until.After(lane.blockedUntil) {
-			lane.blockedUntil = until
-		}
+		origin.blockFor(blockedFor)
 	}
 	response.Body = &sourceGateBody{ReadCloser: response.Body, release: release}
 	return response, nil
@@ -97,8 +133,30 @@ func (body *sourceGateBody) Close() error {
 }
 
 func (s *Server) sourceHTTPClient(timeout time.Duration) *http.Client {
-	transport := &sourceGateTransport{server: s, base: http.DefaultTransport}
+	transport := &sourceGateTransport{server: s, base: http.DefaultTransport, class: sourceRequestInteractive}
 	return &http.Client{Transport: transport, Timeout: timeout}
+}
+
+func (s *Server) sourceDownloadHTTPClient(timeout time.Duration) *http.Client {
+	transport := &sourceGateTransport{server: s, base: http.DefaultTransport, class: sourceRequestDownload}
+	return &http.Client{Transport: transport, Timeout: timeout}
+}
+
+func (state *sourceOriginState) blockedUntilValue() time.Time {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.blockedUntil
+}
+
+func (state *sourceOriginState) blockFor(duration time.Duration) {
+	if duration <= 0 {
+		return
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if until := time.Now().Add(duration); until.After(state.blockedUntil) {
+		state.blockedUntil = until
+	}
 }
 
 func canonicalSourceOrigin(value *url.URL) string {

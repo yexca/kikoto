@@ -502,6 +502,18 @@ export type RemoteWorkDetail = {
   languageEditions: RemoteLanguageEdition[];
 };
 
+export type RemoteWorkMetadata = Omit<RemoteWorkDetail, "tracks">;
+
+export type RemoteWorkTracksResponse = {
+  sourceId: number;
+  sourceCode: string;
+  sourceName: string;
+  remoteId: string;
+  primaryCode: string;
+  remoteCode: string;
+  tracks: RemoteTrack[];
+};
+
 export type RemoteLanguageEdition = {
   remoteCode: string;
   language: string;
@@ -1657,8 +1669,18 @@ export const api = {
       `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
-  getRemoteSourceWork: (id: number, code: string, signal?: AbortSignal) =>
-    getJSON<RemoteWorkDetail>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`, signal),
+  getRemoteSourceWorkMetadata: (id: number, code: string, signal?: AbortSignal) =>
+    getJSON<RemoteWorkMetadata>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`, signal),
+  getRemoteSourceWorkTracks: (id: number, code: string, signal?: AbortSignal) =>
+    getJSON<RemoteWorkTracksResponse>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/tracks`, signal),
+  getRemoteSourceWork: async (id: number, code: string, signal?: AbortSignal) => {
+    const metadata = await getJSON<RemoteWorkMetadata>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`, signal);
+    const tracks = await getJSON<RemoteWorkTracksResponse>(
+      `/api/remote-sources/${id}/works/${encodeURIComponent(metadata.remoteCode || code)}/tracks`,
+      signal,
+    );
+    return { ...metadata, tracks: tracks.tracks };
+  },
   getSourceAvailability: (code: string) =>
     getJSON<SourceAvailabilityResponse>(`/api/works/${encodeURIComponent(code)}/source-availability`),
   checkSourceAvailability: (code: string, sourceId = 0) =>

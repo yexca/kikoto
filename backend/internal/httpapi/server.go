@@ -39,8 +39,10 @@ type Server struct {
 	circleAutoRefreshMu            sync.Mutex
 	circleAutoRefreshing           map[int64]bool
 	remoteWorkCacheMu              sync.Mutex
-	remoteWorkCache                map[string]remoteWorkTracksSnapshot
-	remoteWorkCacheCalls           map[string]*remoteWorkTracksCall
+	remoteWorkCache                map[string]remoteWorkSnapshot
+	remoteWorkCacheCalls           map[string]*remoteWorkCall
+	remoteWorkTracksCache          map[string]remoteWorkTracksSnapshot
+	remoteWorkTracksCacheCalls     map[string]*remoteWorkTracksCall
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
@@ -63,8 +65,10 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		db: db, accountStore: account.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		dlsiteClient:                   dlsite.NewClient(nil),
 		circleAutoRefreshing:           map[int64]bool{},
-		remoteWorkCache:                map[string]remoteWorkTracksSnapshot{},
-		remoteWorkCacheCalls:           map[string]*remoteWorkTracksCall{},
+		remoteWorkCache:                map[string]remoteWorkSnapshot{},
+		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
+		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
+		remoteWorkTracksCacheCalls:     map[string]*remoteWorkTracksCall{},
 		localMediaIndexes:              map[string]*localMediaIndexCall{},
 		localMediaWriteSlot:            make(chan struct{}, 1),
 		sourceGate:                     newSourceRequestGate(),
@@ -161,6 +165,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/file-sources/{id}/health-check", s.checkFileSourceHealth)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works", s.listRemoteSourceWorks)
 	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}", s.getRemoteSourceWork)
+	mux.HandleFunc("GET /api/remote-sources/{id}/works/{code}/tracks", s.getRemoteSourceWorkTracks)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)
@@ -2602,7 +2607,7 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 			return 0, err
 		}
 		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-		response, err := s.sourceHTTPClient(0).Do(request)
+		response, err := s.sourceDownloadHTTPClient(0).Do(request)
 		if err != nil {
 			downloadErr := remoteDownloadError{Err: err, Retryable: true}
 			lastErr = downloadErr

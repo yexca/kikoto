@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   type LibrarySource,
+  type RemoteWorkDetail,
   type SourceAvailabilityResponse,
   type WorkDetail,
 } from "@/lib/api";
@@ -68,6 +69,8 @@ export function useWorkSourceContext({
   const selectedTrackedSourceID = trackedPresenceSourceID(selectedTrackedPresence);
   const selectedTrackedRemoteSource = remoteSourceForTrackedPresence(selectedTrackedPresence, remoteSources);
   const selectedRemoteDetail = selectedRemoteSource?.detail ?? null;
+  const selectedRemoteTreeLoading = Boolean(selectedRemoteSource?.treeLoading);
+  const selectedRemoteTreeError = selectedRemoteSource?.treeError ?? "";
   const selectedRemoteSourceID = selectedRemoteSource?.source.id ?? null;
   const selectedRemoteWorkCode = selectedRemoteSource
     ? currentRemoteSourceWorkCode(
@@ -85,7 +88,16 @@ export function useWorkSourceContext({
     });
     setRemoteSources((current) => knownSources.map((next) => {
       const previous = current.find((item) => item.source.id === next.source.id);
-      return previous?.detail ? { ...next, detail: previous.detail } : next;
+      return previous?.detail
+        ? {
+          ...next,
+          detail: previous.detail,
+          loading: previous.loading,
+          error: previous.error,
+          treeLoading: previous.treeLoading,
+          treeError: previous.treeError,
+        }
+        : next;
     }));
     setSourceCheckedAt(result.checkedAt);
     setRemoteLoadVersion((version) => version + 1);
@@ -107,7 +119,9 @@ export function useWorkSourceContext({
     setActiveSourceKey(key);
     if (!key.startsWith("remote-source:")) return;
     setRemoteSources((items) =>
-      items.map((item) => (remoteSourceTabKey(item.source.id) === key && item.error ? { ...item, error: "" } : item)),
+      items.map((item) => (remoteSourceTabKey(item.source.id) === key
+        ? { ...item, error: "", treeError: "" }
+        : item)),
     );
     setRemoteLoadVersion((version) => version + 1);
   }, []);
@@ -120,13 +134,46 @@ export function useWorkSourceContext({
   const selectRemoteEdition = useCallback(async (remoteCode: string) => {
     if (!selectedRemoteSource) return false;
     const sourceID = selectedRemoteSource.source.id;
-    setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
+    setRemoteSources((items) => items.map((item) => item.source.id === sourceID
+      ? { ...item, loading: true, error: "", treeLoading: false, treeError: "" }
+      : item));
     try {
-      const detail = await api.getRemoteSourceWork(sourceID, remoteCode);
-      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, detail, loading: false, error: "" } : item));
+      const metadata = await api.getRemoteSourceWorkMetadata(sourceID, remoteCode);
+      const detail: RemoteWorkDetail = { ...metadata, tracks: [] };
+      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
+        ...item,
+        detail,
+        loading: false,
+        error: "",
+        treeLoading: true,
+        treeError: "",
+        summary: {
+          ...item.summary,
+          status: "available",
+          primaryCode: detail.primaryCode,
+          remoteId: detail.remoteId,
+          title: detail.title,
+          coverUrl: detail.coverUrl,
+        },
+      } : item));
+      const tree = await api.getRemoteSourceWorkTracks(sourceID, metadata.remoteCode || remoteCode);
+      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
+        ...item,
+        detail: item.detail ? { ...item.detail, tracks: tree.tracks } : { ...detail, tracks: tree.tracks },
+        treeLoading: false,
+        treeError: "",
+      } : item));
       return true;
     } catch (error) {
-      setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." } : item));
+      setRemoteSources((items) => items.map((item) => item.source.id === sourceID
+        ? {
+          ...item,
+          loading: false,
+          error: item.detail ? "" : error instanceof Error ? error.message : "Remote detail failed.",
+          treeLoading: false,
+          treeError: item.detail ? (error instanceof Error ? error.message : "Remote directory failed.") : "",
+        }
+        : item));
       return false;
     }
   }, [selectedRemoteSource]);
@@ -164,14 +211,20 @@ export function useWorkSourceContext({
     if (!selectedRemoteSource || (!remoteSourceCanBrowse(selectedRemoteSource.summary) && !routedRemoteSource) || selectedRemoteSource.detail || selectedRemoteSource.loading || selectedRemoteSource.error) return;
     const controller = new AbortController();
     const sourceID = selectedRemoteSource.source.id;
-    setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? { ...item, loading: true, error: "" } : item));
-    api.getRemoteSourceWork(sourceID, selectedRemoteWorkCode, controller.signal)
-      .then((detail) => {
+    setRemoteSources((items) => items.map((item) => item.source.id === sourceID
+      ? { ...item, loading: true, error: "", treeLoading: false, treeError: "" }
+      : item));
+    void (async () => {
+      try {
+        const metadata = await api.getRemoteSourceWorkMetadata(sourceID, selectedRemoteWorkCode, controller.signal);
+        const detail: RemoteWorkDetail = { ...metadata, tracks: [] };
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
           ...item,
           detail,
           loading: false,
           error: "",
+          treeLoading: true,
+          treeError: "",
           summary: {
             ...item.summary,
             status: "available",
@@ -181,13 +234,26 @@ export function useWorkSourceContext({
             coverUrl: detail.coverUrl,
           },
         } : item));
-      })
-      .catch((error) => {
+        const tree = await api.getRemoteSourceWorkTracks(sourceID, metadata.remoteCode || selectedRemoteWorkCode, controller.signal);
+        setRemoteSources((items) => items.map((item) => item.source.id === sourceID ? {
+          ...item,
+          detail: item.detail ? { ...item.detail, tracks: tree.tracks } : { ...detail, tracks: tree.tracks },
+          treeLoading: false,
+          treeError: "",
+        } : item));
+      } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setRemoteSources((items) => items.map((item) => item.source.id === sourceID
-          ? { ...item, loading: false, error: error instanceof Error ? error.message : "Remote detail failed." }
+          ? {
+            ...item,
+            loading: false,
+            error: item.detail ? "" : error instanceof Error ? error.message : "Remote detail failed.",
+            treeLoading: false,
+            treeError: item.detail ? (error instanceof Error ? error.message : "Remote directory failed.") : "",
+          }
           : item));
-      });
+      }
+    })();
     return () => controller.abort();
   }, [initialRemoteCode, initialSourceIntent, remoteLoadVersion, selectedRemoteSourceID, selectedRemoteWorkCode]);
 
@@ -214,6 +280,8 @@ export function useWorkSourceContext({
     selectedTrackedSourceID,
     selectedTrackedRemoteSource,
     selectedRemoteDetail,
+    selectedRemoteTreeLoading,
+    selectedRemoteTreeError,
     selectedRemoteSourceID,
     selectedRemoteWorkCode,
     isCheckingSources,

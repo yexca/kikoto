@@ -1564,10 +1564,10 @@ function CacheFetchSettings({
               </div>
             </ConfigurationRow>
 
-            <ConfigurationSectionLabel>Remote request pacing</ConfigurationSectionLabel>
+            <ConfigurationSectionLabel>Remote download pacing</ConfigurationSectionLabel>
             <ConfigurationRow
               title="Base delay"
-              description="Minimum pause between requests to a remote source."
+              description="Minimum pause between remote media downloads. Work information and directory reads are not delayed."
             >
               <ConfigurationNumberInput
                 label="Base delay"
@@ -1579,7 +1579,7 @@ function CacheFetchSettings({
             </ConfigurationRow>
             <ConfigurationRow
               title="Random delay"
-              description="Additional jitter used to avoid synchronized request bursts."
+              description="Additional jitter used to avoid synchronized download bursts."
             >
               <ConfigurationNumberInput
                 label="Random delay"

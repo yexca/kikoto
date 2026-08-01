@@ -177,6 +177,18 @@ async function mockApplication(
       await route.fulfill({ json: fixture.sourceAvailability ?? { workCode: fixture.work?.primaryCode ?? work.primaryCode, checkedAt: "", sources: [] } });
       return;
     }
+    if (fixture.remoteDetail && url.pathname === `/api/remote-sources/7/works/${fixture.work?.primaryCode ?? work.primaryCode}/tracks`) {
+      await route.fulfill({ json: {
+        sourceId: fixture.remoteDetail.sourceId,
+        sourceCode: fixture.remoteDetail.sourceCode,
+        sourceName: fixture.remoteDetail.sourceName,
+        remoteId: fixture.remoteDetail.remoteId,
+        primaryCode: fixture.remoteDetail.primaryCode,
+        remoteCode: fixture.remoteDetail.remoteCode,
+        tracks: fixture.remoteDetail.tracks,
+      } });
+      return;
+    }
     if (fixture.remoteDetail && url.pathname === `/api/remote-sources/7/works/${fixture.work?.primaryCode ?? work.primaryCode}`) {
       await route.fulfill({ json: fixture.remoteDetail });
       return;
@@ -374,6 +386,14 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
       });
       return;
     }
+    if (url.pathname === "/api/remote-sources/1/works/RJ09999991/tracks" && route.request().method() === "GET") {
+      await route.fulfill({ json: {
+        sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "1",
+        primaryCode: "RJ09999991", remoteCode: "RJ09999991",
+        tracks: [{ type: "audio", title: "track.mp3", hash: "hash", streamUrl: "/stream", downloadUrl: "/download", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
+      } });
+      return;
+    }
     if (url.pathname === "/api/remote-sources/1/works/RJ09999991" && route.request().method() === "GET") {
       await route.fulfill({ json: {
         sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "1",
@@ -385,6 +405,14 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
           { remoteCode: "RJ09999993", language: "ENG", label: "English", displayOrder: 2, current: false, origin: false },
         ],
         tracks: [{ type: "audio", title: "track.mp3", hash: "hash", streamUrl: "/stream", downloadUrl: "/download", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/remote-sources/1/works/RJ09999993/tracks" && route.request().method() === "GET") {
+      await route.fulfill({ json: {
+        sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "3",
+        primaryCode: "RJ09999993", remoteCode: "RJ09999993",
+        tracks: [{ type: "audio", title: "english.mp3", hash: "english", streamUrl: "/stream-en", downloadUrl: "/download-en", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
       } });
       return;
     }

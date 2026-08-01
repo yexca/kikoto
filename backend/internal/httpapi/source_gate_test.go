@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,5 +52,48 @@ func TestSourceRequestGateSerializesSameOrigin(t *testing.T) {
 	group.Wait()
 	if maximum != 1 {
 		t.Fatalf("maximum concurrent requests = %d, want 1", maximum)
+	}
+}
+
+func TestSourceRequestGateOnlyPacesDownloadLane(t *testing.T) {
+	var requests int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer remote.Close()
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '60'), ('remote_request_delay_random_seconds', '0')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+
+	interactiveRequest, err := http.NewRequestWithContext(context.Background(), http.MethodGet, remote.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interactiveResponse, err := server.sourceHTTPClient(250 * time.Millisecond).Do(interactiveRequest)
+	if err != nil {
+		t.Fatalf("interactive request: %v", err)
+	}
+	_ = interactiveResponse.Body.Close()
+
+	firstDownload, err := server.sourceDownloadHTTPClient(250 * time.Millisecond).Get(remote.URL)
+	if err != nil {
+		t.Fatalf("first download request: %v", err)
+	}
+	_ = firstDownload.Body.Close()
+
+	downloadContext, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	downloadRequest, err := http.NewRequestWithContext(downloadContext, http.MethodGet, remote.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.sourceDownloadHTTPClient(0).Do(downloadRequest); err == nil {
+		t.Fatal("download request unexpectedly bypassed pacing")
+	}
+	if got := atomic.LoadInt32(&requests); got != 2 {
+		t.Fatalf("remote requests = %d, want interactive and first download", got)
 	}
 }

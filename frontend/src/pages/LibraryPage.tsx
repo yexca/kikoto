@@ -2584,6 +2584,8 @@ function RemoteOnlyWorkDetailController({
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("browse");
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -2611,9 +2613,9 @@ function RemoteOnlyWorkDetailController({
     sourceName: displaySourceName,
     fileSourceId: null,
     kind: "remote",
-    status: detail ? "green" : message ? "red" : "yellow",
-    statusLabel: detail ? "Available" : message ? "Unavailable" : "Loading source",
-  }], [detail, displaySourceName, message, source.id]);
+    status: detail && !treeError ? "green" : message || treeError ? "red" : "yellow",
+    statusLabel: detail && !treeError ? "Available" : message || treeError ? "Unavailable" : "Loading source",
+  }], [detail, displaySourceName, message, source.id, treeError]);
   const player = useLibraryPlayer();
 
   useEffect(() => {
@@ -2635,21 +2637,40 @@ function RemoteOnlyWorkDetailController({
 	setIdentityDetail(null);
     setNotFound(false);
     setMessage("");
+    setTreeLoading(false);
+    setTreeError("");
     fetchWorkspace.close();
     const controller = new AbortController();
-    api.getRemoteSourceWork(source.id, code, controller.signal).then((next) => {
-		setDetail(next);
-		setIdentityDetail(next);
-	}).catch((error) => {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      if (error instanceof ApiError && error.status === 404) {
-        setNotFound(true);
-        return;
+    void (async () => {
+      try {
+        const metadata = await api.getRemoteSourceWorkMetadata(source.id, code, controller.signal);
+        const next: RemoteWorkDetail = { ...metadata, tracks: [] };
+        setDetail(next);
+        setIdentityDetail(next);
+        setTreeLoading(true);
+        try {
+          const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || code, controller.signal);
+          if (!controller.signal.aborted) {
+            setDetail((current) => current ? { ...current, tracks: tracks.tracks } : current);
+            setTreeError("");
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
+        } finally {
+          if (!controller.signal.aborted) setTreeLoading(false);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof ApiError && error.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        const text = error instanceof Error ? error.message : "Remote preview failed.";
+        setMessage(text);
+        toast.notify({ kind: "error", message: text });
       }
-      const text = error instanceof Error ? error.message : "Remote preview failed.";
-      setMessage(text);
-      toast.notify({ kind: "error", message: text });
-    });
+    })();
     return () => controller.abort();
   }, [source.id, code]);
 
@@ -2759,10 +2780,10 @@ function RemoteOnlyWorkDetailController({
   const sourceInfo: ActiveSourceInfoModel = {
     label: displaySourceName,
     kind: "remote",
-    status: detail ? "green" : message ? "red" : "yellow",
-    statusLabel: detail ? "Available" : message ? "Unavailable" : "Loading source",
+    status: detail && !treeError ? "green" : message || treeError ? "red" : "yellow",
+    statusLabel: detail && !treeError ? "Available" : message || treeError ? "Unavailable" : "Loading source",
     stats: directoryStats,
-    loading: isDetailLoading,
+    loading: isDetailLoading || treeLoading,
     metadataDurationSeconds: detail?.durationSeconds ?? null,
   };
   const mediaActions = detail ? (
@@ -2782,9 +2803,9 @@ function RemoteOnlyWorkDetailController({
   const directoryPanel = (
     <SourceDirectoryPanel
       title="Directory"
-      description={detail
+      description={detail && !treeError
         ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
-        : `Loading remote files from ${displaySourceName}...`}
+        : treeError || `Loading remote files from ${displaySourceName}...`}
       statsLabel={formatTreeStats(directoryStats)}
       tabs={remoteTabs}
       activeKey={remoteSourceTabKey(source.id)}
@@ -2796,9 +2817,9 @@ function RemoteOnlyWorkDetailController({
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
       emptyLabel="No remote files detected."
-      toolbar={message ? <DirectoryMessage message={message} /> : undefined}
-      emptyState={isDetailLoading ? <DirectorySkeleton /> : undefined}
-      loadingMessage={isDetailLoading && !message ? `Loading ${displayRemoteCode}...` : undefined}
+      toolbar={message || treeError ? <DirectoryMessage message={message || treeError} /> : undefined}
+      emptyState={isDetailLoading || treeLoading ? <DirectorySkeleton /> : undefined}
+      loadingMessage={isDetailLoading || treeLoading ? `Loading ${displayRemoteCode}...` : undefined}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onPlayFolder={playRemoteTracks}
       onPlayNext={(track) => queueRemoteTrack(track, true)}
@@ -2852,14 +2873,21 @@ function RemoteOnlyWorkDetailController({
 	const selectRemoteLanguageEdition = async (editionCode: string) => {
 		if (!detail || editionCode.toUpperCase() === remoteDetailActionCode(detail).toUpperCase()) return;
 		setIsFetching(true);
+		setTreeLoading(true);
+		setTreeError("");
 		try {
-			const nextDetail = await api.getRemoteSourceWork(source.id, editionCode);
+			const metadata = await api.getRemoteSourceWorkMetadata(source.id, editionCode);
+			const nextDetail: RemoteWorkDetail = { ...metadata, tracks: [] };
 			setDetail(nextDetail);
 			fetchWorkspace.close();
+			const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || editionCode);
+			setDetail((current) => current ? { ...current, tracks: tracks.tracks } : current);
 		} catch (error) {
+			setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
 			toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
 		} finally {
 			setIsFetching(false);
+			setTreeLoading(false);
 		}
 	};
 
@@ -2937,6 +2965,8 @@ function PersistedWorkDetailController({
     selectedTrackedSourceID,
     selectedTrackedRemoteSource,
     selectedRemoteDetail,
+    selectedRemoteTreeLoading,
+    selectedRemoteTreeError,
     selectedRemoteSourceID,
     selectedRemoteWorkCode,
     isCheckingSources,
@@ -3060,8 +3090,8 @@ function PersistedWorkDetailController({
     && !selectedRemoteSource.error
     && remoteSourceCanBrowse(selectedRemoteSource.summary),
   );
-  const directoryMediaError = selectedRemoteSource ? "" : mediaError;
-  const showDirectorySkeleton = !directoryMediaError && (!work || isDirectoryLoading || selectedSourceDetailsLoading);
+  const directoryMediaError = selectedRemoteSource ? selectedRemoteTreeError : mediaError;
+  const showDirectorySkeleton = !directoryMediaError && (!work || isDirectoryLoading || selectedSourceDetailsLoading || selectedRemoteTreeLoading);
 
   const saveWorkUserTags = async (tags: string[]) => {
     if (!work) return;

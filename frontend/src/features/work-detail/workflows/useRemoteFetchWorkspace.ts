@@ -44,7 +44,7 @@ export function useRemoteFetchWorkspace({
     if (!beginOperation()) return false;
     toast.info("Preparing language editions, source files, and the final Fetch tree…");
     try {
-      const detail = fetchIntentDetailMatches(intent, remoteCode)
+      const detail = fetchIntentDetailMatches(intent, remoteCode) && intent.detail!.tracks.length > 0
         ? intent.detail!
         : await api.getRemoteSourceWork(intent.sourceId, remoteCode);
       const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }));
