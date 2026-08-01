@@ -9,6 +9,7 @@ import {
   formatTrackDuration,
   remoteSelectablePaths,
   toPreferredPlayerTrack,
+  toRemotePreviewPlayerTrack,
   treeStats,
 } from "./mediaTreeModel";
 
@@ -215,6 +216,53 @@ describe("mediaTreeModel", () => {
 
     expect(flattenTracks(tree)).toHaveLength(1);
     expect(remoteSelectablePaths(tree)).toEqual(["Disc 1/01.mp3"]);
+  });
+
+  it("uses source, work, and path for remote playback identity", () => {
+    const remoteTracks = [{
+      type: "audio",
+      title: "01.mp3",
+      streamUrl: "/remote/01",
+      downloadUrl: "/remote/01/download",
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+    }] as RemoteTrack[];
+
+    const first = flattenTracks(buildRemoteTree(remoteTracks, { sourceId: 7, workCode: "TEST-WORK-001" }))[0];
+    const second = flattenTracks(buildRemoteTree(remoteTracks, { sourceId: 8, workCode: "TEST-WORK-002" }))[0];
+
+    expect(first.playbackKey).toBeTruthy();
+    expect(second.playbackKey).toBeTruthy();
+    expect(first.playbackKey).not.toBe(second.playbackKey);
+    expect(toRemotePreviewPlayerTrack(first, {
+      sourceId: 7,
+      sourceCode: "remote_a",
+      sourceName: "Remote A",
+      remoteId: "remote-1",
+      primaryCode: "TEST-WORK-001",
+      remoteCode: "TEST-WORK-001",
+      title: "Work",
+      coverUrl: "",
+      sourceUrl: "",
+      publicWorkUrl: "",
+      circle: "",
+      rating: null,
+      sales: null,
+      price: null,
+      ageRating: "",
+      releaseDate: "",
+      durationSeconds: null,
+      tags: [],
+      voiceActors: [],
+      importStatus: "remote_only",
+      workId: null,
+      tracks: remoteTracks,
+      languageEditions: [],
+    }).playbackKey).toBe(first.playbackKey);
   });
 
   it("includes video with audio in playback and excludes known silent video", () => {

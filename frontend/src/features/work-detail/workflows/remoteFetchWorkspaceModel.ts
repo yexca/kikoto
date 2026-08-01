@@ -106,7 +106,7 @@ export function createDemoRemoteFetchPlan({
   const requestedCode = remoteDetailActionCode(detail) || detail.remoteId || "demo-work";
   const canonicalCode = detail.primaryCode || requestedCode;
   const saveRoot = normalizeDemoFetchRoot(targetRoot, canonicalCode);
-  const tree = buildRemoteTree(detail.tracks);
+  const tree = buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) });
   const filesByPath = new Map(flattenTreeFiles(tree).map((file) => [file.sourcePath, file]));
   const source = demoSourceAvailability(detail);
   const items = Array.from(new Set(paths))

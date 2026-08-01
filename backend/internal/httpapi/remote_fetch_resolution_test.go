@@ -50,7 +50,7 @@ func TestKeepBothAllocatesSafeTarget(t *testing.T) {
 	}
 }
 
-func TestFinishFetchPresenceKeepsTrackedAndRetiresRemoteStream(t *testing.T) {
+func TestFinishFetchPresenceKeepsSourceWithoutCreatingTracked(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	ctx := context.Background()
@@ -68,8 +68,11 @@ func TestFinishFetchPresenceKeepsTrackedAndRetiresRemoteStream(t *testing.T) {
 	if err := server.finishFetchPresence(ctx, 1, []int64{1}, 2, "RJ01234567"); err != nil {
 		t.Fatal(err)
 	}
-	var tracked, remoteStreams, caches int
+	var tracked, source, remoteStreams, caches int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&tracked); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'source' AND availability = 'available'`).Scan(&source); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'remote_stream'`).Scan(&remoteStreams); err != nil {
@@ -78,7 +81,41 @@ func TestFinishFetchPresenceKeepsTrackedAndRetiresRemoteStream(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'cache' AND availability = 'available'`).Scan(&caches); err != nil {
 		t.Fatal(err)
 	}
-	if tracked != 1 || remoteStreams != 0 || caches != 1 {
-		t.Fatalf("tracked=%d remoteStreams=%d caches=%d", tracked, remoteStreams, caches)
+	if tracked != 0 || source != 1 || remoteStreams != 0 || caches != 0 {
+		t.Fatalf("tracked=%d source=%d remoteStreams=%d caches=%d", tracked, source, remoteStreams, caches)
+	}
+}
+
+func TestFinishFetchPresencePreservesExistingTrackedSource(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	ctx := context.Background()
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'synthetic_remote'), (2, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'TEST-WORK-001', 'Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'Track')`,
+		`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, remote_code, availability) VALUES (1, 1, 'tracked', 'TEST-WORK-001', 'available')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 'remote_stream', 'track.mp3', 'available')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.finishFetchPresence(ctx, 1, []int64{1}, 2, "TEST-WORK-001"); err != nil {
+		t.Fatal(err)
+	}
+	var tracked, source, remoteStreams int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&tracked); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE work_id = 1 AND file_source_id = 1 AND presence_type = 'source' AND availability = 'available'`).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE media_item_id = 1 AND location_type = 'remote_stream'`).Scan(&remoteStreams); err != nil {
+		t.Fatal(err)
+	}
+	if tracked != 1 || source != 1 || remoteStreams != 0 {
+		t.Fatalf("tracked=%d source=%d remoteStreams=%d", tracked, source, remoteStreams)
 	}
 }

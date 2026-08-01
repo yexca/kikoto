@@ -1,4 +1,5 @@
 import type { PlayerTrack, PlayerTrackLocation } from "./PlayerProvider";
+import { playbackKeyForLocation } from "./playbackIdentity";
 
 function locationPriority(locationType: string) {
   switch (locationType) {
@@ -43,5 +44,8 @@ export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLoca
     locationType: location.locationType,
     streamUrl: location.streamUrl,
     availability: location.availability,
+    playbackKey: track.remoteSourceId && track.remoteWorkCode && track.remotePath
+      ? track.playbackKey
+      : playbackKeyForLocation(location.locationId),
   };
 }

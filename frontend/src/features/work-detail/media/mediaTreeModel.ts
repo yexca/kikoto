@@ -1,6 +1,7 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
 import { findLyricsMatches } from "../../../player/lyricsMatching";
+import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
 import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
 export type TreeNode = {
@@ -35,6 +36,12 @@ export type TreeTrack = {
   localAvailable: boolean;
   progress: MediaItem["progress"];
   locations: PlayerTrackLocation[];
+  playbackKey?: string;
+};
+
+export type RemoteTreeIdentity = {
+  sourceId: number;
+  workCode: string;
 };
 
 export type TreeStats = {
@@ -96,6 +103,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       localPath: localLocation?.path ?? "",
       localAvailable: Boolean(localLocation),
       progress: item.progress,
+      playbackKey: playbackKeyForLocation(location.id),
       locations: item.locations
         .filter((candidate) => candidate.streamUrl && ["available", "remote"].includes(candidate.availability))
         .map((candidate) => ({
@@ -111,7 +119,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
   return normalizeDisplayTree(root);
 }
 
-export function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
+export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIdentity): TreeNode {
   let nextID = -1;
   const root = emptyTree();
   const walk = (nodes: RemoteTrack[], cursor: TreeNode) => {
@@ -125,13 +133,14 @@ export function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         walk(children, child);
         return;
       }
+      const sourcePath = cursor.path ? `${cursor.path}/${title}` : title;
       const hasCache = node.cacheAvailable && node.cacheLocationId !== null;
       cursor.files.push({
         mediaItemId: nextID,
         locationId: hasCache ? node.cacheLocationId! : nextID,
         title,
         baseName: baseNameWithoutExtension(title),
-        sourcePath: cursor.path ? `${cursor.path}/${title}` : title,
+        sourcePath,
         kind: node.type || "file",
         folderPath: cursor.path,
         locationType: hasCache ? "cache" : "remote_stream",
@@ -150,6 +159,9 @@ export function buildRemoteTree(tracks: RemoteTrack[]): TreeNode {
         localPath: node.localPath,
         localAvailable: node.localAvailable,
         progress: null,
+        playbackKey: identity
+          ? remotePlaybackKey(identity.sourceId, identity.workCode, sourcePath)
+          : `remote-path:${sourcePath}`,
         locations: [
           ...(node.localAvailable && node.localLocationId ? [{
             locationId: node.localLocationId, locationType: "local", streamUrl: `/api/media/${node.localLocationId}/stream`, sourceId: 0, sourceName: "Local", availability: "available",
@@ -293,6 +305,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     lyricsChoices,
     autoLyricsLocationId: automaticLyrics?.locationId ?? null,
     preferredLyricsMediaItemId: audioItem?.preferredLyricsMediaItemId ?? null,
+    playbackKey: track.playbackKey ?? playbackKeyForLocation(track.locationId),
   };
 }
 
@@ -303,11 +316,12 @@ export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): Play
 }
 
 export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail): PlayerTrack {
+  const remoteWorkCode = detail.remoteCode || detail.primaryCode || detail.remoteId;
   return {
     ...track,
     kind: track.kind === "video" ? "video" : "audio",
     workId: detail.workId ?? 0,
-    workCode: detail.primaryCode || detail.remoteId,
+    workCode: remoteWorkCode,
     workTitle: detail.title,
     coverUrl: detail.coverUrl,
     circle: detail.circle,
@@ -319,8 +333,9 @@ export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkD
     autoLyricsLocationId: null,
     preferredLyricsMediaItemId: null,
     remoteSourceId: detail.sourceId,
-    remoteWorkCode: detail.primaryCode || detail.remoteId,
+    remoteWorkCode,
     remotePath: track.sourcePath,
+    playbackKey: track.playbackKey ?? remotePlaybackKey(detail.sourceId, remoteWorkCode, track.sourcePath),
   };
 }
 

@@ -39,6 +39,7 @@ import {
   supportsNativeMedia,
   updateNativeMedia,
 } from "@/lib/nativeMedia";
+import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
 import {
   checkpointProgress,
@@ -95,6 +96,7 @@ export type PlayerTrack = {
   remoteSourceId?: number;
   remoteWorkCode?: string;
   remotePath?: string;
+  playbackKey?: string;
   locations?: PlayerTrackLocation[];
 };
 
@@ -150,6 +152,7 @@ type PlayerContextValue = {
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 type LibraryPlayerContextValue = {
   currentLocationId: number | null;
+  currentPlaybackKey: string | null;
   playQueue: (tracks: PlayerTrack[], locationId: number) => void;
   playNext: (track: PlayerTrack) => void;
   appendQueue: (tracks: PlayerTrack[]) => void;
@@ -352,7 +355,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
-  const restoredMediaItemRef = useRef<number | null>(null);
+  const restoredMediaItemRef = useRef<string | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
   const lastLocalSavedRef = useRef<ProgressSaveMarker | null>(null);
   const localProgressRef = useRef<Record<string, LocalProgressCheckpoint> | null>(null);
@@ -377,6 +380,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     seekTo: (_seconds: number) => {},
   });
   const currentTrack = queue[currentIndex] ?? null;
+  const currentPlaybackKey = trackPlaybackKey(currentTrack);
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
 
@@ -443,7 +447,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     failedLocationIDsRef.current.clear();
-  }, [currentTrack?.queueItemId, currentTrack?.mediaItemId]);
+  }, [currentTrack?.queueItemId, currentTrack?.mediaItemId, currentPlaybackKey]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -456,7 +460,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (isPlaying) {
       void audio.play().catch(() => setIsPlaying(false));
     }
-  }, [currentTrack?.locationId]);
+  }, [currentPlaybackKey, currentTrack?.locationId, currentTrack?.streamUrl]);
 
   useEffect(() => {
     if (auth.demoMode || !currentTrack || currentTrack.locationType !== "remote_stream") return;
@@ -482,6 +486,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
   }, [
+    currentPlaybackKey,
     currentTrack?.locationId,
     currentTrack?.locationType,
     currentTrack?.remoteSourceId,
@@ -492,13 +497,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack || restoredMediaItemRef.current === currentTrack.mediaItemId) return;
+    if (!audio || !currentTrack || !currentPlaybackKey || restoredMediaItemRef.current === currentPlaybackKey) return;
     const position = currentTrack.progress?.completed ? 0 : (currentTrack.progress?.positionSeconds ?? 0);
     if (position > 0 && Number.isFinite(position)) {
       const restore = () => {
         audio.currentTime = Math.min(position, audio.duration || position);
         setCurrentTime(audio.currentTime);
-        restoredMediaItemRef.current = currentTrack.mediaItemId;
+        restoredMediaItemRef.current = currentPlaybackKey;
       };
       if (audio.readyState >= 1) {
         restore();
@@ -507,9 +512,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return () => audio.removeEventListener("loadedmetadata", restore);
       }
     } else {
-      restoredMediaItemRef.current = currentTrack.mediaItemId;
+      restoredMediaItemRef.current = currentPlaybackKey;
     }
-  }, [currentTrack?.mediaItemId, currentTrack?.locationId]);
+  }, [currentPlaybackKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -928,6 +933,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
     };
   }, [
+    currentPlaybackKey,
     currentTrack?.locationId,
     currentTrack?.title,
     currentTrack?.workTitle,
@@ -973,7 +979,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("keydown", handlePlayerShortcut);
     return () => window.removeEventListener("keydown", handlePlayerShortcut);
-  }, [currentTrack?.locationId]);
+  }, [currentPlaybackKey, currentTrack?.locationId]);
 
   const value = useMemo<PlayerContextValue>(
     () => ({
@@ -1036,11 +1042,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const libraryValue = useMemo<LibraryPlayerContextValue>(
     () => ({
       currentLocationId: currentTrack?.locationId ?? null,
+      currentPlaybackKey,
       playQueue,
       playNext,
       appendQueue,
     }),
-    [currentTrack?.locationId, playQueue, playNext, appendQueue],
+    [currentPlaybackKey, currentTrack?.locationId, playQueue, playNext, appendQueue],
   );
 
   return (
@@ -1092,6 +1099,15 @@ function remoteCacheKey(track: PlayerTrack) {
     return `source:${track.remoteSourceId}:${track.remoteWorkCode}:${track.remotePath}`;
   }
   return `location:${track.locationId}`;
+}
+
+function trackPlaybackKey(track: PlayerTrack | null) {
+  if (!track) return null;
+  if (track.playbackKey) return track.playbackKey;
+  if (track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
+    return remotePlaybackKey(track.remoteSourceId, track.remoteWorkCode, track.remotePath);
+  }
+  return playbackKeyForLocation(track.locationId);
 }
 
 export function PlayerDock() {

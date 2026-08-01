@@ -25,7 +25,7 @@ export function useMediaTree<TTree>({
   trackedUnavailable: boolean;
   emptyTree: () => TTree;
   buildLocalTree: (items: MediaItem[], fileSourceId: number | null, workCode: string) => TTree;
-  buildRemoteTree: (tracks: RemoteTrack[]) => TTree;
+  buildRemoteTree: (tracks: RemoteTrack[], identity?: { sourceId: number; workCode: string }) => TTree;
 }) {
   const [tree, setTree] = useState<TTree>(() => emptyTree());
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
@@ -43,7 +43,10 @@ export function useMediaTree<TTree>({
         : trackedUnavailable
           ? emptyTree()
           : remoteDetail
-            ? buildRemoteTree(remoteDetail.tracks)
+            ? buildRemoteTree(remoteDetail.tracks, {
+              sourceId: remoteDetail.sourceId,
+              workCode: remoteDetail.remoteCode || remoteDetail.primaryCode || remoteDetail.remoteId,
+            })
             : buildLocalTree(localItems, fileSourceId, localCode);
       if (!cancelled) {
         setTree(nextTree);

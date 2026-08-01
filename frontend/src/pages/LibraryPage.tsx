@@ -2582,7 +2582,12 @@ function RemoteOnlyWorkDetailController({
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
-  const tree = useMemo(() => buildRemoteTree(detail?.tracks ?? []), [detail]);
+  const tree = useMemo(
+    () => detail
+      ? buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) })
+      : emptyTree(),
+    [detail],
+  );
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
@@ -2780,6 +2785,7 @@ function RemoteOnlyWorkDetailController({
       root={tree}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
+      currentPlaybackKey={player.currentPlaybackKey}
       emptyLabel="No remote files detected."
       toolbar={message ? <DirectoryMessage message={message} /> : undefined}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
@@ -3451,6 +3457,7 @@ function PersistedWorkDetailController({
       root={tree}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
+      currentPlaybackKey={player.currentPlaybackKey}
       emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
       toolbar={mediaCleanup.activeRunId ? (
         <DirectoryOperationBanner
@@ -4380,6 +4387,7 @@ function SourceDirectoryPanel({
   root,
   directoryRoutingRules,
   currentLocationId,
+  currentPlaybackKey,
   emptyLabel,
   toolbar,
   selectionPanel,
@@ -4408,6 +4416,7 @@ function SourceDirectoryPanel({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
+  currentPlaybackKey: string | null;
   emptyLabel: string;
   toolbar?: ReactNode;
   selectionPanel?: ReactNode;
@@ -4427,6 +4436,7 @@ function SourceDirectoryPanel({
       root={root}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={currentLocationId}
+      currentPlaybackKey={currentPlaybackKey}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
       onPlayNext={onPlayNext}
@@ -4438,6 +4448,7 @@ function SourceDirectoryPanel({
       root={root}
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={currentLocationId}
+      currentPlaybackKey={currentPlaybackKey}
       emptyLabel={emptyLabel}
       onPlayFolder={onPlayFolder}
       onPlayNext={onPlayNext}
@@ -5430,6 +5441,7 @@ function DirectoryTree({
   root,
   directoryRoutingRules,
   currentLocationId,
+  currentPlaybackKey,
   onPlayFolder,
   onPlayNext,
   onAppendQueue,
@@ -5439,6 +5451,7 @@ function DirectoryTree({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
+  currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
@@ -5477,11 +5490,11 @@ function DirectoryTree({
           />
         ) : (
           <TreeFile
-            key={`file:${row.file.locationId}`}
+            key={`file:${row.file.playbackKey ?? row.file.locationId}`}
             file={row.file}
             files={playableFiles(row.parent.files)}
             depth={row.depth}
-            isActive={row.file.locationId === currentLocationId}
+            isActive={row.file.playbackKey === currentPlaybackKey || (!row.file.playbackKey && row.file.locationId === currentLocationId)}
             onPlayFolder={onPlayFolder}
             onPlayNext={onPlayNext}
             onAppendQueue={onAppendQueue}
@@ -5616,6 +5629,7 @@ function DirectoryBrowser({
   root,
   directoryRoutingRules,
   currentLocationId,
+  currentPlaybackKey,
   onPlayFolder,
   onPlayNext,
   onAppendQueue,
@@ -5625,6 +5639,7 @@ function DirectoryBrowser({
   root: TreeNode;
   directoryRoutingRules: DirectoryRoutingRule[];
   currentLocationId: number | null;
+  currentPlaybackKey: string | null;
   onPlayFolder?: (tracks: TreeTrack[], locationId: number) => void;
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
@@ -5675,11 +5690,11 @@ function DirectoryBrowser({
         ))}
         {files.map((file) => (
           <TreeFile
-            key={file.locationId}
+            key={file.playbackKey ?? file.locationId}
             file={file}
             files={playableFiles(current.files)}
             depth={0}
-            isActive={file.locationId === currentLocationId}
+            isActive={file.playbackKey === currentPlaybackKey || (!file.playbackKey && file.locationId === currentLocationId)}
             onPlayFolder={onPlayFolder}
             onPlayNext={onPlayNext}
             onAppendQueue={onAppendQueue}

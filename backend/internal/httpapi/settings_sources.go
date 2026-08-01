@@ -3620,7 +3620,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	if cleanupNodeID > 0 {
 		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", cleanupNodeID)
 	}
-	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan)
+	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan, workID)
 	if err != nil {
 		failedNodeID := cleanupNodeID
 		if failedNodeID == 0 {
@@ -3710,14 +3710,49 @@ func (s *Server) preparePersistedRemoteWorkFetchJob(ctx context.Context, runID i
 	return manifest.WorkID, manifest.LocalSourceID, cacheNodeID, promoteNodeID, syncNodeID, nodeIDs["cleanup"], nil
 }
 
-func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkSavePlan) (int, error) {
+func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkSavePlan, workID int64) (int, error) {
+	trackedSources := map[int64]bool{}
+	if workID > 0 {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT file_source_id
+			FROM work_source_presence
+			WHERE work_id = ?
+				AND presence_type = 'tracked'
+				AND availability = 'available'
+		`, workID)
+		if err != nil {
+			return 0, err
+		}
+		for rows.Next() {
+			var sourceID int64
+			if err := rows.Scan(&sourceID); err != nil {
+				_ = rows.Close()
+				return 0, err
+			}
+			trackedSources[sourceID] = true
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		if err := rows.Close(); err != nil {
+			return 0, err
+		}
+	}
 	removed := 0
 	seen := map[string]bool{}
 	for _, item := range plan.Items {
 		if item.Action != "cache_hit" && item.Action != "cache_download" {
 			continue
 		}
-		key := fmt.Sprintf("%d:%s", item.RemoteSourceID, item.CachePath)
+		sourceID := item.RemoteSourceID
+		if sourceID <= 0 {
+			sourceID = plan.SourceID
+		}
+		if trackedSources[sourceID] {
+			continue
+		}
+		key := fmt.Sprintf("%d:%s", sourceID, item.CachePath)
 		if seen[key] {
 			continue
 		}
@@ -3727,7 +3762,7 @@ func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkS
 			SELECT id FROM media_file_location
 			WHERE file_source_id = ? AND location_type = 'cache' AND path = ?
 			ORDER BY availability = 'available' DESC, id DESC LIMIT 1
-		`, item.RemoteSourceID, item.CachePath).Scan(&locationID)
+		`, sourceID, item.CachePath).Scan(&locationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			targetPath, pathErr := safeCachePath(s.cfg.CacheRoot, item.CachePath)
 			if pathErr != nil {
@@ -3738,7 +3773,7 @@ func (s *Server) cleanupPromotedFetchCache(ctx context.Context, plan remoteWorkS
 			} else if !errors.Is(removeErr, os.ErrNotExist) {
 				return removed, removeErr
 			}
-			if err := s.markCacheLocationUnavailable(ctx, item.RemoteSourceID, item.CachePath); err != nil {
+			if err := s.markCacheLocationUnavailable(ctx, sourceID, item.CachePath); err != nil {
 				return removed, err
 			}
 			continue
@@ -4594,11 +4629,7 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 		if remoteSourceID <= 0 {
 			continue
 		}
-		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
-			WorkID: workID, FileSourceID: remoteSourceID, PresenceType: "tracked",
-			RemoteCode: workCode, Availability: "available",
-			RawJSON: mustJSON(map[string]any{"source": "remote_fetch", "primary_code": workCode}),
-		}); err != nil {
+		if err := ensureFetchSourcePresence(ctx, tx, workID, remoteSourceID, workCode); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -4622,7 +4653,74 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 	}); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.cleanupFetchCacheWithoutTrackedPresence(ctx, workID, remoteSourceIDs)
+}
+
+// Fetch records source availability and local materialization. It does not
+// create tracked intent; only an already active tracked source owns its cache.
+func (s *Server) cleanupFetchCacheWithoutTrackedPresence(ctx context.Context, workID int64, sourceIDs []int64) error {
+	for _, sourceID := range sourceIDs {
+		if sourceID <= 0 {
+			continue
+		}
+		var tracked int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM work_source_presence
+				WHERE work_id = ? AND file_source_id = ?
+					AND presence_type = 'tracked' AND availability = 'available'
+			)
+		`, workID, sourceID).Scan(&tracked); err != nil {
+			return err
+		}
+		if tracked != 0 {
+			continue
+		}
+		locations, err := s.cacheLocationsForWorkSource(ctx, workID, sourceID)
+		if err != nil {
+			return err
+		}
+		for _, location := range locations {
+			if _, _, err := s.clearCacheLocation(ctx, location.ID, location.Path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func ensureFetchSourcePresence(ctx context.Context, tx *sql.Tx, workID int64, sourceID int64, workCode string) error {
+	var found int
+	err := tx.QueryRowContext(ctx, `
+		SELECT 1
+		FROM work_source_presence
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = ?
+		LIMIT 1
+	`, workID, sourceID, sourcePresenceTypeRemoteSource).Scan(&found)
+	if err == nil {
+		_, updateErr := tx.ExecContext(ctx, `
+			UPDATE work_source_presence
+			SET remote_code = COALESCE(NULLIF(?, ''), remote_code),
+				availability = 'available',
+				last_seen_at = CURRENT_TIMESTAMP,
+				last_checked_at = CURRENT_TIMESTAMP,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE work_id = ? AND file_source_id = ? AND presence_type = ?
+		`, normalizeDLsiteCode(workCode), workID, sourceID, sourcePresenceTypeRemoteSource)
+		return updateErr
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return upsertWorkSourcePresence(ctx, tx, workSourcePresence{
+		WorkID: workID, FileSourceID: sourceID, PresenceType: sourcePresenceTypeRemoteSource,
+		RemoteCode: workCode, Availability: "available",
+		RawJSON: mustJSON(map[string]any{"source": "remote_fetch", "primary_code": workCode}),
+	})
 }
 
 func (s *Server) insertFetchCleanupCandidate(ctx context.Context, runID int64, workID int64, localSourceID int64, workCode string, items []remoteWorkSavePlanItem) error {

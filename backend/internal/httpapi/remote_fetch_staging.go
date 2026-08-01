@@ -565,7 +565,7 @@ func (s *Server) registerPublishedRemoteFetch(ctx context.Context, manifest remo
 	if err := s.finishFetchPresence(ctx, manifest.WorkID, remoteFetchPlanSourceIDs(plan, manifest.RemoteSourceID), manifest.LocalSourceID, manifest.EditionCode); err != nil {
 		return err
 	}
-	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan)
+	removedCache, err := s.cleanupPromotedFetchCache(ctx, plan, manifest.WorkID)
 	if err != nil {
 		return err
 	}

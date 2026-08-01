@@ -192,7 +192,7 @@ func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
 	plan := remoteWorkSavePlan{Items: []remoteWorkSavePlanItem{{
 		Action: "cache_hit", RemoteSourceID: 1, CachePath: "remote/RJ01234567/selected.mp3",
 	}}}
-	removed, err := server.cleanupPromotedFetchCache(context.Background(), plan)
+	removed, err := server.cleanupPromotedFetchCache(context.Background(), plan, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,6 +214,51 @@ func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
 	}
 	if selectedAvailability != "unavailable" || otherAvailability != "available" {
 		t.Fatalf("availability selected=%s other=%s", selectedAvailability, otherAvailability)
+	}
+}
+
+func TestCleanupPromotedFetchCacheKeepsTrackedSourceCache(t *testing.T) {
+	db := openMigratedTestDB(t)
+	cacheRoot := t.TempDir()
+	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'synthetic_remote')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'TEST-WORK-001', 'Work')`,
+		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Selected', 'selected')`,
+		`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, remote_code, availability) VALUES (1, 1, 'tracked', 'TEST-WORK-001', 'available')`,
+		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 'cache', 'remote/TEST-WORK-001/selected.mp3', 'available')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cachePath := filepath.Join(cacheRoot, "remote", "TEST-WORK-001", "selected.mp3")
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachePath, []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := remoteWorkSavePlan{SourceID: 1, Items: []remoteWorkSavePlanItem{{
+		Action: "cache_hit", RemoteSourceID: 1, CachePath: "remote/TEST-WORK-001/selected.mp3",
+	}}}
+	removed, err := server.cleanupPromotedFetchCache(context.Background(), plan, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("removed = %d, want 0", removed)
+	}
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Fatalf("tracked source cache was removed: %v", err)
+	}
+	var availability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE media_item_id = 1").Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "available" {
+		t.Fatalf("availability = %s, want available", availability)
 	}
 }
 

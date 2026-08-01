@@ -29,7 +29,12 @@ export function useRemoteFetchWorkspace({
   const [draft, setDraft] = useState<RemoteFetchDraft | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const busyRef = useRef(false);
-  const tree = useMemo(() => (draft ? buildRemoteTree(draft.detail.tracks) : emptyTree()), [draft?.detail]);
+  const tree = useMemo(
+    () => draft
+      ? buildRemoteTree(draft.detail.tracks, { sourceId: draft.detail.sourceId, workCode: remoteDetailActionCode(draft.detail) })
+      : emptyTree(),
+    [draft?.detail],
+  );
   const selectedPaths = useMemo(() => sortedValues(draft?.selectedPaths), [draft?.selectedPaths]);
   const selectedLocalPaths = useMemo(() => sortedValues(draft?.selectedLocalPaths), [draft?.selectedLocalPaths]);
 
@@ -42,7 +47,7 @@ export function useRemoteFetchWorkspace({
       const detail = fetchIntentDetailMatches(intent, remoteCode)
         ? intent.detail!
         : await api.getRemoteSourceWork(intent.sourceId, remoteCode);
-      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
+      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }));
       if (paths.length === 0) {
         toast.notify({ kind: "warning", message: "No remote files are available to fetch." });
         return false;
@@ -67,7 +72,7 @@ export function useRemoteFetchWorkspace({
     if (!beginOperation()) return false;
     try {
       const detail = await api.getRemoteSourceWork(draft.intent.sourceId, cleanCode);
-      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks));
+      const paths = remoteSelectablePaths(buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }));
       if (paths.length === 0) {
         toast.notify({ kind: "warning", message: `No remote files are available for the ${cleanCode} edition.` });
         return false;
