@@ -12,7 +12,7 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
-The current sequence continues through `020_filesystem_event_watcher.sql`.
+The current sequence continues through `022_user_work_playback_cursor.sql`.
 Migrations `008` through `013` add normalized work aliases and commercial
 metadata, terminal provider state, recommendation telemetry, and explicit video
 audio-presence data with a legacy backfill. Migration `014` adds durable
@@ -21,6 +21,9 @@ add workflow notifications, resource lanes, and Availability Watch state;
 `018` merges Startup library refresh into local scan; `019` adds the fixed
 local-scan filesystem trigger; and `020` replaces directory-snapshot polling
 state with native filesystem-event watcher state.
+Migration `021` reconciles work-party provenance. Migration `022` adds one
+playback cursor per user and canonical work family, then seeds it from the
+newest legacy media-progress row in that family.
 
 ## Guidelines
 

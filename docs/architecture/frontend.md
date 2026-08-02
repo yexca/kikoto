@@ -48,6 +48,9 @@ remote source management, and playback.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid/masonry behavior and responsive column choices should remain aligned.
+- Keep provider tags to two measured card rows with an overflow popover. Card
+  summaries use Circle / Series, DL sales, segmented rating, and known available
+  alternate-language state; playback history belongs outside the shared card.
 - Persist work-collection layout as one shared browser preference, rather than
   separate page-local selections.
 - Scope account-bearing browser state by the configured server identity and
@@ -66,3 +69,7 @@ remote source management, and playback.
   fallback. Continue to parse legacy explicit browse parameters.
 - Reserve a directory-shaped skeleton with stable height while media is being
   indexed or loaded, then replace it in place without a separate loading card.
+- Build Tree rows and playback queues from one folder-first natural ordering.
+- Treat Resume as the only persisted-position entry point. Ordinary track
+  selection starts at zero, while an active source fallback carries the current
+  in-memory time to the replacement location.

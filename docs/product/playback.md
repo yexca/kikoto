@@ -5,16 +5,25 @@ Playback is handled by a global browser audio player.
 ## Current Behavior
 
 - Local media streams through the backend with range support.
-- Clicking a playable file queues playable audio files in the same folder.
-- Work-level play queues all playable tracks for the work.
+- Local and cached `.wma` locations are converted on first playback into a
+  fingerprinted MP3 derivative under the cache root. The derivative keeps range
+  support and is reused until the source size or modification time changes.
+  Direct remote `.wma` streams must be cached before this compatibility path is
+  available.
+- Clicking a playable file queues naturally sorted playable files in the same
+  folder and starts the selected file at zero.
+- Work detail exposes fixed Resume instead of work-level Play. Resume is disabled
+  without a positive unfinished cursor.
 - Playback continues across navigation.
-- Browser queue and local progress recovery are isolated by server identity and
-  authenticated user (or anonymous principal). Unscoped v1 state is discarded
+- Browser queue persistence is isolated by server identity and authenticated
+  user (or anonymous principal). Unscoped v1 queue/progress state is discarded
   because it has no reliable owner; Dock mode and Mini position remain shared
   device preferences.
-- Progress is saved per user and logical media item. Rapid updates are
-  coalesced and sent serially; a transient database-busy response receives one
-  short jittered retry.
+- One durable cursor is saved per user and canonical logical work family. It
+  references the current edition/media item, source/location context, position,
+  duration, completion state, and timestamp. Rapid updates are coalesced and
+  sent serially; a transient database-busy response receives one short jittered
+  retry.
 - The player dock supports collapsed and expanded states, queue view, seeking,
   previous/next, skip controls, volume, and playback mode.
 - Compact playback reserves page space on mobile and desktop so final actions
@@ -50,10 +59,16 @@ location, so source replacement can choose another available location. `Auto`
 clears the override and restores deterministic matching; an unavailable saved
 choice falls back without deleting the preference.
 
-## Progress Boundary
+## Cursor Boundary
 
-Playback progress attaches to media items. Remote preview playback should not
-persist progress until the remote work has been synced into local media records.
+Only explicit Resume applies persisted position. It targets the cursor's edition
+and media item, tries the saved location, and then uses current source priority.
+Direct track selection starts at zero. Switching or falling back to another
+location during active playback preserves the current in-memory time without
+rereading the cursor.
+
+Remote preview playback should not persist a cursor until the remote work has
+been synced into local media records.
 
 ## Preferred Locations
 

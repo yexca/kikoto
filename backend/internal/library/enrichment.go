@@ -26,7 +26,12 @@ type ManualOverrideRow struct {
 }
 
 type Progress struct {
+	WorkID          *int64
+	MediaWorkID     *int64
 	MediaItemID     *int64
+	FileSourceID    *int64
+	LocationID      *int64
+	LocationType    string
 	Title           string
 	PositionSeconds float64
 	DurationSeconds *float64
@@ -175,37 +180,57 @@ func (s *Store) LoadManualOverrides(ctx context.Context, workIDs []int64) (map[i
 func (s *Store) LoadProgress(ctx context.Context, userID int64, workIDs []int64) (map[int64]Progress, error) {
 	result := map[int64]Progress{}
 	query, args := int64InQuery(`
-		SELECT media_item.work_id, media_item.id, media_item.title,
-			user_media_progress.position_seconds, user_media_progress.duration_seconds,
-			user_media_progress.last_played_at, user_media_progress.completed
-		FROM media_item
-		INNER JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
-		WHERE media_item.work_id IN (%s)
+		SELECT requested_work.id, playback_cursor.work_id, media_item.work_id, media_item.id,
+			playback_cursor.file_source_id, playback_cursor.location_id,
+			playback_cursor.location_type, media_item.title,
+			playback_cursor.position_seconds, playback_cursor.duration_seconds,
+			playback_cursor.last_played_at, playback_cursor.completed
+		FROM work AS requested_work
+		LEFT JOIN work_edition AS requested_edition ON requested_edition.work_id = requested_work.id
+		LEFT JOIN logical_work AS requested_logical ON requested_logical.id = requested_edition.logical_work_id
+		INNER JOIN user_work_playback_cursor AS playback_cursor
+			ON playback_cursor.work_id = COALESCE(
+				requested_logical.canonical_work_id,
+				(
+					SELECT canonical_edition.work_id
+					FROM work_edition AS canonical_edition
+					WHERE canonical_edition.logical_work_id = requested_edition.logical_work_id
+						AND canonical_edition.is_canonical = 1
+					ORDER BY canonical_edition.work_id ASC
+					LIMIT 1
+				),
+				requested_work.id
+			)
+			AND playback_cursor.user_id = ?
+		INNER JOIN media_item ON media_item.id = playback_cursor.media_item_id
+		WHERE requested_work.id IN (%s)
 			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
-			AND user_media_progress.user_id = ?
-		ORDER BY media_item.work_id, user_media_progress.last_played_at DESC, user_media_progress.updated_at DESC, media_item.id DESC
+		ORDER BY requested_work.id
 	`, uniqueInt64s(workIDs))
-	args = append(args, userID)
+	args = append([]any{userID}, args...)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var workID int64
-		var mediaItemID sql.NullInt64
+		var requestedWorkID int64
+		var workID, mediaWorkID, mediaItemID, fileSourceID, locationID sql.NullInt64
+		var locationType sql.NullString
 		var title sql.NullString
 		var position, duration sql.NullFloat64
 		var lastPlayedAt sql.NullString
 		var completed sql.NullBool
-		if err := rows.Scan(&workID, &mediaItemID, &title, &position, &duration, &lastPlayedAt, &completed); err != nil {
+		if err := rows.Scan(
+			&requestedWorkID, &workID, &mediaWorkID, &mediaItemID, &fileSourceID, &locationID,
+			&locationType, &title, &position, &duration, &lastPlayedAt, &completed,
+		); err != nil {
 			return nil, err
 		}
-		if _, exists := result[workID]; exists {
-			continue
-		}
-		result[workID] = Progress{
-			MediaItemID: nullableInt64(mediaItemID), Title: title.String,
+		result[requestedWorkID] = Progress{
+			WorkID: nullableInt64(workID), MediaWorkID: nullableInt64(mediaWorkID), MediaItemID: nullableInt64(mediaItemID),
+			FileSourceID: nullableInt64(fileSourceID), LocationID: nullableInt64(locationID),
+			LocationType: locationType.String, Title: title.String,
 			PositionSeconds: position.Float64, DurationSeconds: nullableFloat64(duration),
 			LastPlayedAt: nullableString(lastPlayedAt), Completed: completed.Valid && completed.Bool,
 		}

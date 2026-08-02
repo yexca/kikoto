@@ -51,6 +51,8 @@ playback actions for one work.
   actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
+- Lists naturally sorted folders before naturally sorted files in Tree and
+  Browse. Folder playback follows that same visible order.
 - Keeps available non-playable files such as images and text in Directory while
   counting audio and audio-bearing video together under the Playable source
   metric.
@@ -59,7 +61,8 @@ playback actions for one work.
 
 ## Actions
 
-- Play local files.
+- Show one fixed Resume action. It is disabled without a positive unfinished
+  work cursor; direct file activation starts from the beginning.
 - Update quick listening status.
 - Manage favorite-list membership.
 - Edit personal work tags separately from provider metadata tags.
@@ -71,6 +74,9 @@ playback actions for one work.
   anonymous.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
   maintenance commands from the selected source's Hero Source menu.
+- Track the selected remote source, persist its browsable tree, and open the
+  corresponding source inside the aggregated Tracked context without requiring
+  a second Fork.
 - Edit manual overrides when available.
 
 ## Detail Loading Model

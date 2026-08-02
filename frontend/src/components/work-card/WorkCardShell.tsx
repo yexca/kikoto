@@ -1,5 +1,5 @@
-import { BookmarkPlus, Check, CheckCircle2, ChevronRight, Circle, ExternalLink, Headphones, ListMusic, MicVocal, PauseCircle, Repeat2, Star, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BookmarkPlus, Check, CheckCircle2, Circle, ExternalLink, Headphones, Languages, ListMusic, MicVocal, PauseCircle, Repeat2, ShoppingBag, Star, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink, type WorkProgressSummary } from "@/lib/api";
+import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { cn } from "@/lib/utils";
+import { visibleBadgeCountForRows } from "./tagLayout";
 
 export type WorkCardBadge = {
   key?: string;
@@ -17,11 +18,6 @@ export type WorkCardBadge = {
   variant?: "default" | "secondary" | "outline" | "warning";
   title?: string;
   onClick?: () => void;
-};
-
-export type WorkCardDate = {
-  label: "Release" | "Updated";
-  value: string;
 };
 
 export type WorkCardViewModel = {
@@ -34,13 +30,13 @@ export type WorkCardViewModel = {
   voiceCredits?: VoiceCredit[];
   coverUrl?: string;
   rating?: number | null;
+  sales?: number | null;
   regularPrice?: number | null;
   price?: number | null;
   priceCurrency?: string;
   series?: string | null;
+  hasAvailableNonOriginEdition?: boolean;
   dlsiteTags: WorkCardBadge[];
-  date?: WorkCardDate | null;
-  progress?: WorkProgressSummary | null;
   userTags?: WorkCardBadge[];
   sourceBadges: WorkCardBadge[];
   recommended?: boolean;
@@ -107,7 +103,6 @@ export function WorkCardShell({
       <WorkCardMedia
         coverUrl={work.coverUrl}
         code={work.code}
-        rating={work.rating ?? null}
         regularPrice={work.regularPrice ?? null}
         price={work.price ?? null}
         priceCurrency={work.priceCurrency}
@@ -151,7 +146,6 @@ export function WorkCardShell({
 export function WorkCardMedia({
   coverUrl,
   code,
-  rating,
   regularPrice,
   price,
   priceCurrency,
@@ -162,7 +156,6 @@ export function WorkCardMedia({
 }: {
   coverUrl?: string;
   code: string;
-  rating: number | null;
   regularPrice: number | null;
   price: number | null;
   priceCurrency?: string;
@@ -211,10 +204,6 @@ export function WorkCardMedia({
           {price === 0 ? "Free" : formatPrice(price, priceCurrency)}
         </div>
       )}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
-        <Star className="h-3.5 w-3.5 fill-current" />
-        {rating === null ? "No rating" : rating.toFixed(2)}
-      </div>
     </div>
   );
 }
@@ -238,19 +227,42 @@ function WorkCardBody({
       <div className="space-y-1">
         <h3 className="line-clamp-2 min-h-10 text-base font-semibold leading-snug">{work.title}</h3>
         <div className="flex min-w-0 items-center gap-2">
-          {onCircleOpen ? (
-            <button
-              className="min-w-0 flex-1 truncate text-left text-sm text-muted-foreground hover:text-primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                onCircleOpen();
-              }}
-            >
-              {work.circle || "Unknown circle"}
-            </button>
-          ) : (
-            <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{work.circle || "Unknown circle"}</div>
-          )}
+          <div
+            className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-sm text-muted-foreground"
+            title={[work.circle || "Unknown circle", work.series].filter(Boolean).join(" / ")}
+          >
+            {onCircleOpen ? (
+              <button
+                className="hover:text-primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCircleOpen();
+                }}
+              >
+                {work.circle || "Unknown circle"}
+              </button>
+            ) : (
+              <span>{work.circle || "Unknown circle"}</span>
+            )}
+            {work.series && (
+              <>
+                <span aria-hidden="true"> / </span>
+                {onSeriesOpen ? (
+                  <button
+                    className="font-medium text-foreground hover:text-primary"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSeriesOpen();
+                    }}
+                  >
+                    {work.series}
+                  </button>
+                ) : (
+                  <span className="font-medium text-foreground">{work.series}</span>
+                )}
+              </>
+            )}
+          </div>
           {ageRating.known && (
             <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none", ageRating.badgeClassName)}>
               {ageRating.label}
@@ -258,25 +270,6 @@ function WorkCardBody({
           )}
         </div>
       </div>
-      {work.series && (
-        onSeriesOpen ? (
-          <button
-            className="group/series inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSeriesOpen();
-            }}
-          >
-            <span className="shrink-0">Series</span>
-            <span className="truncate font-medium text-foreground group-hover/series:text-primary">{work.series}</span>
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60 transition-transform group-hover/series:translate-x-0.5 group-hover/series:opacity-100" />
-          </button>
-        ) : (
-          <div className="truncate text-xs text-muted-foreground">
-            Series <span className="font-medium text-foreground">{work.series}</span>
-          </div>
-        )
-      )}
       {work.voiceActors && work.voiceActors.length > 0 && (
         <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={work.voiceActors.join(", ")}>
           <MicVocal className="h-3.5 w-3.5 shrink-0" />
@@ -301,9 +294,12 @@ function WorkCardBody({
           </div>
         </div>
       )}
-      <BadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
-      {work.date && <div className="truncate text-xs text-muted-foreground">{work.date.label} {work.date.value}</div>}
-      {work.progress?.mediaItemId && <WorkProgressLine progress={work.progress} />}
+      <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
+      <WorkCardMetrics
+        rating={work.rating ?? null}
+        sales={work.sales ?? null}
+        hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
+      />
       {work.userTags && work.userTags.length > 0 && (
         <div className="flex min-h-6 flex-wrap gap-1.5">
           {work.userTags.map((tag) => {
@@ -371,6 +367,196 @@ function BadgeList({
   );
 }
 
+function MeasuredBadgeList({
+  badges,
+  emptyLabel,
+  onBadgeClick,
+}: {
+  badges: WorkCardBadge[];
+  emptyLabel: string;
+  onBadgeClick?: (label: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const measurementRef = useRef<HTMLDivElement | null>(null);
+  const overflowRef = useRef<HTMLButtonElement | null>(null);
+  const [visibleCount, setVisibleCount] = useState(badges.length);
+  const [open, setOpen] = useState(false);
+
+  const measure = useCallback(() => {
+    const containerWidth = containerRef.current?.clientWidth ?? 0;
+    const measurement = measurementRef.current;
+    if (containerWidth <= 0 || !measurement) return;
+    const widths = Array.from(measurement.querySelectorAll<HTMLElement>("[data-measured-badge]"))
+      .map((element) => element.getBoundingClientRect().width);
+    const overflowWidth = measurement.querySelector<HTMLElement>("[data-measured-overflow]")
+      ?.getBoundingClientRect().width ?? 0;
+    setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
+  }, [badges]);
+
+  useLayoutEffect(() => {
+    measure();
+    const container = containerRef.current;
+    const observer = typeof ResizeObserver === "undefined" || !container ? null : new ResizeObserver(measure);
+    if (observer && container) observer.observe(container);
+    window.addEventListener("resize", measure);
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) measure();
+    });
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [measure]);
+
+  useEffect(() => {
+    if (visibleCount >= badges.length) setOpen(false);
+  }, [badges.length, visibleCount]);
+
+  if (badges.length === 0) {
+    return <div className="flex min-h-6"><Badge variant="outline">{emptyLabel}</Badge></div>;
+  }
+
+  const safeVisibleCount = Math.min(visibleCount, badges.length);
+  const visibleBadges = badges.slice(0, safeVisibleCount);
+  const hiddenBadges = badges.slice(safeVisibleCount);
+  return (
+    <div ref={containerRef} className="relative min-h-6 min-w-0">
+      <div className="flex max-h-[3.125rem] min-w-0 flex-wrap gap-1.5 overflow-hidden">
+        {visibleBadges.map((badge) => (
+          <CardBadge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} badge={badge} onBadgeClick={onBadgeClick} />
+        ))}
+        {hiddenBadges.length > 0 && (
+          <button
+            ref={overflowRef}
+            type="button"
+            className="max-w-full rounded-full"
+            aria-label={`Show ${hiddenBadges.length} more tags`}
+            aria-expanded={open}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen((current) => !current);
+            }}
+          >
+            <Badge variant="secondary" className="cursor-pointer hover:border-primary hover:text-primary">+{hiddenBadges.length}</Badge>
+          </button>
+        )}
+      </div>
+      <div ref={measurementRef} className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex flex-col items-start" aria-hidden="true">
+        {badges.map((badge) => (
+          <Badge
+            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+            data-measured-badge
+            variant={badge.variant ?? "secondary"}
+            className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+          >
+            {badge.label}
+          </Badge>
+        ))}
+        <Badge data-measured-overflow variant="secondary">+{badges.length}</Badge>
+      </div>
+      <AnchoredPopover
+        open={open}
+        anchorRef={overflowRef}
+        onOpenChange={setOpen}
+        bottomCollisionPadding={isMobileViewport() ? 168 : 12}
+        className="w-[min(20rem,calc(100vw-1.5rem))] p-2"
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {hiddenBadges.map((badge) => (
+            <CardBadge
+              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+              badge={badge}
+              onBadgeClick={onBadgeClick}
+              onSelected={() => setOpen(false)}
+            />
+          ))}
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function CardBadge({
+  badge,
+  onBadgeClick,
+  onSelected,
+}: {
+  badge: WorkCardBadge;
+  onBadgeClick?: (label: string) => void;
+  onSelected?: () => void;
+}) {
+  const badgeElement = (
+    <Badge
+      variant={badge.variant ?? "secondary"}
+      title={badge.title}
+      className={cn(
+        "max-w-full overflow-hidden text-ellipsis whitespace-nowrap",
+        (badge.onClick || onBadgeClick) && "cursor-pointer hover:border-primary hover:text-primary",
+      )}
+    >
+      {badge.label}
+    </Badge>
+  );
+  return badge.onClick || onBadgeClick ? (
+    <button
+      type="button"
+      className="max-w-full rounded-full"
+      onClick={(event) => {
+        event.stopPropagation();
+        (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
+        onSelected?.();
+      }}
+    >
+      {badgeElement}
+    </button>
+  ) : <span className="max-w-full">{badgeElement}</span>;
+}
+
+function WorkCardMetrics({
+  rating,
+  sales,
+  hasAvailableNonOriginEdition,
+}: {
+  rating: number | null;
+  sales: number | null;
+  hasAvailableNonOriginEdition: boolean;
+}) {
+  const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
+  const ratingLabel = normalizedRating === null ? "No rating" : `Rate ${normalizedRating.toFixed(2)} out of 5`;
+  const salesLabel = sales !== null && Number.isFinite(sales) && sales >= 0
+    ? `DLsite sales: ${Math.floor(sales).toLocaleString()}`
+    : "DLsite sales unavailable";
+  return (
+    <div className="flex min-h-5 min-w-0 items-center gap-3 text-xs text-muted-foreground">
+      <span className="inline-flex min-w-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
+        <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
+        <span className="shrink-0 font-medium">DL</span>
+        <span className="truncate tabular-nums text-foreground">{formatCompactCount(sales)}</span>
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-1.5" title={ratingLabel} role="img" aria-label={ratingLabel}>
+        <span className="font-medium">Rate</span>
+        <span className="flex w-12 items-center gap-0.5" aria-hidden="true">
+          {Array.from({ length: 5 }, (_, index) => {
+            const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
+            return (
+              <span key={index} className="h-1.5 w-2 overflow-hidden rounded-[2px] bg-muted">
+                <span className="block h-full bg-primary" style={{ width: `${fill * 100}%` }} />
+              </span>
+            );
+          })}
+        </span>
+      </span>
+      {hasAvailableNonOriginEdition && (
+        <span className="ml-auto inline-flex shrink-0" title="Another language edition is available">
+          <Languages className="h-4 w-4 text-primary" role="img" aria-label="Another language edition is available" />
+        </span>
+      )}
+    </div>
+  );
+}
+
 function formatPrice(value: number, currency = "JPY") {
   try {
     return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "JPY", maximumFractionDigits: 0 }).format(value);
@@ -379,17 +565,12 @@ function formatPrice(value: number, currency = "JPY") {
   }
 }
 
-export function WorkProgressLine({ progress }: { progress: WorkProgressSummary }) {
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
-      </div>
-      <div className="truncate text-xs text-muted-foreground">
-        {progress.completed ? `Finished ${progress.title || "track"}` : `Resume ${progress.title || "track"} ${formatTime(progress.positionSeconds)}`}
-      </div>
-    </div>
-  );
+function formatCompactCount(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value < 0) return "--";
+  return new Intl.NumberFormat(undefined, {
+    notation: value >= 10_000 ? "compact" : "standard",
+    maximumFractionDigits: value >= 10_000 ? 1 : 0,
+  }).format(Math.floor(value));
 }
 
 export function WorkCardFooter({ left, right }: { left?: ReactNode; right?: ReactNode }) {
@@ -667,8 +848,24 @@ export function WorkCardSelection({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="absolute right-3 top-3 z-10 rounded-md bg-background/90 p-1.5 shadow-sm" onClick={(event) => event.stopPropagation()}>
-      <Checkbox checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label="Select work" />
+    <div
+      className={cn(
+        "absolute right-0.5 top-0.5 z-10 grid h-11 w-11 place-items-center bg-transparent",
+        disabled ? "cursor-default" : "cursor-pointer",
+      )}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (!disabled) onChange(!checked);
+      }}
+    >
+      <Checkbox
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onChange}
+        onClick={(event) => event.stopPropagation()}
+        className="shadow-sm"
+        aria-label="Select work"
+      />
     </div>
   );
 }
@@ -711,25 +908,6 @@ function quickMarkMeta(value: ListeningStatus) {
     default:
       return { label: "Unmarked", icon: Circle, active: false, className: "" };
   }
-}
-
-export function cardDate(releaseDate?: string | null, updatedAt?: string | null): WorkCardDate | null {
-  const updated = dateOnly(updatedAt);
-  if (updated) return { label: "Updated", value: updated };
-  const released = dateOnly(releaseDate);
-  return released ? { label: "Release", value: released } : null;
-}
-
-export function formatTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function workProgressPercent(progress: WorkProgressSummary) {
-  if (!progress.durationSeconds || progress.durationSeconds <= 0) return 0;
-  return Math.min(100, Math.max(0, (progress.positionSeconds / progress.durationSeconds) * 100));
 }
 
 function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: string) => void }) {
@@ -778,12 +956,4 @@ function openEntityRoute(route: string) {
 
 function isMobileViewport() {
 	return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
-}
-
-function dateOnly(value?: string | null) {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : trimmed;
 }

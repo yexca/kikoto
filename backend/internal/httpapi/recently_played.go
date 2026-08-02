@@ -35,16 +35,15 @@ func (s *Server) recentlyPlayedWorks(ctx context.Context, userID int64, limit in
 		demoWhere = " AND " + contentpolicy.DemoEligibleWorkSQL("work")
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT media_item.work_id, MAX(progress.last_played_at) AS latest_played_at
-		FROM user_media_progress AS progress
-		INNER JOIN media_item ON media_item.id = progress.media_item_id
-		INNER JOIN work ON work.id = media_item.work_id
-		WHERE progress.user_id = ?
-			AND progress.last_played_at IS NOT NULL
+		SELECT cursor.work_id, cursor.last_played_at
+		FROM user_work_playback_cursor AS cursor
+		INNER JOIN media_item ON media_item.id = cursor.media_item_id
+		INNER JOIN work ON work.id = cursor.work_id
+		WHERE cursor.user_id = ?
+			AND cursor.last_played_at IS NOT NULL
 			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
 			`+demoWhere+`
-		GROUP BY media_item.work_id
-		ORDER BY latest_played_at DESC, media_item.work_id DESC
+		ORDER BY cursor.last_played_at DESC, cursor.work_id DESC
 		LIMIT ?
 	`, userID, limit)
 	if err != nil {

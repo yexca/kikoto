@@ -76,16 +76,23 @@ Important tables:
 - `user_account`
 - `user_session`
 - `user_work_state`
-- `user_media_progress`
+- `user_work_playback_cursor`
+- `user_media_progress` (legacy migration source)
 - `user_media_lyrics_preference`
 - `favorite_list`
 - `favorite_list_item`
 - `user_tag`
 - `user_work_tag`
 
-Playback progress and lyrics choices are attached to logical media items, not
-raw file paths. Lyrics preferences relate an audio media item to a lyrics media
-item; runtime location selection remains a file-source concern.
+`user_work_playback_cursor` stores at most one Resume position for each user and
+canonical logical work family. It references the active edition's logical media
+item and records the last file source/location context; location deletion clears
+those foreign keys without turning a raw path into the progress owner. Migration
+`022` seeds each cursor from the newest legacy `user_media_progress` row in that
+family.
+
+Lyrics preferences relate an audio media item to a lyrics media item; runtime
+location selection remains a file-source concern.
 
 ## Modeling Rules
 
@@ -96,6 +103,7 @@ item; runtime location selection remains a file-source concern.
 - Interactive code and text search reads normalized metadata and aliases rather
   than scanning raw provider snapshot JSON.
 - User state should survive metadata refresh and source replacement.
+- Playback is a work cursor, not a set of independent per-track bookmarks.
 
 ## Related Docs
 

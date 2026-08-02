@@ -11,7 +11,6 @@ import {
   Circle,
   CircleUserRound,
   Clock3,
-  Database,
   GitBranchPlus,
   CloudOff,
   Edit3,
@@ -128,7 +127,6 @@ import {
   WorkCardQuickMarkButton,
   WorkCardSelection,
   WorkCardShell,
-  cardDate,
   dlsiteTagBadges,
   userTagBadges,
   type WorkCardViewModel,
@@ -159,6 +157,7 @@ import {
 } from "@/features/work-detail/source/sourceContextModel";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
+import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlaybackCursor";
 import {
   groupWorkVersions,
   preferredWorkVersion,
@@ -170,19 +169,21 @@ import {
 import {
   buildRemoteTree,
   buildTree,
+  buildWorkResumeQueue,
   countTreeFiles,
   emptyTree,
   flattenTracks,
   flattenTreeFiles,
+  folderPlaybackTracks,
   formatBytes,
   formatDuration,
   formatTrackDuration,
   formatTreeStats,
-  latestResumeTrack,
   playableFiles,
   remoteSelectablePaths,
+  sortedTreeChildren,
+  sortedTreeFiles,
   toPlayerTrack,
-  toPreferredPlayerTrack,
   toRemotePreviewPlayerTrack,
   treeStats,
   type TreeNode,
@@ -260,8 +261,8 @@ function openActivityRun(runId: number) {
 const librarySearchDebounceMs = 400;
 const remoteSearchDebounceMs = 600;
 
-type RemoteSourceViewState = { page: number; pageSize: number; query: string };
-const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24, query: "" };
+type RemoteSourceViewState = { page: number; pageSize: number };
+const defaultRemoteSourceViewState: RemoteSourceViewState = { page: 1, pageSize: 24 };
 type LibraryHistoryState = {
   libraryBrowseScope?: unknown;
   libraryBrowseState?: unknown;
@@ -307,7 +308,6 @@ export function LibraryPage() {
 	const [browseHydrated, setBrowseHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
-  const [isDatabaseMenuOpen, setIsDatabaseMenuOpen] = useState(false);
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
@@ -347,7 +347,6 @@ export function LibraryPage() {
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
-  const databaseMenuRef = useRef<HTMLDivElement | null>(null);
 	const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
 	const pendingResultsScroll = useRef(false);
 	const pendingScrollRestore = useRef<number | null>(null);
@@ -359,8 +358,7 @@ export function LibraryPage() {
   const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchClauses), [debouncedRemoteSearchClauses]);
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchClauses), [debouncedSearchClauses]);
   const workScope = localScope;
-  const activePrimaryTab: "local" | "tracked" | "database" | null =
-    activeTab.kind === "source" ? null : localScope === "local" ? "local" : localScope === "tracked" ? "tracked" : "database";
+  const activePrimaryTab: "local" | "tracked" | null = activeTab.kind === "source" ? null : localScope;
 	const activeRemoteBrowseState = activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
 	const activeBrowseState: LibraryBrowseState = {
 		query: searchQuery,
@@ -392,7 +390,7 @@ export function LibraryPage() {
 		if (tab.kind === "source") {
 			setRemoteSourceStates((states) => ({
 				...states,
-				[tab.source.id]: { page: state.page, pageSize: state.pageSize, query: formatRemoteSearchQuery(parseSearchClauses(state.query)) },
+				[tab.source.id]: { page: state.page, pageSize: state.pageSize },
 			}));
 		} else {
 			setWorkPage(state.page);
@@ -464,7 +462,6 @@ export function LibraryPage() {
 					[activeTab.source.id]: {
 						...(states[activeTab.source.id] ?? defaultRemoteSourceViewState),
 						page: 1,
-						query: formatRemoteSearchQuery(parseSearchClauses(searchQuery)),
 					},
 				}));
 			}
@@ -729,24 +726,6 @@ export function LibraryPage() {
 		};
 	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, randomSeed, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
 
-  useEffect(() => {
-    if (!isDatabaseMenuOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (databaseMenuRef.current?.contains(target)) return;
-      setIsDatabaseMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsDatabaseMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isDatabaseMenuOpen]);
-
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
 	recordWorkRecommendationEvent(work, "open");
 	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
@@ -825,7 +804,6 @@ export function LibraryPage() {
     setActiveTab(tab);
 	if (tab.kind === "all") setLocalScope(nextScope);
 	applyBrowseState(nextState, tab);
-    setIsDatabaseMenuOpen(false);
     setSelectedRemoteTarget(null);
 	const path = libraryLocation(pathForLibraryTab(tab), nextState);
 	if (`${window.location.pathname}${window.location.search}` !== path) {
@@ -854,7 +832,6 @@ export function LibraryPage() {
   };
 
   const changePrimaryTab = (tab: "local" | "tracked") => {
-    setIsDatabaseMenuOpen(false);
     changeLocalScope(tab);
   };
 
@@ -995,7 +972,7 @@ export function LibraryPage() {
 	queueResultsScroll();
     if (activeTab.kind === "source") {
       skipNextRemoteEffect.current = true;
-      updateRemoteSourceState(activeTab.source.id, { page: 1, query: nextRemoteQuery });
+      updateRemoteSourceState(activeTab.source.id, { page: 1 });
       loadRemoteWorksNow(activeTab.source, nextRemoteQuery, 1, { clearResult: false });
       return;
     }
@@ -1044,16 +1021,16 @@ export function LibraryPage() {
         code={selectedRemoteTarget.code}
         preview={selectedRemoteTarget.preview ?? null}
         onBack={backToLibrary}
-        onOpenLocal={(workID) => {
+        onOpenTracked={(workID) => {
           const work = works.find((item) => item.id === workID);
 		  if (work) {
-			openWork(work, "local");
+			openWorkCodeRoute(work.primaryCode, "tracked", selectedRemoteTarget.source.id);
 			return;
 		  }
 		  void api.getWork(workID).then((detail) => {
 			setSelectedRemoteTarget(null);
-			openWorkCodeRoute(detail.primaryCode, "local");
-		  }).catch((error) => toast.notify(toastFromError(error, "Local detail could not be opened.")));
+			openWorkCodeRoute(detail.primaryCode, "tracked", selectedRemoteTarget.source.id);
+		  }).catch((error) => toast.notify(toastFromError(error, "Tracked detail could not be opened.")));
         }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
@@ -1226,23 +1203,6 @@ export function LibraryPage() {
 		  )}
 		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} onReshuffle={reshuffle} />
 		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
-          <div ref={databaseMenuRef} className="relative">
-            <IconButton title="Data" onClick={() => setIsDatabaseMenuOpen((value) => !value)}>
-              <Database className="h-4 w-4" />
-              {activePrimaryTab === "database" && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
-            </IconButton>
-            {isDatabaseMenuOpen && (
-              <AnchoredPopover open anchorRef={databaseMenuRef} className="w-[min(16rem,calc(100vw-1.5rem))]">
-                <DatabaseViewMenu
-                  value={localScope}
-                  onChange={(scope) => {
-                    changeLocalScope(scope);
-                    setIsDatabaseMenuOpen(false);
-                  }}
-                />
-              </AnchoredPopover>
-            )}
-          </div>
         </div>
       </section>
       {activeFilterCount > 0 && (
@@ -1291,14 +1251,6 @@ export function LibraryPage() {
         onChange={changePrimaryTab}
         onSourceChange={(source) => changeTab({ kind: "source", source })}
       />
-      {activePrimaryTab === "database" && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary" className="gap-1.5">
-            <Database className="h-3.5 w-3.5" />
-            Database view · {localScopeLabel(localScope)}
-          </Badge>
-        </div>
-      )}
 	  <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
@@ -1329,13 +1281,14 @@ export function LibraryPage() {
                 works: current.works.map((item) => item.primaryCode === primaryCode ? { ...item, ...patch } : item),
               } : current);
             }}
-            onSynced={async (workId) => {
+            onSynced={async (workId, options) => {
               if (workId <= 0) {
-                await refreshCurrentWorksPage();
+                loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
                 return;
               }
+              if (!options?.openTracked) return;
               const detail = await api.getWork(workId);
-              openWorkCodeRoute(detail.primaryCode, "local");
+              openWorkCodeRoute(detail.primaryCode, "tracked", activeTab.source.id);
             }}
           />
         </div>
@@ -1426,15 +1379,7 @@ export function LibraryPage() {
 }
 
 type LibraryTab = { kind: "all" } | { kind: "source"; source: LibrarySource };
-type LocalLibraryScope = "all" | "local" | "tracked" | "remote" | "no_source";
-
-const databaseScopeItems: { value: LocalLibraryScope; label: string; description: string; icon: ReactNode }[] = [
-  { value: "all", label: "All records", description: "Every unified work row in the local database.", icon: <Database className="h-4 w-4" /> },
-  { value: "local", label: "Local records", description: "Works with available local files.", icon: <HardDrive className="h-4 w-4" /> },
-  { value: "tracked", label: "Tracked records", description: "Works intentionally tracked from a source.", icon: <GitBranchPlus className="h-4 w-4" /> },
-  { value: "remote", label: "Known remote", description: "Works known from remote source presence.", icon: <Cloud className="h-4 w-4" /> },
-  { value: "no_source", label: "No source", description: "Metadata-only works without current source presence.", icon: <CloudOff className="h-4 w-4" /> },
-];
+type LocalLibraryScope = "local" | "tracked";
 
 function LibraryPrimaryTabs({
   active,
@@ -1443,7 +1388,7 @@ function LibraryPrimaryTabs({
   onChange,
   onSourceChange,
 }: {
-  active: "local" | "tracked" | "database" | null;
+  active: "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
   onChange: (tab: "local" | "tracked") => void;
@@ -1464,36 +1409,6 @@ function LibraryPrimaryTabs({
       ))}
     </div>
   );
-}
-
-function DatabaseViewMenu({ value, onChange }: { value: LocalLibraryScope; onChange: (scope: LocalLibraryScope) => void }) {
-  return (
-    <div className="rounded-lg border bg-card p-2 text-card-foreground shadow-xl">
-      <div className="px-2 py-1.5">
-        <div className="text-sm font-medium">Database view</div>
-      </div>
-      <div className="mt-1 space-y-1">
-        {databaseScopeItems.map((item) => (
-          <button
-            key={item.value}
-            className={`flex w-full items-start gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted ${value === item.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-            aria-pressed={value === item.value}
-            onClick={() => onChange(item.value)}
-          >
-            <span className="mt-0.5 shrink-0">{item.icon}</span>
-            <span className="min-w-0">
-              <span className="block font-medium text-foreground">{item.label}</span>
-              <span className="block text-xs leading-5 text-muted-foreground">{item.description}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function localScopeLabel(scope: LocalLibraryScope) {
-  return databaseScopeItems.find((item) => item.value === scope)?.label ?? "Database records";
 }
 
 function TabButton({
@@ -1554,7 +1469,7 @@ function RemoteSourcePanel({
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
   onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>) => void;
-  onSynced: (workID: number) => Promise<void>;
+  onSynced: (workID: number, options?: { openTracked?: boolean }) => Promise<void>;
 }) {
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
@@ -1568,7 +1483,7 @@ function RemoteSourcePanel({
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
   const { page, pageSize } = viewState;
 
-  const syncWork = async (work: RemoteWork, reason: string) => {
+  const syncWork = async (work: RemoteWork, reason: string, openTracked = false) => {
     if (!work.primaryCode) {
       toast.warning("This remote work has no stable work code.");
       return;
@@ -1577,7 +1492,8 @@ function RemoteSourcePanel({
     try {
       const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), reason);
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onSynced(result.workId);
+      onWorkStateChanged(work.primaryCode, { workId: result.workId });
+      await onSynced(result.workId, { openTracked });
       return result.workId;
     } catch (error) {
       toast.notify(toastFromError(error, "Remote sync failed."));
@@ -1789,7 +1705,7 @@ function RemoteSourcePanel({
                   isBusy={isSyncingCode === work.primaryCode || fetchWorkspace.isBusy}
                   onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
                   onOpen={() => onOpenPreview(work)}
-                  onFetch={() => void syncWork(work, "manual_track")}
+                  onFetch={() => void syncWork(work, "manual_track", true)}
                   onTagOpen={onTagOpen}
                   onMark={(status) => void markRemoteWork(work, status)}
                   onSave={() => void fetchWorkspace.open({
@@ -2192,13 +2108,13 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, 
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    sales: work.sales,
     regularPrice: work.regularPrice,
     price: work.price,
     priceCurrency: work.priceCurrency,
     series: work.series || null,
+    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
-    date: cardDate(work.releaseDate, work.updatedAt || work.createdAt),
-    progress: work.progress,
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
 		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
 		recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore),
@@ -2220,12 +2136,12 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    sales: work.sales,
     price: work.price,
     priceCurrency: "JPY",
     series: null,
+    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
-    date: cardDate(work.releaseDate, work.updatedAt || work.releaseDate),
-    progress: null,
     userTags: [],
 		recommended: recommendationBadgeVisible(work.recommendScore),
 		recommendationScore: work.recommendScore,
@@ -2426,13 +2342,7 @@ function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibra
 	  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
 		<span>{scope === "tracked"
           ? "No tracked works match this view."
-          : scope === "remote"
-          ? "No untracked remote-available works match this view."
-          : scope === "no_source"
-          ? "No works without sources match this view."
-          : scope === "local"
-          ? "No local works match this view."
-		  : "No works match this view."}</span>
+          : "No local works match this view."}</span>
 		{filtered && <Button variant="outline" size="sm" onClick={onClear}>Clear search and filters</Button>}
       </CardContent>
     </Card>
@@ -2573,7 +2483,7 @@ function RemoteOnlyWorkDetailController({
   code,
   preview,
   onBack,
-  onOpenLocal,
+  onOpenTracked,
   onWorksChanged,
 }: {
   source: LibrarySource;
@@ -2581,7 +2491,7 @@ function RemoteOnlyWorkDetailController({
   code: string;
   preview: RemoteWorkPreview | null;
   onBack: () => void;
-  onOpenLocal: (workID: number) => void;
+  onOpenTracked: (workID: number) => void;
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -2765,7 +2675,7 @@ function RemoteOnlyWorkDetailController({
       const result = await api.trackRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
       toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
       await onWorksChanged();
-      onOpenLocal(result.workId);
+      onOpenTracked(result.workId);
     } catch (error) {
       toast.notify(toastFromError(error, "Remote track failed."));
     } finally {
@@ -2847,7 +2757,6 @@ function RemoteOnlyWorkDetailController({
   const identityActions = detail ? (
     <WorkIdentityActionBar
       busy={isFetching || fetchWorkspace.isBusy}
-      canPlay={remotePlayableTracks.length > 0}
       listeningStatus="none"
       favorite={false}
       listWorkId={detail.workId}
@@ -2855,7 +2764,6 @@ function RemoteOnlyWorkDetailController({
       onListSaved={async () => {
         await onWorksChanged();
       }}
-      onPlay={() => playRemoteTracks(remotePlayableTracks, remotePlayableTracks[0].locationId)}
       onMark={(status) => void updateRemoteMark(status)}
       dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
     />
@@ -3084,6 +2992,7 @@ function PersistedWorkDetailController({
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [activeEdition, setActiveEdition] = useState<WorkDetail | null>(null);
   const [activeEditionCode, setActiveEditionCode] = useState("");
+  const [isResuming, setIsResuming] = useState(false);
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
   const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
@@ -3110,8 +3019,13 @@ function PersistedWorkDetailController({
       : emptyTree(),
     [localDirectoryWork],
   );
-  const playbackTracks = useMemo(() => flattenTracks(playbackTree), [playbackTree]);
-  const resumeTrack = useMemo(() => latestResumeTrack(playbackTracks), [playbackTracks]);
+  const { cursor: playbackCursor, isLoading: playbackCursorLoading } = useWorkPlaybackCursor(work?.id ?? null);
+  const hasResumableCursor = Boolean(
+    playbackCursor
+    && !playbackCursor.completed
+    && Number.isFinite(playbackCursor.positionSeconds)
+    && playbackCursor.positionSeconds > 0,
+  );
   const fetchRemote = selectedRemoteSource ?? selectedTrackedRemoteSource ?? undefined;
   const fetchRemoteCode = selectedRemoteSource
     ? selectedRemoteWorkCode
@@ -3259,18 +3173,30 @@ function PersistedWorkDetailController({
     player.playQueue(tracks.map((track) => toPlayerTrack(track, localDirectoryWork)), locationId);
   };
 
-  const playWork = (startMediaItemId?: number) => {
-    if (!localDirectoryWork || playbackTracks.length === 0) return;
-    onPlay();
-    const queue = playbackTracks.map((track) => toPreferredPlayerTrack(track, localDirectoryWork));
-    const start = startMediaItemId
-      ? queue.find((track) => track.mediaItemId === startMediaItemId) ?? queue[0]
-      : queue[0];
-    player.playQueue(queue, start.locationId);
-  };
-
-  const resumePlayback = () => {
-    if (resumeTrack) playWork(resumeTrack.mediaItemId);
+  const resumePlayback = async () => {
+    if (!work || !playbackCursor || !hasResumableCursor) return;
+    setIsResuming(true);
+    try {
+      const resumeWork = playbackCursor.mediaWorkId && playbackCursor.mediaWorkId !== localDirectoryWork?.id
+        ? await api.getWork(playbackCursor.mediaWorkId)
+        : localDirectoryWork;
+      if (!resumeWork) throw new Error("The saved playback edition is unavailable.");
+      const resumeTree = resumeWork.id === localDirectoryWork?.id
+        ? playbackTree
+        : buildTree(resumeWork.mediaItems, null, resumeWork.primaryCode);
+      const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor);
+      if (!resumeQueue) throw new Error("The saved track or source is no longer available.");
+      if (resumeWork.id !== localDirectoryWork?.id) {
+        setActiveEdition(resumeWork);
+        setActiveEditionCode(resumeWork.primaryCode);
+      }
+      onPlay();
+      player.playQueue(resumeQueue.tracks, resumeQueue.locationId, resumeQueue.positionSeconds);
+    } catch (error) {
+      toast.notify(toastFromError(error, "Saved playback could not be resumed."));
+    } finally {
+      setIsResuming(false);
+    }
   };
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -3279,15 +3205,6 @@ function PersistedWorkDetailController({
       tracks.map((track) => toRemotePreviewPlayerTrack(track, selectedRemoteDetail, flattenTreeFiles(tree))),
       locationId,
     );
-  };
-
-  const playCurrentContext = () => {
-    if (allTracks.length === 0) return;
-    if (selectedRemoteDetail) {
-      playRemoteTracks(allTracks, allTracks[0].locationId);
-      return;
-    }
-    playTracks(allTracks, allTracks[0].locationId);
   };
 
   const queueTrack = (track: TreeTrack, next: boolean) => {
@@ -3389,7 +3306,7 @@ function PersistedWorkDetailController({
       await onWorkReload(result.workId, true);
       await onWorksChanged();
       const trackedDetail = await api.getWorkSummary(result.workId);
-      openWorkCodeRoute(trackedDetail.primaryCode || result.primaryCode, "tracked");
+      openWorkCodeRoute(trackedDetail.primaryCode || result.primaryCode, "tracked", selectedRemoteSource.source.id);
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
     } finally {
@@ -3546,15 +3463,13 @@ function PersistedWorkDetailController({
     metadataDurationSeconds: selectedRemoteDetail?.durationSeconds ?? hero.durationSeconds,
   };
   const identityActions = work ? <WorkIdentityActionBar
-    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
-    canPlay={allTracks.length > 0}
+    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy || isResuming}
     listeningStatus={work.listeningStatus}
     favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
     listWorkId={work.id}
     onEnsureListWork={ensureDetailListWork}
     onListSaved={favoriteSaved}
-    onPlay={playCurrentContext}
-    onResume={resumeTrack ? resumePlayback : undefined}
+    onResume={!playbackCursorLoading && hasResumableCursor ? () => void resumePlayback() : undefined}
     onMark={(status) => void markDetailWork(status)}
     onSync={() => void syncDetailMetadata()}
     onEditMetadata={() => setIsMetadataEditorOpen(true)}
@@ -5679,7 +5594,7 @@ function DirectoryTree({
           <TreeFile
             key={`file:${row.file.playbackKey ?? row.file.locationId}`}
             file={row.file}
-            files={playableFiles(row.parent.files)}
+            files={folderPlaybackTracks(row.parent)}
             depth={row.depth}
             isActive={row.file.playbackKey === currentPlaybackKey || (!row.file.playbackKey && row.file.locationId === currentLocationId)}
             onPlayFolder={onPlayFolder}
@@ -5884,7 +5799,7 @@ function DirectoryBrowser({
           <TreeFile
             key={file.playbackKey ?? file.locationId}
             file={file}
-            files={playableFiles(current.files)}
+            files={folderPlaybackTracks(current)}
             depth={0}
             isActive={file.playbackKey === currentPlaybackKey || (!file.playbackKey && file.locationId === currentLocationId)}
             onPlayFolder={onPlayFolder}
@@ -6756,11 +6671,11 @@ function directoryTextMatches(text: string, alias: string) {
 }
 
 function sortedFolders(node: TreeNode) {
-  return Array.from(node.children.values()).sort((a, b) => naturalCompare(a.name, b.name));
+  return sortedTreeChildren(node);
 }
 
 function sortedFiles(node: TreeNode) {
-  return [...node.files].sort((a, b) => naturalCompare(a.title, b.title));
+  return sortedTreeFiles(node);
 }
 
 function sortedFilesDeep(node: TreeNode) {
@@ -6768,7 +6683,7 @@ function sortedFilesDeep(node: TreeNode) {
   for (const child of node.children.values()) {
     files.push(...sortedFilesDeep(child));
   }
-  return files.sort((a, b) => naturalCompare(a.sourcePath || a.title, b.sourcePath || b.title));
+  return files.sort((a, b) => (a.sourcePath || a.title).localeCompare(b.sourcePath || b.title, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 type VisibleTreeRow =
@@ -6805,21 +6720,21 @@ function folderContainsActiveAudio(node: TreeNode) {
 
 function flattenVisibleTreeRows(root: TreeNode, expandedPaths: Set<string>) {
   const rows: VisibleTreeRow[] = [];
-  for (const file of sortedFiles(root)) {
-    rows.push({ type: "file", file, parent: root, depth: 0 });
-  }
   const visit = (node: TreeNode, depth: number) => {
     rows.push({ type: "folder", node, depth });
     if (!expandedPaths.has(node.path)) return;
-    for (const file of sortedFiles(node)) {
-      rows.push({ type: "file", file, parent: node, depth: depth + 1 });
-    }
     for (const child of sortedFolders(node)) {
       visit(child, depth + 1);
+    }
+    for (const file of sortedFiles(node)) {
+      rows.push({ type: "file", file, parent: node, depth: depth + 1 });
     }
   };
   for (const folder of sortedFolders(root)) {
     visit(folder, 0);
+  }
+  for (const file of sortedFiles(root)) {
+    rows.push({ type: "file", file, parent: root, depth: 0 });
   }
   return rows;
 }
@@ -6844,10 +6759,6 @@ function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
     : stats.files > 0 ? `${stats.files} files` : "";
   const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
   return [countLabel, sizeLabel].filter(Boolean).join(" · ");
-}
-
-function naturalCompare(a: string, b: string) {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function fileIcon(file: TreeTrack) {
@@ -7064,13 +6975,14 @@ function languageLabel(value: string) {
   }
 }
 
-function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent) {
+function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent, trackedSourceID?: number | null) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
   openWorkDetail({
     kind: "known",
     canonicalCode: cleanCode,
     view: sourceIntent === "tracked" ? "tracked" : sourceIntent === "local" ? "local" : undefined,
+    trackedSourceId: sourceIntent === "tracked" ? trackedSourceID : undefined,
   }, {
     returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
     returnLabel: "Back",
@@ -7457,14 +7369,8 @@ function pathForLocalScope(scope: LocalLibraryScope) {
   switch (scope) {
     case "tracked":
       return "/tracked";
-    case "no_source":
-      return "/no-source";
     case "local":
       return "/";
-	case "remote":
-	  return "/library/remote";
-	case "all":
-	  return "/library/all";
     default:
       return null;
   }
@@ -7480,9 +7386,6 @@ function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope, storageScop
 
 function localScopeFromPath(path: string): LocalLibraryScope {
   if (path === "/tracked" || path === "/library/tracked") return "tracked";
-  if (path === "/no-source" || path === "/library/no-source") return "no_source";
-	if (path === "/library/remote") return "remote";
-	if (path === "/library/all") return "all";
   return "local";
 }
 

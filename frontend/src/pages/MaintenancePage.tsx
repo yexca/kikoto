@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { UnlinkedWorksMaintenance } from "@/features/maintenance/UnlinkedWorksMaintenance";
 import { UsersPage } from "@/pages/UsersPage";
 import {
   api,
@@ -61,10 +62,10 @@ const emptyRemoteSource = {
   lastCheckedAt: null,
 } satisfies FileSource;
 
-type MaintenanceTab = "overview" | "routing" | "recommendation" | "library" | "cache" | "metadata" | "users" | "paths";
+type MaintenanceTab = "overview" | "routing" | "recommendation" | "library" | "unlinked" | "cache" | "metadata" | "users" | "paths";
 
 function maintenanceContentWidthClass(tab: MaintenanceTab) {
-  return tab === "overview" || tab === "users" ? "w-full" : "w-full max-w-4xl";
+  return tab === "overview" || tab === "users" || tab === "unlinked" ? "w-full" : "w-full max-w-4xl";
 }
 
 export function MaintenancePage({
@@ -318,6 +319,9 @@ export function MaintenancePage({
         <SettingsTabButton active={activeTab === "library"} onClick={() => selectTab("library")} icon={<Folder className="h-4 w-4" />}>
           Library
         </SettingsTabButton>
+        <SettingsTabButton active={activeTab === "unlinked"} onClick={() => selectTab("unlinked")} icon={<Database className="h-4 w-4" />}>
+          Unlinked works
+        </SettingsTabButton>
         <SettingsTabButton active={activeTab === "cache"} onClick={() => selectTab("cache")} icon={<Download className="h-4 w-4" />}>
           Cache & Fetch
         </SettingsTabButton>
@@ -387,6 +391,8 @@ export function MaintenancePage({
           onThresholdChange={setRecommendationThreshold}
           onSave={saveRuntimeSettings}
         />
+      ) : activeTab === "unlinked" ? (
+        <UnlinkedWorksMaintenance />
       ) : activeTab === "cache" ? (
         <CacheFetchSettings
           cacheEnabled={cacheEnabled}
@@ -486,6 +492,14 @@ function SettingsOverview({
         status={`${enabledSources}/${remoteSources.length} enabled`}
         chips={[warningSources > 0 ? `${warningSources} warnings` : "Healthy", "Priority", "Endpoints"]}
         onClick={() => onSelect("library")}
+      />
+      <SettingsHomeCard
+        icon={<Database className="h-5 w-5" />}
+        title="Unlinked works"
+        description="Review database works without an available file source."
+        status="Maintenance"
+        chips={["Search", "Source checks", "Cleanup"]}
+        onClick={() => onSelect("unlinked")}
       />
       <SettingsHomeCard
         icon={<Download className="h-5 w-5" />}
@@ -2232,7 +2246,7 @@ function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
   const value = new URLSearchParams(window.location.search).get("tab");
   if (value === "local" || value === "remote") return "library";
   if (value === "system") return "paths";
-  const tabs: MaintenanceTab[] = ["overview", "routing", "recommendation", "library", "cache", "metadata", "users", "paths"];
+  const tabs: MaintenanceTab[] = ["overview", "routing", "recommendation", "library", "unlinked", "cache", "metadata", "users", "paths"];
   if (value && tabs.includes(value as MaintenanceTab) && (value !== "users" || canManageUsers)) return value as MaintenanceTab;
   return "overview";
 }

@@ -143,6 +143,8 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		runErr = s.executeMediaLocationCleanupJob(jobCtx, job)
 	case "cache_orphan_cleanup":
 		runErr = s.executeCacheOrphanCleanupJob(jobCtx, job)
+	case "unlinked_work_source_check":
+		runErr = s.executeUnlinkedWorkSourceCheckJob(jobCtx, job)
 	case "custom_workflow":
 		runErr = s.executeCustomWorkflowJob(jobCtx, job)
 	default:

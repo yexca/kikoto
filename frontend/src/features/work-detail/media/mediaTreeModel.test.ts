@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { MediaItem, RemoteTrack } from "@/lib/api";
+import type { MediaItem, RemoteTrack, WorkProgressSummary } from "@/lib/api";
 import {
+  buildWorkResumeQueue,
   buildRemoteTree,
   buildTree,
   flattenTracks,
   flattenTreeFiles,
+  folderPlaybackTracks,
   formatDuration,
   formatTrackDuration,
   remoteSelectablePaths,
@@ -124,6 +126,73 @@ describe("mediaTreeModel", () => {
     });
   });
 
+  it("builds explicit Resume from the cursor media edition and saved source", () => {
+    const item = {
+      id: 11,
+      title: "01.mp3",
+      kind: "audio",
+      fingerprint: "fingerprint",
+      durationSeconds: 90,
+      progress: null,
+      locations: [
+        {
+          id: 21,
+          fileSourceId: 1,
+          fileSourceName: "Local",
+          locationType: "local",
+          path: "library/RJ09999995/01.mp3",
+          streamUrl: "/api/media/21/stream",
+          downloadUrl: "",
+          availability: "available",
+          sizeBytes: 1024,
+          durationSeconds: 90,
+        },
+        {
+          id: 31,
+          fileSourceId: 2,
+          fileSourceName: "Example Remote",
+          locationType: "remote_stream",
+          path: "RJ09999995/01.mp3",
+          streamUrl: "/remote/01",
+          downloadUrl: "",
+          availability: "remote",
+          sizeBytes: 1024,
+          durationSeconds: 90,
+        },
+      ],
+    } as MediaItem;
+    const work = {
+      id: 7,
+      primaryCode: "RJ09999995",
+      title: "Work",
+      coverUrl: "",
+      circle: "Circle",
+      mediaItems: [item],
+    } as Parameters<typeof toPreferredPlayerTrack>[1];
+    const tracks = flattenTracks(buildTree([item], null, work.primaryCode));
+    const cursor = {
+      workId: 6,
+      mediaWorkId: 7,
+      mediaItemId: 11,
+      fileSourceId: 2,
+      locationId: 31,
+      locationType: "remote_stream",
+      title: "01.mp3",
+      positionSeconds: 42,
+      durationSeconds: 90,
+      lastPlayedAt: "2026-08-02 10:00:00",
+      completed: false,
+    } satisfies WorkProgressSummary;
+
+    expect(buildWorkResumeQueue(tracks, work, cursor)).toMatchObject({
+      locationId: 31,
+      positionSeconds: 42,
+      tracks: [{ mediaItemId: 11, locationId: 31, locationType: "remote_stream" }],
+    });
+    expect(buildWorkResumeQueue(tracks, work, { ...cursor, completed: true })).toBeNull();
+    expect(buildWorkResumeQueue(tracks, work, { ...cursor, mediaWorkId: 8 })).toBeNull();
+  });
+
   it("hides items whose selected source only has missing locations", () => {
     const item = {
       id: 11,
@@ -217,6 +286,63 @@ describe("mediaTreeModel", () => {
 
     expect(flattenTracks(tree)).toHaveLength(1);
     expect(remoteSelectablePaths(tree)).toEqual(["Disc 1/01.mp3"]);
+  });
+
+  it("plays folders before same-level files and uses natural numeric order for both", () => {
+    const audio = (title: string): RemoteTrack => ({
+      type: "audio",
+      title,
+      hash: "",
+      streamUrl: `/remote/${title}`,
+      downloadUrl: "",
+      durationSeconds: null,
+      sizeBytes: null,
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+      children: [],
+    });
+    const folder = (title: string): RemoteTrack => ({
+      type: "folder",
+      title,
+      hash: "",
+      streamUrl: "",
+      downloadUrl: "",
+      durationSeconds: null,
+      sizeBytes: null,
+      cacheAvailable: false,
+      cacheLocationId: null,
+      cachePath: "",
+      localAvailable: false,
+      localLocationId: null,
+      localPath: "",
+      children: [audio(`folder-${title}.mp3`)],
+    });
+    const tree = buildRemoteTree([
+      audio("10.mp3"),
+      folder("10"),
+      audio("2.mp3"),
+      folder("2"),
+      audio("1.mp3"),
+      folder("1"),
+    ]);
+
+    expect(flattenTracks(tree).map((track) => track.title)).toEqual([
+      "folder-1.mp3",
+      "folder-2.mp3",
+      "folder-10.mp3",
+      "1.mp3",
+      "2.mp3",
+      "10.mp3",
+    ]);
+    expect(folderPlaybackTracks(tree).map((track) => track.title)).toEqual([
+      "1.mp3",
+      "2.mp3",
+      "10.mp3",
+    ]);
   });
 
   it("uses source, work, and path for remote playback identity", () => {

@@ -104,6 +104,7 @@ type circleCatalogWork struct {
 	VoiceCredits     []voiceCredit       `json:"voiceCredits"`
 	Rating           *float64            `json:"rating"`
 	Sales            *int64              `json:"sales"`
+	HasNonOrigin     bool                `json:"hasAvailableNonOriginEdition,omitempty"`
 	RegularPrice     *int64              `json:"regularPrice"`
 	Price            *int64              `json:"price"`
 	PriceCurrency    string              `json:"priceCurrency"`
@@ -1594,9 +1595,14 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	if err != nil {
 		return nil, err
 	}
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range works {
 		if works[index].WorkID != nil {
 			works[index].UserTags = tagsByWork[*works[index].WorkID]
+			works[index].HasNonOrigin = availableNonOriginEditions[*works[index].WorkID]
 		} else {
 			works[index].UserTags = []workUserTag{}
 		}
@@ -1639,6 +1645,7 @@ func mergeCircleCatalogWork(target *circleCatalogWork, item circleCatalogWork) {
 	if target.Sales == nil {
 		target.Sales = item.Sales
 	}
+	target.HasNonOrigin = target.HasNonOrigin || item.HasNonOrigin
 	if target.RegularPrice == nil {
 		target.RegularPrice = item.RegularPrice
 	}

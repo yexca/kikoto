@@ -153,6 +153,7 @@ type voiceKnownWork struct {
 	AgeRating          string                   `json:"ageRating"`
 	Rating             *float64                 `json:"rating"`
 	Sales              *int64                   `json:"sales"`
+	HasNonOrigin       bool                     `json:"hasAvailableNonOriginEdition,omitempty"`
 	RegularPrice       *int64                   `json:"regularPrice"`
 	Price              *int64                   `json:"price"`
 	PriceCurrency      string                   `json:"priceCurrency"`
@@ -208,6 +209,7 @@ type voiceRemoteWork struct {
 	AgeRating      string   `json:"ageRating"`
 	Rating         *float64 `json:"rating"`
 	Sales          *int64   `json:"sales"`
+	HasNonOrigin   bool     `json:"hasAvailableNonOriginEdition,omitempty"`
 	Price          *int64   `json:"price"`
 	Tags           []string `json:"tags"`
 	VoiceActors    []string `json:"voiceActors"`
@@ -1095,8 +1097,13 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 	if err != nil {
 		return nil, err
 	}
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range works {
 		works[index].UserTags = tagsByWork[works[index].WorkID]
+		works[index].HasNonOrigin = availableNonOriginEditions[works[index].WorkID]
 	}
 	return works, nil
 }
@@ -1127,6 +1134,7 @@ func mergeVoiceKnownWork(target *voiceKnownWork, item voiceKnownWork) {
 	if target.Sales == nil {
 		target.Sales = item.Sales
 	}
+	target.HasNonOrigin = target.HasNonOrigin || item.HasNonOrigin
 	if target.RegularPrice == nil {
 		target.RegularPrice = item.RegularPrice
 	}
@@ -1349,6 +1357,26 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 	for _, resultErr := range resultErrors {
 		if resultErr != nil {
 			return nil, resultErr
+		}
+	}
+	workIDs := []int64{}
+	for _, result := range results {
+		for _, work := range result.Works {
+			if work.WorkID != nil {
+				workIDs = append(workIDs, *work.WorkID)
+			}
+		}
+	}
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
+	for resultIndex := range results {
+		for workIndex := range results[resultIndex].Works {
+			workID := results[resultIndex].Works[workIndex].WorkID
+			if workID != nil {
+				results[resultIndex].Works[workIndex].HasNonOrigin = availableNonOriginEditions[*workID]
+			}
 		}
 	}
 	_, err = s.recordVoiceRemoteSearchWorkflow(ctx, personID, voiceName, keyword, results)

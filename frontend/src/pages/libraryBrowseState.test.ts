@@ -81,6 +81,17 @@ describe("library browse state", () => {
     expect(restored.desktopColumns).toBe(5);
   });
 
+  it("treats an omitted query as explicitly empty instead of reviving a source fallback", () => {
+    const restored = libraryBrowseStateFromSearch("?status=listening", {
+      ...defaultLibraryBrowseState,
+      query: "stale remote query",
+      page: 4,
+    });
+
+    expect(restored.query).toBe("");
+    expect(restored.page).toBe(4);
+  });
+
   it("continues to read legacy full-state URLs", () => {
     const restored = libraryBrowseStateFromSearch(
       "?page=4&pageSize=48&sort=sales&direction=asc&seed=99&status=finished&view=masonry&mobileColumns=2&desktopColumns=6",
@@ -119,7 +130,8 @@ describe("library browse state", () => {
 
   it("keeps only Library browse routes as resumable locations", () => {
     expect(normalizeLibraryBrowseLocation("/remote-source?q=RJ01000012")).toBe("/remote-source?q=RJ01000012");
-    expect(normalizeLibraryBrowseLocation("/library/remote?q=voice")).toBe("/library/remote?q=voice");
+    expect(normalizeLibraryBrowseLocation("/library/remote?q=voice")).toBeNull();
+    expect(normalizeLibraryBrowseLocation("/no-source")).toBeNull();
     expect(normalizeLibraryBrowseLocation("/RJ01000012?view=remote")).toBeNull();
     expect(normalizeLibraryBrowseLocation("/favorites?q=voice")).toBeNull();
     expect(normalizeLibraryBrowseLocation("https://example.test/remote-source")).toBeNull();

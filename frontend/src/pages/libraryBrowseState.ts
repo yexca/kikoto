@@ -54,7 +54,7 @@ export function readLibraryBrowseState(key: string): LibraryBrowseState | null {
 
 export function writeLibraryBrowseState(key: string, state: LibraryBrowseState) {
   try {
-    window.sessionStorage.setItem(`${storagePrefix}${key}`, JSON.stringify(state));
+    window.sessionStorage.setItem(`${storagePrefix}${key}`, JSON.stringify({ ...state, query: "" }));
   } catch {
     // Browsing still works when session storage is unavailable.
   }
@@ -118,7 +118,7 @@ export function libraryBrowseStateFromSearch(search: string, fallback: LibraryBr
   const params = new URLSearchParams(search);
   return libraryBrowseStateFromValue(
     {
-      query: params.has("q") ? params.get("q") : fallback.query,
+      query: params.has("q") ? params.get("q") : "",
       page: params.has("page") ? Number(params.get("page")) : fallback.page,
       pageSize: params.has("pageSize") ? Number(params.get("pageSize")) : fallback.pageSize,
       status: params.has("status") ? params.get("status") : fallback.status,
@@ -204,19 +204,11 @@ function parseColumnSearchValue(value: string | null) {
 }
 
 function isLibraryBrowsePath(path: string) {
-  if (
-    [
-      "/",
-      "/tracked",
-      "/no-source",
-      "/library",
-      "/library/tracked",
-      "/library/no-source",
-      "/library/all",
-      "/library/remote",
-    ].includes(path)
-  ) {
+  if (["/", "/tracked", "/library", "/library/tracked"].includes(path)) {
     return true;
+  }
+  if (["/no-source", "/library/no-source", "/library/all", "/library/remote"].includes(path)) {
+    return false;
   }
   if (/^\/library\/source\/[^/]+\/?$/.test(path)) return true;
   if (

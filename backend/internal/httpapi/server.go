@@ -93,6 +93,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works", s.listWorks)
 	mux.HandleFunc("GET /api/works/{id}", s.getWork)
 	mux.HandleFunc("GET /api/works/{id}/recommendation", s.getWorkRecommendation)
+	mux.HandleFunc("GET /api/works/{id}/playback-cursor", s.getWorkPlaybackCursor)
 	mux.HandleFunc("POST /api/recommendation-events", s.recordRecommendationEvents)
 	mux.HandleFunc("GET /api/recommendation-telemetry", s.getRecommendationTelemetry)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
@@ -112,6 +113,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/works/{code}/entity-links/resolve", s.resolveWorkEntityLink)
 	mux.HandleFunc("GET /api/works/{code}/source-availability", s.getWorkSourceAvailability)
 	mux.HandleFunc("POST /api/works/{code}/source-availability", s.checkWorkSourceAvailabilityNow)
+	mux.HandleFunc("POST /api/maintenance/unlinked-works/source-check", s.checkUnlinkedWorkSources)
+	mux.HandleFunc("POST /api/maintenance/unlinked-works/delete", s.deleteUnlinkedWorks)
 	mux.HandleFunc("PATCH /api/works/{id}/user-state", s.updateWorkUserState)
 	mux.HandleFunc("PUT /api/works/{id}/tags", s.setWorkUserTags)
 	mux.HandleFunc("GET /api/favorite-works", s.listFavoriteWorks)
@@ -511,6 +514,7 @@ type libraryWorkSummary struct {
 	CircleExternalID       string               `json:"circleExternalId"`
 	Rating                 *float64             `json:"rating"`
 	Sales                  *int64               `json:"sales"`
+	HasNonOrigin           bool                 `json:"hasAvailableNonOriginEdition,omitempty"`
 	RegularPrice           *int64               `json:"regularPrice"`
 	Price                  *int64               `json:"price"`
 	PriceCurrency          string               `json:"priceCurrency"`
@@ -543,6 +547,7 @@ type sourcePresenceItem struct {
 	RemoteID       string `json:"remoteId"`
 	RemoteCode     string `json:"remoteCode"`
 	SourceURL      string `json:"sourceUrl"`
+	Forked         *bool  `json:"forked,omitempty"`
 }
 
 type workDetail struct {
@@ -898,6 +903,10 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 	if err != nil {
 		return nil
 	}
+	if err := rows.Close(); err != nil {
+		return nil
+	}
+	s.enrichTrackedPresenceForkState(ctx, code, items)
 	return items
 }
 
@@ -1268,6 +1277,9 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		if _, statErr := os.Stat(path); statErr == nil {
 			_, _ = s.db.ExecContext(r.Context(), `UPDATE media_file_location SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-10 minutes'))`, id)
 		}
+	}
+	if s.serveBrowserCompatibleAudio(w, r, id, path) {
+		return
 	}
 	http.ServeFile(w, r, path)
 }
@@ -2982,10 +2994,10 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 			media_item.has_audio,
 			media_item.size_bytes,
 			media_item.fingerprint,
-			user_media_progress.position_seconds,
-			user_media_progress.duration_seconds,
-			user_media_progress.completed,
-			user_media_progress.last_played_at,
+			playback_cursor.position_seconds,
+			playback_cursor.duration_seconds,
+			playback_cursor.completed,
+			playback_cursor.last_played_at,
 			(
 				SELECT preference.lyrics_media_item_id
 				FROM user_media_lyrics_preference AS preference
@@ -2993,8 +3005,8 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 					AND preference.audio_media_item_id = media_item.id
 			) AS preferred_lyrics_media_item_id
 		FROM media_item
-		LEFT JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
-			AND user_media_progress.user_id = ?
+		LEFT JOIN user_work_playback_cursor AS playback_cursor ON playback_cursor.media_item_id = media_item.id
+			AND playback_cursor.user_id = ?
 		WHERE media_item.work_id = ?
 		ORDER BY
 			COALESCE(media_item.disc_no, 0) ASC,

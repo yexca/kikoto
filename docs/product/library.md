@@ -10,8 +10,16 @@ The Library is the main browsing surface for works.
   and voice credits before hydrating the current page. Provider-declared edition
   codes remain searchable without creating extra works or scanning raw metadata
   snapshots during a Library request.
-- Shows cover, title, code, circle, rating, tags, voice metadata, local
-  availability, source tags, and quick listening marks when available.
+- Shows cover, title, code, Circle / Series on one ellipsized line, voice
+  metadata, local availability, source tags, and quick listening marks when
+  available.
+- Measures provider tags into at most two card rows. A `+N` badge opens hidden
+  tags in a popover; personal tags remain a separate user-owned row.
+- Replaces card date and playback-history rows with compact DL sales and a
+  five-segment non-numeric rating comparison.
+- Shows a language icon only when the database knows an available non-Origin
+  edition through an enabled source. Unknown or metadata-only language relations
+  do not imply availability.
 - Shows the current price when normalized commercial metadata is available and
   labels zero-price works as Free.
 - Shows the signed-in user's work tags separately from metadata tags on unified
@@ -36,11 +44,18 @@ The Library is the main browsing surface for works.
   works use the same stable browse seed for pagination-safe variety, and the
   toolbar refresh action creates a new recommendation seed.
 - Shows a compact, horizontally scrollable recently-played strip above the
-  Library controls. It is ordered per user, deduplicated by work, and includes
-  the latest track position without replacing the full work-card grid. The
+  Library controls. It is ordered per user from the one cursor owned by each
+  logical work family and includes the latest track position without replacing
+  the full work-card grid. The
   strip can be collapsed, and that preference is kept in the browser.
-- Provides database-oriented diagnostic scopes for works that do not currently
-  appear in everyday source tabs.
+- Uses one shared query across Local, Tracked, and configured remote sources.
+  Each source retains its own pagination, sort, layout, and scroll state, but
+  cannot restore stale query text after the user clears it elsewhere.
+- Keeps database cleanup out of Library. Maintenance -> Unlinked works provides
+  paged search, source checks, and confirmed local-information deletion for
+  logical families with no available source or media location.
+- Legacy No source Library links redirect to the Unlinked works maintenance tab;
+  legacy aggregate Library links return to the normal Library.
 - When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial
   metadata, where unknown metadata and temporary free promotions are excluded;
@@ -62,7 +77,8 @@ Shelved is the final listening-state option.
 
 Library cards represent unified works, not per-source copies. Remote cards can
 track or sync a work before it has local files, but the resulting state attaches
-to the same unified work identity.
+to the same unified work identity. Track also persists the selected source tree
+and opens that source in Tracked, so a second Fork is not required.
 
 ## Source Tabs
 

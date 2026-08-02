@@ -8,6 +8,7 @@ export type WorkDetailIntent =
       kind: "known";
       canonicalCode: string;
       view?: "local" | "tracked";
+      trackedSourceId?: number | null;
       source?: WorkDetailSourceIntent | null;
     }
   | {
@@ -41,6 +42,9 @@ export function workDetailRoute(intent: WorkDetailIntent) {
     params.set("remoteCode", remoteCode);
   } else if (intent.view) {
     params.set("view", intent.view);
+    if (intent.view === "tracked" && intent.trackedSourceId && validSourceID(intent.trackedSourceId)) {
+      params.set("trackedSource", String(intent.trackedSourceId));
+    }
   }
   const query = params.toString();
   return `/${encodeURIComponent(canonicalCode)}${query ? `?${query}` : ""}`;

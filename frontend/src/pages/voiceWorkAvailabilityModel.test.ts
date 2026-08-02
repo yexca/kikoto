@@ -66,7 +66,12 @@ function knownWork(status?: string): VoiceKnownWork {
       count: 0,
     }] : [],
     progress: {
+      workId: null,
+      mediaWorkId: null,
       mediaItemId: null,
+      fileSourceId: null,
+      locationId: null,
+      locationType: "",
       positionSeconds: 0,
       durationSeconds: 0,
       lastPlayedAt: null,

@@ -34,6 +34,9 @@ Demo mode renders Settings read-only.
   retain only operational metrics such as source health, recommendation
   telemetry, and managed-cache usage.
 - Library combines the local scan settings and configured remote sources.
+- Unlinked works is a dedicated paged maintenance tab for logical work families
+  with no available source or media location. It supports source rechecks and
+  confirmed deletion of local database information while retaining media files.
 - Each enabled remote source has an explicit health-check action. The result is
   persisted through the same source health state used by automatic probes.
 - Routing rules are ordered preferences. Their timeline position determines

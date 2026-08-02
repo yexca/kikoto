@@ -155,10 +155,9 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 		expression := `MAX(
 			COALESCE(user_work_state.updated_at, ''),
 			COALESCE((
-				SELECT MAX(shelf_progress.updated_at)
-				FROM user_media_progress AS shelf_progress
-				INNER JOIN media_item AS shelf_item ON shelf_item.id = shelf_progress.media_item_id
-				WHERE shelf_progress.user_id = ? AND shelf_item.work_id = work.id
+				SELECT shelf_cursor.updated_at
+				FROM user_work_playback_cursor AS shelf_cursor
+				WHERE shelf_cursor.user_id = ? AND shelf_cursor.work_id = work.id
 			), ''),
 			COALESCE((
 				SELECT MAX(shelf_list_item.created_at)
@@ -397,11 +396,12 @@ func canonicalVisibleWhereClause() string {
 func noSourceWhereClause() string {
 	return `NOT EXISTS (
 		SELECT 1 FROM work_source_presence AS scope_presence
-		WHERE scope_presence.work_id = work.id OR scope_presence.work_id IN (
+		WHERE (scope_presence.work_id = work.id OR scope_presence.work_id IN (
 			SELECT sibling.work_id FROM work_edition AS current_edition
 			INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
 			WHERE current_edition.work_id = work.id
-		)
+		))
+		AND scope_presence.availability = 'available'
 	) AND NOT EXISTS (
 		SELECT 1 FROM media_file_location AS scope_location
 		INNER JOIN media_item AS scope_item ON scope_item.id = scope_location.media_item_id
@@ -647,9 +647,8 @@ func userShelfClause(negated bool) string {
 		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
 		OR EXISTS (
 			SELECT 1
-			FROM user_media_progress AS search_shelf_progress
-			INNER JOIN media_item AS search_shelf_item ON search_shelf_item.id = search_shelf_progress.media_item_id
-			WHERE search_shelf_progress.user_id = ? AND search_shelf_item.work_id = work.id
+			FROM user_work_playback_cursor AS search_shelf_cursor
+			WHERE search_shelf_cursor.user_id = ? AND search_shelf_cursor.work_id = work.id
 		))`
 }
 

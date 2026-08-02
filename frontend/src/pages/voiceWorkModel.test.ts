@@ -107,7 +107,19 @@ function knownWork(): VoiceKnownWork {
     remote: false,
     cache: false,
     sourceTags: [],
-    progress: { mediaItemId: null, positionSeconds: 0, durationSeconds: 0, lastPlayedAt: null, completed: false, title: "" },
+    progress: {
+      workId: null,
+      mediaWorkId: null,
+      mediaItemId: null,
+      fileSourceId: null,
+      locationId: null,
+      locationType: "",
+      positionSeconds: 0,
+      durationSeconds: 0,
+      lastPlayedAt: null,
+      completed: false,
+      title: "",
+    },
   };
 }
 

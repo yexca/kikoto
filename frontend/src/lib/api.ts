@@ -12,6 +12,7 @@ export type Work = {
   circleExternalId: string;
   rating: number | null;
   sales: number | null;
+  hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -107,10 +108,16 @@ export type SourcePresenceItem = {
   remoteId?: string;
   remoteCode?: string;
   sourceUrl?: string;
+  forked?: boolean;
 };
 
 export type WorkProgressSummary = {
+  workId: number | null;
+  mediaWorkId: number | null;
   mediaItemId: number | null;
+  fileSourceId: number | null;
+  locationId: number | null;
+  locationType: string;
   title: string;
   positionSeconds: number;
   durationSeconds: number | null;
@@ -118,11 +125,51 @@ export type WorkProgressSummary = {
   completed: boolean;
 };
 
+export type MediaProgressUpdate = {
+  workId: number;
+  mediaWorkId: number;
+  mediaItemId: number;
+  fileSourceId: number | null;
+  locationId: number | null;
+  locationType: string;
+  positionSeconds: number;
+  durationSeconds: number | null;
+  completed: boolean;
+  lastPlayedAt: string | null;
+};
+
+export type WorkPlaybackCursorResponse = {
+  cursor: WorkProgressSummary | null;
+};
+
 export type WorksPage = {
   works: Work[];
   page: number;
   pageSize: number;
   total: number;
+};
+
+export type UnlinkedWorkMaintenanceSkip = {
+  workId: number;
+  code: string;
+  reason: "not_found" | "source_available" | string;
+};
+
+export type UnlinkedWorkSourceCheckResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  queued: number;
+  skipped: UnlinkedWorkMaintenanceSkip[];
+};
+
+export type UnlinkedWorkDeleteResult = {
+  deletedFamilyCount: number;
+  deletedWorkCount: number;
+  deletedWorkIds: number[];
+  deletedCodes: string[];
+  retainedAssetFiles: number;
+  skipped: UnlinkedWorkMaintenanceSkip[];
 };
 
 export type RecentlyPlayedWorksResponse = {
@@ -446,6 +493,7 @@ export type RemoteWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  hasAvailableNonOriginEdition?: boolean;
   price: number | null;
   tags: string[];
   voiceActors: string[];
@@ -1149,6 +1197,7 @@ export type CircleCatalogWork = {
   voiceCredits: VoiceCredit[];
   rating: number | null;
   sales: number | null;
+  hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -1271,6 +1320,7 @@ export type VoiceKnownWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -1306,6 +1356,7 @@ export type VoiceRemoteWork = {
   ageRating: string;
   rating: number | null;
   sales: number | null;
+  hasAvailableNonOriginEdition?: boolean;
   price: number | null;
   tags: string[];
   voiceActors: string[];
@@ -1636,6 +1687,10 @@ export const api = {
       `/api/works?page=${page}&pageSize=${pageSize}&scope=${encodeURIComponent(scope)}&status=${encodeURIComponent(status)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
       signal,
     ),
+  checkUnlinkedWorkSources: (workIds: number[]) =>
+    postJSONBody<UnlinkedWorkSourceCheckResult>("/api/maintenance/unlinked-works/source-check", { workIds }),
+  deleteUnlinkedWorks: (workIds: number[], confirm: boolean) =>
+    postJSONBody<UnlinkedWorkDeleteResult>("/api/maintenance/unlinked-works/delete", { workIds, confirm }),
   listFavoriteWorksPage: (
     page = 1,
     pageSize = 24,
@@ -1653,6 +1708,8 @@ export const api = {
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   listRecentlyPlayedWorks: (limit = 10) =>
     getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`),
+  getWorkPlaybackCursor: (id: number, signal?: AbortSignal) =>
+    getJSON<WorkPlaybackCursorResponse>(`/api/works/${id}/playback-cursor`, signal),
   getRuntimeSettings: () => getJSON<RuntimeSettings>("/api/runtime-settings"),
   listRemoteSourceWorks: (
     id: number,
@@ -1872,15 +1929,9 @@ export const api = {
     ),
   updateMediaProgress: (
     id: number,
-    payload: { positionSeconds: number; durationSeconds: number | null; completed: boolean },
+    payload: { locationId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean },
   ) =>
-    patchJSONBody<{
-      mediaItemId: number;
-      positionSeconds: number;
-      durationSeconds: number | null;
-      completed: boolean;
-      lastPlayedAt: string | null;
-    }>(`/api/media-items/${id}/progress`, payload),
+    patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateSettings: (payload: {

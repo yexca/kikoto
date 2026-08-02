@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { OverflowMarquee, OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { ANDROID_BACK_EVENT } from "@/app/events";
+import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
 import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
@@ -50,6 +50,7 @@ import {
   type ProgressSaveMarker,
 } from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
+import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
 
 export type PlayMode = "order" | "loop" | "single";
 type DockMode = "full" | "compact" | "mini";
@@ -63,9 +64,14 @@ type CompactScrubState = {
   dragging: boolean;
 };
 type ProgressSavePayload = {
+  locationId: number;
   positionSeconds: number;
   durationSeconds: number | null;
   completed: boolean;
+};
+type PendingPlaybackStart = {
+  queueItemId: string;
+  positionSeconds: number;
 };
 const LYRIC_PREVIEW_ROW_HEIGHT = 28;
 
@@ -127,7 +133,7 @@ type PlayerContextValue = {
   sleepTimer: SleepTimerState;
   sleepRemainingSeconds: number;
   mode: PlayMode;
-  playQueue: (tracks: PlayerTrack[], locationId: number) => void;
+  playQueue: (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => void;
   selectTrack: (index: number) => void;
   togglePlay: () => void;
   pause: () => void;
@@ -153,7 +159,7 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 type LibraryPlayerContextValue = {
   currentLocationId: number | null;
   currentPlaybackKey: string | null;
-  playQueue: (tracks: PlayerTrack[], locationId: number) => void;
+  playQueue: (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => void;
   playNext: (track: PlayerTrack) => void;
   appendQueue: (tracks: PlayerTrack[]) => void;
 };
@@ -321,7 +327,8 @@ function withQueueIdentity(track: PlayerTrack): PlayerTrack {
 async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressSavePayload) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      await api.updateMediaProgress(mediaItemId, payload);
+      const cursor = await api.updateMediaProgress(mediaItemId, payload);
+      window.dispatchEvent(new CustomEvent(PLAYBACK_CURSOR_UPDATED_EVENT, { detail: cursor }));
       return;
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== "database_busy" || attempt > 0) return;
@@ -356,6 +363,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
   const restoredMediaItemRef = useRef<string | null>(null);
+  const pendingPlaybackStartRef = useRef<PendingPlaybackStart | null>(null);
+  const completedPlaybackInstanceRef = useRef<string | null>(null);
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
   const lastLocalSavedRef = useRef<ProgressSaveMarker | null>(null);
   const localProgressRef = useRef<Record<string, LocalProgressCheckpoint> | null>(null);
@@ -381,6 +390,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
+  const currentPlaybackInstanceKey = currentTrack && currentPlaybackKey
+    ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}`
+    : null;
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
 
@@ -460,7 +472,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (isPlaying) {
       void audio.play().catch(() => setIsPlaying(false));
     }
-  }, [currentPlaybackKey, currentTrack?.locationId, currentTrack?.streamUrl]);
+  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.streamUrl]);
 
   useEffect(() => {
     if (auth.demoMode || !currentTrack || currentTrack.locationType !== "remote_stream") return;
@@ -497,13 +509,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack || !currentPlaybackKey || restoredMediaItemRef.current === currentPlaybackKey) return;
-    const position = currentTrack.progress?.completed ? 0 : (currentTrack.progress?.positionSeconds ?? 0);
+    if (!audio || !currentTrack || !currentPlaybackInstanceKey || restoredMediaItemRef.current === currentPlaybackInstanceKey) return;
+    const pendingStart = pendingPlaybackStartRef.current;
+    const pendingStartMatches = pendingStart !== null && pendingStart.queueItemId === currentTrack.queueItemId;
+    const position = pendingStartMatches ? pendingStart.positionSeconds : 0;
+    if (pendingStartMatches) {
+      pendingPlaybackStartRef.current = null;
+    }
     if (position > 0 && Number.isFinite(position)) {
       const restore = () => {
         audio.currentTime = Math.min(position, audio.duration || position);
         setCurrentTime(audio.currentTime);
-        restoredMediaItemRef.current = currentPlaybackKey;
+        restoredMediaItemRef.current = currentPlaybackInstanceKey;
       };
       if (audio.readyState >= 1) {
         restore();
@@ -512,9 +529,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return () => audio.removeEventListener("loadedmetadata", restore);
       }
     } else {
-      restoredMediaItemRef.current = currentPlaybackKey;
+      restoredMediaItemRef.current = currentPlaybackInstanceKey;
     }
-  }, [currentPlaybackKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
+  }, [currentPlaybackInstanceKey, currentTrack?.locationId, currentTrack?.mediaItemId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -526,7 +543,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isPlaying, currentTrack]);
 
-  const playQueue = useCallback((tracks: PlayerTrack[], locationId: number) => {
+  const playQueue = useCallback((tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
     if (tracks.length === 0) return;
     progressSaveRef.current(false, true);
     const normalizedTracks = tracks.map(withQueueIdentity);
@@ -534,6 +551,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       0,
       normalizedTracks.findIndex((track) => track.locationId === locationId),
     );
+    const startTrack = normalizedTracks[nextIndex];
+    pendingPlaybackStartRef.current = startTrack?.queueItemId
+      ? {
+          queueItemId: startTrack.queueItemId,
+          positionSeconds: normalizePlaybackStartPosition(startPositionSeconds),
+        }
+      : null;
     setQueue(normalizedTracks);
     setCurrentIndex(nextIndex);
     setIsPlaying(true);
@@ -599,6 +623,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!shouldSaveRemoteProgress(lastSavedRef.current, marker, force)) return;
     lastSavedRef.current = marker;
     queueProgressSave(currentTrack.mediaItemId, {
+      locationId: currentTrack.locationId,
       positionSeconds: position,
       durationSeconds: durationValue,
       completed,
@@ -677,6 +702,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const handleEnded = () => {
     const audio = audioRef.current;
+    completedPlaybackInstanceRef.current = currentPlaybackInstanceKey;
     saveProgress(true, true);
     if (sleepTimer?.waitingForTrackEnd) {
       setSleepTimer(null);
@@ -760,6 +786,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const selectLocation = (locationId: number) => {
     if (currentTrack?.locationId !== locationId) progressSaveRef.current(false, true);
+    if (currentTrack?.queueItemId) {
+      pendingPlaybackStartRef.current = {
+        queueItemId: currentTrack.queueItemId,
+        positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+      };
+    }
     failedLocationIDsRef.current.clear();
     setQueue((items) =>
       items.map((item, index) => {
@@ -786,6 +818,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     progressSaveRef.current(false, true);
+    if (currentTrack.queueItemId) {
+      pendingPlaybackStartRef.current = {
+        queueItemId: currentTrack.queueItemId,
+        positionSeconds: normalizePlaybackStartPosition(audioRef.current?.currentTime),
+      };
+    }
     setQueue((items) =>
       items.map((item, index) => (index === currentIndex ? applyTrackLocation(item, nextLocation) : item)),
     );
@@ -1064,9 +1102,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           onDurationChange={(event) =>
             setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)
           }
-          onPlay={() => setIsPlaying(true)}
+          onPlay={() => {
+            completedPlaybackInstanceRef.current = null;
+            setIsPlaying(true);
+          }}
           onPause={() => {
-            saveProgress(false, true);
+            if (shouldCheckpointPause(completedPlaybackInstanceRef.current, currentPlaybackInstanceKey)) {
+              saveProgress(false, true);
+            }
             setIsPlaying(false);
           }}
           onSeeked={() => saveProgress(false, true)}

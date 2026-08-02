@@ -217,10 +217,9 @@ func favoriteWorksWhere(status string, availability string, queryText string, us
 		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
 		OR EXISTS (
 			SELECT 1
-			FROM user_media_progress AS shelf_progress
-			INNER JOIN media_item AS shelf_item ON shelf_item.id = shelf_progress.media_item_id
-			WHERE shelf_progress.user_id = ?
-				AND shelf_item.work_id = work.id
+			FROM user_work_playback_cursor AS shelf_cursor
+			WHERE shelf_cursor.user_id = ?
+				AND shelf_cursor.work_id = work.id
 		)
 	)`}
 	args := []any{userID}

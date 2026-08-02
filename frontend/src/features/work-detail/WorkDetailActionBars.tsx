@@ -11,7 +11,6 @@ import {
   HardDrive,
   HardDriveDownload,
   Loader2,
-  Play,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -27,13 +26,11 @@ export type DetailActionMode = "local" | "tracked_unforked" | "tracked_forked" |
 
 export function WorkIdentityActionBar({
   busy,
-  canPlay = false,
   listeningStatus,
   favorite,
   listWorkId,
   onEnsureListWork,
   onListSaved,
-  onPlay,
   onResume,
   onMark,
   onSync,
@@ -43,13 +40,11 @@ export function WorkIdentityActionBar({
   syncLabel = "Refresh metadata",
 }: {
   busy: boolean;
-  canPlay?: boolean;
   listeningStatus: ListeningStatus;
   favorite: boolean;
   listWorkId: number | null;
   onEnsureListWork?: () => Promise<number | null>;
   onListSaved?: (favorite: boolean, workID: number) => void;
-  onPlay?: () => void;
   onResume?: () => void;
   onMark: (status: ListeningStatus) => void;
   onSync?: () => void;
@@ -63,18 +58,17 @@ export function WorkIdentityActionBar({
 
   return (
     <>
-      {onPlay && (
-        <Button size="sm" className="h-8" disabled={!canPlay || busy} onClick={onPlay}>
-          <Play className="h-4 w-4" />
-          Play
-        </Button>
-      )}
-      {onResume && (
-        <Button variant="outline" size="sm" className="h-8" disabled={busy} onClick={onResume}>
-          <Clock3 className="h-4 w-4" />
-          Resume
-        </Button>
-      )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8"
+        disabled={busy || !onResume}
+        onClick={onResume}
+        title={onResume ? "Resume saved playback" : "No unfinished playback"}
+      >
+        <Clock3 className="h-4 w-4" />
+        Resume
+      </Button>
       <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel responsiveLabel onChange={onMark} />
       <WorkCardListButton
         workId={listWorkId}

@@ -17,7 +17,12 @@ type mediaProgressDetail struct {
 }
 
 type mediaProgressResponse struct {
+	WorkID          int64    `json:"workId"`
+	MediaWorkID     int64    `json:"mediaWorkId"`
 	MediaItemID     int64    `json:"mediaItemId"`
+	FileSourceID    *int64   `json:"fileSourceId"`
+	LocationID      *int64   `json:"locationId"`
+	LocationType    string   `json:"locationType"`
 	PositionSeconds float64  `json:"positionSeconds"`
 	DurationSeconds *float64 `json:"durationSeconds"`
 	Completed       bool     `json:"completed"`
@@ -25,7 +30,12 @@ type mediaProgressResponse struct {
 }
 
 type workProgressSummary struct {
+	WorkID          *int64   `json:"workId"`
+	MediaWorkID     *int64   `json:"mediaWorkId"`
 	MediaItemID     *int64   `json:"mediaItemId"`
+	FileSourceID    *int64   `json:"fileSourceId"`
+	LocationID      *int64   `json:"locationId"`
+	LocationType    string   `json:"locationType"`
 	Title           string   `json:"title"`
 	PositionSeconds float64  `json:"positionSeconds"`
 	DurationSeconds *float64 `json:"durationSeconds"`
@@ -52,12 +62,17 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
+		LocationID      *int64   `json:"locationId"`
 		PositionSeconds float64  `json:"positionSeconds"`
 		DurationSeconds *float64 `json:"durationSeconds"`
 		Completed       bool     `json:"completed"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if payload.LocationID != nil && *payload.LocationID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "locationId must be a positive integer"})
 		return
 	}
 	if !validSeconds(payload.PositionSeconds) {
@@ -72,45 +87,136 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		payload.PositionSeconds = *payload.DurationSeconds
 	}
 
-	var progress mediaProgressResponse
-	var durationSeconds sql.NullFloat64
-	var lastPlayedAt sql.NullString
-	if err := s.db.QueryRowContext(r.Context(), `
-		INSERT INTO user_media_progress (
-			user_id,
-			media_item_id,
-			position_seconds,
-			duration_seconds,
-			completed,
-			last_played_at
-		)
-		SELECT ?, item.id, ?, ?, ?, CURRENT_TIMESTAMP
-		FROM media_item AS item
-		WHERE item.id = ?
-		ON CONFLICT(user_id, media_item_id) DO UPDATE SET
-			position_seconds = excluded.position_seconds,
-			duration_seconds = excluded.duration_seconds,
-			completed = excluded.completed,
-			last_played_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-		RETURNING media_item_id, position_seconds, duration_seconds, completed, last_played_at
-	`, user.ID, payload.PositionSeconds, payload.DurationSeconds, payload.Completed, mediaItemID).Scan(
-		&progress.MediaItemID,
-		&progress.PositionSeconds,
-		&durationSeconds,
-		&progress.Completed,
-		&lastPlayedAt,
-	); err != nil {
+	workID, fileSourceID, locationID, locationType, err := s.progressTarget(r.Context(), mediaItemID, payload.LocationID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "media item not found"})
+			writeAPIError(w, http.StatusNotFound, "not_found", "media item not found", false)
 			return
 		}
 		writeError(w, err)
 		return
 	}
+	if payload.LocationID != nil && locationID == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "locationId must belong to the media item"})
+		return
+	}
+	canonicalWorkID, err := s.canonicalWorkID(r.Context(), workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	var progress mediaProgressResponse
+	var storedFileSourceID, storedLocationID sql.NullInt64
+	var durationSeconds sql.NullFloat64
+	var lastPlayedAt sql.NullString
+	if err := s.db.QueryRowContext(r.Context(), `
+		INSERT INTO user_work_playback_cursor (
+			user_id,
+			work_id,
+			media_item_id,
+			file_source_id,
+			location_id,
+			location_type,
+			position_seconds,
+			duration_seconds,
+			completed,
+			last_played_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id, work_id) DO UPDATE SET
+			media_item_id = excluded.media_item_id,
+			file_source_id = excluded.file_source_id,
+			location_id = excluded.location_id,
+			location_type = excluded.location_type,
+			position_seconds = excluded.position_seconds,
+			duration_seconds = excluded.duration_seconds,
+			completed = excluded.completed,
+			last_played_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+		RETURNING work_id, media_item_id, file_source_id, location_id, location_type,
+			position_seconds, duration_seconds, completed, last_played_at
+	`, user.ID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType,
+		payload.PositionSeconds, payload.DurationSeconds, payload.Completed).Scan(
+		&progress.WorkID,
+		&progress.MediaItemID,
+		&storedFileSourceID,
+		&storedLocationID,
+		&progress.LocationType,
+		&progress.PositionSeconds,
+		&durationSeconds,
+		&progress.Completed,
+		&lastPlayedAt,
+	); err != nil {
+		writeError(w, err)
+		return
+	}
+	progress.FileSourceID = nullableInt64(storedFileSourceID)
+	progress.LocationID = nullableInt64(storedLocationID)
+	progress.MediaWorkID = workID
 	progress.DurationSeconds = nullableFloat64(durationSeconds)
 	progress.LastPlayedAt = nullableString(lastPlayedAt)
 	writeJSON(w, http.StatusOK, progress)
+}
+
+func (s *Server) getWorkPlaybackCursor(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "playback:use")
+	if !ok {
+		return
+	}
+	workID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+	if !s.requireDemoWork(w, r, workID) {
+		return
+	}
+	cursor, err := s.loadWorkPlaybackCursor(r.Context(), user.ID, workID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cursor": cursor})
+}
+
+func (s *Server) progressTarget(ctx context.Context, mediaItemID int64, requestedLocationID *int64) (int64, *int64, *int64, string, error) {
+	var workID int64
+	var fileSourceID, locationID sql.NullInt64
+	var locationType sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT item.work_id, location.file_source_id, location.id, location.location_type
+		FROM media_item AS item
+		LEFT JOIN media_file_location AS location
+			ON location.media_item_id = item.id AND location.id = ?
+		WHERE item.id = ?
+	`, requestedLocationID, mediaItemID).Scan(&workID, &fileSourceID, &locationID, &locationType); err != nil {
+		return 0, nil, nil, "", err
+	}
+	return workID, nullableInt64(fileSourceID), nullableInt64(locationID), locationType.String, nil
+}
+
+func (s *Server) canonicalWorkID(ctx context.Context, workID int64) (int64, error) {
+	var canonicalWorkID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(logical.canonical_work_id, canonical_edition.work_id, work.id)
+		FROM work
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		LEFT JOIN work_edition AS canonical_edition
+			ON canonical_edition.logical_work_id = edition.logical_work_id
+			AND canonical_edition.is_canonical = 1
+		WHERE work.id = ?
+		ORDER BY canonical_edition.work_id ASC
+		LIMIT 1
+	`, workID).Scan(&canonicalWorkID); err != nil {
+		return 0, err
+	}
+	return canonicalWorkID, nil
 }
 
 func validSeconds(value float64) bool {
@@ -123,7 +229,7 @@ func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemI
 	var lastPlayedAt sql.NullString
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT position_seconds, duration_seconds, completed, last_played_at
-		FROM user_media_progress
+		FROM user_work_playback_cursor
 		WHERE user_id = ? AND media_item_id = ?
 	`, userID, mediaItemID).Scan(
 		&progress.PositionSeconds,
@@ -138,42 +244,65 @@ func (s *Server) loadMediaProgress(ctx context.Context, userID int64, mediaItemI
 	return progress, nil
 }
 
-func (s *Server) workProgressSummary(ctx context.Context, userID int64, workID int64) (workProgressSummary, error) {
-	var mediaItemID sql.NullInt64
-	var title sql.NullString
-	var position sql.NullFloat64
-	var duration sql.NullFloat64
+func (s *Server) loadWorkPlaybackCursor(ctx context.Context, userID int64, workID int64) (*workProgressSummary, error) {
+	canonicalWorkID, err := s.canonicalWorkID(ctx, workID)
+	if err != nil {
+		return nil, err
+	}
+	var cursor workProgressSummary
+	var cursorWorkID, mediaWorkID, mediaItemID, fileSourceID, locationID sql.NullInt64
+	var title, locationType sql.NullString
+	var position, duration sql.NullFloat64
 	var lastPlayedAt sql.NullString
 	var completed sql.NullBool
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT
-			media_item.id,
-			media_item.title,
-			user_media_progress.position_seconds,
-			user_media_progress.duration_seconds,
-			user_media_progress.last_played_at,
-			user_media_progress.completed
-		FROM media_item
-		INNER JOIN user_media_progress ON user_media_progress.media_item_id = media_item.id
-		WHERE media_item.work_id = ?
-			AND (media_item.kind = 'audio' OR (media_item.kind = 'video' AND COALESCE(media_item.has_audio, 1) = 1))
-			AND user_media_progress.user_id = ?
-		ORDER BY user_media_progress.last_played_at DESC, user_media_progress.updated_at DESC, media_item.id DESC
-		LIMIT 1
-	`, workID, userID).Scan(&mediaItemID, &title, &position, &duration, &lastPlayedAt, &completed); err != nil {
+		SELECT cursor.work_id, item.work_id, cursor.media_item_id, cursor.file_source_id, cursor.location_id,
+			cursor.location_type, item.title, cursor.position_seconds, cursor.duration_seconds,
+			cursor.last_played_at, cursor.completed
+		FROM user_work_playback_cursor AS cursor
+		INNER JOIN media_item AS item ON item.id = cursor.media_item_id
+		WHERE cursor.user_id = ? AND cursor.work_id = ?
+	`, userID, canonicalWorkID).Scan(
+		&cursorWorkID,
+		&mediaWorkID,
+		&mediaItemID,
+		&fileSourceID,
+		&locationID,
+		&locationType,
+		&title,
+		&position,
+		&duration,
+		&lastPlayedAt,
+		&completed,
+	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return workProgressSummary{}, nil
+			return nil, nil
 		}
+		return nil, err
+	}
+	cursor.WorkID = nullableInt64(cursorWorkID)
+	cursor.MediaWorkID = nullableInt64(mediaWorkID)
+	cursor.MediaItemID = nullableInt64(mediaItemID)
+	cursor.FileSourceID = nullableInt64(fileSourceID)
+	cursor.LocationID = nullableInt64(locationID)
+	cursor.LocationType = locationType.String
+	cursor.Title = title.String
+	cursor.PositionSeconds = position.Float64
+	cursor.DurationSeconds = nullableFloat64(duration)
+	cursor.LastPlayedAt = nullableString(lastPlayedAt)
+	cursor.Completed = completed.Valid && completed.Bool
+	return &cursor, nil
+}
+
+func (s *Server) workProgressSummary(ctx context.Context, userID int64, workID int64) (workProgressSummary, error) {
+	cursor, err := s.loadWorkPlaybackCursor(ctx, userID, workID)
+	if err != nil {
 		return workProgressSummary{}, err
 	}
-	return workProgressSummary{
-		MediaItemID:     nullableInt64(mediaItemID),
-		Title:           title.String,
-		PositionSeconds: position.Float64,
-		DurationSeconds: nullableFloat64(duration),
-		LastPlayedAt:    nullableString(lastPlayedAt),
-		Completed:       completed.Valid && completed.Bool,
-	}, nil
+	if cursor == nil {
+		return workProgressSummary{}, nil
+	}
+	return *cursor, nil
 }
 
 func nullableMediaProgress(position sql.NullFloat64, duration sql.NullFloat64, completed sql.NullBool, lastPlayedAt sql.NullString) *mediaProgressDetail {

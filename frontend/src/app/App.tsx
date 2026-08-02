@@ -18,6 +18,7 @@ import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { readLastLibraryLocation } from "@/pages/libraryBrowseState";
+import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -46,7 +47,7 @@ export function App() {
 function AuthenticatedApp() {
   useScrollRestoration();
   const auth = useAuth();
-  const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
+  const [page, setPage] = useState<AppPage>(resolveAppPageFromLocation);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
@@ -79,8 +80,8 @@ function AuthenticatedApp() {
   const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, navigationHasPermission);
 
   useEffect(() => {
-    const handlePopState = () => setPage(pageFromPath(window.location.pathname));
-    const handleAppNavigation = () => setPage(pageFromPath(window.location.pathname));
+    const handlePopState = () => setPage(resolveAppPageFromLocation());
+    const handleAppNavigation = () => setPage(resolveAppPageFromLocation());
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("kikoto:navigation", handleAppNavigation);
     return () => {
@@ -102,7 +103,7 @@ function AuthenticatedApp() {
   const openPath = (path: string, state?: unknown) => {
     window.history.pushState(state ?? {}, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
-    setPage(pageFromPath(new URL(path, window.location.origin).pathname));
+    setPage(resolveAppPageFromLocation());
   };
 
   const toggleSidebar = () => {
@@ -449,6 +450,14 @@ function pageFromPath(rawPath: string): AppPage {
     return "library";
   }
   return "not-found";
+}
+
+function resolveAppPageFromLocation() {
+  const redirect = legacyLibraryRedirect(window.location.pathname, window.location.search);
+  if (redirect) {
+    window.history.replaceState(window.history.state ?? {}, "", redirect);
+  }
+  return pageFromPath(window.location.pathname);
 }
 
 function PlaceholderPage({ title }: { title: string }) {

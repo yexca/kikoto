@@ -54,11 +54,16 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 	if err != nil {
 		return err
 	}
-	progress, err := s.libraryStore.LoadProgress(ctx, userID, mediaWorkIDs)
+	progress, err := s.libraryStore.LoadProgress(ctx, userID, workIDs)
+	if err != nil {
+		return err
+	}
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
 	if err != nil {
 		return err
 	}
 	for index := range works {
+		works[index].HasNonOrigin = availableNonOriginEditions[works[index].ID]
 		credits, err := s.voiceCreditsForWork(ctx, works[index].ID)
 		if err != nil {
 			return err
@@ -81,9 +86,11 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 			}
 			applyManualOverridesToLibrarySummary(&works[index], overrides)
 		}
-		if item, ok := progress[works[index].mediaWorkID]; ok {
+		if item, ok := progress[works[index].ID]; ok {
 			works[index].Progress = workProgressSummary{
-				MediaItemID: item.MediaItemID, Title: item.Title, PositionSeconds: item.PositionSeconds,
+				WorkID: item.WorkID, MediaWorkID: item.MediaWorkID, MediaItemID: item.MediaItemID,
+				FileSourceID: item.FileSourceID, LocationID: item.LocationID, LocationType: item.LocationType,
+				Title: item.Title, PositionSeconds: item.PositionSeconds,
 				DurationSeconds: item.DurationSeconds, LastPlayedAt: item.LastPlayedAt, Completed: item.Completed,
 			}
 		}

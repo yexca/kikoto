@@ -1,4 +1,4 @@
-import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail } from "../../../lib/api";
+import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
 import { findLyricsMatches, findRemoteLyricsMatches } from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
@@ -194,14 +194,30 @@ export function playableFiles(files: TreeTrack[]) {
   );
 }
 
+export function sortedTreeChildren(node: TreeNode) {
+  return Array.from(node.children.values()).sort((left, right) => naturalTreeNameCompare(left.name, right.name));
+}
+
+export function sortedTreeFiles(node: TreeNode) {
+  return [...node.files].sort((left, right) => naturalTreeNameCompare(left.title, right.title));
+}
+
+export function folderPlaybackTracks(node: TreeNode) {
+  return playableFiles(sortedTreeFiles(node));
+}
+
 export function flattenTracks(root: TreeNode) {
   const tracks: TreeTrack[] = [];
   const visit = (node: TreeNode) => {
-    tracks.push(...playableFiles(node.files));
-    for (const child of node.children.values()) visit(child);
+    for (const child of sortedTreeChildren(node)) visit(child);
+    tracks.push(...folderPlaybackTracks(node));
   };
   visit(root);
   return tracks;
+}
+
+function naturalTreeNameCompare(left: string, right: string) {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
 }
 
 export function flattenTreeFiles(root: TreeNode) {
@@ -328,6 +344,50 @@ export function toPreferredPlayerTrack(track: TreeTrack, work: WorkDetail): Play
   const playerTrack = toPlayerTrack(track, work);
   const preferredLocation = preferredTrackLocation(playerTrack);
   return preferredLocation ? applyTrackLocation(playerTrack, preferredLocation) : playerTrack;
+}
+
+export type WorkResumeQueue = {
+  tracks: PlayerTrack[];
+  locationId: number;
+  positionSeconds: number;
+};
+
+export function buildWorkResumeQueue(
+  tracks: TreeTrack[],
+  work: WorkDetail,
+  cursor: WorkProgressSummary | null,
+): WorkResumeQueue | null {
+  if (
+    !cursor?.mediaItemId
+    || cursor.completed
+    || !Number.isFinite(cursor.positionSeconds)
+    || cursor.positionSeconds <= 0
+    || (cursor.mediaWorkId !== null && cursor.mediaWorkId !== work.id)
+  ) {
+    return null;
+  }
+  const queue = tracks.map((track) => toPreferredPlayerTrack(track, work));
+  const startIndex = queue.findIndex((track) => track.mediaItemId === cursor.mediaItemId);
+  if (startIndex < 0) return null;
+
+  const startTrack = queue[startIndex];
+  const usableLocations = startTrack.locations?.filter((location) =>
+    Boolean(location.streamUrl) && ["available", "remote"].includes(location.availability)
+  ) ?? [];
+  const cursorLocation = usableLocations.find((location) => location.locationId === cursor.locationId)
+    ?? usableLocations.find((location) =>
+      location.sourceId === cursor.fileSourceId && location.locationType === cursor.locationType
+    )
+    ?? usableLocations.find((location) => location.sourceId === cursor.fileSourceId)
+    ?? preferredTrackLocation(startTrack);
+  if (!cursorLocation) return null;
+
+  queue[startIndex] = applyTrackLocation(startTrack, cursorLocation);
+  return {
+    tracks: queue,
+    locationId: cursorLocation.locationId,
+    positionSeconds: cursor.positionSeconds,
+  };
 }
 
 export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail, files: TreeTrack[] = []): PlayerTrack {

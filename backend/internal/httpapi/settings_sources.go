@@ -200,6 +200,7 @@ type remoteWorkSummary struct {
 	AgeRating       string            `json:"ageRating"`
 	Rating          *float64          `json:"rating"`
 	Sales           *int64            `json:"sales"`
+	HasNonOrigin    bool              `json:"hasAvailableNonOriginEdition,omitempty"`
 	Price           *int64            `json:"price"`
 	Tags            []string          `json:"tags"`
 	VoiceActors     []string          `json:"voiceActors"`
@@ -2451,6 +2452,10 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 	if err != nil {
 		return nil, err
 	}
+	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range result {
 		if result[index].WorkID == nil {
 			result[index].SearchUserTags = []string{}
@@ -2459,6 +2464,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 		for _, tag := range userTagsByWork[*result[index].WorkID] {
 			result[index].SearchUserTags = append(result[index].SearchUserTags, tag.Name)
 		}
+		result[index].HasNonOrigin = availableNonOriginEditions[*result[index].WorkID]
 	}
 	return result, nil
 }

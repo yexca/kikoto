@@ -328,6 +328,15 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
+		Code:        "unlinked_work_source_check",
+		Name:        "Check unlinked work sources",
+		Description: "Check configured remote sources for selected database works that have no currently available source.",
+		Nodes: []map[string]string{
+			{"id": "select", "type": "select_works", "displayName": "Select unlinked works"},
+			{"id": "check", "type": "check_source_availability", "displayName": "Check source availability"},
+		},
+	},
+	{
 		Code:        "source_health_check",
 		Name:        "Check source health",
 		Description: "Check configured remote source endpoints and fallback readiness. Not implemented as a runnable workflow yet.",

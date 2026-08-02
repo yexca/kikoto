@@ -171,6 +171,7 @@ export function trackedPresenceSourceID(presence: NonNullable<WorkDetail["source
 }
 
 export function trackedPresenceForked(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, items: MediaItem[]) {
+  if (typeof presence?.forked === "boolean") return presence.forked;
   const sourceID = trackedPresenceSourceID(presence);
   if (!sourceID) return false;
   return items.some((item) => item.locations.some((location) =>

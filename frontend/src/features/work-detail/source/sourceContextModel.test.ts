@@ -62,4 +62,20 @@ describe("sourceContextModel", () => {
       remoteId: "edition-b-id",
     }, "SAMPLE-EDITION-A", summary, "SAMPLE-ORIGIN")).toBe("SAMPLE-EDITION-B");
   });
+
+  it("uses the family-level forked summary when the active edition has no matching media", () => {
+    const presences = [{
+      type: "tracked",
+      availability: "available",
+      fileSourceId: 7,
+      fileSourceName: "Remote A",
+      forked: true,
+    }] as NonNullable<WorkDetail["sourcePresence"]>;
+
+    expect(buildTrackedPresenceOptions([], [], presences)[0]).toMatchObject({
+      forked: true,
+      status: "green",
+      statusLabel: "Forked directory available",
+    });
+  });
 });

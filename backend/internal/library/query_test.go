@@ -11,7 +11,7 @@ func TestMatchingListSelectSQLBuildsShelfActivityOrder(t *testing.T) {
 		UserID: 42, Sort: "activity", Direction: "desc",
 	})
 
-	for _, fragment := range []string{"user_work_state.updated_at", "user_media_progress", "favorite_list_item", "matching_sort_value DESC"} {
+	for _, fragment := range []string{"user_work_state.updated_at", "user_work_playback_cursor", "favorite_list_item", "matching_sort_value DESC"} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("activity query does not contain %q: %s", fragment, query)
 		}
