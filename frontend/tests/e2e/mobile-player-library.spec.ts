@@ -912,6 +912,9 @@ test("remote detail Track completes in place and turns the forked Tracked source
   await expect(trackedTab.locator(".bg-emerald-500")).toHaveCount(1);
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await expect(page.getByRole("menuitem", { name: "Track", exact: true })).toHaveCount(0);
+  await trackedTab.click();
+  await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Tracked directory not forked", { exact: true })).toHaveCount(0);
 });
 
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {

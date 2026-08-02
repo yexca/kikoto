@@ -2575,8 +2575,21 @@ function RemoteOnlyWorkDetailController({
   const player = useLibraryPlayer();
   const primaryRemoteTabKey = remoteSourceTabKey(source.id);
   const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
+  const activeRemoteTabInfo = remoteTabs.find((tab) => tab.key === activeRemoteTab) ?? null;
+  const activeTrackedPresence = activeRemoteTabInfo?.kind === "tracked" ? activeRemoteTabInfo.presence ?? null : null;
+  const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "green");
   const activeRemoteAvailability = remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
-  const visibleTree = primaryRemoteSelected ? tree : emptyTree();
+  const materializedTree = useMemo(() => {
+    if (!trackedWork) return emptyTree();
+    if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
+      return buildTree(trackedWork.mediaItems, activeTrackedPresence?.fileSourceId ?? null, trackedWork.primaryCode);
+    }
+    if (activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "green" && activeRemoteTabInfo.fileSourceId) {
+      return buildTree(trackedWork.mediaItems, activeRemoteTabInfo.fileSourceId, trackedWork.primaryCode);
+    }
+    return emptyTree();
+  }, [activeRemoteTabInfo, activeTrackedForked, activeTrackedPresence?.fileSourceId, trackedWork]);
+  const visibleTree = primaryRemoteSelected ? tree : materializedTree;
   const visibleDirectoryStats = primaryRemoteSelected ? directoryStats : treeStats(visibleTree);
 
   useEffect(() => {
@@ -2785,6 +2798,19 @@ function RemoteOnlyWorkDetailController({
     toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
   };
 
+  const playMaterializedTracks = (tracks: TreeTrack[], locationId: number) => {
+    if (!trackedWork || tracks.length === 0) return;
+    player.playQueue(tracks.map((track) => toPlayerTrack(track, trackedWork)), locationId);
+  };
+
+  const queueMaterializedTrack = (track: TreeTrack, next: boolean) => {
+    if (!trackedWork) return;
+    const queuedTrack = toPlayerTrack(track, trackedWork);
+    if (next) player.playNext(queuedTrack);
+    else player.appendQueue([queuedTrack]);
+    toast.info(next ? `Playing ${track.title} next.` : `Added ${track.title} to the queue.`);
+  };
+
   if (notFound) {
     return (
       <NotFoundPage
@@ -2840,7 +2866,11 @@ function RemoteOnlyWorkDetailController({
     <SourceDirectoryPanel
       title="Directory"
       description={!primaryRemoteSelected
-        ? activeRemoteAvailability?.summary.error || `${remoteTabs.find((tab) => tab.key === activeRemoteTab)?.label ?? "Source"} is not selected for this preview.`
+        ? activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked
+          ? `Browsing the tracked directory forked from ${activeTrackedPresence?.fileSourceName || activeTrackedPresence?.fileSourceCode || "the selected source"}.`
+          : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "green"
+            ? "Browsing local files."
+            : activeRemoteAvailability?.summary.error || `${activeRemoteTabInfo?.label ?? "Source"} is not selected for this preview.`
         : detail && !message && !treeError
         ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
         : message || treeError || `Loading remote files from ${displaySourceName}...`}
@@ -2862,18 +2892,18 @@ function RemoteOnlyWorkDetailController({
           : isDetailLoading || treeLoading
             ? <DirectorySkeleton />
           : undefined
-        : remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind === "local"
-          ? <LocalSourceStatePanel status={remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "yellow"} remoteSources={remoteAvailability} onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))} />
-          : remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind === "tracked"
-            ? <TrackedUnforkedPanel presence={null} remoteSources={remoteAvailability} />
+        : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "green"
+          ? <LocalSourceStatePanel status={activeRemoteTabInfo.status} remoteSources={remoteAvailability} onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))} />
+          : activeRemoteTabInfo?.kind === "tracked" && !activeTrackedForked
+            ? <TrackedUnforkedPanel presence={activeTrackedPresence} remoteSources={remoteAvailability} />
             : activeRemoteAvailability
               ? <RemoteSourceStatePanel remote={activeRemoteAvailability} />
               : undefined}
       loadingMessage={primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading) ? `Loading ${displayRemoteCode}...` : undefined}
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
-      onPlayFolder={primaryRemoteSelected ? playRemoteTracks : undefined}
-      onPlayNext={primaryRemoteSelected ? (track) => queueRemoteTrack(track, true) : undefined}
-      onAppendQueue={primaryRemoteSelected ? (track) => queueRemoteTrack(track, false) : undefined}
+      onPlayFolder={primaryRemoteSelected ? playRemoteTracks : trackedWork ? playMaterializedTracks : undefined}
+      onPlayNext={primaryRemoteSelected ? (track) => queueRemoteTrack(track, true) : trackedWork ? (track) => queueMaterializedTrack(track, true) : undefined}
+      onAppendQueue={primaryRemoteSelected ? (track) => queueRemoteTrack(track, false) : trackedWork ? (track) => queueMaterializedTrack(track, false) : undefined}
       onPreview={setFilePreview}
     />
   );
@@ -3629,7 +3659,7 @@ function PersistedWorkDetailController({
         />
       ) : selectedRemoteSource && !remoteSourceCanBrowse(selectedRemoteSource.summary) ? (
         <RemoteSourceStatePanel remote={selectedRemoteSource} />
-      ) : selectedSource?.kind === "tracked" ? (
+      ) : selectedSource?.kind === "tracked" && !selectedTrackedForked ? (
         <TrackedUnforkedPanel
           presence={selectedTrackedPresence}
           remoteSources={remoteSources}
