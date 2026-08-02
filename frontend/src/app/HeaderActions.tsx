@@ -10,6 +10,7 @@ import {
   Command,
   Database,
   Download,
+  GitBranchPlus,
   ListChecks,
   Loader2,
   LogIn,
@@ -393,11 +394,22 @@ export function HeaderActions({
                         className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
                         onClick={() => {
                           setReviewOpen(false);
-                          onOpenPath(`/${encodeURIComponent(notification.workCode)}?view=local`);
+                          if (notification.type === "remote_track" && notification.status === "failed") {
+                            if (canRunWorkflows) onOpenPath(`/activity?run=${notification.workflowRunId}`);
+                            return;
+                          }
+                          const trackedSource = notification.fileSourceId
+                            ? `&trackedSource=${notification.fileSourceId}`
+                            : "";
+                          onOpenPath(notification.type === "remote_track"
+                            ? `/${encodeURIComponent(notification.workCode)}?view=tracked${trackedSource}`
+                            : `/${encodeURIComponent(notification.workCode)}?view=local`);
                         }}
                       >
                         {notification.status === "succeeded" ? (
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                          notification.type === "remote_track"
+                            ? <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                            : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                         ) : (
                           <Download className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                         )}

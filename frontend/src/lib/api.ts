@@ -11,6 +11,7 @@ export type Work = {
   circle: string;
   circleExternalId: string;
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
@@ -492,6 +493,7 @@ export type RemoteWork = {
   circleRef?: RemoteEntityRef;
   ageRating: string;
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition?: boolean;
   price: number | null;
@@ -537,6 +539,7 @@ export type RemoteWorkDetail = {
   circle: string;
   circleRef?: RemoteEntityRef;
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   price: number | null;
   ageRating: string;
@@ -603,6 +606,16 @@ export type RemoteWorkSyncResult = {
   syncedMediaItems: number;
   syncedLocations: number;
   triggerReason: string;
+};
+
+export type RemoteWorkTrackResult = {
+  runId: number;
+  jobId: number;
+  workId: number | null;
+  primaryCode: string;
+  status: string;
+  triggerReason: string;
+  deduplicated: boolean;
 };
 
 export type RemoteWorkSaveSummary = {
@@ -1008,6 +1021,7 @@ export type WorkflowNotification = {
   type: string;
   status: string;
   workId: number | null;
+  fileSourceId: number | null;
   workCode: string;
   message: string;
   createdAt: string;
@@ -1016,6 +1030,12 @@ export type WorkflowNotification = {
 export type WorkflowNotificationsPage = {
   notifications: WorkflowNotification[];
   total: number;
+};
+
+export type RemoteTrackRunStatus = {
+  runId: number;
+  status: string;
+  summaryJson: string;
 };
 
 export type FileSourceHealthCheckResult = {
@@ -1196,6 +1216,7 @@ export type CircleCatalogWork = {
   voiceRefs: RemoteEntityRef[];
   voiceCredits: VoiceCredit[];
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
@@ -1319,6 +1340,7 @@ export type VoiceKnownWork = {
   circleExternalId: string;
   ageRating: string;
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition?: boolean;
   regularPrice: number | null;
@@ -1355,6 +1377,7 @@ export type VoiceRemoteWork = {
   circle: string;
   ageRating: string;
   rating: number | null;
+  ratingCount?: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition?: boolean;
   price: number | null;
@@ -1654,6 +1677,7 @@ export const api = {
   logout,
   listNotifications: (limit = 20) => getJSON<WorkflowNotificationsPage>(`/api/notifications?limit=${limit}`),
   dismissNotification: (id: number) => deleteJSON<{ ok: boolean }>(`/api/notifications/${id}`),
+  getRemoteTrackRunStatus: (id: number) => getJSON<RemoteTrackRunStatus>(`/api/remote-track-runs/${id}`),
   listUsers: () => getJSON<ManagedUser[]>("/api/users"),
   createUser: (payload: {
     username: string;
@@ -1781,7 +1805,7 @@ export const api = {
       decisions,
     }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
-    postJSONBody<RemoteWorkSyncResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {
+    postJSONBody<RemoteWorkTrackResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {
       triggerReason,
     }),
   syncRemoteSourceWork: (id: number, code: string, triggerReason: string) =>

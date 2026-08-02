@@ -17,8 +17,15 @@ import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { api, type RemoteTrackRunStatus } from "@/lib/api";
 import { readLastLibraryLocation } from "@/pages/libraryBrowseState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
+import {
+  REMOTE_TRACK_CREATED_EVENT,
+  REMOTE_TRACK_TERMINAL_EVENT,
+  type RemoteTrackCreatedDetail,
+  type RemoteTrackTerminalDetail,
+} from "@/app/remoteTrackWorkflows";
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -185,6 +192,7 @@ function AuthenticatedApp() {
 
   return (
     <PlayerProvider key={currentClientStorageScope(auth.user?.id ?? null)}>
+      <RemoteTrackWorkflowBridge />
       <div
         className={cn(
           "app-shell min-h-screen bg-background lg:grid",
@@ -317,6 +325,118 @@ function AuthenticatedApp() {
       </div>
     </PlayerProvider>
   );
+}
+
+function RemoteTrackWorkflowBridge() {
+  const [runs, setRuns] = useState<Record<number, RemoteTrackCreatedDetail>>({});
+
+  useEffect(() => {
+    const addRun = (event: Event) => {
+      const detail = (event as CustomEvent<RemoteTrackCreatedDetail>).detail;
+      if (!detail?.runId) return;
+      setRuns((current) => ({ ...current, [detail.runId]: detail }));
+    };
+    window.addEventListener(REMOTE_TRACK_CREATED_EVENT, addRun);
+    return () => window.removeEventListener(REMOTE_TRACK_CREATED_EVENT, addRun);
+  }, []);
+
+  const removeRun = useCallback((runId: number) => {
+    setRuns((current) => {
+      if (!(runId in current)) return current;
+      const next = { ...current };
+      delete next[runId];
+      return next;
+    });
+  }, []);
+
+  return Object.values(runs).map((detail) => (
+    <RemoteTrackWorkflowObserver key={detail.runId} detail={detail} onDone={removeRun} />
+  ));
+}
+
+function RemoteTrackWorkflowObserver({
+  detail,
+  onDone,
+}: {
+  detail: RemoteTrackCreatedDetail;
+  onDone: (runId: number) => void;
+}) {
+  const toast = useToast();
+  const auth = useAuth();
+  const [run, setRun] = useState<RemoteTrackRunStatus | null>(null);
+  const handled = useRef(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      try {
+        const next = await api.getRemoteTrackRunStatus(detail.runId);
+        if (disposed) return;
+        setRun(next);
+        if (next.status === "queued" || next.status === "running") {
+          timer = window.setTimeout(() => void poll(), document.hidden ? 10_000 : 1_500);
+        }
+      } catch {
+        if (!disposed) timer = window.setTimeout(() => void poll(), 5_000);
+      }
+    };
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [detail.runId]);
+
+  useEffect(() => {
+    if (!run || handled.current || run.status === "queued" || run.status === "running") return;
+    handled.current = true;
+    const summary = parseRemoteTrackSummary(run.summaryJson);
+    const succeeded = run.status === "succeeded" || run.status === "partial";
+    const primaryCode = summary.primaryCode || detail.primaryCode || detail.requestedCode;
+    const terminal: RemoteTrackTerminalDetail = {
+      ...detail,
+      status: run.status,
+      primaryCode,
+      workId: summary.workId,
+      fileSourceId: summary.fileSourceId || detail.sourceId,
+    };
+    const canOpenActivity = !auth.demoMode && auth.hasPermission("workflows:run");
+    toast.notify({
+      kind: succeeded ? "success" : "error",
+      message: succeeded
+        ? `Track workflow #${run.runId} completed for ${primaryCode}.`
+        : `Track workflow #${run.runId} failed for ${primaryCode}.`,
+      actionLabel: canOpenActivity ? "Activity" : undefined,
+      onAction: canOpenActivity ? () => openWorkflowActivity(run.runId) : undefined,
+    });
+    window.dispatchEvent(new CustomEvent<RemoteTrackTerminalDetail>(REMOTE_TRACK_TERMINAL_EVENT, { detail: terminal }));
+    onDone(detail.runId);
+  }, [auth.demoMode, auth.hasPermission, detail, onDone, run, toast]);
+
+  return null;
+}
+
+function parseRemoteTrackSummary(raw: string) {
+  let value: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) value = parsed as Record<string, unknown>;
+  } catch {
+    value = {};
+  }
+  const workId = Number(value.work_id);
+  const fileSourceId = Number(value.source_id);
+  return {
+    workId: Number.isInteger(workId) && workId > 0 ? workId : null,
+    fileSourceId: Number.isInteger(fileSourceId) && fileSourceId > 0 ? fileSourceId : 0,
+    primaryCode: typeof value.primary_code === "string" ? value.primary_code.trim().toUpperCase() : "",
+  };
+}
+
+function openWorkflowActivity(runId: number) {
+  window.history.pushState({}, "", `/activity?run=${runId}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
 }
 
 function MobileConnectionBanner({

@@ -88,7 +88,7 @@ export function MobileServerGate({ children }: { children: React.ReactNode }) {
               className="h-10 rounded-md border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={serverURL}
               onChange={(event) => setServerURL(event.target.value)}
-              placeholder="http://192.168.1.20:7655"
+              placeholder="http://kikoto.local:7655"
               inputMode="url"
               autoCapitalize="none"
               autoCorrect="off"

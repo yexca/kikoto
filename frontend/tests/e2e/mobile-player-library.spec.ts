@@ -13,6 +13,7 @@ const work = {
   circle: "Test circle",
   circleExternalId: "RG00000001",
   rating: 4.5,
+  ratingCount: 240,
   sales: 10,
   tags: ["ロリ"],
   userTags: [],
@@ -67,6 +68,13 @@ type MockApplicationFixture = {
   onMediaRequest?: () => void;
   mediaBusy?: boolean;
   authenticated?: boolean;
+  beforeWorksResponse?: () => Promise<void>;
+};
+
+type RemoteTrackControl = {
+  status: "queued" | "running" | "succeeded" | "failed";
+  trackRequests: string[];
+  statusRequests: number;
 };
 
 function silentWav(durationSeconds = 0.1) {
@@ -137,6 +145,7 @@ async function mockApplication(
     }
     if (url.pathname === "/api/works") {
       onWorksRequest?.(url);
+      await fixture.beforeWorksResponse?.();
       const fixtureWork = fixture.work ?? work;
       const works = Array.from({ length: workCount }, (_, index) => index === 0 ? fixtureWork : {
         ...fixtureWork,
@@ -298,9 +307,10 @@ async function readScopedPlayerState(page: Page, baseKey: string, principalID: n
   }, { baseKey, principalID });
 }
 
-async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; authenticated?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void } = {}) {
+async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void, options: { conflict?: boolean; persisted?: boolean; authenticated?: boolean; onFetchPlan?: (body: Record<string, unknown>) => void; trackControl?: RemoteTrackControl } = {}) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    const trackCompleted = options.trackControl?.status === "succeeded";
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
         json: options.authenticated === false
@@ -321,11 +331,31 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
       await route.fulfill({ json: { works: [work], page: 1, pageSize: 24, total: 1 } });
       return;
     }
-    if (url.pathname === `/api/works/${work.primaryCode}/source-availability`) {
+    if (url.pathname === `/api/works/${work.primaryCode}/source-availability` || url.pathname === "/api/works/RJ09999991/source-availability") {
+      const remoteOnlyWork = url.pathname.includes("RJ09999991");
       await route.fulfill({ json: {
-        workCode: work.primaryCode,
+        workCode: remoteOnlyWork ? "RJ09999991" : work.primaryCode,
         checkedAt: "2026-07-17T00:00:00Z",
-        sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "1", primaryCode: work.primaryCode, title: work.title, coverUrl: "", workId: 1, hasRemote: true, hasCache: false, hasLocal: true, error: "", elapsedMs: 1 }],
+        sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "1", primaryCode: remoteOnlyWork ? "RJ09999991" : work.primaryCode, title: remoteOnlyWork ? "Remote Japanese work" : work.title, coverUrl: "", workId: remoteOnlyWork ? trackCompleted ? 91 : null : 1, hasRemote: remoteOnlyWork ? trackCompleted : true, hasCache: false, hasLocal: !remoteOnlyWork, error: "", elapsedMs: 1 }],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/works/91") {
+      await route.fulfill({ json: {
+        ...work,
+        id: 91,
+        primaryCode: "RJ09999991",
+        title: "Remote Japanese work",
+        circle: "Remote circle",
+        ratingCount: 240,
+        availability: ["tracked", "remote"],
+        sourcePresence: [{ type: "tracked", availability: "available", fileSourceId: 1, fileSourceCode: "example_remote", fileSourceName: "Example Remote", remoteCode: "RJ09999991", forked: true }],
+        baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", durationSeconds: 10,
+        dlsiteFetchedAt: "", translations: [], manualOverrides: {},
+        mediaItems: [{
+          id: 91, parentId: null, kind: "audio", title: "track.mp3", discNo: null, trackNo: 1, durationSeconds: 10, sizeBytes: 12,
+          locations: [{ id: 91, fileSourceId: 1, fileSourceCode: "example_remote", fileSourceName: "Example Remote", locationType: "remote_stream", path: "track.mp3", streamUrl: "/stream", downloadUrl: "/download", remoteHash: "hash", sizeBytes: 12, durationSeconds: 10, availability: "available", lastCheckedAt: null }],
+        }],
       } });
       return;
     }
@@ -374,11 +404,12 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
             circle: "Remote circle",
             ageRating: "R15",
             rating: 4.5,
+            ratingCount: 240,
             sales: 100,
             tags: ["退廃/背徳/インモラル"],
-            importStatus: "remote_only",
+            importStatus: trackCompleted ? "tracked" : "remote_only",
             remotePlayable: true,
-            workId: options.persisted && pageNumber === 1 ? 1 : null,
+            workId: pageNumber === 1 && trackCompleted ? 91 : options.persisted && pageNumber === 1 ? 1 : null,
             favorite: false,
             listeningStatus: "none",
           }],
@@ -398,8 +429,8 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
       await route.fulfill({ json: {
         sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "1",
         primaryCode: "RJ09999991", remoteCode: "RJ09999991", title: "Remote Japanese work", coverUrl: "", sourceUrl: "",
-        circle: "Remote circle", rating: 4.5, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
-        tags: [], voiceActors: [], importStatus: "remote_only", workId: null,
+        circle: "Remote circle", rating: 4.5, ratingCount: 240, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
+        tags: [], voiceActors: [], importStatus: trackCompleted ? "tracked" : "remote_only", workId: trackCompleted ? 91 : null,
         languageEditions: [
           { remoteCode: "RJ09999991", language: "JPN", label: "Japanese", displayOrder: 1, current: true, origin: true },
           { remoteCode: "RJ09999993", language: "ENG", label: "English", displayOrder: 2, current: false, origin: false },
@@ -420,7 +451,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
       await route.fulfill({ json: {
         sourceId: 1, sourceCode: "example_remote", sourceName: "Example Remote", remoteId: "3",
         primaryCode: "RJ09999993", remoteCode: "RJ09999993", title: "Remote English work", coverUrl: "", sourceUrl: "",
-        circle: "Remote circle", rating: 4.5, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
+        circle: "Remote circle", rating: 4.5, ratingCount: 240, sales: 100, ageRating: "", releaseDate: "2026-04-03", durationSeconds: null,
         tags: [], voiceActors: [], importStatus: "remote_only", workId: null,
         languageEditions: [
           { remoteCode: "RJ09999991", language: "JPN", label: "Japanese", displayOrder: 1, current: false, origin: true },
@@ -428,6 +459,34 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
         ],
         tracks: [{ type: "audio", title: "english.mp3", hash: "english", streamUrl: "/stream-en", downloadUrl: "/download-en", durationSeconds: 10, sizeBytes: 12, cacheLocationId: null, cachePath: "", cacheAvailable: false, localLocationId: null, localPath: "", localAvailable: false, children: [] }],
       } });
+      return;
+    }
+    const trackMatch = url.pathname.match(/^\/api\/remote-sources\/1\/works\/([^/]+)\/track$/);
+    if (trackMatch && route.request().method() === "POST") {
+      const requestedCode = decodeURIComponent(trackMatch[1]).toUpperCase();
+      options.trackControl?.trackRequests.push(url.pathname);
+      const body = route.request().postDataJSON() as { triggerReason?: string };
+      await route.fulfill({ status: 202, json: {
+        runId: 91,
+        jobId: 92,
+        workId: null,
+        primaryCode: requestedCode,
+        status: "queued",
+        triggerReason: body.triggerReason ?? "manual_track",
+        deduplicated: false,
+      } });
+      return;
+    }
+    if (url.pathname === "/api/remote-track-runs/91") {
+      if (!options.trackControl) {
+        await route.fulfill({ status: 404, json: { error: "Track run not found" } });
+        return;
+      }
+      options.trackControl.statusRequests += 1;
+      const summaryJson = options.trackControl.status === "succeeded"
+        ? JSON.stringify({ work_id: 91, primary_code: "RJ09999991", source_id: 1, forked: true })
+        : "{}";
+      await route.fulfill({ json: { runId: 91, status: options.trackControl.status, summaryJson } });
       return;
     }
     if (url.pathname === "/api/remote-sources/1/works/RJ09999991/fetch-plan") {
@@ -514,6 +573,27 @@ test("remote source remembers sorting after transient browse state is cleared", 
   await expect(page.getByRole("button", { name: "Example Remote", exact: true })).toHaveClass(/bg-primary/);
   await expect(page.getByRole("button", { name: "Sort: Code" })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
+});
+
+test("remote card Track queues in place and reports a terminal failure without navigation", async ({ page }) => {
+  const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
+  await mockRemoteSource(page, () => undefined, { trackControl });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  const sourceURL = page.url();
+
+  await page.getByTitle("Track").click();
+
+  await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
+  await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
+  expect(page.url()).toBe(sourceURL);
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  await expect(page.getByText("Track workflow #91 failed for RJ09999991.", { exact: true })).toHaveCount(0);
+
+  trackControl.status = "failed";
+  await expect(page.getByText("Track workflow #91 failed for RJ09999991.", { exact: true })).toBeVisible();
+  expect(page.url()).toBe(sourceURL);
 });
 
 test("new detail navigation starts at the top, preserves user scroll while media loads, and returning restores the library position", async ({ page }) => {
@@ -805,6 +885,35 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   expect(trackRequests).toEqual([]);
 });
 
+test("remote detail Track completes in place and turns the forked Tracked source green", async ({ page }) => {
+  const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
+  await mockRemoteSource(page, () => undefined, { trackControl });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByText("Remote Japanese work", { exact: true }).click();
+  await expect(page).toHaveURL(/\/RJ09999991\?source=1/);
+  const detailURL = page.url();
+  const trackedTab = page.locator('button[title^="Tracked:"]');
+  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+  await expect(trackedTab.locator(".bg-amber-500")).toHaveCount(1);
+
+  await page.getByRole("button", { name: /Source actions for/ }).click();
+  await page.getByRole("menuitem", { name: "Track", exact: true }).click();
+
+  await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
+  await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
+  expect(page.url()).toBe(detailURL);
+  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+
+  trackControl.status = "succeeded";
+  await expect(page.getByText("Track workflow #91 completed for RJ09999991.", { exact: true })).toBeVisible();
+  expect(page.url()).toBe(detailURL);
+  await expect(trackedTab).toHaveAttribute("title", "Tracked: Forked directory available");
+  await expect(trackedTab.locator(".bg-emerald-500")).toHaveCount(1);
+  await page.getByRole("button", { name: /Source actions for/ }).click();
+  await expect(page.getByRole("menuitem", { name: "Track", exact: true })).toHaveCount(0);
+});
+
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {
   const trackRequests: string[] = [];
   page.on("request", (request) => {
@@ -887,19 +996,91 @@ test("recommended sorting refreshes its stable seed", async ({ page }) => {
   await expect(refresh).toBeEnabled();
 });
 
-test("cards keep tags to two rows with an overflow popover in grid and masonry", async ({ page }) => {
+test("recommendation badge refresh keeps the result grid fixed while the request is pending", async ({ page }) => {
+  const requestedURLs: URL[] = [];
+  let holdWorksResponse = false;
+  let releaseWorksResponse = () => undefined;
+  const worksResponseGate = new Promise<void>((resolve) => {
+    releaseWorksResponse = resolve;
+  });
+  await mockApplication(page, (url) => requestedURLs.push(url), false, 8, 0, [], undefined, {
+    beforeWorksResponse: async () => {
+      if (holdWorksResponse) await worksResponseGate;
+    },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sort: Recommended" }).click();
+  await page.getByRole("button", { name: "Recently added", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sort: Recently added" })).toBeVisible();
+  const firstCard = page.getByTestId("work-card").first();
+  await expect(firstCard).toBeVisible();
+  const initialTop = (await firstCard.boundingBox())!.y;
+  const initialRequestCount = requestedURLs.length;
+  holdWorksResponse = true;
+
+  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+
+  await expect.poll(() => requestedURLs.length).toBeGreaterThan(initialRequestCount);
+  await expect(page.getByText(/Refreshing (?:remote )?results/i)).toHaveCount(0);
+  await expect(firstCard).toBeVisible();
+  expect((await firstCard.boundingBox())!.y).toBeCloseTo(initialTop, 0);
+  releaseWorksResponse();
+  await expect(page.getByRole("button", { name: "Hide recommendation badges", exact: true })).toBeVisible();
+});
+
+test("cards keep two complete tag rows and readable Sales and Rate metrics at compact and desktop widths", async ({ page }) => {
   const tags = Array.from({ length: 14 }, (_, index) => `Long metadata tag ${index + 1}`);
   const userTags = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, name: `Personal tag ${index + 1}`, color: "" }));
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { work: { ...work, tags, userTags } });
-  await page.goto("/");
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.goto("/?mobileColumns=2&desktopColumns=5");
 
   await expect(page.getByText("R18", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
+  const card = page.getByTestId("work-card").first();
+  const tagRows = card.getByTestId("work-card-tags");
+  const rate = card.getByRole("img", { name: "Rate 4.50 out of 5 from 240 ratings", exact: true });
+  await expect(card.getByText("Sales", { exact: true })).toBeVisible();
+  await expect(card.getByText("DL", { exact: true })).toHaveCount(0);
+  await expect(card.getByText("4.50", { exact: true })).toBeVisible();
+  await expect(card.getByText("(240)", { exact: true })).toBeVisible();
+  await expect(rate.locator("[aria-hidden=true] > span")).toHaveCount(5);
+
+  const assertTagRowsAreComplete = async (minimumCardWidth: number, maximumCardWidth: number) => {
+    await expect.poll(async () => tagRows.evaluate((element) => {
+      const row = element.firstElementChild;
+      return new Set(Array.from(row?.children ?? []).map((child) => Math.round(child.getBoundingClientRect().top))).size;
+    })).toBe(2);
+    const layout = await tagRows.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const row = element.firstElementChild;
+      const badges = Array.from(row?.children ?? []).map((child) => child.getBoundingClientRect());
+      const cardElement = element.closest<HTMLElement>('[data-testid="work-card"]');
+      return {
+        cardWidth: cardElement?.getBoundingClientRect().width ?? 0,
+        cardFitsHorizontally: cardElement ? cardElement.scrollWidth <= cardElement.clientWidth + 1 : false,
+        containerHeight: bounds.height,
+        containerBottom: bounds.bottom,
+        firstTop: Math.min(...badges.map((badge) => badge.top)),
+        lastBottom: Math.max(...badges.map((badge) => badge.bottom)),
+      };
+    });
+    expect(layout.cardWidth).toBeGreaterThanOrEqual(minimumCardWidth);
+    expect(layout.cardWidth).toBeLessThanOrEqual(maximumCardWidth);
+    expect(layout.cardFitsHorizontally).toBe(true);
+    expect(layout.lastBottom).toBeLessThanOrEqual(layout.containerBottom + 0.75);
+    expect(layout.containerHeight).toBeGreaterThanOrEqual(layout.lastBottom - layout.firstTop - 0.75);
+  };
+  await assertTagRowsAreComplete(160, 205);
+
   let overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
   await expect(overflow).toBeVisible();
   await overflow.click();
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
+
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await assertTagRowsAreComplete(210, 280);
 
   await page.getByRole("button", { name: "View: Grid" }).click();
   await page.getByRole("button", { name: "Masonry", exact: true }).click();

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -117,6 +119,8 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 	defer stopHeartbeat()
 	var runErr error
 	switch job.WorkerType {
+	case "remote_source_track":
+		runErr = s.executeRemoteWorkTrackJob(jobCtx, job)
 	case "remote_work_fetch":
 		runErr = s.executeRemoteWorkFetchJob(jobCtx, job)
 	case "remote_media_cache":
@@ -170,6 +174,18 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 			}
 			if err := s.createRemoteFetchNotification(context.WithoutCancel(ctx), job.RunID, status, payload); err != nil {
 				slog.Error("create remote fetch notification", "run_id", job.RunID, "error", err)
+			}
+		}
+	}
+	if job.WorkerType == "remote_source_track" {
+		var payload remoteWorkTrackJobPayload
+		if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err == nil {
+			status := "succeeded"
+			if runErr != nil {
+				status = "failed"
+			}
+			if err := s.createRemoteTrackNotification(context.WithoutCancel(ctx), job.RunID, status, payload); err != nil {
+				slog.Error("create remote track notification", "run_id", job.RunID, "error", err)
 			}
 		}
 	}
@@ -294,7 +310,25 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 
 func isRetryableWorkflowError(runErr error) bool {
 	var downloadErr remoteDownloadError
-	return (errors.As(runErr, &downloadErr) && downloadErr.Retryable) || dlsite.IsRetryableHTTPError(runErr)
+	if (errors.As(runErr, &downloadErr) && downloadErr.Retryable) || dlsite.IsRetryableHTTPError(runErr) || errors.Is(runErr, context.DeadlineExceeded) {
+		return true
+	}
+	var networkErr net.Error
+	if errors.As(runErr, &networkErr) {
+		return true
+	}
+	const marker = "remote source returned http "
+	message := strings.ToLower(runErr.Error())
+	index := strings.Index(message, marker)
+	if index < 0 {
+		return false
+	}
+	fields := strings.Fields(message[index+len(marker):])
+	if len(fields) == 0 {
+		return false
+	}
+	status, err := strconv.Atoi(fields[0])
+	return err == nil && (status == http.StatusTooManyRequests || status >= 500)
 }
 
 func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRecord, delay time.Duration, reason string) error {

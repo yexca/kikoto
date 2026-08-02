@@ -36,6 +36,12 @@ import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import {
+  announceRemoteTrackCreated,
+  isMatchingRemoteTrack,
+  REMOTE_TRACK_TERMINAL_EVENT,
+  type RemoteTrackTerminalDetail,
+} from "@/app/remoteTrackWorkflows";
+import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
@@ -393,6 +399,23 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setDetail((current) => item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item);
     void loadRemoteMatches(false);
   };
+
+  useEffect(() => {
+    const refreshTrackedWork = (event: Event) => {
+      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+      if (
+        !terminal
+        || (terminal.status !== "succeeded" && terminal.status !== "partial")
+        || !mergedWorks.some((work) => {
+          const target = voiceWorkRemoteTarget(work);
+          return target && isMatchingRemoteTrack(terminal, target.sourceId, target.code, work.primaryCode);
+        })
+      ) return;
+      void refreshDetail();
+    };
+    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
+    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
+  }, [mergedWorks]);
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshDetail });
 
   const saveVoiceTags = async (tags: string[]) => {
@@ -428,7 +451,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     setMessage("");
     try {
-      const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
+      const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "voice_mark_interest");
       await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
       toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
       await refreshDetail();
@@ -442,7 +465,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const trackVoiceWorkForState = async (work: VoiceWorkView, reason: string) => {
     const target = voiceWorkRemoteTarget(work);
     if (!target) return null;
-    const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, reason);
+    const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
   };
 
@@ -556,8 +579,11 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setIsBulkBusy(true);
     try {
       const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "voice_card_fetch");
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      await refreshDetail();
+      announceRemoteTrackCreated(target.sourceId, target.code, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated ? `Track workflow #${result.runId} is already queued.` : `Track workflow #${result.runId} queued.`,
+      });
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
     } finally {
@@ -1134,6 +1160,7 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
     voiceCredits: "voiceCredits" in work ? work.voiceCredits : undefined,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    ratingCount: work.ratingCount,
     sales: work.sales,
     regularPrice: "regularPrice" in work ? work.regularPrice : null,
     price: work.price,
@@ -1323,6 +1350,7 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border"><CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left"><div className="min-w-0"><div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div><div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div></div><div className="hidden text-primary sm:block">{icon}</div></CardContent></Card>;
 }
+
 
 function voiceObservedStatusBadges(sourceTags: CircleSourceStat[]): WorkCardBadge[] {
   return sourceTags

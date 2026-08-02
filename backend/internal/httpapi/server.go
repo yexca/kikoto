@@ -43,6 +43,7 @@ type Server struct {
 	remoteWorkCacheCalls           map[string]*remoteWorkCall
 	remoteWorkTracksCache          map[string]remoteWorkTracksSnapshot
 	remoteWorkTracksCacheCalls     map[string]*remoteWorkTracksCall
+	remoteTrackMu                  sync.Mutex
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
@@ -85,6 +86,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.HandleFunc("GET /api/notifications", s.listNotifications)
 	mux.HandleFunc("DELETE /api/notifications/{id}", s.dismissNotification)
+	mux.HandleFunc("GET /api/remote-track-runs/{id}", s.getRemoteTrackRunStatus)
 	mux.HandleFunc("GET /api/users", s.listUsers)
 	mux.HandleFunc("POST /api/users", s.createUser)
 	mux.HandleFunc("PATCH /api/users/{id}", s.updateUser)
@@ -174,7 +176,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/fetch", s.saveRemoteSourceWork)
-	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/track", s.syncRemoteSourceWork)
+	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/track", s.trackRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/sync", s.syncRemoteSourceWork)
 	mux.HandleFunc("POST /api/remote-sources/{id}/works/{code}/cache", s.cacheRemoteSourceWorkMedia)
 	mux.HandleFunc("DELETE /api/works/{id}/tracked-sources/{sourceId}", s.untrackWorkSource)
@@ -397,6 +399,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
 		metadata := parseDLsiteSnapshot(row.Snapshot)
+		item.RatingCount = metadata.RatingCount
 		if !canonicalFiltered {
 			if visible, err := s.workEditionVisibleInLibrary(ctx, item.ID); err != nil {
 				return nil, err
@@ -513,6 +516,7 @@ type libraryWorkSummary struct {
 	Circle                 string               `json:"circle"`
 	CircleExternalID       string               `json:"circleExternalId"`
 	Rating                 *float64             `json:"rating"`
+	RatingCount            *int64               `json:"ratingCount"`
 	Sales                  *int64               `json:"sales"`
 	HasNonOrigin           bool                 `json:"hasAvailableNonOriginEdition,omitempty"`
 	RegularPrice           *int64               `json:"regularPrice"`

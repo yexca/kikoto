@@ -30,6 +30,7 @@ export type WorkCardViewModel = {
   voiceCredits?: VoiceCredit[];
   coverUrl?: string;
   rating?: number | null;
+  ratingCount?: number | null;
   sales?: number | null;
   regularPrice?: number | null;
   price?: number | null;
@@ -116,7 +117,7 @@ export function WorkCardShell({
   );
 
   return (
-    <Card className="group h-full transition-colors hover:border-primary/50">
+    <Card className="group h-full transition-colors hover:border-primary/50" data-testid="work-card">
       <CardContent className="flex h-full flex-col p-0">
         {onOpen ? (
           <div
@@ -297,6 +298,7 @@ function WorkCardBody({
       <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel="No DLsite tags" onBadgeClick={onTagOpen} />
       <WorkCardMetrics
         rating={work.rating ?? null}
+        ratingCount={work.ratingCount ?? null}
         sales={work.sales ?? null}
         hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
       />
@@ -422,8 +424,8 @@ function MeasuredBadgeList({
   const visibleBadges = badges.slice(0, safeVisibleCount);
   const hiddenBadges = badges.slice(safeVisibleCount);
   return (
-    <div ref={containerRef} className="relative min-h-6 min-w-0">
-      <div className="flex max-h-[3.125rem] min-w-0 flex-wrap gap-1.5 overflow-hidden">
+    <div ref={containerRef} className="relative min-h-6 min-w-0" data-testid="work-card-tags">
+      <div className="flex min-w-0 flex-wrap gap-1.5">
         {visibleBadges.map((badge) => (
           <CardBadge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} badge={badge} onBadgeClick={onBadgeClick} />
         ))}
@@ -516,43 +518,54 @@ function CardBadge({
 
 function WorkCardMetrics({
   rating,
+  ratingCount,
   sales,
   hasAvailableNonOriginEdition,
 }: {
   rating: number | null;
+  ratingCount: number | null;
   sales: number | null;
   hasAvailableNonOriginEdition: boolean;
 }) {
   const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
-  const ratingLabel = normalizedRating === null ? "No rating" : `Rate ${normalizedRating.toFixed(2)} out of 5`;
+  const normalizedRatingCount = ratingCount !== null && Number.isFinite(ratingCount) && ratingCount >= 0
+    ? Math.floor(ratingCount)
+    : null;
+  const ratingLabel = normalizedRating === null
+    ? "No rating"
+    : `Rate ${normalizedRating.toFixed(2)} out of 5${normalizedRatingCount === null ? "" : ` from ${normalizedRatingCount.toLocaleString()} ratings`}`;
   const salesLabel = sales !== null && Number.isFinite(sales) && sales >= 0
-    ? `DLsite sales: ${Math.floor(sales).toLocaleString()}`
-    : "DLsite sales unavailable";
+    ? `Sales: ${Math.floor(sales).toLocaleString()}`
+    : "Sales unavailable";
   return (
-    <div className="flex min-h-5 min-w-0 items-center gap-3 text-xs text-muted-foreground">
+    <div className="grid min-h-10 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       <span className="inline-flex min-w-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
         <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
-        <span className="shrink-0 font-medium">DL</span>
+        <span className="shrink-0 font-medium">Sales</span>
         <span className="truncate tabular-nums text-foreground">{formatCompactCount(sales)}</span>
       </span>
-      <span className="inline-flex shrink-0 items-center gap-1.5" title={ratingLabel} role="img" aria-label={ratingLabel}>
+      {hasAvailableNonOriginEdition && (
+        <span className="col-start-2 row-span-2 inline-flex shrink-0" title="Another language edition is available">
+          <Languages className="h-4 w-4 text-primary" role="img" aria-label="Another language edition is available" />
+        </span>
+      )}
+      <span className="inline-flex min-w-0 items-center gap-1" title={ratingLabel} role="img" aria-label={ratingLabel}>
         <span className="font-medium">Rate</span>
-        <span className="flex w-12 items-center gap-0.5" aria-hidden="true">
+        <span className="flex w-10 shrink-0 items-center gap-0.5" aria-hidden="true">
           {Array.from({ length: 5 }, (_, index) => {
             const fill = normalizedRating === null ? 0 : Math.min(1, Math.max(0, normalizedRating - index));
             return (
-              <span key={index} className="h-1.5 w-2 overflow-hidden rounded-[2px] bg-muted">
+              <span key={index} className="h-1.5 w-1.5 flex-1 overflow-hidden rounded-[2px] bg-muted">
                 <span className="block h-full bg-primary" style={{ width: `${fill * 100}%` }} />
               </span>
             );
           })}
         </span>
+        <span className="shrink-0 tabular-nums text-foreground">{normalizedRating === null ? "--" : normalizedRating.toFixed(2)}</span>
+        {normalizedRatingCount !== null && (
+          <span className="min-w-0 truncate tabular-nums">({formatCompactCount(normalizedRatingCount)})</span>
+        )}
       </span>
-      {hasAvailableNonOriginEdition && (
-        <span className="ml-auto inline-flex shrink-0" title="Another language edition is available">
-          <Languages className="h-4 w-4 text-primary" role="img" aria-label="Another language edition is available" />
-        </span>
-      )}
     </div>
   );
 }

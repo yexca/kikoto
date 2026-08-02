@@ -50,6 +50,12 @@ import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
+import {
+  announceRemoteTrackCreated,
+  isMatchingRemoteTrack,
+  REMOTE_TRACK_TERMINAL_EVENT,
+  type RemoteTrackTerminalDetail,
+} from "@/app/remoteTrackWorkflows";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
@@ -306,6 +312,23 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   }, [externalId]);
 
   useEffect(() => {
+    const refreshTrackedWork = (event: Event) => {
+      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+      if (
+        !terminal
+        || (terminal.status !== "succeeded" && terminal.status !== "partial")
+        || !detail?.works.some((work) => {
+          const target = circleWorkRemoteTarget(work);
+          return target && isMatchingRemoteTrack(terminal, target.sourceId, target.code, work.primaryCode);
+        })
+      ) return;
+      void loadCircleDetail();
+    };
+    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
+    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
+  }, [detail?.works, loadCircleDetail]);
+
+  useEffect(() => {
     let cancelled = false;
     let timeoutID: number | undefined;
     let refreshStarted = false;
@@ -473,7 +496,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!target) return;
     setIsBulkSaving(true);
     try {
-      const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
+      const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, "circle_mark_interest");
       const markResult = await api.updateWorkUserState(syncResult.workId, { listeningStatus: status });
       toast.success(`Tracked and marked ${syncResult.primaryCode}.`);
       const next = await api.getCircle(externalId);
@@ -491,7 +514,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const trackCatalogWorkForState = async (work: CircleCatalogWork, reason: string) => {
     const target = circleWorkRemoteTarget(work);
     if (!target) return null;
-    const syncResult = await api.trackRemoteSourceWork(target.sourceId, target.code, reason);
+    const syncResult = await api.syncRemoteSourceWork(target.sourceId, target.code, reason);
     return syncResult.workId;
   };
 
@@ -603,8 +626,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     setIsBulkSaving(true);
     try {
       const result = await api.trackRemoteSourceWork(target.sourceId, target.code, "circle_card_fetch");
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      setDetail(await api.getCircle(externalId));
+      announceRemoteTrackCreated(target.sourceId, target.code, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated ? `Track workflow #${result.runId} is already queued.` : `Track workflow #${result.runId} queued.`,
+      });
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
     } finally {
@@ -1069,6 +1095,7 @@ function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    ratingCount: work.ratingCount,
     sales: work.sales,
     regularPrice: work.regularPrice,
     price: work.price,
@@ -1143,6 +1170,7 @@ function SyncBadge({ state }: { state: string }) {
   const label = state === "fresh" ? "Synced" : state === "stale" ? "Needs refresh" : state === "excluded" ? "Excluded" : "Never synced";
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
+
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (

@@ -264,6 +264,107 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	}
 }
 
+func TestRemoteWorkTrackQueuesDeduplicatesForksAndNotifiesSubscribers(t *testing.T) {
+	requests := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch r.URL.Path {
+		case "/api/workInfo/RJ09999995":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{
+				ID: 15, SourceID: "RJ09999995", Title: "Queued track work", ReviewCount: trackTestInt64Pointer(27),
+			})
+		case "/api/tracks/15":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "queued-track.mp3", MediaStreamURL: "/media/queued-track.mp3"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	for _, username := range []string{"track-owner", "track-subscriber"} {
+		if _, err := db.Exec(`INSERT INTO user_account (username, display_name, role) VALUES (?, ?, 'user')`, username, username); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var ownerID, subscriberID int64
+	if err := db.QueryRow(`SELECT id FROM user_account WHERE username = 'track-owner'`).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM user_account WHERE username = 'track-subscriber'`).Scan(&subscriberID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	queued, err := server.enqueueRemoteWorkTrack(context.Background(), ownerID, 1, "RJ09999995", "manual_track")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Status != "queued" || queued.RunID == 0 || queued.JobID == 0 || queued.WorkID != nil {
+		t.Fatalf("queued result = %+v", queued)
+	}
+	if requests != 0 {
+		t.Fatalf("enqueue performed %d upstream requests, want 0", requests)
+	}
+	reused, err := server.enqueueRemoteWorkTrack(context.Background(), subscriberID, 1, "rj09999995", "manual_track")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reused.Deduplicated || reused.RunID != queued.RunID || reused.JobID != queued.JobID {
+		t.Fatalf("deduplicated result = %+v, queued = %+v", reused, queued)
+	}
+
+	if err := server.runNextQueuedWorkflowJob(context.Background(), "track-test-runner"); err != nil {
+		t.Fatal(err)
+	}
+	var runStatus string
+	if err := db.QueryRow(`SELECT status FROM workflow_run WHERE id = ?`, queued.RunID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "succeeded" {
+		t.Fatalf("run status = %q", runStatus)
+	}
+	var trackedPresence, remoteLocations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM work_source_presence WHERE file_source_id = 1 AND presence_type = 'tracked' AND availability = 'available'`).Scan(&trackedPresence); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_file_location WHERE file_source_id = 1 AND location_type = 'remote_stream' AND availability = 'available'`).Scan(&remoteLocations); err != nil {
+		t.Fatal(err)
+	}
+	if trackedPresence != 1 || remoteLocations != 1 {
+		t.Fatalf("tracked presence = %d, remote locations = %d", trackedPresence, remoteLocations)
+	}
+	var completedNotifications int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM workflow_notification
+		WHERE workflow_run_id = ? AND notification_type = 'remote_track' AND status = 'succeeded'
+	`, queued.RunID).Scan(&completedNotifications); err != nil {
+		t.Fatal(err)
+	}
+	if completedNotifications != 2 {
+		t.Fatalf("completed notifications = %d, want 2", completedNotifications)
+	}
+
+	statusRequest := httptest.NewRequest(http.MethodGet, "/api/remote-track-runs/"+strconv.FormatInt(queued.RunID, 10), nil)
+	statusRequest.SetPathValue("id", strconv.FormatInt(queued.RunID, 10))
+	statusRequest = statusRequest.WithContext(context.WithValue(statusRequest.Context(), currentUserKey, currentUser{ID: subscriberID, Permissions: []string{"library:read"}}))
+	statusResponse := httptest.NewRecorder()
+	server.getRemoteTrackRunStatus(statusResponse, statusRequest)
+	if statusResponse.Code != http.StatusOK || !strings.Contains(statusResponse.Body.String(), `"status":"succeeded"`) {
+		t.Fatalf("status response = %d %s", statusResponse.Code, statusResponse.Body.String())
+	}
+}
+
+func trackTestInt64Pointer(value int64) *int64 {
+	return &value
+}
+
 func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
 	db := openMigratedTestDB(t)
 	result, err := db.Exec(`

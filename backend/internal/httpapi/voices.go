@@ -152,6 +152,7 @@ type voiceKnownWork struct {
 	CircleExternalID   string                   `json:"circleExternalId"`
 	AgeRating          string                   `json:"ageRating"`
 	Rating             *float64                 `json:"rating"`
+	RatingCount        *int64                   `json:"ratingCount"`
 	Sales              *int64                   `json:"sales"`
 	HasNonOrigin       bool                     `json:"hasAvailableNonOriginEdition,omitempty"`
 	RegularPrice       *int64                   `json:"regularPrice"`
@@ -208,6 +209,7 @@ type voiceRemoteWork struct {
 	Circle         string   `json:"circle"`
 	AgeRating      string   `json:"ageRating"`
 	Rating         *float64 `json:"rating"`
+	RatingCount    *int64   `json:"ratingCount"`
 	Sales          *int64   `json:"sales"`
 	HasNonOrigin   bool     `json:"hasAvailableNonOriginEdition,omitempty"`
 	Price          *int64   `json:"price"`
@@ -1050,6 +1052,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			CircleExternalID:   metadata.CircleExternalID,
 			AgeRating:          row.AgeRating,
 			Rating:             row.Rating,
+			RatingCount:        metadata.RatingCount,
 			Sales:              row.Sales,
 			RegularPrice:       row.RegularPrice,
 			Price:              row.Price,
@@ -1337,6 +1340,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 						Circle:         remoteCircleName(remoteWork),
 						AgeRating:      remoteWork.AgeCategoryString,
 						Rating:         remoteWork.RateAverage2DP,
+						RatingCount:    remoteWork.ReviewCount,
 						Sales:          remoteWork.DLCount,
 						Price:          remoteWork.Price,
 						Tags:           remoteTagNames(remoteWork.Tags),

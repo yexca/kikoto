@@ -201,6 +201,12 @@ import { useAuth } from "@/auth/AuthProvider";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import {
+  announceRemoteTrackCreated,
+  isMatchingRemoteTrack,
+  REMOTE_TRACK_TERMINAL_EVENT,
+  type RemoteTrackTerminalDetail,
+} from "@/app/remoteTrackWorkflows";
+import {
   MediaContextActionBar,
   WorkIdentityActionBar,
   type DetailActionMode,
@@ -932,6 +938,22 @@ export function LibraryPage() {
     setLibraryLoadError("");
   };
 
+  useEffect(() => {
+    const refreshAfterTrack = (event: Event) => {
+      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+      if (!terminal || (terminal.status !== "succeeded" && terminal.status !== "partial")) return;
+      if (activeTab.kind === "source") {
+        if (activeTab.source.id === terminal.sourceId) {
+          loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
+        }
+        return;
+      }
+      void refreshCurrentWorksPage();
+    };
+    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
+    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
+  }, [activeRemoteSourceState.page, activeTab, remoteSearchQuery]);
+
   const trackedFetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshCurrentWorksPage });
   const openTrackedFetchSelection = (work: Work, presence: SourcePresenceItem) => {
     if (!presence.fileSourceId) return;
@@ -1021,17 +1043,6 @@ export function LibraryPage() {
         code={selectedRemoteTarget.code}
         preview={selectedRemoteTarget.preview ?? null}
         onBack={backToLibrary}
-        onOpenTracked={(workID) => {
-          const work = works.find((item) => item.id === workID);
-		  if (work) {
-			openWorkCodeRoute(work.primaryCode, "tracked", selectedRemoteTarget.source.id);
-			return;
-		  }
-		  void api.getWork(workID).then((detail) => {
-			setSelectedRemoteTarget(null);
-			openWorkCodeRoute(detail.primaryCode, "tracked", selectedRemoteTarget.source.id);
-		  }).catch((error) => toast.notify(toastFromError(error, "Tracked detail could not be opened.")));
-        }}
         onWorksChanged={async () => await refreshCurrentWorksPage()}
       />
     );
@@ -1294,7 +1305,6 @@ export function LibraryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-		  {isLibraryLoading && works.length > 0 && <div className="text-xs text-muted-foreground">Refreshing results…</div>}
           {!libraryLoadError && localTopPagination}
           {libraryLoadError ? (
             <LibraryLoadErrorCard
@@ -1474,7 +1484,6 @@ function RemoteSourcePanel({
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
   const isInitialLoading = loading && result === null;
-  const isRefreshing = loading && result !== null;
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [bulkCodes, setBulkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1483,20 +1492,25 @@ function RemoteSourcePanel({
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: () => onSynced(0) });
   const { page, pageSize } = viewState;
 
-  const syncWork = async (work: RemoteWork, reason: string, openTracked = false) => {
+  const trackWork = async (work: RemoteWork, reason: string) => {
     if (!work.primaryCode) {
       toast.warning("This remote work has no stable work code.");
       return;
     }
     setIsSyncingCode(work.primaryCode);
     try {
-      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), reason);
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      onWorkStateChanged(work.primaryCode, { workId: result.workId });
-      await onSynced(result.workId, { openTracked });
-      return result.workId;
+      const requestedCode = remoteWorkActionCode(work);
+      const result = await api.trackRemoteSourceWork(source.id, requestedCode, reason);
+      announceRemoteTrackCreated(source.id, requestedCode, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated
+          ? `Track workflow #${result.runId} is already queued.`
+          : `Track workflow #${result.runId} queued.`,
+      });
+      return result.runId;
     } catch (error) {
-      toast.notify(toastFromError(error, "Remote sync failed."));
+      toast.notify(toastFromError(error, "Track could not be queued."));
       return null;
     } finally {
       setIsSyncingCode(null);
@@ -1595,7 +1609,7 @@ function RemoteSourcePanel({
     if (!work.primaryCode) return;
     setIsSyncingCode(work.primaryCode);
     try {
-      const workId = work.workId ?? await syncWork(work, "mark_interest");
+      const workId = work.workId ?? await ensureRemoteWorkForState(work, "mark_interest");
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
       onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
@@ -1608,18 +1622,11 @@ function RemoteSourcePanel({
     }
   };
 
-  const syncAndMarkRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
-    setIsSyncingCode(work.primaryCode);
-    try {
-      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), "mark_interest");
-      await api.updateWorkUserState(result.workId, { listeningStatus: status });
-      toast.success(`Tracked and marked ${result.primaryCode}.`);
-      await onSynced(result.workId);
-    } catch (error) {
-      toast.notify(toastFromError(error, "Mark update failed."));
-    } finally {
-      setIsSyncingCode(null);
-    }
+  const ensureRemoteWorkForState = async (work: RemoteWork, reason: string) => {
+    const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), reason);
+    onWorkStateChanged(work.primaryCode, { workId: result.workId });
+    await onSynced(result.workId);
+    return result.workId;
   };
 
   const ensureRemoteWorkForList = async (work: RemoteWork) => {
@@ -1627,7 +1634,7 @@ function RemoteSourcePanel({
     if (!work.primaryCode) return null;
     setIsSyncingCode(work.primaryCode);
     try {
-      const result = await api.trackRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
+      const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
       toast.success(`Tracked ${result.primaryCode} for list selection.`);
       return result.workId;
     } catch (error) {
@@ -1689,7 +1696,6 @@ function RemoteSourcePanel({
         </Card>
       ) : (
         <div className="space-y-2">
-          {isRefreshing && <div className="rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">Refreshing remote results...</div>}
           <section
             className={workCollectionClassName(viewMode)}
             style={workCollectionStyle(mobileColumns, desktopColumns)}
@@ -1705,7 +1711,7 @@ function RemoteSourcePanel({
                   isBusy={isSyncingCode === work.primaryCode || fetchWorkspace.isBusy}
                   onSelectedChange={(checked) => toggleBulkCode(work.primaryCode, checked)}
                   onOpen={() => onOpenPreview(work)}
-                  onFetch={() => void syncWork(work, "manual_track", true)}
+                  onFetch={() => void trackWork(work, "manual_track")}
                   onTagOpen={onTagOpen}
                   onMark={(status) => void markRemoteWork(work, status)}
                   onSave={() => void fetchWorkspace.open({
@@ -2108,6 +2114,7 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, 
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    ratingCount: work.ratingCount,
     sales: work.sales,
     regularPrice: work.regularPrice,
     price: work.price,
@@ -2136,6 +2143,7 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     voiceActors: work.voiceActors,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    ratingCount: work.ratingCount,
     sales: work.sales,
     price: work.price,
     priceCurrency: "JPY",
@@ -2483,7 +2491,6 @@ function RemoteOnlyWorkDetailController({
   code,
   preview,
   onBack,
-  onOpenTracked,
   onWorksChanged,
 }: {
   source: LibrarySource;
@@ -2491,12 +2498,12 @@ function RemoteOnlyWorkDetailController({
   code: string;
   preview: RemoteWorkPreview | null;
   onBack: () => void;
-  onOpenTracked: (workID: number) => void;
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
+  const [trackedWork, setTrackedWork] = useState<WorkDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
   const [treeLoading, setTreeLoading] = useState(false);
@@ -2549,7 +2556,7 @@ function RemoteOnlyWorkDetailController({
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteFiles = useMemo(() => flattenTreeFiles(tree), [tree]);
-  const remoteTabs = useMemo<SourceTabInfo[]>(() => buildSourceTabs([], remoteAvailability.map((item) => item.source.id === source.id
+  const remoteTabs = useMemo<SourceTabInfo[]>(() => buildSourceTabs(trackedWork?.mediaItems ?? [], remoteAvailability.map((item) => item.source.id === source.id
     ? {
       ...item,
       detail: detail ?? undefined,
@@ -2564,7 +2571,7 @@ function RemoteOnlyWorkDetailController({
         coverUrl: detail?.coverUrl || item.summary.coverUrl,
       },
     }
-    : item), [], undefined), [detail, message, remoteAvailability, source.id, treeError, treeLoading]);
+    : item), trackedWork?.sourcePresence ?? [], undefined), [detail, message, remoteAvailability, source.id, trackedWork, treeError, treeLoading]);
   const player = useLibraryPlayer();
   const primaryRemoteTabKey = remoteSourceTabKey(source.id);
   const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
@@ -2605,6 +2612,7 @@ function RemoteOnlyWorkDetailController({
   useEffect(() => {
     setDetail(null);
 	setIdentityDetail(null);
+    setTrackedWork(null);
     setNotFound(false);
     setMessage("");
     setTreeLoading(false);
@@ -2672,12 +2680,17 @@ function RemoteOnlyWorkDetailController({
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onWorksChanged();
-      onOpenTracked(result.workId);
+      const requestedCode = remoteDetailActionCode(detail);
+      const result = await api.trackRemoteSourceWork(source.id, requestedCode, reason);
+      announceRemoteTrackCreated(source.id, requestedCode, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated
+          ? `Track workflow #${result.runId} is already queued.`
+          : `Track workflow #${result.runId} queued.`,
+      });
     } catch (error) {
-      toast.notify(toastFromError(error, "Remote track failed."));
+      toast.notify(toastFromError(error, "Track could not be queued."));
     } finally {
       setIsFetching(false);
     }
@@ -2688,7 +2701,7 @@ function RemoteOnlyWorkDetailController({
     setIsFetching(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
+      const result = await api.syncRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
       await onWorksChanged();
       setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
       return result.workId;
@@ -2723,6 +2736,38 @@ function RemoteOnlyWorkDetailController({
       detail,
     });
   };
+
+  useEffect(() => {
+    const reconcileTrack = (event: Event) => {
+      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+      if (
+        !terminal
+        || (terminal.status !== "succeeded" && terminal.status !== "partial")
+        || !terminal.workId
+        || !isMatchingRemoteTrack(terminal, source.id, code, detail?.primaryCode, detail?.remoteCode)
+      ) return;
+      void (async () => {
+        const [nextWork, availability] = await Promise.all([
+          api.getWork(terminal.workId as number),
+          api.getSourceAvailability(terminal.primaryCode || detail?.primaryCode || code).catch(() => null),
+          onWorksChanged(),
+        ]);
+        setTrackedWork(nextWork);
+        setDetail((current) => current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current);
+        setIdentityDetail((current) => current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current);
+        if (availability) {
+          setRemoteAvailability((current) => current.map((item) => {
+            const summary = availability.sources.find((candidate) => candidate.sourceId === item.source.id);
+            return summary ? { ...item, summary } : item;
+          }));
+        }
+      })().catch((error) => {
+        toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
+      });
+    };
+    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
+    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
+  }, [code, detail?.primaryCode, detail?.remoteCode, onWorksChanged, source.id, toast]);
 
   const playRemoteTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!detail || tracks.length === 0) return;
@@ -2782,7 +2827,7 @@ function RemoteOnlyWorkDetailController({
       busy={isFetching || fetchWorkspace.isBusy}
       mode="remote_source"
       contextKey={remoteSourceTabKey(source.id)}
-      onTrack={() => void fetchWork("manual_track")}
+      onTrack={detail.workId || trackedWork ? undefined : () => void fetchWork("manual_track")}
       onFetch={() => void openSaveWorkspace()}
       remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
       remoteSourceName={detail.sourceName}
@@ -2858,7 +2903,7 @@ function RemoteOnlyWorkDetailController({
     seriesCircleExternalId: "",
     ratingLabel: "Rating",
     rating: remoteIdentity?.rating ?? preview?.rating ?? null,
-    ratingCount: null,
+    ratingCount: remoteIdentity?.ratingCount ?? null,
     sales: remoteIdentity?.sales ?? preview?.sales ?? null,
 	baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
 	metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
@@ -3296,19 +3341,51 @@ function PersistedWorkDetailController({
     });
   }, [activeMetadataRunId, metadataRun.run, onWorkReload, onWorksChanged, toast, work]);
 
+  useEffect(() => {
+    const reconcileTrack = (event: Event) => {
+      const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
+      if (
+        !terminal
+        || (terminal.status !== "succeeded" && terminal.status !== "partial")
+        || !terminal.workId
+        || !work
+        || !remoteSources.some((remote) => isMatchingRemoteTrack(
+          terminal,
+          remote.source.id,
+          remote.summary.primaryCode,
+          remote.detail?.primaryCode,
+          remote.detail?.remoteCode,
+          work.primaryCode,
+        ))
+      ) return;
+      void Promise.all([
+        onWorkReload(terminal.workId, true),
+        onWorksChanged(),
+        refreshAvailability(),
+      ]).catch((error) => {
+        toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
+      });
+    };
+    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
+    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
+  }, [onWorkReload, onWorksChanged, refreshAvailability, remoteSources, toast, work]);
+
   const trackSelectedRemoteSource = async () => {
     if (!selectedRemoteSource?.detail?.primaryCode) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, remoteDetailActionCode(selectedRemoteSource.detail), "manual_track");
-      toast.success(`Tracked ${result.primaryCode} through workflow run #${result.runId}.`);
-      await onWorkReload(result.workId, true);
-      await onWorksChanged();
-      const trackedDetail = await api.getWorkSummary(result.workId);
-      openWorkCodeRoute(trackedDetail.primaryCode || result.primaryCode, "tracked", selectedRemoteSource.source.id);
+      const requestedCode = remoteDetailActionCode(selectedRemoteSource.detail);
+      const result = await api.trackRemoteSourceWork(selectedRemoteSource.source.id, requestedCode, "manual_track");
+      announceRemoteTrackCreated(selectedRemoteSource.source.id, requestedCode, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated
+          ? `Track workflow #${result.runId} is already queued.`
+          : `Track workflow #${result.runId} queued.`,
+      });
     } catch (error) {
-      toast.notify(toastFromError(error, "Track failed."));
+      toast.notify(toastFromError(error, "Track could not be queued."));
     } finally {
       setIsSyncingDetail(false);
     }
@@ -3355,13 +3432,17 @@ function PersistedWorkDetailController({
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.trackRemoteSourceWork(remote.source.id, remoteAvailabilityRouteCode(remote.summary, work.primaryCode), "manual_fork");
-      toast.success(`Forked ${result.primaryCode} from ${remote.source.displayName} through workflow run #${result.runId}.`);
-      await onWorkReload(result.workId, true);
-      await onWorksChanged();
-      setActiveSourceKey("tracked");
+      const requestedCode = remoteAvailabilityRouteCode(remote.summary, work.primaryCode);
+      const result = await api.trackRemoteSourceWork(remote.source.id, requestedCode, "manual_fork");
+      announceRemoteTrackCreated(remote.source.id, requestedCode, result);
+      toast.notify({
+        kind: "info",
+        message: result.deduplicated
+          ? `Fork workflow #${result.runId} is already queued.`
+          : `Fork workflow #${result.runId} queued.`,
+      });
     } catch (error) {
-      toast.notify(toastFromError(error, "Fork failed."));
+      toast.notify(toastFromError(error, "Fork could not be queued."));
     } finally {
       setIsSyncingDetail(false);
     }

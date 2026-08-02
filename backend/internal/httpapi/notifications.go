@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,9 +15,47 @@ type workflowNotificationRecord struct {
 	Type          string `json:"type"`
 	Status        string `json:"status"`
 	WorkID        *int64 `json:"workId"`
+	FileSourceID  *int64 `json:"fileSourceId"`
 	WorkCode      string `json:"workCode"`
 	Message       string `json:"message"`
 	CreatedAt     string `json:"createdAt"`
+}
+
+type remoteTrackRunStatus struct {
+	RunID       int64  `json:"runId"`
+	Status      string `json:"status"`
+	SummaryJSON string `json:"summaryJson"`
+}
+
+func (s *Server) getRemoteTrackRunStatus(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	runID, err := parseInt64PathValue(r, "id")
+	if err != nil || runID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid track run id"})
+		return
+	}
+	var result remoteTrackRunStatus
+	err = s.db.QueryRowContext(r.Context(), `
+		SELECT run.id, run.status, run.summary_json
+		FROM workflow_run AS run
+		INNER JOIN workflow_notification AS notification
+			ON notification.workflow_run_id = run.id
+			AND notification.user_id = ?
+			AND notification.notification_type = 'remote_track'
+		WHERE run.id = ? AND run.workflow_code = 'remote_source_sync'
+	`, actor.ID, runID).Scan(&result.RunID, &result.Status, &result.SummaryJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "track run not found"})
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
@@ -37,10 +76,14 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, workflow_run_id, notification_type, status, work_id, work_code, message, created_at
-		FROM workflow_notification
-		WHERE user_id = ? AND dismissed_at IS NULL AND status IN ('succeeded', 'failed')
-		ORDER BY created_at DESC, id DESC
+		SELECT notification.id, notification.workflow_run_id, notification.notification_type,
+			notification.status, notification.work_id,
+			NULLIF(CAST(json_extract(run.input_json, '$.source_id') AS INTEGER), 0),
+			notification.work_code, notification.message, notification.created_at
+		FROM workflow_notification AS notification
+		INNER JOIN workflow_run AS run ON run.id = notification.workflow_run_id
+		WHERE notification.user_id = ? AND notification.dismissed_at IS NULL AND notification.status IN ('succeeded', 'failed')
+		ORDER BY notification.created_at DESC, notification.id DESC
 		LIMIT ?
 	`, actor.ID, limit)
 	if err != nil {
@@ -52,12 +95,16 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item workflowNotificationRecord
 		var workID sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.WorkflowRunID, &item.Type, &item.Status, &workID, &item.WorkCode, &item.Message, &item.CreatedAt); err != nil {
+		var fileSourceID sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.WorkflowRunID, &item.Type, &item.Status, &workID, &fileSourceID, &item.WorkCode, &item.Message, &item.CreatedAt); err != nil {
 			writeError(w, err)
 			return
 		}
 		if workID.Valid {
 			item.WorkID = &workID.Int64
+		}
+		if fileSourceID.Valid {
+			item.FileSourceID = &fileSourceID.Int64
 		}
 		notifications = append(notifications, item)
 	}
@@ -164,6 +211,79 @@ func subscribeRemoteFetchNotification(ctx context.Context, execer contextExecer,
 			user_id, workflow_run_id, notification_type, status, work_id, work_code
 		)
 		VALUES (?, ?, 'remote_fetch', 'pending', ?, ?)
+		ON CONFLICT(user_id, workflow_run_id, notification_type) DO NOTHING
+	`, userID, runID, nullableWorkID, strings.ToUpper(strings.TrimSpace(workCode)))
+	return err
+}
+
+func (s *Server) createRemoteTrackNotification(ctx context.Context, runID int64, status string, payload remoteWorkTrackJobPayload) error {
+	if runID <= 0 {
+		return nil
+	}
+	status = strings.TrimSpace(status)
+	if status != "succeeded" && status != "failed" {
+		return nil
+	}
+	var runStatus string
+	var workID sql.NullInt64
+	var primaryCode sql.NullString
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT status,
+			NULLIF(CAST(json_extract(summary_json, '$.work_id') AS INTEGER), 0),
+			CAST(json_extract(summary_json, '$.primary_code') AS TEXT)
+		FROM workflow_run
+		WHERE id = ?
+	`, runID).Scan(&runStatus, &workID, &primaryCode); err != nil {
+		return err
+	}
+	if runStatus != status {
+		return nil
+	}
+	code := strings.ToUpper(strings.TrimSpace(payload.WorkCode))
+	if primaryCode.Valid && strings.TrimSpace(primaryCode.String) != "" {
+		code = strings.ToUpper(strings.TrimSpace(primaryCode.String))
+	}
+	message := "Track completed for " + code + "."
+	if status == "failed" {
+		message = "Track failed for " + code + "."
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE workflow_notification
+		SET status = ?, work_id = COALESCE(?, work_id), work_code = ?, message = ?
+		WHERE workflow_run_id = ? AND notification_type = 'remote_track'
+	`, status, nullableSQLInt64(workID), code, message, runID); err != nil {
+		return err
+	}
+	if payload.RequestedByUserID <= 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO workflow_notification (
+			user_id, workflow_run_id, notification_type, status, work_id, work_code, message
+		)
+		VALUES (?, ?, 'remote_track', ?, ?, ?, ?)
+		ON CONFLICT(user_id, workflow_run_id, notification_type) DO UPDATE SET
+			status = excluded.status,
+			work_id = excluded.work_id,
+			work_code = excluded.work_code,
+			message = excluded.message
+	`, payload.RequestedByUserID, runID, status, nullableSQLInt64(workID), code, message)
+	return err
+}
+
+func subscribeRemoteTrackNotification(ctx context.Context, execer contextExecer, userID, runID int64, workID *int64, workCode string) error {
+	if userID <= 0 || runID <= 0 {
+		return nil
+	}
+	var nullableWorkID any
+	if workID != nil && *workID > 0 {
+		nullableWorkID = *workID
+	}
+	_, err := execer.ExecContext(ctx, `
+		INSERT INTO workflow_notification (
+			user_id, workflow_run_id, notification_type, status, work_id, work_code
+		)
+		VALUES (?, ?, 'remote_track', 'pending', ?, ?)
 		ON CONFLICT(user_id, workflow_run_id, notification_type) DO NOTHING
 	`, userID, runID, nullableWorkID, strings.ToUpper(strings.TrimSpace(workCode)))
 	return err

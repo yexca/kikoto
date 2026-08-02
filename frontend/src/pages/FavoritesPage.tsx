@@ -1145,6 +1145,7 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
     voiceCredits: work.voiceCredits,
     coverUrl: work.coverUrl,
     rating: work.rating,
+    ratingCount: work.ratingCount,
     sales: work.sales,
     regularPrice: work.regularPrice,
     price: work.price,
