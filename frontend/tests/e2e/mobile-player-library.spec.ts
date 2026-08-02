@@ -445,7 +445,7 @@ async function mockRemoteSource(page: Page, onRemoteRequest: (url: URL) => void,
           requestedCode: "RJ09999991", canonicalCode: "RJ09999990", metadataStatus: "complete", warnings: [],
           editions: [
             { workId: 10, primaryCode: "RJ09999990", title: "Origin", metadataLanguage: "JPN", editionLabel: "日本語", translationKind: "origin", classificationSource: "canonical", makerId: "RG1", originMakerId: "RG1", origin: true, localRoots: [], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "available", remoteId: "2", primaryCode: "RJ09999990", title: "Origin", coverUrl: "", workId: 10, hasRemote: true, hasCache: false, hasLocal: false, error: "", elapsedMs: 1 }] },
-            { workId: 11, primaryCode: "RJ09999991", title: "Community", metadataLanguage: "CHI_HANS", editionLabel: "簡体中文", translationKind: "community", classificationSource: "translation_umbrella", makerId: "RG60289", originMakerId: "RG1", origin: false, localRoots: [{ id: 1, fileSourceId: 2, rootPath: "Existing/RJ09999991", role: "external", state: "active", primary: false }], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "unavailable", remoteId: "1", primaryCode: "RJ09999991", title: "Community", coverUrl: "", workId: 11, hasRemote: true, hasCache: false, hasLocal: true, error: "stale availability", elapsedMs: 1 }] },
+            { workId: 11, primaryCode: "RJ09999991", title: "Community", metadataLanguage: "CHI_HANS", editionLabel: "簡体中文", translationKind: "community", classificationSource: "translation_umbrella", makerId: "RG00001", originMakerId: "RG1", origin: false, localRoots: [{ id: 1, fileSourceId: 2, rootPath: "Existing/RJ09999991", role: "external", state: "active", primary: false }], sources: [{ sourceId: 1, sourceCode: "example_remote", displayName: "Example Remote", status: "unavailable", remoteId: "1", primaryCode: "RJ09999991", title: "Community", coverUrl: "", workId: 11, hasRemote: true, hasCache: false, hasLocal: true, error: "stale availability", elapsedMs: 1 }] },
           ],
         },
       } });
@@ -491,8 +491,8 @@ test("remote source keeps alias matches returned by the backend", async ({ page 
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
 
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
-  await search.fill("RJ01000001");
-  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ01000001")).toBe(true);
+  await search.fill("RJ09999994");
+  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ09999994")).toBe(true);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
 });
 
@@ -764,9 +764,9 @@ test("unknown routes and missing work codes render not found states", async ({ p
   await page.goto("/missing-route");
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
 
-  await page.goto("/RJ01234567");
+  await page.goto("/RJ09999994");
   await expect(page.getByRole("heading", { name: "Work not found" })).toBeVisible();
-  await expect(page.getByText("Loading RJ01234567...")).toHaveCount(0);
+  await expect(page.getByText("Loading RJ09999994...")).toHaveCount(0);
 });
 
 test("remote-only work uses the shared mobile detail shell without becoming persisted", async ({ page }) => {
@@ -839,9 +839,9 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   await mockApplication(page);
   await page.goto("/");
 
-  const trigger = page.getByTitle("Data");
+  const trigger = page.getByRole("button", { name: "Sort: Recommended" });
   await trigger.click();
-  const popover = page.locator(".fixed.z-50").filter({ hasText: "All records" });
+  const popover = page.locator(".fixed.z-50").filter({ hasText: "Recently added" });
   await expect(popover).toBeVisible();
   const [triggerBox, popoverBox, viewport] = await Promise.all([trigger.boundingBox(), popover.boundingBox(), page.evaluate(() => ({ width: innerWidth, height: innerHeight }))]);
   expect(triggerBox).not.toBeNull();
@@ -851,8 +851,6 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
 
-  await page.getByRole("button", { name: "All records" }).click();
-  await page.getByRole("button", { name: "Sort: Recommended" }).click();
   const selectedSort = page.getByRole("button", { name: "Recommended", exact: true });
   await expect(selectedSort).toHaveClass(/bg-primary\/10/);
 	await expect(selectedSort.locator("xpath=parent::div").getByRole("button")).toHaveText([
@@ -889,19 +887,25 @@ test("recommended sorting refreshes its stable seed", async ({ page }) => {
   await expect(refresh).toBeEnabled();
 });
 
-test("cards show complete tags and age rating in grid and masonry", async ({ page }) => {
+test("cards keep tags to two rows with an overflow popover in grid and masonry", async ({ page }) => {
   const tags = Array.from({ length: 14 }, (_, index) => `Long metadata tag ${index + 1}`);
   const userTags = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, name: `Personal tag ${index + 1}`, color: "" }));
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { work: { ...work, tags, userTags } });
   await page.goto("/");
 
   await expect(page.getByText("R18", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Show all DLsite tags", exact: true })).toHaveCount(0);
+  let overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
+  await expect(overflow).toBeVisible();
+  await overflow.click();
+  await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "View: Grid" }).click();
   await page.getByRole("button", { name: "Masonry", exact: true }).click();
+  overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
+  await expect(overflow).toBeVisible();
+  await overflow.click();
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 });
@@ -1174,7 +1178,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await page.getByText("Test track", { exact: true }).click();
   let fullPlayer = page.locator("section.fixed.inset-0");
   await expect(fullPlayer).toBeVisible();
-  await expect(fullPlayer.getByText("Test circle", { exact: true })).toHaveCount(0);
+  await expect(fullPlayer.getByText("Test circle", { exact: true })).toBeVisible();
   const fullBox = await fullPlayer.boundingBox();
   expect(fullBox).not.toBeNull();
   await page.mouse.move(fullBox!.x + 18, fullBox!.y + fullBox!.height * 0.42);
@@ -1224,7 +1228,8 @@ test("inline lyrics adapt visible rows to height and keep the active line center
     if (index >= firstVisibleIndex && index < firstVisibleIndex + visibleRows) await expect(line).not.toHaveClass(/opacity-0/);
     else await expect(line).toHaveClass(/opacity-0/);
   }
-  await expect(preview.locator(":scope > div")).toHaveAttribute("style", new RegExp(`translateY\\(-${firstVisibleIndex * 28}px\\)`));
+  const expectedOffset = firstVisibleIndex === 0 ? "-?0" : `-${firstVisibleIndex * 28}`;
+  await expect(preview.locator(":scope > div")).toHaveAttribute("style", new RegExp(`translateY\\(${expectedOffset}px\\)`));
 });
 
 test("desktop player uses playback speed without volume or colored play glow", async ({ page }) => {
@@ -1294,10 +1299,6 @@ test("compact player supports relative drag seeking and global playback shortcut
     element.dispatchEvent(new Event("timeupdate"));
   });
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(39);
-  await expect.poll(() => page.evaluate(() => {
-    const key = `kikoto:player-progress:v2:${encodeURIComponent(window.location.origin)}:anonymous`;
-    return JSON.parse(localStorage.getItem(key) ?? "null")?.items?.["1"]?.positionSeconds ?? 0;
-  })).toBeGreaterThan(39);
   const compact = page.getByText("Test track", { exact: true }).locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
   const box = await compact.boundingBox();
   expect(box).not.toBeNull();
@@ -1318,6 +1319,7 @@ test("compact player supports relative drag seeking and global playback shortcut
   await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(53.6);
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  expect(await readScopedPlayerState(page, playerProgressStorageBaseKey)).toBeNull();
 });
 
 test("desktop mini player delays hiding hover actions", async ({ page }) => {

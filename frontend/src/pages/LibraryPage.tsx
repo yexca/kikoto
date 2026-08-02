@@ -3093,10 +3093,10 @@ function PersistedWorkDetailController({
   const isDetailLoading = !work;
   const actionMode: DetailActionMode = selectedRemoteSource
     ? "remote_source"
-    : selectedSource?.kind === "tracked"
-      ? "tracked_unforked"
-      : selectedTrackedPresence
+    : selectedTrackedPresence
       ? selectedTrackedForked ? "tracked_forked" : "tracked_unforked"
+      : selectedSource?.kind === "tracked"
+      ? "tracked_unforked"
       : "local";
   const forkSources = availableForkSources(remoteSources);
   const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;

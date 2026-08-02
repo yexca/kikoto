@@ -24,6 +24,9 @@ Playback is handled by a global browser audio player.
   duration, completion state, and timestamp. Rapid updates are coalesced and
   sent serially; a transient database-busy response receives one short jittered
   retry.
+- Browser queue persistence does not retain per-track progress. Reloaded queue
+  metadata is refreshed from the server, while only explicit Resume applies
+  the durable work cursor's saved position.
 - The player dock supports collapsed and expanded states, queue view, seeking,
   previous/next, skip controls, volume, and playback mode.
 - Compact playback reserves page space on mobile and desktop so final actions

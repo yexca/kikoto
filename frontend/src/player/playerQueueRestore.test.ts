@@ -71,11 +71,10 @@ describe("revalidatePersistedQueue", () => {
     await expect(revalidatePersistedQueue([persistedTrack], async () => [])).resolves.toEqual([]);
   });
 
-  it("keeps a newer local checkpoint while refreshing media locations", async () => {
-    const localProgress = {
+  it("replaces obsolete persisted progress with the current work cursor", async () => {
+    const obsoletePersistedProgress = {
       positionSeconds: 42,
       durationSeconds: 60,
-      hasAudio: true,
       completed: false,
       lastPlayedAt: "2026-07-21T01:00:30.000Z",
     };
@@ -89,7 +88,7 @@ describe("revalidatePersistedQueue", () => {
       durationSeconds: 60,
       sizeBytes: 1000,
       fingerprint: "",
-      progress: { ...localProgress, positionSeconds: 20, lastPlayedAt: "2026-07-21 01:00:00" },
+      progress: { ...obsoletePersistedProgress, positionSeconds: 20, lastPlayedAt: "2026-07-21 01:00:00" },
       locations: [{
         id: 100,
         fileSourceId: 1,
@@ -107,7 +106,10 @@ describe("revalidatePersistedQueue", () => {
       }],
     }] satisfies MediaItem[];
 
-    const result = await revalidatePersistedQueue([{ ...persistedTrack, progress: localProgress }], async () => mediaItems);
-    expect(result[0].progress).toEqual(localProgress);
+    const result = await revalidatePersistedQueue(
+      [{ ...persistedTrack, progress: obsoletePersistedProgress }],
+      async () => mediaItems,
+    );
+    expect(result[0].progress).toEqual(mediaItems[0].progress);
   });
 });

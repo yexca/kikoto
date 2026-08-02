@@ -230,16 +230,6 @@ export function flattenTreeFiles(root: TreeNode) {
   return files;
 }
 
-export function latestResumeTrack(tracks: TreeTrack[]) {
-  return tracks
-    .filter((track) => track.progress && !track.progress.completed && track.progress.positionSeconds > 0)
-    .sort((left, right) => {
-      const leftTime = left.progress?.lastPlayedAt ? Date.parse(left.progress.lastPlayedAt) : 0;
-      const rightTime = right.progress?.lastPlayedAt ? Date.parse(right.progress.lastPlayedAt) : 0;
-      return rightTime - leftTime;
-    })[0] ?? null;
-}
-
 export function countTreeFiles(root: TreeNode) {
   let count = root.files.length;
   for (const child of root.children.values()) count += countTreeFiles(child);

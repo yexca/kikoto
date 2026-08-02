@@ -1,6 +1,5 @@
 import type { MediaItem } from "../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "./PlayerProvider";
-import { newestMediaProgress } from "./playerProgress";
 import { applyTrackLocation, preferredTrackLocation } from "./trackLocations";
 
 type WorkMediaResult = { kind: "loaded"; mediaItems: MediaItem[] } | { kind: "missing" } | { kind: "unavailable" };
@@ -53,7 +52,7 @@ export async function revalidatePersistedQueue(
       kind: mediaItem.kind === "video" ? "video" as const : "audio" as const,
       durationSeconds: mediaItem.durationSeconds ?? track.durationSeconds,
       sizeBytes: mediaItem.sizeBytes ?? track.sizeBytes,
-      progress: newestMediaProgress(mediaItem.progress, track.progress),
+      progress: mediaItem.progress,
       locations,
     };
     const selected =
