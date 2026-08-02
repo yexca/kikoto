@@ -171,6 +171,8 @@ test("switching favorite lists keeps the entire playlist row stable while works 
     page.getByRole("button", { name: "List actions", exact: true }),
   ];
   await expect(playlistButtons[0]).toBeVisible();
+  // Normalize horizontal scroll before measuring; click() may reveal a partially clipped tab.
+  await playlistButtons[2].scrollIntoViewIfNeeded();
   const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
 
   await playlistButtons[2].click();
