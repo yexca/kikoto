@@ -712,6 +712,12 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if payload.LocalScanDepth != nil && !s.cfg.IsDemo() {
+		if _, err := s.upsertLocalFileSource(r.Context(), tx, *payload.LocalScanDepth); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
@@ -1689,7 +1695,9 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := s.enqueueRemoteWorkSave(context.WithoutCancel(r.Context()), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated)
+	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+	defer cancel()
+	result, err := s.enqueueRemoteWorkSave(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -1731,7 +1739,9 @@ func (s *Server) trackRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if payload.TriggerReason == "" {
 		payload.TriggerReason = "manual_track"
 	}
-	result, err := s.enqueueRemoteWorkTrack(context.WithoutCancel(r.Context()), actor.ID, id, code, payload.TriggerReason)
+	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+	defer cancel()
+	result, err := s.enqueueRemoteWorkTrack(operationCtx, actor.ID, id, code, payload.TriggerReason)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -3710,6 +3720,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	}
 	rawWork, _ := json.Marshal(remoteWork)
 	rawTracks, _ := json.Marshal(tracks)
+	localScanDepth := s.configuredLocalScanDepth(ctx)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -3802,7 +3813,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if _, _, err := syncRemoteTrackTree(ctx, tx, source.ID, workID, workCode, tracks); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	localSourceID, err := s.upsertLocalFileSource(ctx, tx, s.configuredLocalScanDepth(ctx))
+	localSourceID, err := s.upsertLocalFileSource(ctx, tx, localScanDepth)
 	if err != nil {
 		return remoteWorkSaveResult{}, err
 	}
@@ -6423,11 +6434,6 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
-	if !s.cfg.IsDemo() {
-		if _, err := s.ensureLocalSourceForSettings(r); err != nil {
-			return appSettingsResponse{}, err
-		}
-	}
 	sources, err := s.loadFileSources(r)
 	if err != nil {
 		return appSettingsResponse{}, err
@@ -6565,22 +6571,6 @@ func normalizeDLsiteLanguage(value string) string {
 	default:
 		return ""
 	}
-}
-
-func (s *Server) ensureLocalSourceForSettings(r *http.Request) (int64, error) {
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	id, err := s.upsertLocalFileSource(r.Context(), tx, s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth))
-	if err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return id, nil
 }
 
 func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {

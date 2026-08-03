@@ -10,6 +10,13 @@
   records it, keeping SQLite write-lock time bounded.
 - Idle workflow polling does not acquire a write transaction unless a queued or
   expired job was first observed.
+- Interrupted SQLite connections are validated before pool reuse, and
+  file-backed connection lifetimes are bounded so a contaminated idle
+  connection cannot retain a writer lock indefinitely.
+- Settings reads do not write to SQLite. The deployment-owned local source is
+  initialized before the HTTP server starts, and write transactions do not
+  re-enter the database connection pool for supporting reads.
+- Request-detached remote enqueue operations have finite deadlines.
 - DLsite metadata sync uses configured request delay and backoff for provider
   requests.
 - Fetch planning reuses complete persisted DLsite family metadata and cached

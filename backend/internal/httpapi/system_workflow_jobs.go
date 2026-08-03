@@ -140,7 +140,10 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 	newWorkCodes := []string{}
 	seenWorkIDs := map[int64]bool{}
 	for _, folder := range workFolders {
-		_, existedBefore := s.workIDForCode(ctx, folder.Code)
+		_, existedBefore, err := workIDForCodeInTx(ctx, tx, folder.Code)
+		if err != nil {
+			return rollbackAndFail(err)
+		}
 		workID, err := upsertDetectedWork(ctx, tx, folder)
 		if err != nil {
 			return rollbackAndFail(err)
@@ -244,6 +247,18 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		return err
 	}
 	return metadataErr
+}
+
+func workIDForCodeInTx(ctx context.Context, tx *sql.Tx, code string) (int64, bool, error) {
+	var id int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = UPPER(?)", code).Scan(&id)
+	if err == nil {
+		return id, true, nil
+	}
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	return 0, false, err
 }
 
 func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRecord, metadataNodeID int64, result localScanResult, runSummary map[string]any, metadataResult metasync.DLsiteSyncResult) error {

@@ -37,6 +37,10 @@ func main() {
 
 	server := httpapi.NewServer(db, cfg)
 	if !cfg.IsDemo() {
+		if err := server.EnsureLocalSource(ctx); err != nil {
+			slog.Error("initialize local source", "error", err)
+			os.Exit(1)
+		}
 		if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
 			slog.Error("recover interrupted workflows", "error", err)
 			os.Exit(1)

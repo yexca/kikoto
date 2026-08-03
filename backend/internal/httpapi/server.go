@@ -3929,7 +3929,9 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sourceId and codes are required"})
 		return
 	}
-	result, err := s.runRemoteBulkWorkflow(context.WithoutCancel(r.Context()), actor.ID, payload.SourceID, payload.Action, codes)
+	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Minute)
+	defer cancel()
+	result, err := s.runRemoteBulkWorkflow(operationCtx, actor.ID, payload.SourceID, payload.Action, codes)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -4287,6 +4289,21 @@ func (s *Server) configuredLocalScanDepth(ctx context.Context) int {
 	return value
 }
 
+// EnsureLocalSource initializes the deployment-owned local source before the
+// HTTP server starts. Settings reads can then remain strictly read-only.
+func (s *Server) EnsureLocalSource(ctx context.Context) error {
+	scanDepth := s.configuredLocalScanDepth(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := s.upsertLocalFileSource(ctx, tx, scanDepth); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDepth int) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
@@ -4475,8 +4492,7 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 	}
 	durationValue := nullableDuration(file.DurationSeconds)
 	hasAudioValue := nullableBoolPointer(file.HasAudio)
-	var mediaItemID int64
-	err := tx.QueryRowContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO media_item (
 			work_id,
 			kind,
@@ -4491,15 +4507,16 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 		WHERE NOT EXISTS (
 			SELECT 1 FROM media_item WHERE fingerprint = ?
 		)
-		RETURNING id
-	`, workID, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint, fingerprint).Scan(&mediaItemID)
-	if err == nil {
-		return mediaItemID, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	`, workID, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint, fingerprint)
+	if err != nil {
 		return 0, err
 	}
-	err = tx.QueryRowContext(ctx, `
+	if affected, err := result.RowsAffected(); err != nil {
+		return 0, err
+	} else if affected > 0 {
+		return result.LastInsertId()
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_item
 		SET kind = ?,
 			title = ?,
@@ -4508,18 +4525,15 @@ func upsertDetectedMediaItem(ctx context.Context, tx *sql.Tx, workID int64, fold
 			has_audio = COALESCE(?, has_audio),
 			size_bytes = ?
 		WHERE fingerprint = ?
-		RETURNING id
-	`, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint).Scan(&mediaItemID)
-	if err != nil {
+	`, kind, file.Title, trackNoValue, durationValue, hasAudioValue, file.SizeBytes, fingerprint); err != nil {
 		return 0, err
 	}
-	return mediaItemID, nil
+	return selectID(ctx, tx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id ASC LIMIT 1", fingerprint)
 }
 
 func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, fileSourceID int64, file localfs.LocalFile) (int64, error) {
 	durationValue := nullableDuration(file.DurationSeconds)
-	var locationID int64
-	err := tx.QueryRowContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO media_file_location (
 			media_item_id,
 			file_source_id,
@@ -4539,15 +4553,16 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 				AND location_type = 'local'
 				AND path = ?
 		)
-		RETURNING id
-	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath).Scan(&locationID)
-	if err == nil {
-		return locationID, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	`, mediaItemID, fileSourceID, file.RelPath, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath)
+	if err != nil {
 		return 0, err
 	}
-	err = tx.QueryRowContext(ctx, `
+	if affected, err := result.RowsAffected(); err != nil {
+		return 0, err
+	} else if affected > 0 {
+		return result.LastInsertId()
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			duration_seconds = COALESCE(?, duration_seconds),
@@ -4557,12 +4572,16 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND file_source_id = ?
 			AND location_type = 'local'
 			AND path = ?
-		RETURNING id
-	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath).Scan(&locationID)
-	if err != nil {
+	`, file.SizeBytes, durationValue, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
-	return locationID, nil
+	return selectID(ctx, tx, `
+		SELECT id
+		FROM media_file_location
+		WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
+		ORDER BY id ASC
+		LIMIT 1
+	`, mediaItemID, fileSourceID, file.RelPath)
 }
 
 func refreshLocalDurationIfMissing(ctx context.Context, tx *sql.Tx, fileSourceID int64, file localfs.LocalFile) error {

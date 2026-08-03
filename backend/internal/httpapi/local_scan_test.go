@@ -3,10 +3,67 @@ package httpapi
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
+
+func TestDetectedMediaUpsertsReuseExistingRowsWithoutReturningClauses(t *testing.T) {
+	db := openMigratedTestDB(t)
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	folder := localfs.WorkFolder{Code: "TEST-WORK-LOCAL-001", Title: "Detected work", RelPath: "TEST-WORK-LOCAL-001"}
+	workID, err := upsertDetectedWork(context.Background(), tx, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID, err := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2}).upsertLocalFileSource(context.Background(), tx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := localfs.LocalFile{RelPath: "TEST-WORK-LOCAL-001/track.mp3", WorkRelPath: "track.mp3", Title: "Track", SizeBytes: 100}
+	firstItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, folder, file, "audio", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLocationID, err := upsertDetectedLocation(context.Background(), tx, firstItemID, sourceID, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Title = "Renamed track"
+	file.SizeBytes = 200
+	secondItemID, err := upsertDetectedMediaItem(context.Background(), tx, workID, folder, file, "audio", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondLocationID, err := upsertDetectedLocation(context.Background(), tx, secondItemID, sourceID, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstItemID != secondItemID || firstLocationID != secondLocationID {
+		t.Fatalf("upsert ids changed: item %d/%d, location %d/%d", firstItemID, secondItemID, firstLocationID, secondLocationID)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var title string
+	var itemSize, locationSize int64
+	if err := db.QueryRow("SELECT title, size_bytes FROM media_item WHERE id = ?", firstItemID).Scan(&title, &itemSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT size_bytes FROM media_file_location WHERE id = ?", firstLocationID).Scan(&locationSize); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Renamed track" || itemSize != 200 || locationSize != 200 {
+		t.Fatalf("updated media = title %q, item size %d, location size %d", title, itemSize, locationSize)
+	}
+}
 
 func TestLocalLibraryScanQueuesIndependentRunsAndSynchronizesMetadataWithoutAvailabilityChecks(t *testing.T) {
 	db := openMigratedTestDB(t)
@@ -49,7 +106,14 @@ func TestLocalLibraryScanQueuesIndependentRunsAndSynchronizesMetadataWithoutAvai
 	if job.RunID != first.RunID || job.WorkerType != "local_library_scan" {
 		t.Fatalf("claimed local scan job = %#v", job)
 	}
-	if err := server.executeLocalScanJob(context.Background(), job); err != nil {
+	// A transaction must use its own connection for every query. Restricting
+	// the pool to one connection turns accidental pool re-entry into a
+	// deterministic regression instead of a production-only lock cycle.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	executionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := server.executeLocalScanJob(executionCtx, job); err != nil {
 		t.Fatal(err)
 	}
 

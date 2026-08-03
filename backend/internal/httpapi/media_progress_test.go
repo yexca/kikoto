@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -167,6 +169,98 @@ func TestUpdateMediaProgressReturnsNotFoundWithoutCreatingCursor(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("cursor rows = %d", count)
+	}
+}
+
+func TestCanceledMediaProgressWriteDoesNotBlockTheNextWriter(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('cancel-progress-user', 'Cancel Progress User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (801, 'TEST-WORK-CANCEL-001', 'Cancellation work');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (802, 801, 'audio', 'Track', 'cancel-progress-track');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	user := account.User{ID: userID, Username: "cancel-progress-user", Role: "user", Permissions: account.PermissionsForRole("user")}
+
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(2)
+	connections := make([]*sql.Conn, 2)
+	for index := range connections {
+		connections[index], err = db.Conn(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := connections[index].ExecContext(context.Background(), "PRAGMA busy_timeout = 100"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, conn := range connections {
+		if err := conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	blocker, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	request := httptest.NewRequest(http.MethodPatch, "/api/media-items/802/progress", strings.NewReader(`{"positionSeconds":10,"durationSeconds":100,"completed":false}`))
+	request.SetPathValue("id", "802")
+	request = request.WithContext(context.WithValue(requestCtx, currentUserKey, user))
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.updateMediaProgress(response, request)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for db.Stats().InUse < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if db.Stats().InUse < 2 {
+		_ = blocker.Rollback()
+		t.Fatal("progress request did not reach the blocked database write")
+	}
+	cancelRequest()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		_ = blocker.Rollback()
+		t.Fatal("canceled progress request did not return")
+	}
+	if err := blocker.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	next := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		next <- patchMediaProgress(t, server, user, 802, `{"positionSeconds":20,"durationSeconds":100,"completed":false}`)
+	}()
+	select {
+	case response := <-next:
+		if response.Code != http.StatusOK {
+			t.Fatalf("next progress status = %d, body = %s", response.Code, response.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("next progress write remained blocked after cancellation")
+	}
+	// On Windows, sqlite3_interrupt cleanup may finish just after the handler
+	// returns. Drain the pool before TempDir attempts to remove the database.
+	db.SetMaxIdleConns(0)
+	closeDeadline := time.Now().Add(time.Second)
+	for db.Stats().OpenConnections != 0 && time.Now().Before(closeDeadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if db.Stats().OpenConnections != 0 {
+		t.Fatalf("database connections remained open after cancellation: %+v", db.Stats())
 	}
 }
 

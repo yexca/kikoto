@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
@@ -50,6 +51,39 @@ func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
 	}
 	if payload.Mode != "demo" || !payload.DemoMode {
 		t.Fatalf("runtime mode = %q demo = %t", payload.Mode, payload.DemoMode)
+	}
+}
+
+func TestLoadAppSettingsIsReadOnly(t *testing.T) {
+	db := openMigratedTestDB(t)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 3})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := server.EnsureLocalSource(ctx); err != nil {
+		t.Fatalf("EnsureLocalSource() error = %v", err)
+	}
+	if _, err := db.Exec("PRAGMA query_only = ON"); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	settings, err := server.loadAppSettings(request)
+	if err != nil {
+		t.Fatalf("loadAppSettings() attempted a write or failed: %v", err)
+	}
+	if settings.LocalScanDepth != 3 {
+		t.Fatalf("local scan depth = %d, want 3", settings.LocalScanDepth)
+	}
+	localSources := 0
+	for _, source := range settings.FileSources {
+		if source.Code == "main_local_library" {
+			localSources++
+		}
+	}
+	if localSources != 1 {
+		t.Fatalf("local source count = %d, want 1", localSources)
 	}
 }
 
@@ -261,6 +295,44 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	}
 	if trackedPresence != 1 || sourcePresence != 1 {
 		t.Fatalf("presence counts = tracked %d source %d, want 1 each", trackedPresence, sourcePresence)
+	}
+}
+
+func TestRemoteFetchEnqueueDoesNotReenterConnectionPoolInsideTransaction(t *testing.T) {
+	const code = "TEST-WORK-001"
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/workInfo/" + code:
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: code, Title: "Remote fetch work"})
+		case "/api/tracks/10":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{
+				Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: 3,
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru_compatible')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir(), LocalScanDepth: 2})
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, err := server.enqueueRemoteWorkSave(ctx, 1, code, nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	if err != nil {
+		t.Fatalf("enqueueRemoteWorkSave() error = %v", err)
+	}
+	if result.RunID <= 0 || result.JobID <= 0 || result.WorkID <= 0 || result.Status != "queued" {
+		t.Fatalf("queued remote fetch = %+v", result)
 	}
 }
 

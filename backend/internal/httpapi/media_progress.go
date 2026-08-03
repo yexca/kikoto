@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"time"
 )
 
 type mediaProgressDetail struct {
@@ -106,11 +107,8 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var progress mediaProgressResponse
-	var storedFileSourceID, storedLocationID sql.NullInt64
-	var durationSeconds sql.NullFloat64
-	var lastPlayedAt sql.NullString
-	if err := s.db.QueryRowContext(r.Context(), `
+	lastPlayedAt := time.Now().UTC().Truncate(time.Second).Format("2006-01-02 15:04:05")
+	if _, err := s.db.ExecContext(r.Context(), `
 		INSERT INTO user_work_playback_cursor (
 			user_id,
 			work_id,
@@ -123,7 +121,7 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 			completed,
 			last_played_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, work_id) DO UPDATE SET
 			media_item_id = excluded.media_item_id,
 			file_source_id = excluded.file_source_id,
@@ -132,30 +130,25 @@ func (s *Server) updateMediaProgress(w http.ResponseWriter, r *http.Request) {
 			position_seconds = excluded.position_seconds,
 			duration_seconds = excluded.duration_seconds,
 			completed = excluded.completed,
-			last_played_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-		RETURNING work_id, media_item_id, file_source_id, location_id, location_type,
-			position_seconds, duration_seconds, completed, last_played_at
+			last_played_at = excluded.last_played_at,
+			updated_at = excluded.last_played_at
 	`, user.ID, canonicalWorkID, mediaItemID, fileSourceID, locationID, locationType,
-		payload.PositionSeconds, payload.DurationSeconds, payload.Completed).Scan(
-		&progress.WorkID,
-		&progress.MediaItemID,
-		&storedFileSourceID,
-		&storedLocationID,
-		&progress.LocationType,
-		&progress.PositionSeconds,
-		&durationSeconds,
-		&progress.Completed,
-		&lastPlayedAt,
-	); err != nil {
+		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt); err != nil {
 		writeError(w, err)
 		return
 	}
-	progress.FileSourceID = nullableInt64(storedFileSourceID)
-	progress.LocationID = nullableInt64(storedLocationID)
-	progress.MediaWorkID = workID
-	progress.DurationSeconds = nullableFloat64(durationSeconds)
-	progress.LastPlayedAt = nullableString(lastPlayedAt)
+	progress := mediaProgressResponse{
+		WorkID:          canonicalWorkID,
+		MediaWorkID:     workID,
+		MediaItemID:     mediaItemID,
+		FileSourceID:    fileSourceID,
+		LocationID:      locationID,
+		LocationType:    locationType,
+		PositionSeconds: payload.PositionSeconds,
+		DurationSeconds: payload.DurationSeconds,
+		Completed:       payload.Completed,
+		LastPlayedAt:    &lastPlayedAt,
+	}
 	writeJSON(w, http.StatusOK, progress)
 }
 

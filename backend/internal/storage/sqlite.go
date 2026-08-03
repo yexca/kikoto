@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -29,6 +30,11 @@ func Open(path string) (*sql.DB, error) {
 	} else {
 		db.SetMaxOpenConns(4)
 		db.SetMaxIdleConns(4)
+		// File-backed connections are cheap to reopen. Bounding their idle and
+		// total lifetimes ensures that an unexpectedly contaminated connection
+		// cannot retain a SQLite lock indefinitely while sitting in the pool.
+		db.SetConnMaxIdleTime(time.Minute)
+		db.SetConnMaxLifetime(30 * time.Minute)
 	}
 
 	if err := db.Ping(); err != nil {

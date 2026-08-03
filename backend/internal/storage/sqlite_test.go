@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"os"
 	"path/filepath"
 	"testing"
@@ -97,6 +98,103 @@ func TestOpenSerializesImmediateWriteTransactions(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("second transaction remained blocked")
+	}
+}
+
+func TestOpenValidatesConnectionsBeforeReturningThemToThePool(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "validated-connections.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var validatorFound, connectionValid bool
+	if err := conn.Raw(func(raw any) error {
+		validator, ok := raw.(driver.Validator)
+		validatorFound = ok
+		if ok {
+			connectionValid = validator.IsValid()
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !validatorFound {
+		t.Fatal("SQLite driver does not validate interrupted connections before pooling")
+	}
+	if !connectionValid {
+		t.Fatal("new SQLite connection is unexpectedly invalid")
+	}
+}
+
+func TestCanceledStatementDoesNotLeaveWriterLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "canceled-writer.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+
+	contender, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer contender.Close()
+	contender.SetMaxOpenConns(1)
+	contender.SetMaxIdleConns(1)
+	if _, err := contender.Exec("PRAGMA busy_timeout = 250"); err != nil {
+		t.Fatal(err)
+	}
+
+	queryCtx, cancel := context.WithCancel(context.Background())
+	tx, err := db.BeginTx(queryCtx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queryResult := make(chan error, 1)
+	go func() {
+		var sum int64
+		queryResult <- tx.QueryRowContext(queryCtx, `
+			WITH RECURSIVE counter(value) AS (
+				VALUES(0)
+				UNION ALL
+				SELECT value + 1 FROM counter WHERE value < 1000000000
+			)
+			SELECT SUM(value) FROM counter
+		`).Scan(&sum)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-queryResult:
+		if err == nil {
+			t.Fatal("long-running statement completed before cancellation")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled statement did not return")
+	}
+	for deadline := time.Now().Add(time.Second); ; {
+		if _, err := tx.Exec("SELECT 1"); err == sql.ErrTxDone {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("transaction was not rolled back after context cancellation")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), time.Second)
+	defer writeCancel()
+	if _, err := contender.ExecContext(writeCtx, "INSERT INTO values_for_test (value) VALUES ('after cancellation')"); err != nil {
+		t.Fatalf("writer lock remained after canceled statement: %v", err)
 	}
 }
 
