@@ -19,6 +19,28 @@ remote source management, and playback.
 - Local shadcn-style primitives.
 - lucide-react icons.
 
+## Code Organization
+
+New and extracted frontend code follows a downward dependency direction:
+
+```text
+app and routes -> domain features -> shared application code -> UI primitives
+```
+
+- `app` and page shells compose navigation, providers, and domain surfaces.
+- `features/<domain>` owns a cohesive business slice such as work detail,
+  workflows, or maintenance. Sibling features should not deep-import each
+  other's internals.
+- `components`, reusable hooks, and `lib` hold application-wide behavior with no
+  single domain owner.
+- `components/ui` contains generic primitives and must not acquire work, source,
+  or workflow knowledge.
+
+This is an incremental extraction direction, not a request for a repository-wide
+move. A domain earns its own feature boundary after it owns a real page or flow
+and several mostly private components, models, or hooks. App composition or a
+small shared contract should resolve cross-domain needs.
+
 ## Major Surfaces
 
 - Library.
@@ -73,3 +95,35 @@ remote source management, and playback.
 - Treat Resume as the only persisted-position entry point. Ordinary track
   selection starts at zero, while an active source fallback carries the current
   in-memory time to the replacement location.
+
+## Design and Semantic Contracts
+
+- Consume semantic theme roles instead of hard-coded palette steps. Availability
+  and feedback use success, warning, info, and error roles; destructive styling
+  is reserved for destructive actions.
+- Source color communicates health or availability, not source identity.
+- Every reusable control defines hover, pressed, keyboard-focus, disabled,
+  loading, and selected states as applicable. Touch actions keep a large target
+  and never depend on hover feedback.
+- Use surface and border changes for static hierarchy. Noticeable shadows belong
+  to floating overlays and the player rather than every card.
+- Accessible roles, names, and labels are the primary browser-test contract. An
+  authored semantic marker may scope a complex app-owned surface, but utility
+  classes and incidental DOM ancestry are not stable APIs.
+
+## Failure Boundaries
+
+The global player and app shell are continuity infrastructure. Route and domain
+error boundaries should sit inside them so a render failure in Library,
+Maintenance, or a remote panel does not stop playback or discard navigation.
+
+Fallbacks must use sanitized copy and offer a relevant recovery action. Raw
+stacks, upstream bodies, private endpoints, and local paths are diagnostic data,
+not anonymous UI. A page that already has useful local data should keep it
+visible while the failed remote or media stage renders an inline Retry state.
+
+## Related Docs
+
+- [Frontend guidelines](../development/frontend-guidelines.md)
+- [Testing](../development/testing.md)
+- [Secure development](../development/security.md)

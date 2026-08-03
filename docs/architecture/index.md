@@ -39,8 +39,9 @@ Browser
   -> local filesystem, cache, metadata providers, and file source adapters
 ```
 
-The current implementation is synchronous-first but records workflow state so
-later async workers can attach to the same model.
+Supported long-running operations use persistent queued jobs, worker leases,
+checkpoints, and per-node state. Recovery is opt-in per job family; shorter
+operations may still remain bound to an HTTP request.
 
 ## Related Docs
 

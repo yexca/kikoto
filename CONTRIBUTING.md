@@ -11,6 +11,7 @@ Read the public docs that match the area you are changing:
 - User-facing behavior: `docs/product/`
 - Runtime or deployment behavior: `docs/operations/`
 - Development workflow: `docs/development/`
+- Security-sensitive implementation: `docs/development/security.md`
 - Major design decisions: `docs/decisions/`
 
 ## Core Rules
@@ -58,6 +59,7 @@ Frontend:
 ```sh
 cd frontend
 npm install
+npm run docs:check-links
 npm run build
 ```
 
@@ -86,3 +88,8 @@ Before committing, check for:
 - SQLite databases.
 - Cached covers or media files.
 - Personal notes, samples, or logs.
+
+Use reserved domains and obviously synthetic identifiers in public fixtures.
+Review the actual staged diff, not only the files you intended to change. See
+[Secure Development](docs/development/security.md) for outbound request, error,
+filesystem, and privacy-review requirements.

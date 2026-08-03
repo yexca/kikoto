@@ -7,6 +7,7 @@
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
     "apk:debug": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
+    "docs:check-links": "node scripts/check-doc-links.mjs",
     "lint": "eslint src --max-warnings=0",
     "format:check": "prettier --check src/lib/clientStorageScope.ts src/lib/clientStorageScope.test.ts src/pages/libraryBrowseState.ts src/pages/libraryBrowseState.test.ts src/pages/favoritesBrowseState.ts src/pages/favoritesBrowseState.test.ts src/pages/workMediaCache.ts",
     "preview": "vite preview --host 127.0.0.1",

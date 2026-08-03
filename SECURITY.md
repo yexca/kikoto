@@ -6,6 +6,8 @@ vulnerability privately.
 
 Deployment and runtime hardening guidance is documented in
 [docs/operations/security.md](docs/operations/security.md).
+For a factual description of stored data and outbound data flows, see
+[PRIVACY.md](PRIVACY.md).
 
 ## Supported Versions
 
@@ -33,9 +35,11 @@ Kikoto has several intentional trust boundaries:
 - Demo mode intentionally exposes read-only showcase surfaces, including
   sanitized administration and workflow views. It must reject state-changing
   requests and must not expose media that fails the Demo content policy.
-- Administrators are trusted to configure remote source endpoints. Requests
-  caused by untrusted input or redirects that escape the configured source
-  trust boundary remain security-relevant.
+- Administrators are trusted to configure remote source endpoints, including an
+  intentional private-LAN endpoint. Merely reaching that configured endpoint is
+  not a boundary bypass. URLs, redirects, and content returned by the endpoint
+  remain untrusted; a request or credential that escapes the configured origin
+  or an explicit operator-approved boundary remains security-relevant.
 - The configured `/config`, `/data`, and `/cache` mounts are trusted local
   inputs. Path traversal or unintended filesystem access caused through the
   API, metadata, remote sources, or workflows is in scope.
@@ -55,10 +59,14 @@ Include:
 - Minimal reproduction steps using synthetic data.
 - The expected and actual behavior.
 - The security impact and any suggested mitigation.
+- For an outbound-request issue, whether the destination was administrator
+  configured, returned by a source, introduced by a redirect, or changed by DNS.
 
 Do not attach real SQLite databases, passwords, session tokens, private source
 URLs, personal media paths, or media files. Redact logs and workflow records
-before submitting them.
+before submitting them. Use reserved domains, documentation IP ranges, and
+synthetic work identifiers whenever possible. Do not probe a third-party system
+without its operator's permission.
 
 ## Examples of In-Scope Reports
 
@@ -67,7 +75,8 @@ before submitting them.
 - Demo content-policy bypasses.
 - Path traversal, unsafe filesystem publication, or deletion outside configured
   roots.
-- Server-side request forgery outside the configured remote-source boundary.
+- Server-side request forgery, unsafe redirects, DNS rebinding, or credential
+  forwarding outside the configured remote-source boundary.
 - Credential, session, private endpoint, or local-path disclosure.
 - Cross-site scripting, command injection, or unsafe metadata/media handling.
 - Compromise of official release artifacts or the release process.
@@ -76,6 +85,8 @@ before submitting them.
 
 - Intended anonymous read-only library and playback access.
 - Exposing development mode to an untrusted network.
+- Requests to the exact endpoint an administrator intentionally configured,
+  without an additional boundary escape or privilege change.
 - Traffic interception when an operator deliberately deploys over cleartext
   HTTP without a trusted VPN or reverse proxy.
 - Issues requiring prior control of the host, SQLite database, or runtime

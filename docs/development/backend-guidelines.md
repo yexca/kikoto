@@ -7,6 +7,10 @@
 - Prefer idempotent workflow steps.
 - Preserve local and cached state when remote sources fail.
 - Sanitize user-facing source errors.
+- Keep HTTP transport, domain transitions, persistence, and filesystem effects
+  separable as features grow.
+- Treat source-returned URLs and redirects as untrusted even when an
+  administrator configured the source endpoint.
 
 ## Validation
 
@@ -19,3 +23,6 @@ go test ./...
 
 Update architecture docs for boundary or persistence changes. Update product
 docs for user-visible behavior changes.
+
+See [Backend architecture](../architecture/backend.md),
+[Secure development](security.md), and [Testing](testing.md).

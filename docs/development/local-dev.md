@@ -26,6 +26,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 - Backend tests: [Testing](testing.md)
 - Frontend build: [Testing](testing.md)
 - Database changes: [Migrations](migrations.md)
+- Security-sensitive changes: [Secure development](security.md)
 - Commit format: [Commit and release](commit-and-release.md)
 
 ## Useful Paths

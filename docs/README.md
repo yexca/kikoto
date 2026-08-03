@@ -20,6 +20,9 @@ decisions.
   reliability, security, and troubleshooting.
 - [Development](development/local-dev.md): local setup, testing, migrations, and
   contribution workflow.
+- [Security policy](../SECURITY.md) and
+  [privacy/data handling](../PRIVACY.md): reporting, trust boundaries, and data
+  flows.
 - [Decisions](decisions/index.md): durable architecture decision records.
 - [History](history/index.md): public historical notes and release-oriented
   summaries.
@@ -35,10 +38,13 @@ New users should read:
 
 Developers should read:
 
+- [Repository agent guide](../AGENTS.md)
+- [Design contract](../DESIGN.md)
 - [Core boundaries](architecture/core-boundaries.md)
 - [Backend](architecture/backend.md)
 - [Frontend](architecture/frontend.md)
 - [Testing](development/testing.md)
+- [Secure development](development/security.md)
 - [Commit and release](development/commit-and-release.md)
 
 Operators should read:
@@ -48,6 +54,7 @@ Operators should read:
 - [Database](operations/database.md)
 - [Reliability](operations/reliability.md)
 - [Security](operations/security.md)
+- [Privacy and data handling](../PRIVACY.md)
 
 ## Documentation Rules
 
@@ -55,4 +62,6 @@ Operators should read:
 - System boundaries belong in [Architecture](architecture/index.md).
 - Runtime instructions belong in [Operations](operations/configuration.md).
 - Local developer workflow belongs in [Development](development/local-dev.md).
+- Security implementation rules belong in
+  [Secure development](development/security.md).
 - Durable design choices belong in [ADRs](decisions/index.md).

@@ -88,9 +88,25 @@ can return media and cover URLs that Kikoto requests from the server. Configure
 only trusted sources, prefer HTTPS, and use host or network egress rules when
 the Kikoto container must not reach private infrastructure.
 
-Endpoint validation does not currently provide a complete private-network and
-redirect SSRF policy. Do not treat source configuration as safe input from an
-untrusted tenant.
+The administrator-configured endpoint and source-returned URLs have different
+trust levels:
+
+- A configured endpoint may intentionally be a private LAN or NAS address. It
+  is trusted operator configuration and should not be editable by an untrusted
+  account.
+- Media, cover, and other URLs returned by that endpoint are remote input. Do
+  not assume they remain on the configured origin merely because the source
+  itself is trusted.
+
+Endpoint validation does not currently provide a complete private-network,
+redirect, and DNS-rebinding SSRF policy. Until that boundary is enforced in the
+HTTP transport, isolate Kikoto from cloud metadata endpoints and unrelated
+private services with container or host egress rules. Do not treat source
+configuration as safe input from an untrusted tenant.
+
+When diagnosing remote access, do not paste an authenticated URL into a public
+issue. Record the configured-origin and redirect relationship using reserved
+domains or sanitized host labels instead.
 
 ## Filesystem and Container Boundaries
 

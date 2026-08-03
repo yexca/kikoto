@@ -63,11 +63,14 @@ commit runtime data.
 - [Overview](docs/overview.md)
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture/index.md)
+- [Design contract](DESIGN.md)
 - [Product specs](docs/product/index.md)
 - [Operations](docs/operations/configuration.md)
 - [Security policy](SECURITY.md)
+- [Privacy and data handling](PRIVACY.md)
 - [Development](docs/development/local-dev.md)
 - [Contributing](CONTRIBUTING.md)
+- [Agent guide](AGENTS.md)
 
 ## Acknowledgements
 

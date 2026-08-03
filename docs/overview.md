@@ -27,12 +27,13 @@ Kikoto currently includes:
 - Kikoeru-compatible remote source browsing, availability checks, sync, cache,
   and fetch flows.
 - User authentication, roles, favorite/listening state, and playback progress.
-- A global browser audio player.
+- A persistent browser player plus Android media-session integration.
+- SQLite-backed priority jobs with resource lanes, retry state, notifications,
+  and restart recovery for the supported workflow families.
 
 ## Not Yet Complete
 
-- Fully asynchronous worker execution.
-- Restart recovery for queued or running jobs.
-- Workflow retry controls.
-- Download queue progress.
+- Distributed or multi-instance worker execution.
+- Complete per-file download progress and recovery diagnostics.
+- A complete outbound URL, redirect, address, and DNS-rebinding policy.
 - Broader source maintenance and troubleshooting UI.

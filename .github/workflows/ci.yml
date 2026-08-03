@@ -67,6 +67,10 @@ jobs:
         working-directory: frontend
         run: npm run format:check
 
+      - name: Check documentation links
+        working-directory: frontend
+        run: npm run docs:check-links
+
       - name: Test frontend
         working-directory: frontend
         run: npm run test:unit
