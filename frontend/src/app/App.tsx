@@ -12,6 +12,7 @@ import { PlayerDock, PlayerProvider } from "@/player/PlayerProvider";
 import { HeaderActions } from "@/app/HeaderActions";
 import { CommandPalette } from "@/app/CommandPalette";
 import { NotFoundPage } from "@/app/NotFoundPage";
+import { RouteErrorBoundary } from "@/app/RouteErrorBoundary";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
@@ -55,6 +56,7 @@ function AuthenticatedApp() {
   useScrollRestoration();
   const auth = useAuth();
   const [page, setPage] = useState<AppPage>(resolveAppPageFromLocation);
+  const [routeRenderKey, setRouteRenderKey] = useState(resolveRouteRenderKey);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
@@ -87,13 +89,15 @@ function AuthenticatedApp() {
   const canAccessCurrentPage = page !== "not-found" && canAccessPage(page, authState, navigationHasPermission);
 
   useEffect(() => {
-    const handlePopState = () => setPage(resolveAppPageFromLocation());
-    const handleAppNavigation = () => setPage(resolveAppPageFromLocation());
-    window.addEventListener("popstate", handlePopState);
-    window.addEventListener("kikoto:navigation", handleAppNavigation);
+    const syncLocation = () => {
+      setPage(resolveAppPageFromLocation());
+      setRouteRenderKey(resolveRouteRenderKey());
+    };
+    window.addEventListener("popstate", syncLocation);
+    window.addEventListener("kikoto:navigation", syncLocation);
     return () => {
-      window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("kikoto:navigation", handleAppNavigation);
+      window.removeEventListener("popstate", syncLocation);
+      window.removeEventListener("kikoto:navigation", syncLocation);
     };
   }, []);
 
@@ -111,6 +115,7 @@ function AuthenticatedApp() {
     window.history.pushState(state ?? {}, "", path);
     window.dispatchEvent(new Event("kikoto:navigation"));
     setPage(resolveAppPageFromLocation());
+    setRouteRenderKey(resolveRouteRenderKey());
   };
 
   const toggleSidebar = () => {
@@ -267,28 +272,30 @@ function AuthenticatedApp() {
             onReconnect={() => void mobileRuntime.reconnect()}
           />
 
-          <Suspense fallback={<PageLoading />}>
-            <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
-              {page !== "not-found" && !canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
-              {page === "not-found" && (
-                <NotFoundPage
-                  onBack={() => window.history.length > 1 ? window.history.back() : openPath("/")}
-                  onOpenLibrary={() => openPath("/")}
-                />
-              )}
-              {canAccessCurrentPage && page === "library" && <LibraryPage />}
-              {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
-              {canAccessCurrentPage && page === "circles" && <CirclesPage />}
-              {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-              {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />}
-              {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.demoMode || auth.hasPermission("sources:write")} canManageUsers={auth.demoMode || auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
-              {canAccessCurrentPage && (page === "workflows" || page === "activity") && <WorkflowsPage surface={page} canRun={auth.demoMode || auth.hasPermission("workflows:run")} canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")} canTagWorks={auth.demoMode || auth.hasPermission("tags:write")} canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
-              {canAccessCurrentPage && page === "about" && <AboutPage />}
-              {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
-                <PlaceholderPage title={activeItem?.label ?? "Page"} />
-              )}
-            </div>
-          </Suspense>
+          <RouteErrorBoundary resetKey={routeRenderKey} onOpenLibrary={() => openPath("/")}>
+            <Suspense fallback={<PageLoading />}>
+              <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
+                {page !== "not-found" && !canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
+                {page === "not-found" && (
+                  <NotFoundPage
+                    onBack={() => window.history.length > 1 ? window.history.back() : openPath("/")}
+                    onOpenLibrary={() => openPath("/")}
+                  />
+                )}
+                {canAccessCurrentPage && page === "library" && <LibraryPage />}
+                {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
+                {canAccessCurrentPage && page === "circles" && <CirclesPage />}
+                {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
+                {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />}
+                {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.demoMode || auth.hasPermission("sources:write")} canManageUsers={auth.demoMode || auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
+                {canAccessCurrentPage && (page === "workflows" || page === "activity") && <WorkflowsPage surface={page} canRun={auth.demoMode || auth.hasPermission("workflows:run")} canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")} canTagWorks={auth.demoMode || auth.hasPermission("tags:write")} canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
+                {canAccessCurrentPage && page === "about" && <AboutPage />}
+                {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
+                  <PlaceholderPage title={activeItem?.label ?? "Page"} />
+                )}
+              </div>
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
 
         {!mobileRuntime.keyboardOpen && <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
@@ -578,6 +585,10 @@ function resolveAppPageFromLocation() {
     window.history.replaceState(window.history.state ?? {}, "", redirect);
   }
   return pageFromPath(window.location.pathname);
+}
+
+function resolveRouteRenderKey() {
+  return `${window.location.pathname}${window.location.search}`;
 }
 
 function PlaceholderPage({ title }: { title: string }) {

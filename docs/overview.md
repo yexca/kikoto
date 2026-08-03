@@ -31,9 +31,12 @@ Kikoto currently includes:
 - SQLite-backed priority jobs with resource lanes, retry state, notifications,
   and restart recovery for the supported workflow families.
 
-## Not Yet Complete
+## Current Limits And Remaining Hardening
 
-- Distributed or multi-instance worker execution.
-- Complete per-file download progress and recovery diagnostics.
-- A complete outbound URL, redirect, address, and DNS-rebinding policy.
-- Broader source maintenance and troubleshooting UI.
+- The SQLite deployment model is single-instance; distributed worker execution
+  is outside the current personal-deployment scope.
+- Fetch progress is primarily file-based. Byte-level progress and
+  retention-based cleanup of failed or cancelled staging manifests remain
+  incomplete.
+- Outbound requests do not yet enforce the complete URL, redirect, address,
+  download-size, and DNS-rebinding contract described by the security guidance.
