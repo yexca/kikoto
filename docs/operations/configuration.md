@@ -13,6 +13,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum local scan folder depth. |
 | `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
+| `KIKOTO_ALLOWED_ORIGINS` | Empty | Comma-separated exact browser origins allowed to call a separately hosted API. Same-origin deployments should leave this empty. |
 | `KIKOTO_ROOT_USERNAME` | `root` | Root administrator username. |
 | `KIKOTO_ROOT_PASSWORD` | Required in production | Authoritative root administrator password. A changed value is applied on service startup and revokes existing root sessions. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |

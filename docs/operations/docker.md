@@ -36,6 +36,11 @@ Default ports:
 - Frontend: `7655`
 - Backend: `7659`
 
+The default Compose mapping publishes `7655` on every host interface. For a
+host-only instance, change it to `127.0.0.1:7655:7659`. Otherwise protect the
+port with a host firewall, trusted VPN, or reverse proxy. Anonymous Library and
+media reads are part of the product's normal production behavior.
+
 Default mounts:
 
 - `./config:/config`

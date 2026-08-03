@@ -65,6 +65,7 @@ commit runtime data.
 - [Architecture](docs/architecture/index.md)
 - [Product specs](docs/product/index.md)
 - [Operations](docs/operations/configuration.md)
+- [Security policy](SECURITY.md)
 - [Development](docs/development/local-dev.md)
 - [Contributing](CONTRIBUTING.md)
 

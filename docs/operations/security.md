@@ -1,35 +1,119 @@
 # Security
 
-## Runtime Secrets
+Kikoto is a personal media server with anonymous read-only browsing and
+playback by design. Authentication protects personal state, configuration, and
+mutating operations; it does not make the complete Library or its media private.
+Use network access controls when an instance must be private.
+
+For privately reporting a vulnerability, see the repository
+[Security Policy](../../SECURITY.md).
+
+## Network Exposure
+
+The default Compose mapping publishes port `7655` on every host interface. If
+the instance should be reachable only from the Docker host, bind it explicitly:
+
+```yaml
+ports:
+  - "127.0.0.1:7655:7659"
+```
+
+For LAN or remote use, restrict access with a host firewall, trusted VPN, or
+authenticated reverse proxy. CORS controls browser origins; it is not a network
+firewall or an authentication mechanism for non-browser clients.
+
+## Runtime Modes
+
+- `production` uses normal session authentication and requires an explicit
+  non-default `KIKOTO_ROOT_PASSWORD`.
+- `development` authenticates every request as the configured root user. Use it
+  only on a trusted local development machine.
+- `demo` is an isolated read-only showcase. It exposes sanitized read surfaces,
+  rejects non-read HTTP methods, and filters local content to verified all-ages,
+  permanently free works. Never reuse production config, cache, or data
+  directories for a public Demo.
+
+The Demo container has a read-only root filesystem and data mount. Its isolated
+`/config` and `/cache` mounts remain writable for SQLite state and accepted
+cover assets, so they must contain only sanitized Demo data.
+
+## Authentication and Cookies
+
+Use a long, unique root password. The configured root password is authoritative:
+changing `KIKOTO_ROOT_PASSWORD` and restarting Kikoto replaces the stored root
+credential and revokes existing root sessions.
+
+Browser sessions use HttpOnly, SameSite cookies. When HTTPS terminates at a
+reverse proxy, set:
+
+```dotenv
+KIKOTO_SESSION_COOKIE_SECURE=true
+```
+
+List each exact trusted browser origin in `KIKOTO_ALLOWED_ORIGINS` when the
+browser origin differs from the API origin. Also list the public HTTPS origin
+when TLS terminates at a reverse proxy and the proxy connects to Kikoto over
+HTTP. Do not use an open or reflected origin policy at the proxy.
+
+## HTTPS and Android
+
+The Android client permits cleartext HTTP for trusted local-NAS deployments and
+stores a bearer session for the configured server. Use HTTPS or a trusted VPN
+across shared, wireless, or public networks. Clearing the configured server in
+the app also clears its stored session.
+
+## Runtime Secrets and Private Data
 
 Keep credentials and real source details outside the repository. Use local
-environment variables or mounted configuration files.
-
-Production startup requires an explicit non-default `KIKOTO_ROOT_PASSWORD`.
-The configured root password is environment-managed: changing the value and
-restarting Kikoto replaces the stored root credential and revokes old root
-sessions.
+environment variables or mounted configuration files. Kikoto does not yet
+provide a dedicated encrypted credential store for remote-source secrets.
 
 Do not commit:
 
 - `.env` files with real values.
 - SQLite databases.
 - Remote source URLs with private tokens.
-- Session cookies.
+- Session cookies or bearer tokens.
 - Local media.
 
-## Authentication
+Treat `/config/kikoto.db` as sensitive. It contains password hashes, active
+session state, user preferences, private source configuration, workflow history,
+and local media metadata. Restrict host permissions and include it in protected
+backups.
 
-Kikoto supports local users, roles, sessions, and a development mode that
-authenticates requests as the configured root administrator. Do not enable
-development mode for shared or exposed deployments.
+## Remote Sources and Outbound Requests
 
-## Cookies
+Administrators can configure HTTP(S) source endpoints, and compatible sources
+can return media and cover URLs that Kikoto requests from the server. Configure
+only trusted sources, prefer HTTPS, and use host or network egress rules when
+the Kikoto container must not reach private infrastructure.
 
-Set `KIKOTO_SESSION_COOKIE_SECURE=true` when serving Kikoto behind HTTPS.
+Endpoint validation does not currently provide a complete private-network and
+redirect SSRF policy. Do not treat source configuration as safe input from an
+untrusted tenant.
+
+## Filesystem and Container Boundaries
+
+Kikoto expects `/config`, `/cache`, and `/data` to be dedicated runtime mounts.
+Do not mount a host root, home directory, Docker socket, or unrelated sensitive
+tree into those locations. Avoid symbolic links that leave the configured data
+or cache roots.
+
+The production image currently runs as the container root user. Limit the
+container's host access through narrow bind mounts and host filesystem
+permissions. The Demo stack additionally drops Linux capabilities, enables
+`no-new-privileges`, and uses a read-only root filesystem.
+
+## Logs and Diagnostics
+
+Server logs and workflow Activity may contain local paths, configured endpoint
+details, and upstream errors. Redact them before sharing a bug report or support
+request. Never attach a real database, session token, source credential, or
+media file to a public issue.
 
 ## Related Docs
 
 - [Configuration](configuration.md)
 - [Docker](docker.md)
+- [Security Policy](../../SECURITY.md)
 - [Contributing](../../CONTRIBUTING.md)

@@ -38,6 +38,12 @@ fix(scan): skip unavailable folders
 docs(sources): describe health checks
 ```
 
+## Security Reports
+
+Do not disclose suspected vulnerabilities in public issues, discussions, or
+pull requests. Follow the private reporting process in the
+[Security Policy](SECURITY.md).
+
 ## Validation
 
 Backend:
