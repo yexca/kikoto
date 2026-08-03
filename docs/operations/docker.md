@@ -58,12 +58,16 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Demo Stack
 
-Use `docker-compose.demo.yaml` for a public, read-only Demo deployment built
-from the current source tree:
+Use `docker-compose.demo.yaml` for a public, read-only Demo deployment. It pulls
+the published `yexca/kikoto:latest` image by default:
 
 ```sh
-docker compose -f docker-compose.demo.yaml up -d --build
+docker compose -f docker-compose.demo.yaml pull
+docker compose -f docker-compose.demo.yaml up -d
 ```
+
+Set `KIKOTO_DEMO_IMAGE` to pin a release or use another registry, for example
+`yexca/kikoto:0.3.0` or `ghcr.io/yexca/kikoto:0.3.0`.
 
 It listens on `http://127.0.0.1:7655` by default. Override the host port with
 `KIKOTO_DEMO_PORT`. Set `KIKOTO_DEMO_REMOTE_SOURCES_ENABLED=true` only when the

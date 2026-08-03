@@ -2,10 +2,8 @@ name: kikoto-demo
 
 services:
   kikoto:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${KIKOTO_DEMO_IMAGE:-kikoto:demo}
+    image: ${KIKOTO_DEMO_IMAGE:-yexca/kikoto:latest}
+    pull_policy: always
     restart: unless-stopped
     read_only: true
     cap_drop:
