@@ -69,10 +69,20 @@ revalidate allowed redirects, prevent DNS-rebinding time-of-check/time-of-use
 gaps, remove credentials on origin changes, and bound time, response size,
 stream size, concurrency, and retries.
 
-Current media and cover file-writing paths enforce streamed destination-size
-limits. The clients do not yet implement the complete origin, redirect,
-address, and DNS-pinning transport contract. See [Secure development](../development/security.md)
-and [Runtime security](../operations/security.md) before extending an outbound
+The shared outbound transport accepts only HTTP(S) URLs without embedded
+credentials, enforces an explicit origin allowlist at the initial request and
+every redirect hop, strips credentials on allowed origin changes, validates the
+complete DNS answer, and dials one of those same validated numeric addresses.
+Built-in public metadata destinations reject private and reserved addresses.
+Administrator-configured source origins may explicitly reach private LAN
+addresses; source-returned media, cover, and text URLs must still stay within
+the configured API, base, or fallback origins. The hardened transport connects
+directly rather than inheriting ambient HTTP proxy variables, because a proxy
+would require its own explicit DNS and destination trust boundary. Connection,
+response-header, response-read idle, buffered-body, streamed-file, concurrency,
+and retry bounds remain specific to the request class. See
+[Secure development](../development/security.md) and
+[Runtime security](../operations/security.md) before extending an outbound
 request path.
 
 ## Current Limits
@@ -83,8 +93,6 @@ request path.
   distributed worker system.
 - Retry, cancellation, and restart recovery are defined per job family rather
   than by one universal guarantee.
-- Outbound URL validation does not yet enforce the complete origin, redirect,
-  address, and DNS-pinning contract described above.
 
 ## Related Docs
 

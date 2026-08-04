@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 const (
@@ -30,7 +32,7 @@ func (s *Server) remoteMediaDownloadLimitBytes(ctx context.Context) int64 {
 	return int64(limitGB) << 30
 }
 
-func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPath string, options remoteDownloadOptions) (int64, error) {
+func (s *Server) downloadToFile(ctx context.Context, source remoteSourceForUse, sourceURL string, targetPath string, options remoteDownloadOptions) (int64, error) {
 	if strings.TrimSpace(sourceURL) == "" {
 		return 0, fmt.Errorf("remote media has no download URL")
 	}
@@ -47,11 +49,12 @@ func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPat
 			return 0, err
 		}
 		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-		response, err := s.sourceDownloadHTTPClient(0).Do(request)
+		response, err := s.sourceDownloadHTTPClient(source, 0).Do(request)
 		if err != nil {
-			downloadErr := remoteDownloadError{Err: err, Retryable: true}
+			retryable := !errors.Is(err, outbound.ErrPolicyViolation)
+			downloadErr := remoteDownloadError{Err: err, Retryable: retryable}
 			lastErr = downloadErr
-			if attempt < 2 {
+			if retryable && attempt < 2 {
 				if sleepErr := sleepContext(ctx, s.remoteBackoffDuration(ctx, nil, attempt)); sleepErr != nil {
 					return 0, sleepErr
 				}

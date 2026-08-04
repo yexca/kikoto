@@ -22,6 +22,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/download"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -38,7 +39,7 @@ func isKikoeruSourceType(sourceType string) bool {
 }
 
 func (s *Server) kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
-	httpClient := s.sourceHTTPClient(20 * time.Second)
+	httpClient := s.sourceHTTPClient(source, 20*time.Second)
 	if source.SourceType == sourceTypeKikoeruCompatible178 {
 		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, httpClient)
 	}
@@ -77,6 +78,14 @@ func (s *Server) SeedRemoteSourcesFromConfig(ctx context.Context) error {
 		apiURL := strings.TrimSpace(seed.APIURL)
 		if displayName == "" || apiURL == "" {
 			continue
+		}
+		for _, candidate := range []string{apiURL, strings.TrimSpace(seed.BaseURL), strings.TrimSpace(seed.FallbackURL)} {
+			if candidate == "" {
+				continue
+			}
+			if _, err := outbound.ParseHTTPURL(candidate); err != nil {
+				return fmt.Errorf("remote source seed has an invalid endpoint: %w", err)
+			}
 		}
 		code := stableSourceCode(displayName)
 		if code == "" {
@@ -1335,7 +1344,7 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 	}
 	request.Header.Set("Accept", "text/plain,text/*")
 	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	response, err := s.sourceHTTPClient(20 * time.Second).Do(request)
+	response, err := s.sourceHTTPClient(source, 20*time.Second).Do(request)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -1380,13 +1389,8 @@ func remoteTextTrackURL(nodes []kikoeru.Track, targetPath string, basePath strin
 }
 
 func remotePreviewURLAllowed(value *url.URL, source remoteSourceForUse) bool {
-	for _, candidate := range []string{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL} {
-		base, err := url.Parse(strings.TrimSpace(candidate))
-		if err == nil && base.Host != "" && strings.EqualFold(base.Host, value.Host) {
-			return true
-		}
-	}
-	return false
+	policy, err := sourceOutboundPolicy(source)
+	return err == nil && policy.ValidateURL(value) == nil
 }
 
 func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Request) {
@@ -2747,7 +2751,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	coverCached := true
 	coverURL := firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
 	if coverURL != "" {
-		coverCached = s.downloadRemoteCover(ctx, workCode, coverURL) == nil
+		coverCached = s.downloadRemoteCover(ctx, source, workCode, coverURL) == nil
 	}
 	return preparedRemoteWorkTrack{
 		RequestedCode: requestedCode,
@@ -4048,6 +4052,7 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 	}
 
 	skipped, cacheHits, cacheDownloads := 0, 0, 0
+	downloadSources := map[int64]remoteSourceForUse{source.ID: source}
 	for index, item := range plan.Items {
 		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
 			return remoteWorkSaveResult{}, err
@@ -4084,7 +4089,20 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
 		}
-		written, err := s.downloadToFile(ctx, item.SourcePath, cacheAbsPath, remoteDownloadOptions{
+		downloadSourceID := item.RemoteSourceID
+		if downloadSourceID <= 0 {
+			downloadSourceID = source.ID
+		}
+		downloadSource, ok := downloadSources[downloadSourceID]
+		if !ok {
+			downloadSource, err = s.loadRemoteSourceForUse(ctx, downloadSourceID)
+			if err != nil {
+				_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
+				return remoteWorkSaveResult{}, err
+			}
+			downloadSources[downloadSourceID] = downloadSource
+		}
+		written, err := s.downloadToFile(ctx, downloadSource, item.SourcePath, cacheAbsPath, remoteDownloadOptions{
 			MaxBytes:      downloadLimit,
 			ExpectedBytes: item.SizeBytes,
 			OnProgress: func(written int64) {
@@ -6231,7 +6249,7 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 	return workID, nil
 }
 
-func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, coverURL string) error {
+func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceForUse, workCode string, coverURL string) error {
 	coverURL = strings.TrimSpace(coverURL)
 	if coverURL == "" {
 		return nil
@@ -6253,7 +6271,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, workCode string, cover
 		return err
 	}
 	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	response, err := s.sourceHTTPClient(0).Do(request)
+	response, err := s.sourceHTTPClient(source, 2*time.Minute).Do(request)
 	if err != nil {
 		return err
 	}
@@ -6776,8 +6794,8 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 			if candidate == "" {
 				continue
 			}
-			if _, err := url.ParseRequestURI(candidate); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint URLs must be valid absolute URLs"})
+			if _, err := outbound.ParseHTTPURL(candidate); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint URLs must be absolute HTTP(S) URLs without credentials"})
 				return fileSourcePayload{}, false
 			}
 		}
@@ -6809,8 +6827,8 @@ func validRemoteWorkURLTemplate(value string) bool {
 }
 
 func publicRemoteWorkURL(endpoint fileSourceEndpoint, code string) string {
-	baseURL, err := url.Parse(strings.TrimSpace(endpoint.BaseURL))
-	if err != nil || (baseURL.Scheme != "http" && baseURL.Scheme != "https") || baseURL.Host == "" {
+	baseURL, err := outbound.ParseHTTPURL(endpoint.BaseURL)
+	if err != nil {
 		return ""
 	}
 	template := remoteWorkURLTemplate(endpoint.WorkURLTemplate)

@@ -98,11 +98,23 @@ trust levels:
   not assume they remain on the configured origin merely because the source
   itself is trusted.
 
-Endpoint validation does not currently provide a complete private-network,
-redirect, and DNS-rebinding SSRF policy. Until that boundary is enforced in the
-HTTP transport, isolate Kikoto from cloud metadata endpoints and unrelated
-private services with container or host egress rules. Do not treat source
-configuration as safe input from an untrusted tenant.
+The outbound transport accepts only HTTP(S) URLs without embedded credentials.
+Source-returned media, cover, text, and redirect URLs must remain on the
+configured API, base, or fallback origins; every redirect hop is checked and
+credentials are removed on an explicitly allowed origin change. DNS answers
+are validated as a complete set and the connection is made to one of those same
+validated addresses. Built-in public metadata destinations reject private and
+reserved addresses, while administrator-configured source origins retain the
+intentional private-LAN exception.
+
+The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
+`HTTPS_PROXY`, or `NO_PROXY` settings. Supporting a proxy would require an
+explicitly configured proxy trust boundary that preserves destination and DNS
+validation.
+
+Container or host egress rules remain useful defense in depth, especially on a
+host that can reach cloud metadata endpoints or unrelated private services. Do
+not treat source configuration as safe input from an untrusted tenant.
 
 When diagnosing remote access, do not paste an authenticated URL into a public
 issue. Record the configured-origin and redirect relationship using reserved

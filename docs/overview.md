@@ -34,11 +34,11 @@ Kikoto currently includes:
   known totals from files whose size is not declared.
 - Bounded remote media and cover downloads plus retention cleanup for
   unpublished staging left by failed or cancelled Fetch runs.
+- Outbound source and metadata requests with explicit origin allowlists,
+  per-hop redirect checks, credential stripping, DNS-pinned connections, and
+  separate private-origin rules for administrator-configured LAN sources.
 
 ## Current Limits And Remaining Hardening
 
 - The SQLite deployment model is single-instance; distributed worker execution
   is outside the current personal-deployment scope.
-- Outbound downloads now enforce destination-size limits, but requests do not
-  yet enforce the complete URL, redirect, address, and DNS-rebinding contract
-  described by the security guidance.

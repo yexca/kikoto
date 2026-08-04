@@ -68,9 +68,11 @@ For every new or materially changed outbound HTTP path:
 - Add tests for private/reserved addresses, redirects, response limits,
   cancellation, and the explicitly configured private-origin exception.
 
-The current implementation does not yet satisfy every item above. Do not claim
-otherwise in public documentation; describe incomplete hardening as a current
-limit until code and tests establish the stronger contract.
+The shared server-side outbound transport establishes this URL, origin,
+redirect, address, and DNS-pinning boundary for built-in metadata clients and
+configured remote-source requests. A new path is not covered merely because the
+transport exists: route it through the shared policy, define its destinations,
+and add the relevant regression tests before documenting the stronger contract.
 
 ## Code Organization
 

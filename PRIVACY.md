@@ -64,7 +64,8 @@ Kikoto may send requests to:
 
 - Metadata providers used to identify or enrich a work.
 - Remote source endpoints configured by an administrator.
-- Media, cover, or public-work URLs returned by a configured source.
+- Media, cover, or public-work URLs returned by a configured source when their
+  origins remain within that source's configured allowlist.
 - GitHub Releases when a user deliberately opens an update link.
 
 Depending on the action, these requests may reveal the instance IP address,

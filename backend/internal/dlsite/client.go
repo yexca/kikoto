@@ -18,6 +18,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/download"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 var ErrNoProduct = errors.New("dlsite product not found")
@@ -262,7 +263,14 @@ type RankingResult struct {
 
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 20 * time.Second}
+		policy, err := outbound.NewPolicy([]outbound.Destination{
+			{URL: "https://www.dlsite.com"},
+			{URL: "https://img.dlsite.jp"},
+		}, outbound.Options{})
+		if err != nil {
+			panic("invalid built-in metadata destination policy")
+		}
+		httpClient = policy.Client(nil, 20*time.Second)
 	}
 	return &Client{
 		httpClient: httpClient,

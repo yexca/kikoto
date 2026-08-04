@@ -1650,8 +1650,13 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
 	}
+	source, err := s.loadRemoteSourceForUse(ctx, target.SourceID)
+	if err != nil {
+		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
+		return err
+	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "download", map[string]any{"cachePath": target.CachePath}, 0, 1)
-	written, err := s.downloadToFile(ctx, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
+	written, err := s.downloadToFile(ctx, source, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
 		MaxBytes: s.remoteMediaDownloadLimitBytes(ctx),
 	})
 	if err != nil {

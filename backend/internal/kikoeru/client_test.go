@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
 
@@ -39,6 +40,30 @@ func (endlessTestReader) Read(buffer []byte) (int, error) {
 		buffer[index] = 'x'
 	}
 	return len(buffer), nil
+}
+
+func TestDefaultClientAllowsOnlyItsConfiguredPrivateOrigin(t *testing.T) {
+	var escaped atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		escaped.Store(true)
+		_ = json.NewEncoder(w).Encode("unexpected")
+	}))
+	defer other.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/health" {
+			http.Redirect(w, request, other.URL+"/escaped", http.StatusFound)
+			return
+		}
+		http.NotFound(w, request)
+	}))
+	defer origin.Close()
+
+	if err := NewClient(origin.URL, nil).Health(context.Background()); err == nil {
+		t.Fatal("default client followed a redirect outside the configured origin")
+	}
+	if escaped.Load() {
+		t.Fatal("default client reached the unconfigured origin")
+	}
 }
 
 func TestListWorksFallsBackToLocalFilterWhenSearchFails(t *testing.T) {

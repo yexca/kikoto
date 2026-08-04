@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 type sourceRequestGate struct {
@@ -37,6 +39,7 @@ const (
 type sourceGateTransport struct {
 	server *Server
 	base   http.RoundTripper
+	policy *outbound.Policy
 	class  sourceRequestClass
 }
 
@@ -44,14 +47,34 @@ type sourceGateBody struct {
 	io.ReadCloser
 	once    sync.Once
 	release func()
+	done    chan struct{}
+}
+
+type sourcePolicyErrorTransport struct {
+	err error
 }
 
 func (body *sourceGateBody) Read(buffer []byte) (int, error) {
 	read, err := body.ReadCloser.Read(buffer)
-	if err == io.EOF {
-		body.once.Do(body.release)
+	if err != nil {
+		body.releaseOnce()
 	}
 	return read, err
+}
+
+func (body *sourceGateBody) releaseOnce() {
+	body.once.Do(func() {
+		body.release()
+		close(body.done)
+	})
+}
+
+func (body *sourceGateBody) releaseWhenCanceled(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		body.releaseOnce()
+	case <-body.done:
+	}
 }
 
 func newSourceRequestGate() *sourceRequestGate {
@@ -90,6 +113,9 @@ func (g *sourceRequestGate) origin(key string) *sourceOriginState {
 }
 
 func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if err := t.policy.ValidateURL(request.URL); err != nil {
+		return nil, err
+	}
 	originKey := canonicalSourceOrigin(request.URL)
 	lane := t.server.sourceGate.lane(originKey, t.class)
 	origin := t.server.sourceGate.origin(originKey)
@@ -122,24 +148,48 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 		}
 		origin.blockFor(blockedFor)
 	}
-	response.Body = &sourceGateBody{ReadCloser: response.Body, release: release}
+	body := &sourceGateBody{ReadCloser: response.Body, release: release, done: make(chan struct{})}
+	response.Body = body
+	go body.releaseWhenCanceled(request.Context())
 	return response, nil
 }
 
 func (body *sourceGateBody) Close() error {
 	err := body.ReadCloser.Close()
-	body.once.Do(body.release)
+	body.releaseOnce()
 	return err
 }
 
-func (s *Server) sourceHTTPClient(timeout time.Duration) *http.Client {
-	transport := &sourceGateTransport{server: s, base: http.DefaultTransport, class: sourceRequestInteractive}
-	return &http.Client{Transport: transport, Timeout: timeout}
+func (transport sourcePolicyErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, transport.err
 }
 
-func (s *Server) sourceDownloadHTTPClient(timeout time.Duration) *http.Client {
-	transport := &sourceGateTransport{server: s, base: http.DefaultTransport, class: sourceRequestDownload}
-	return &http.Client{Transport: transport, Timeout: timeout}
+func (s *Server) sourceHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {
+	return s.sourceClient(source, timeout, sourceRequestInteractive)
+}
+
+func (s *Server) sourceDownloadHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {
+	return s.sourceClient(source, timeout, sourceRequestDownload)
+}
+
+func (s *Server) sourceClient(source remoteSourceForUse, timeout time.Duration, class sourceRequestClass) *http.Client {
+	policy, err := sourceOutboundPolicy(source)
+	if err != nil {
+		return &http.Client{Transport: sourcePolicyErrorTransport{err: err}, Timeout: timeout}
+	}
+	transport := &sourceGateTransport{server: s, base: policy.Transport(), policy: policy, class: class}
+	return policy.Client(transport, timeout)
+}
+
+func sourceOutboundPolicy(source remoteSourceForUse) (*outbound.Policy, error) {
+	destinations := make([]outbound.Destination, 0, 3)
+	for _, candidate := range []string{source.Endpoint.APIURL, source.Endpoint.BaseURL, source.Endpoint.FallbackURL} {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		destinations = append(destinations, outbound.Destination{URL: candidate, AllowPrivate: true})
+	}
+	return outbound.NewPolicy(destinations, outbound.Options{})
 }
 
 func (state *sourceOriginState) blockedUntilValue() time.Time {
@@ -160,16 +210,16 @@ func (state *sourceOriginState) blockFor(duration time.Duration) {
 }
 
 func canonicalSourceOrigin(value *url.URL) string {
-	if value == nil {
-		return "unknown"
+	if origin, err := outbound.CanonicalOrigin(value); err == nil {
+		return origin
 	}
-	return strings.ToLower(value.Scheme + "://" + value.Host)
+	return "unknown"
 }
 
 func sourceResourceKey(apiURL string) string {
-	parsed, err := url.Parse(strings.TrimSpace(apiURL))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "remote:" + strings.ToLower(strings.TrimSpace(apiURL))
+	parsed, err := outbound.ParseHTTPURL(apiURL)
+	if err != nil {
+		return "remote:invalid"
 	}
 	return "remote:" + canonicalSourceOrigin(parsed)
 }

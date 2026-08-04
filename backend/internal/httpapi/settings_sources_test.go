@@ -32,6 +32,39 @@ func TestLegacyNumber178SourceTypeCannotBeCreated(t *testing.T) {
 	}
 }
 
+func TestFileSourcePayloadEnforcesOutboundURLContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiURL     string
+		wantOK     bool
+		wantStatus int
+	}{
+		{name: "configured private origin", apiURL: "http://127.0.0.1:7659", wantOK: true, wantStatus: http.StatusOK},
+		{name: "embedded credentials", apiURL: "https://synthetic-user:synthetic-password@example.invalid", wantStatus: http.StatusBadRequest},
+		{name: "unsupported scheme", apiURL: "ftp://example.invalid/files", wantStatus: http.StatusBadRequest},
+		{name: "protocol relative", apiURL: "//example.invalid/api", wantStatus: http.StatusBadRequest},
+		{name: "fragment", apiURL: "https://example.invalid/api#internal", wantStatus: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{
+				"displayName":"Example Remote",
+				"sourceType":"kikoeru_compatible",
+				"endpoint":{"apiUrl":%q}
+			}`, test.apiURL)
+			request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(body))
+			response := httptest.NewRecorder()
+			_, ok := parseFileSourcePayload(response, request, false, false)
+			if ok != test.wantOK {
+				t.Fatalf("accepted = %t, want %t; response = %s", ok, test.wantOK, response.Body.String())
+			}
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
+			}
+		})
+	}
+}
+
 func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{Mode: config.ModeDemo})
@@ -153,6 +186,25 @@ func TestLegacyNumber178SourceTypesCannotBeSeededFromConfig(t *testing.T) {
 	}
 }
 
+func TestRemoteSourceSeedRejectsUnsafeEndpoint(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{RemoteSourceSeeds: []config.RemoteSourceSeed{{
+		DisplayName: "Example Remote",
+		APIURL:      "https://synthetic-user:synthetic-password@example.invalid/api",
+		SourceType:  sourceTypeKikoeruCompatible,
+	}}})
+	if err := server.SeedRemoteSourcesFromConfig(context.Background()); err == nil {
+		t.Fatal("seed accepted an endpoint with embedded credentials")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM file_source WHERE source_type = 'kikoeru_compatible'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("persisted remote source count = %d, want 0", count)
+	}
+}
+
 func TestPublicRemoteWorkURL(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -181,6 +233,12 @@ func TestPublicRemoteWorkURL(t *testing.T) {
 		{
 			name:     "reject non-http base",
 			endpoint: fileSourceEndpoint{BaseURL: "javascript:alert(1)"},
+			code:     "RJ0123",
+			want:     "",
+		},
+		{
+			name:     "reject embedded credentials",
+			endpoint: fileSourceEndpoint{BaseURL: "https://synthetic-user:synthetic-password@example.invalid"},
 			code:     "RJ0123",
 			want:     "",
 		},

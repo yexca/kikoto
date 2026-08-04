@@ -13,12 +13,17 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 type Client struct {
 	baseURL       string
 	httpClient    *http.Client
 	compatibility string
+}
+
+type clientPolicyErrorTransport struct {
+	err error
 }
 
 const CompatibilityNumber178 = "number178"
@@ -106,9 +111,18 @@ type Track struct {
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 20 * time.Second}
+		policy, err := outbound.NewPolicy([]outbound.Destination{{URL: baseURL, AllowPrivate: true}}, outbound.Options{})
+		if err != nil {
+			httpClient = &http.Client{Transport: clientPolicyErrorTransport{err: err}, Timeout: 20 * time.Second}
+		} else {
+			httpClient = policy.Client(nil, 20*time.Second)
+		}
 	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), httpClient: httpClient}
+}
+
+func (transport clientPolicyErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, transport.err
 }
 
 func NewNumber178Client(baseURL string, httpClient *http.Client) *Client {
