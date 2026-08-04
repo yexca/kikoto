@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
+import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { cn } from "@/lib/utils";
 import { visibleBadgeCountForRows } from "./tagLayout";
 
@@ -963,8 +964,8 @@ function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: str
 function openEntityRoute(route: string) {
   if (!route.startsWith("/")) return;
   const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.history.pushState({ returnTo, returnLabel: "Back" }, "", route);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", route);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 function isMobileViewport() {

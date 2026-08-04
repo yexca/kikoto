@@ -1,3 +1,5 @@
+import { NAVIGATION_EVENT, historyStateWithReturn } from "../lib/browserHistory";
+
 export type WorkDetailSourceIntent = {
   sourceId: number;
   remoteCode: string;
@@ -53,12 +55,14 @@ export function workDetailRoute(intent: WorkDetailIntent) {
 export function openWorkDetail(intent: WorkDetailIntent, options: WorkDetailNavigationOptions) {
   const route = workDetailRoute(intent);
   if (!route) return false;
-  window.history.pushState({
-    returnTo: options.returnTo,
-    returnLabel: options.returnLabel,
-    ...(options.workPreview === undefined ? {} : { workPreview: options.workPreview }),
-  }, "", route);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  window.history.pushState(
+    historyStateWithReturn(options.returnTo, options.returnLabel, {
+      ...(options.workPreview === undefined ? {} : { workPreview: options.workPreview }),
+    }),
+    "",
+    route,
+  );
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
   return true;
 }
 

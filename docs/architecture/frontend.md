@@ -65,6 +65,10 @@ small shared contract should resolve cross-domain needs.
 - Keep playback global so navigation does not interrupt the current queue.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
+- Treat each mobile bottom-navigation destination as a resumable workspace.
+  Switching destinations restores that destination's last stable list or detail
+  route, history state, and scroll position for the current server and user;
+  dialogs, pending mutations, and other transient overlays are not resumed.
 - Distinguish Android client-old, server-old, and network-disconnected states;
   version actions open signed GitHub Releases and never imply silent install.
 - Use the shared work-collection layout and work-card view model whenever a

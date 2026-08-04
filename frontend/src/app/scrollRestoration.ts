@@ -1,8 +1,12 @@
 import { useEffect } from "react";
 
-const scrollStateKey = "__kikotoScrollY";
-
-type ScrollHistoryState = Record<string, unknown> & { [scrollStateKey]?: number };
+import {
+  HISTORY_ENTRY_UPDATED_EVENT,
+  NAVIGATION_EVENT,
+  historyPushStateWithScroll,
+  historyScrollY,
+  historyStateWithScroll,
+} from "@/lib/browserHistory";
 
 export function useScrollRestoration() {
   useEffect(() => {
@@ -12,19 +16,22 @@ export function useScrollRestoration() {
     const previousRestoration = history.scrollRestoration;
     history.scrollRestoration = "manual";
 
-    const stateWithScroll = (state: unknown, scrollY: number): ScrollHistoryState => ({
-      ...(state && typeof state === "object" ? state as Record<string, unknown> : {}),
-      [scrollStateKey]: Math.max(0, scrollY),
-    });
+    const announceEntryUpdate = () => window.dispatchEvent(new Event(HISTORY_ENTRY_UPDATED_EVENT));
     const rememberCurrentEntry = () => {
-      originalReplaceState(stateWithScroll(history.state, window.scrollY), "", window.location.href);
+      originalReplaceState(historyStateWithScroll(history.state, window.scrollY), "", window.location.href);
+      announceEntryUpdate();
     };
     rememberCurrentEntry();
 
     history.pushState = ((state: unknown, unused: string, url?: string | URL | null) => {
       rememberCurrentEntry();
-      originalPushState(stateWithScroll(state, 0), unused, url);
+      originalPushState(historyPushStateWithScroll(state), unused, url);
     }) as History["pushState"];
+
+    history.replaceState = ((state: unknown, unused: string, url?: string | URL | null) => {
+      originalReplaceState(state, unused, url);
+      announceEntryUpdate();
+    }) as History["replaceState"];
 
     let restoreTimers: number[] = [];
     const cancelRestore = () => {
@@ -39,8 +46,11 @@ export function useScrollRestoration() {
         restoreTimers = [50, 200, 500].map((delay) => window.setTimeout(apply, delay));
       }
     };
-    const handleNavigation = () => restore(Number((history.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0, false);
-    const handlePopState = (event: PopStateEvent) => restore(Number((event.state as ScrollHistoryState | null)?.[scrollStateKey]) || 0, true);
+    const handleNavigation = () => {
+      const scrollY = historyScrollY(history.state);
+      restore(scrollY, scrollY > 0);
+    };
+    const handlePopState = (event: PopStateEvent) => restore(historyScrollY(event.state), true);
     const handleUserScrollIntent = () => cancelRestore();
 
     let pendingWrite: number | null = null;
@@ -51,7 +61,7 @@ export function useScrollRestoration() {
         rememberCurrentEntry();
       }, 150);
     };
-    window.addEventListener("kikoto:navigation", handleNavigation);
+    window.addEventListener(NAVIGATION_EVENT, handleNavigation);
     window.addEventListener("popstate", handlePopState);
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("wheel", handleUserScrollIntent, { passive: true });
@@ -63,8 +73,9 @@ export function useScrollRestoration() {
       cancelRestore();
       rememberCurrentEntry();
       history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
       history.scrollRestoration = previousRestoration;
-      window.removeEventListener("kikoto:navigation", handleNavigation);
+      window.removeEventListener(NAVIGATION_EVENT, handleNavigation);
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("wheel", handleUserScrollIntent);

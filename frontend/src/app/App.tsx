@@ -18,9 +18,18 @@ import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import {
+  HISTORY_ENTRY_UPDATED_EVENT,
+  NAVIGATION_EVENT,
+  currentInternalLocation,
+  historyScrollY,
+  mobileTabResumeHistoryState,
+  requestHistoryScrollRestoration,
+} from "@/lib/browserHistory";
 import { api, type RemoteTrackRunStatus } from "@/lib/api";
 import { readLastLibraryLocation } from "@/pages/libraryBrowseState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
+import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
 import {
   REMOTE_TRACK_CREATED_EVENT,
   REMOTE_TRACK_TERMINAL_EVENT,
@@ -65,6 +74,7 @@ function AuthenticatedApp() {
   const toast = useToast();
   const exitBackDeadlineRef = useRef(0);
   const authState = auth.user ? "authenticated" : "anonymous";
+  const clientStorageScope = currentClientStorageScope(auth.user?.id ?? null);
   const effectiveHasPermission = useCallback(
     (permission: string) => !auth.demoMode && auth.hasPermission(permission),
     [auth.demoMode, auth.hasPermission],
@@ -94,28 +104,68 @@ function AuthenticatedApp() {
       setRouteRenderKey(resolveRouteRenderKey());
     };
     window.addEventListener("popstate", syncLocation);
-    window.addEventListener("kikoto:navigation", syncLocation);
+    window.addEventListener(NAVIGATION_EVENT, syncLocation);
     return () => {
       window.removeEventListener("popstate", syncLocation);
-      window.removeEventListener("kikoto:navigation", syncLocation);
+      window.removeEventListener(NAVIGATION_EVENT, syncLocation);
     };
   }, []);
+
+  const rememberCurrentMobileTab = useCallback(() => {
+    const currentPage = pageFromPath(window.location.pathname);
+    if (currentPage === "not-found") return;
+    writeMobileTabSnapshot(
+      clientStorageScope,
+      currentPage,
+      currentInternalLocation(),
+      window.history.state,
+      historyScrollY(window.history.state, window.scrollY),
+    );
+  }, [clientStorageScope]);
+
+  useEffect(() => {
+    rememberCurrentMobileTab();
+    window.addEventListener("popstate", rememberCurrentMobileTab);
+    window.addEventListener(NAVIGATION_EVENT, rememberCurrentMobileTab);
+    window.addEventListener(HISTORY_ENTRY_UPDATED_EVENT, rememberCurrentMobileTab);
+    return () => {
+      window.removeEventListener("popstate", rememberCurrentMobileTab);
+      window.removeEventListener(NAVIGATION_EVENT, rememberCurrentMobileTab);
+      window.removeEventListener(HISTORY_ENTRY_UPDATED_EVENT, rememberCurrentMobileTab);
+    };
+  }, [rememberCurrentMobileTab]);
 
   const openPage = (id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
     const path = id === "library"
-      ? readLastLibraryLocation(currentClientStorageScope(auth.user?.id ?? null)) ?? item.path
+      ? readLastLibraryLocation(clientStorageScope) ?? item.path
       : item.path;
     if (id === "library" && page === "library" && `${window.location.pathname}${window.location.search}` === path) return;
     openPath(path);
   };
 
-  const openPath = (path: string, state?: unknown) => {
-    window.history.pushState(state ?? {}, "", path);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+  const openPath = (path: string, state?: unknown, restoredScrollY?: number) => {
+    const nextState = restoredScrollY === undefined
+      ? state ?? {}
+      : requestHistoryScrollRestoration(state, restoredScrollY);
+    window.history.pushState(nextState, "", path);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
     setPage(resolveAppPageFromLocation());
     setRouteRenderKey(resolveRouteRenderKey());
+  };
+
+  const openMobilePage = (id: PageID) => {
+    const item = navItems.find((navItem) => navItem.id === id);
+    if (!item) return;
+    rememberCurrentMobileTab();
+    const snapshot = readMobileTabSnapshot(clientStorageScope, id);
+    if (snapshot && pageFromSnapshotLocation(snapshot.location) === id) {
+      if (page === id && currentInternalLocation() === snapshot.location) return;
+      openPath(snapshot.location, mobileTabResumeHistoryState(snapshot.state), snapshot.scrollY);
+      return;
+    }
+    openPage(id);
   };
 
   const toggleSidebar = () => {
@@ -196,7 +246,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <PlayerProvider key={currentClientStorageScope(auth.user?.id ?? null)}>
+    <PlayerProvider key={clientStorageScope}>
       <RemoteTrackWorkflowBridge />
       <div
         className={cn(
@@ -308,7 +358,7 @@ function AuthenticatedApp() {
                     "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
                     page === item.id && "bg-muted text-foreground",
                   )}
-                  onClick={() => openPage(item.id)}
+                  onClick={() => openMobilePage(item.id)}
                 >
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -577,6 +627,14 @@ function pageFromPath(rawPath: string): AppPage {
     return "library";
   }
   return "not-found";
+}
+
+function pageFromSnapshotLocation(location: string): AppPage {
+  try {
+    return pageFromPath(new URL(location, window.location.origin).pathname);
+  } catch {
+    return "not-found";
+  }
 }
 
 function resolveAppPageFromLocation() {
