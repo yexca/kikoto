@@ -8,16 +8,16 @@ describe("mobile tab state", () => {
       mobileTabSnapshotFromValue(
         {
           page: "library",
-          location: "/RJ01000012?view=tracked",
-          state: { returnTo: "/?q=voice", workPreview: { primaryCode: "RJ01000012" } },
+          location: "/RJ00000000?view=tracked",
+          state: { returnTo: "/?q=voice", workPreview: { primaryCode: "RJ00000000" } },
           scrollY: 320,
         },
         "library",
       ),
     ).toEqual({
       page: "library",
-      location: "/RJ01000012?view=tracked",
-      state: { returnTo: "/?q=voice", workPreview: { primaryCode: "RJ01000012" } },
+      location: "/RJ00000000?view=tracked",
+      state: { returnTo: "/?q=voice", workPreview: { primaryCode: "RJ00000000" } },
       scrollY: 320,
     });
   });
@@ -28,12 +28,12 @@ describe("mobile tab state", () => {
     ).toBeNull();
     expect(
       mobileTabSnapshotFromValue(
-        { page: "library", location: "https://example.invalid/RJ01000012", state: {}, scrollY: 0 },
+        { page: "library", location: "https://example.invalid/RJ00000000", state: {}, scrollY: 0 },
         "library",
       ),
     ).toBeNull();
     expect(
-      mobileTabSnapshotFromValue({ page: "library", location: "/RJ01000012", state: {}, scrollY: -1 }, "library"),
+      mobileTabSnapshotFromValue({ page: "library", location: "/RJ00000000", state: {}, scrollY: -1 }, "library"),
     ).toBeNull();
   });
 });

@@ -310,7 +310,7 @@ func TestCleanupExpiredRemoteFetchStagingRemovesOnlyEligibleStateAndKeepsRetry(t
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Work')`,
 		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES
 			(1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Expired failed Fetch', 'failed', 'manual', '2026-07-20 00:00:00'),
@@ -320,12 +320,12 @@ func TestCleanupExpiredRemoteFetchStagingRemovesOnlyEligibleStateAndKeepsRetry(t
 			(5, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Completed Fetch', 'succeeded', 'manual', '2026-07-20 00:00:00')`,
 		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5)`,
 		`INSERT INTO remote_fetch_manifest (id, workflow_run_id, workflow_job_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, backup_root, state, plan_json, updated_at) VALUES
-			(1, 1, 1, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', 'outside/ignored', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00'),
-			(2, 2, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/2/work', '.kikoto-backup/2/work', 'staged', '{}', '2026-08-03 00:00:00'),
-			(3, 3, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/3/work', '.kikoto-backup/3/work', 'staged', '{}', '2026-07-20 00:00:00'),
-			(4, 4, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/4/work', '.kikoto-backup/4/work', 'published', '{}', '2026-07-20 00:00:00'),
-			(5, 5, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/5/work', '.kikoto-backup/5/work', 'completed', '{}', '2026-07-20 00:00:00')`,
-		`INSERT INTO remote_fetch_manifest_item (manifest_id, relative_path, target_path, source_kind, action, state, content_hash, error_message) VALUES (1, 'track.mp3', 'library/RJ01234567/track.mp3', 'remote', 'cache_download', 'verified', 'hash', 'old error')`,
+			(1, 1, 1, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', 'outside/ignored', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00'),
+			(2, 2, NULL, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/2/work', '.kikoto-backup/2/work', 'staged', '{}', '2026-08-03 00:00:00'),
+			(3, 3, NULL, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/3/work', '.kikoto-backup/3/work', 'staged', '{}', '2026-07-20 00:00:00'),
+			(4, 4, NULL, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/4/work', '.kikoto-backup/4/work', 'published', '{}', '2026-07-20 00:00:00'),
+			(5, 5, NULL, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/5/work', '.kikoto-backup/5/work', 'completed', '{}', '2026-07-20 00:00:00')`,
+		`INSERT INTO remote_fetch_manifest_item (manifest_id, relative_path, target_path, source_kind, action, state, content_hash, error_message) VALUES (1, 'track.mp3', 'library/RJ00000000/track.mp3', 'remote', 'cache_download', 'verified', 'hash', 'old error')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -399,11 +399,11 @@ func TestCleanupExpiredRemoteFetchStagingStopsAtSymlink(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: dataRoot})
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Work')`,
 		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'failed', 'manual', '2026-07-20 00:00:00')`,
 		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5)`,
-		`INSERT INTO remote_fetch_manifest (id, workflow_run_id, workflow_job_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, backup_root, state, plan_json, updated_at) VALUES (1, 1, 1, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/1/work', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00')`,
+		`INSERT INTO remote_fetch_manifest (id, workflow_run_id, workflow_job_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, backup_root, state, plan_json, updated_at) VALUES (1, 1, 1, 1, 1, 2, 'RJ00000000', 'library/RJ00000000', '.kikoto-staging/1/work', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
