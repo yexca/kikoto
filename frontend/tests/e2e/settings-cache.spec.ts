@@ -259,6 +259,79 @@ test("personal settings stay separate from administrator maintenance", async ({ 
   await expect(page.getByText("User directory", { exact: true })).toBeVisible();
 });
 
+test("unlinked works mounts once and keeps its result region stable while settings load", async ({ page }) => {
+  let releaseSettings = () => undefined;
+  let releaseWorks = () => undefined;
+  const settingsGate = new Promise<void>((resolve) => { releaseSettings = resolve; });
+  const worksGate = new Promise<void>((resolve) => { releaseWorks = resolve; });
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await settingsGate;
+    await route.fallback();
+  });
+  await page.route("**/api/works?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("scope") !== "no_source") {
+      await route.fallback();
+      return;
+    }
+    await worksGate;
+    await route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } });
+  });
+
+  await page.goto("/maintenance?tab=unlinked");
+  const heading = page.getByRole("heading", { name: "Unlinked works", exact: true });
+  await expect(heading).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading unlinked works" })).toBeVisible();
+  const panel = heading.locator("xpath=ancestor::section");
+  const loadingBox = await panel.boundingBox();
+
+  releaseWorks();
+  await expect(page.getByText("No unlinked works", { exact: true })).toBeVisible();
+  const emptyBox = await panel.boundingBox();
+  expect(loadingBox).not.toBeNull();
+  expect(emptyBox).not.toBeNull();
+  expect(Math.abs(emptyBox!.height - loadingBox!.height)).toBeLessThanOrEqual(1);
+  releaseSettings();
+});
+
+test("users mounts before settings and a one-user result does not collapse the page", async ({ page }) => {
+  let releaseSettings = () => undefined;
+  let releaseUsers = () => undefined;
+  const settingsGate = new Promise<void>((resolve) => { releaseSettings = resolve; });
+  const usersGate = new Promise<void>((resolve) => { releaseUsers = resolve; });
+  await mockCacheSettings(page, () => undefined);
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await settingsGate;
+    await route.fallback();
+  });
+  await page.route("**/api/users", async (route) => {
+    await usersGate;
+    await route.fallback();
+  });
+
+  await page.goto("/users");
+  await expect(page.getByText("User directory", { exact: true })).toBeVisible();
+  const content = page.getByTestId("maintenance-content");
+  const loadingBox = await content.boundingBox();
+
+  releaseUsers();
+  await expect(page.getByText("@admin", { exact: true }).first()).toBeVisible();
+  const loadedBox = await content.boundingBox();
+  expect(loadingBox).not.toBeNull();
+  expect(loadedBox).not.toBeNull();
+  expect(Math.abs(loadedBox!.height - loadingBox!.height)).toBeLessThanOrEqual(2);
+  releaseSettings();
+});
+
 test("maintenance combines library sources and exposes read-only paths with health checks", async ({ page }) => {
   let healthChecks = 0;
   const sourceUpdates: Record<string, unknown>[] = [];

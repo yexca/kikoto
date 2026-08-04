@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Crown, Plus, RefreshCw, Save, Shield, Trash2, UserCog, UserRound, Users, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,10 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [userPage, setUserPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const requestSeq = useRef(0);
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
@@ -30,24 +33,34 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
   const totalPages = Math.max(1, Math.ceil(users.length / USER_PAGE_SIZE));
   const currentPage = Math.min(userPage, totalPages);
   const visibleUsers = users.slice((currentPage - 1) * USER_PAGE_SIZE, currentPage * USER_PAGE_SIZE);
+  const initialLoading = isLoading && !hasLoaded;
 
   const refresh = async () => {
+    const seq = ++requestSeq.current;
     setIsLoading(true);
+    setLoadError("");
     try {
       const nextUsers = await api.listUsers();
+      if (seq !== requestSeq.current) return;
       setUsers(nextUsers);
+      setHasLoaded(true);
       if (selectedUserId !== null && !nextUsers.some((user) => user.id === selectedUserId)) {
         setSelectedUserId(null);
       }
     } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setLoadError("Users could not be loaded.");
       toast.notify(toastFromError(err, "Failed to load users"));
     } finally {
-      setIsLoading(false);
+      if (seq === requestSeq.current) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     void refresh();
+    return () => {
+      requestSeq.current += 1;
+    };
   }, []);
 
   const createUser = async (payload: UserFormPayload) => {
@@ -111,7 +124,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
             <p className="mt-2 text-sm text-muted-foreground">Create accounts, assign roles, and keep access tidy.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-            {isLoading ? (
+            {initialLoading ? (
               <UserMetricSkeletons count={3} />
             ) : (
               <>
@@ -123,6 +136,13 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
           </div>
         </div>
       </section>}
+
+      {loadError && (
+        <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2" role="alert">
+          <span className="text-sm text-destructive">{loadError}{hasLoaded ? " Existing user data is still shown." : ""}</span>
+          <Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="space-y-4">
@@ -137,7 +157,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={isLoading}>
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>
                 <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
@@ -151,7 +171,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-                {isLoading ? (
+                {initialLoading ? (
                   <UserBarSkeleton />
                 ) : visibleUsers.map((user) => (
                   <Button
@@ -170,7 +190,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
                     </span>
                   </Button>
                 ))}
-                {!isLoading && visibleUsers.length === 0 && (
+                {!initialLoading && visibleUsers.length === 0 && (
                   <div className="grid min-h-14 flex-1 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
                     No users on this page.
                   </div>
@@ -193,7 +213,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
-          {isLoading ? (
+          {initialLoading ? (
             <RoleSummarySkeletons />
           ) : (
             <>
@@ -206,7 +226,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
 
         <Card className="overflow-hidden">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div className="min-h-72 overflow-x-auto" aria-busy={isLoading}>
               <table className="w-full min-w-[680px] border-collapse text-sm">
                 <thead className="border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
                   <tr>
@@ -247,14 +267,14 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
                       </td>
                     </tr>
                   ))}
-                  {!isLoading && users.length === 0 && (
+                  {!initialLoading && users.length === 0 && (
                     <tr>
                       <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
                         No users found.
                       </td>
                     </tr>
                   )}
-                  {isLoading && <UserTableSkeletonRows />}
+                  {initialLoading && <UserTableSkeletonRows />}
                 </tbody>
               </table>
             </div>
@@ -484,17 +504,13 @@ function UserMetricSkeletons({ count }: { count: number }) {
 
 function UserBarSkeleton() {
   return (
-    <>
-      {Array.from({ length: 5 }, (_, index) => (
-        <div key={index} className="flex h-14 min-w-[160px] items-center gap-2 rounded-md border bg-background px-2">
-          <UserSkeletonLine className="h-8 w-8 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <UserSkeletonLine className="h-4 w-24" />
-            <UserSkeletonLine className="h-3 w-20" />
-          </div>
-        </div>
-      ))}
-    </>
+    <div className="flex h-14 min-w-[160px] items-center gap-2 rounded-md border bg-background px-2">
+      <UserSkeletonLine className="h-8 w-8 rounded-full" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <UserSkeletonLine className="h-4 w-24" />
+        <UserSkeletonLine className="h-3 w-20" />
+      </div>
+    </div>
   );
 }
 
@@ -519,7 +535,7 @@ function RoleSummarySkeletons() {
 function UserTableSkeletonRows() {
   return (
     <>
-      {Array.from({ length: 6 }, (_, index) => (
+      {Array.from({ length: 3 }, (_, index) => (
         <tr key={index} className="border-b last:border-0">
           <td className="px-4 py-3">
             <div className="flex items-center gap-3">

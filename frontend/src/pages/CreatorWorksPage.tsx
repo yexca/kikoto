@@ -30,7 +30,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -63,7 +64,6 @@ import {
   workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
-  type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { api, ApiError, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceSummary } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -122,6 +122,8 @@ function VoiceListPage() {
   ), []);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState(initialBrowseState.query);
   const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
@@ -146,18 +148,18 @@ function VoiceListPage() {
   useEffect(() => {
     const controller = new AbortController();
     setIsLoading(true);
+    setLoadError("");
     api.listVoices({ page, pageSize, query: requestQuery, filter, tag: tagFilter, signal: controller.signal }).then((result) => {
       setVoices(result.voices);
       setTotal(result.total);
       setTagOptions(result.tagOptions);
+      setHasLoaded(true);
       setMessage(result.total === 0 && !requestQuery.trim() && filter === "all" && !tagFilter ? "No voice actor credits have been derived from known work metadata yet." : "");
       if (result.page !== page) setPage(result.page);
     }).catch((error) => {
       if (controller.signal.aborted) return;
-      setVoices([]);
+      setLoadError("Voice actors could not be loaded.");
       toast.notify(toastFromError(error, "Voice actor API is unavailable."));
-      setMessage("");
-      setTotal(0);
     }).finally(() => {
       if (!controller.signal.aborted) setIsLoading(false);
     });
@@ -173,6 +175,11 @@ function VoiceListPage() {
     itemLabel: "voice actors",
     ariaLabel: "Voice actor pages",
     pageSizeOptions: voicePageSizeOptions,
+    leadingControls: (
+      <span className="grid h-8 w-8 shrink-0 place-items-center">
+        {isLoading && hasLoaded && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Refreshing voice actors" />}
+      </span>
+    ),
     onPageChange: setPage,
     onPageSizeChange: (value: number) => {
       setPage(1);
@@ -230,12 +237,19 @@ function VoiceListPage() {
         </div>
 
         <CollectionPagination {...paginationProps} placement="top" />
-        {isLoading && voices.length > 0 && <div className="text-xs text-muted-foreground">Refreshing...</div>}
 
-        <div className={creatorCollectionClassName}>
-          {isLoading && voices.length === 0 ? (
-            Array.from({ length: Math.min(pageSize, 9) }, (_, index) => <CreatorCardSkeleton key={index} />)
-          ) : voices.length > 0 ? (
+        {isLoading && !hasLoaded ? (
+          <CreatorCollectionSkeleton label="Loading voice actors" />
+        ) : !hasLoaded && loadError ? (
+          <Card className="min-h-56" role="alert">
+            <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
+              <span>{loadError}</span>
+              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : (
+        <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+          {voices.length > 0 ? (
             voices.map((voice) => (
               <CreatorCard
                 key={voice.personId}
@@ -254,9 +268,10 @@ function VoiceListPage() {
               />
             ))
           ) : (
-            <Card><CardContent className="p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>
+            <Card className="min-h-56"><CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>
           )}
         </div>
+        )}
 
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
@@ -771,7 +786,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             </Button>
           </div>
         </div>}
-        <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
+        {pageWorks.length > 0 ? (
+        <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)} aria-busy={isWorksLoading || isRemoteLoading}>
           {pageWorks.map((work) => (
             <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`} className={workCollectionItemClassName(viewMode)}>
               <VoiceWorkCard
@@ -793,10 +809,17 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               />
             </div>
           ))}
-          {isWorksLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} viewMode={viewMode} />}
-          {isRemoteLoading && <VoiceRemoteWorkSkeletonCards count={Math.min(4, pageSize)} viewMode={viewMode} />}
-          {pageWorks.length === 0 && !isRemoteLoading && <Card><CardContent className="p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>}
         </div>
+        ) : isWorksLoading || isRemoteLoading ? (
+          <WorkCollectionLoadingState
+            label="Loading voice works"
+            viewMode={viewMode}
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+          />
+        ) : (
+          <Card className="min-h-72"><CardContent className="grid min-h-72 place-items-center p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>
+        )}
         {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
       </section>
       {saveConfirm && <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />}
@@ -1245,22 +1268,6 @@ function remoteSourceFailed(source: VoiceRemoteSourceSet) {
   return !["ok", "disabled", "unsupported"].includes(source.status);
 }
 
-function VoiceRemoteWorkSkeletonCards({ count, viewMode }: { count: number; viewMode: WorkCollectionViewMode }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <Card key={`remote-loading-${index}`} className={workCollectionItemClassName(viewMode)}>
-          <CardContent className="space-y-3 p-3">
-            <EntitySkeletonLine className="aspect-[3/4] w-full" />
-            <EntitySkeletonLine className="h-4 w-3/4" />
-            <EntitySkeletonLine className="h-3 w-1/2" />
-          </CardContent>
-        </Card>
-      ))}
-    </>
-  );
-}
-
 function VoiceDetailSkeleton() {
   return (
     <div className="space-y-5">
@@ -1281,9 +1288,7 @@ function VoiceDetailSkeleton() {
           <Card><CardContent className="space-y-3 p-4"><EntitySkeletonLine className="h-5 w-32" /><RemoteSourceSkeleton /></CardContent></Card>
         </div>
       </section>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-        <VoiceRemoteWorkSkeletonCards count={6} viewMode="grid" />
-      </div>
+      <WorkCollectionLoadingState label="Loading voice works" />
     </div>
   );
 }

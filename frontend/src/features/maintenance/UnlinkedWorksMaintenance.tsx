@@ -32,6 +32,7 @@ export function UnlinkedWorksMaintenance() {
   const [queryDraft, setQueryDraft] = useState("");
   const [result, setResult] = useState<WorksPage>({ works: [], page: 1, pageSize: 25, total: 0 });
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedWorkIds, setSelectedWorkIds] = useState<Set<number>>(() => new Set());
@@ -46,11 +47,13 @@ export function UnlinkedWorksMaintenance() {
     api.listWorksPage(page, pageSize, query, "no_source", "all", "recent", "desc", 1, false, controller.signal)
       .then((next) => {
         setResult(next);
+        setHasLoaded(true);
         setSelectedWorkIds(new Set());
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setLoadError(error instanceof Error ? error.message : "Unlinked works could not be loaded.");
+        setLoadError("Unlinked works could not be loaded.");
+        toast.notify(toastFromError(error, "Unlinked works could not be loaded."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -68,6 +71,7 @@ export function UnlinkedWorksMaintenance() {
   const rangeStart = result.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(result.total, page * pageSize);
   const checking = checkingWorkIds.size > 0;
+  const initialLoading = loading && !hasLoaded;
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -209,34 +213,33 @@ export function UnlinkedWorksMaintenance() {
         </Button>
       </div>
 
-      {loadError ? (
-        <div className="grid min-h-56 place-items-center px-4 py-10 text-center">
-          <div>
-            <p className="text-sm text-destructive">{loadError}</p>
-            <Button className="mt-4" size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>Retry</Button>
+      <div className="min-h-64">
+        {loadError && hasLoaded && (
+          <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2" role="alert">
+            <span className="text-sm text-destructive">{loadError} Existing results are still shown.</span>
+            <Button size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>Retry</Button>
           </div>
-        </div>
-      ) : loading ? (
-        <UnlinkedWorksTableSkeleton />
-      ) : result.works.length === 0 ? (
-        <div className="grid min-h-56 place-items-center px-4 py-10 text-center">
-          <div>
-            <p className="text-sm font-medium">{query ? "No matching unlinked works" : "No unlinked works"}</p>
-            {query && <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>Clear search</Button>}
+        )}
+        {!hasLoaded && loadError ? (
+          <div className="grid min-h-64 place-items-center px-4 py-10 text-center" role="alert">
+            <div>
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button className="mt-4" size="sm" variant="outline" onClick={() => setRefreshKey((current) => current + 1)}>Retry</Button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
+        ) : initialLoading ? (
+          <UnlinkedWorksTableSkeleton />
+        ) : result.works.length === 0 ? (
+          <div className="grid min-h-64 place-items-center px-4 py-10 text-center">
+            <div>
+              <p className="text-sm font-medium">{query ? "No matching unlinked works" : "No unlinked works"}</p>
+              {query && <Button className="mt-4" size="sm" variant="outline" onClick={clearSearch}>Clear search</Button>}
+            </div>
+          </div>
+        ) : (
+        <div className="overflow-x-auto" aria-busy={loading}>
           <table className="w-full min-w-[760px] table-fixed text-left text-sm">
-            <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
-              <tr>
-                <th className="w-12 px-4 py-2 font-medium"><span className="sr-only">Select</span></th>
-                <th className="w-16 px-2 py-2 font-medium"><span className="sr-only">Cover</span></th>
-                <th className="w-40 px-2 py-2 font-medium">Code</th>
-                <th className="px-2 py-2 font-medium">Title</th>
-                <th className="w-40 px-4 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
+            <UnlinkedWorksTableHead />
             <tbody className="divide-y">
               {result.works.map((work) => {
                 const rowChecking = checkingWorkIds.has(work.id);
@@ -278,7 +281,8 @@ export function UnlinkedWorksMaintenance() {
             </tbody>
           </table>
         </div>
-      )}
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
         <label className="flex items-center gap-2 text-muted-foreground">
@@ -338,17 +342,36 @@ function UnlinkedWorkDeleteDialog({ pending, deleting, onConfirm, onClose }: { p
 
 function UnlinkedWorksTableSkeleton() {
   return (
-    <div className="divide-y" aria-label="Loading unlinked works">
-      {Array.from({ length: 6 }, (_, index) => (
-        <div key={index} className="flex h-16 items-center gap-3 px-4">
-          <div className="h-5 w-5 animate-pulse rounded bg-muted" />
-          <div className="h-12 w-12 animate-pulse rounded bg-muted" />
-          <div className="h-3 w-28 animate-pulse rounded bg-muted" />
-          <div className="h-3 min-w-0 flex-1 animate-pulse rounded bg-muted" />
-          <div className="h-8 w-28 animate-pulse rounded bg-muted" />
-        </div>
-      ))}
+    <div className="overflow-x-auto" role="status" aria-label="Loading unlinked works" aria-busy="true">
+      <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+        <UnlinkedWorksTableHead />
+        <tbody className="divide-y" aria-hidden="true">
+          {Array.from({ length: 3 }, (_, index) => (
+            <tr key={index} className="h-16">
+              <td className="px-4 py-2"><div className="h-5 w-5 animate-pulse rounded bg-muted" /></td>
+              <td className="px-2 py-2"><div className="h-12 w-12 animate-pulse rounded bg-muted" /></td>
+              <td className="px-2 py-2"><div className="h-3 w-28 animate-pulse rounded bg-muted" /></td>
+              <td className="px-2 py-2"><div className="h-3 w-3/4 animate-pulse rounded bg-muted" /></td>
+              <td className="px-4 py-2"><div className="ml-auto h-8 w-28 animate-pulse rounded bg-muted" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  );
+}
+
+function UnlinkedWorksTableHead() {
+  return (
+    <thead className="border-b bg-muted/35 text-xs text-muted-foreground">
+      <tr>
+        <th className="w-12 px-4 py-2 font-medium"><span className="sr-only">Select</span></th>
+        <th className="w-16 px-2 py-2 font-medium"><span className="sr-only">Cover</span></th>
+        <th className="w-40 px-2 py-2 font-medium">Code</th>
+        <th className="px-2 py-2 font-medium">Title</th>
+        <th className="w-40 px-4 py-2 text-right font-medium">Actions</th>
+      </tr>
+    </thead>
   );
 }
 

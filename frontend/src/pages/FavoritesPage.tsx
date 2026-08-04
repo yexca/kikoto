@@ -61,7 +61,8 @@ import {
   type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
+import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import {
   api,
   assetURL,
@@ -164,6 +165,9 @@ export function FavoritesPage() {
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isEntitiesLoading, setIsEntitiesLoading] = useState(true);
+  const [entitySnapshotUserID, setEntitySnapshotUserID] = useState<number | null>(null);
+  const [entityLoadError, setEntityLoadError] = useState("");
+  const [entityReloadToken, setEntityReloadToken] = useState(0);
   const [query, setQuery] = useState(initialBrowseState.query);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
@@ -183,6 +187,9 @@ export function FavoritesPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [worksSnapshotUserID, setWorksSnapshotUserID] = useState<number | null>(null);
+  const [worksLoadError, setWorksLoadError] = useState("");
+  const [worksReloadToken, setWorksReloadToken] = useState(0);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
   const [listActionsOpen, setListActionsOpen] = useState(false);
@@ -229,11 +236,14 @@ export function FavoritesPage() {
     if (!auth.user) {
       setCircles([]);
       setVoices([]);
+      setEntitySnapshotUserID(null);
+      setEntityLoadError("");
       setIsEntitiesLoading(false);
       return;
     }
     let cancelled = false;
     setIsEntitiesLoading(true);
+    setEntityLoadError("");
     Promise.all([
       api.listCircles({ filter: "favorite", pageSize: 100 }),
       api.listVoices({ filter: "favorite", pageSize: 100 }),
@@ -242,9 +252,13 @@ export function FavoritesPage() {
         if (cancelled) return;
         setCircles(circlePage.circles);
         setVoices(voicePage.voices);
+        setEntitySnapshotUserID(principalID);
       })
       .catch((error) => {
-        if (!cancelled) toast.notify(toastFromError(error, "Favorite people and circles could not be loaded."));
+        if (!cancelled) {
+          setEntityLoadError("Favorite people and circles could not be loaded.");
+          toast.notify(toastFromError(error, "Favorite people and circles could not be loaded."));
+        }
       })
       .finally(() => {
         if (!cancelled) setIsEntitiesLoading(false);
@@ -252,7 +266,7 @@ export function FavoritesPage() {
     return () => {
       cancelled = true;
     };
-  }, [auth.user]);
+  }, [auth.user, entityReloadToken]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -261,11 +275,14 @@ export function FavoritesPage() {
       setShelfTotal(0);
       setListCounts({});
       setStatusCounts({});
+      setWorksSnapshotUserID(null);
+      setWorksLoadError("");
       setIsLoading(false);
       return;
     }
     const seq = ++requestSeq.current;
     setIsLoading(true);
+    setWorksLoadError("");
     api.listFavoriteWorksPage(page, pageSize, "", activeList, statusFilter, availabilityFilter, sort, sortDirection, randomSeed)
       .then((result) => {
         if (seq !== requestSeq.current) return;
@@ -274,17 +291,17 @@ export function FavoritesPage() {
         setShelfTotal(result.shelfTotal);
         setListCounts(result.listCounts);
         setStatusCounts(result.statusCounts);
+        setWorksSnapshotUserID(principalID);
       })
       .catch((error) => {
         if (seq !== requestSeq.current) return;
-        setWorks([]);
-        setTotalWorks(0);
+        setWorksLoadError("Favorites could not be loaded.");
         toast.notify(toastFromError(error, "Favorites could not be loaded."));
       })
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
       });
-  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, statusFilter]);
+  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, statusFilter, worksReloadToken]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -340,6 +357,8 @@ export function FavoritesPage() {
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
+  const hasEntitySnapshot = entitySnapshotUserID === principalID;
+  const hasWorksSnapshot = worksSnapshotUserID === principalID;
 
   useEffect(() => {
     if (!isLoading && page > totalPages) setPage(totalPages);
@@ -614,8 +633,11 @@ export function FavoritesPage() {
           kind={favoriteEntity}
           query={query}
           isLoading={isEntitiesLoading}
+          hasSnapshot={hasEntitySnapshot}
+          loadError={entityLoadError}
           circles={favoriteCircles}
           voices={favoriteVoices}
+          onRetry={() => setEntityReloadToken((value) => value + 1)}
           onCircleChange={(next) => setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item))}
           onVoiceChange={(next) => setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item))}
         />
@@ -715,6 +737,13 @@ export function FavoritesPage() {
         onPageSizeChange={(value) => changePageSize(value as PageSize)}
         leadingControls={(
           <>
+            <span className="grid h-8 w-8 shrink-0 place-items-center" aria-live="polite">
+              {isLoading && hasWorksSnapshot && (
+                <span role="status" aria-label="Refreshing favorites">
+                  <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                </span>
+              )}
+            </span>
             <div className="lg:hidden">
               <FavoriteMobileOptions
                 availability={availabilityFilter}
@@ -817,11 +846,23 @@ export function FavoritesPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <FavoriteWorkGridSkeleton viewMode={viewMode} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+      {hasWorksSnapshot && worksLoadError && (
+        <FavoriteLoadError message={worksLoadError} compact onRetry={() => setWorksReloadToken((value) => value + 1)} />
+      )}
+      {!hasWorksSnapshot ? (
+        worksLoadError ? (
+          <FavoriteLoadError message={worksLoadError} onRetry={() => setWorksReloadToken((value) => value + 1)} />
+        ) : (
+          <WorkCollectionLoadingState
+            label="Loading favorite works"
+            viewMode={viewMode}
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+          />
+        )
       ) : works.length > 0 ? (
         <>
-          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
+          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)} aria-busy={isLoading}>
             {works.map((work) => (
               <div key={work.id} data-favorite-work-id={work.id} tabIndex={-1} className={`${workCollectionItemClassName(viewMode)} outline-none`}>
                 <FavoriteWorkCard
@@ -893,16 +934,22 @@ function FavoriteEntitySection({
   kind,
   query,
   isLoading,
+  hasSnapshot,
+  loadError,
   circles,
   voices,
+  onRetry,
   onCircleChange,
   onVoiceChange,
 }: {
   kind: Exclude<FavoriteEntity, "works">;
   query: string;
   isLoading: boolean;
+  hasSnapshot: boolean;
+  loadError: string;
   circles: CircleSummary[];
   voices: VoiceSummary[];
+  onRetry: () => void;
   onCircleChange: (circle: CircleSummary) => void;
   onVoiceChange: (voice: VoiceSummary) => void;
 }) {
@@ -911,18 +958,20 @@ function FavoriteEntitySection({
   const filteredVoices = voices.filter((voice) => !needle || [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle)));
   const items = kind === "circles" ? filteredCircles : filteredVoices;
 
-  if (isLoading) {
-    return <FavoriteEntitySkeletonGrid />;
+  if (!hasSnapshot) {
+    return loadError
+      ? <FavoriteLoadError message={loadError} onRetry={onRetry} />
+      : <CreatorCollectionSkeleton label={`Loading favorite ${kind === "circles" ? "circles" : "voice actors"}`} />;
   }
   if (items.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-5 text-sm text-muted-foreground">No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.</CardContent>
+      <Card className="min-h-56" aria-busy={isLoading}>
+        <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.</CardContent>
       </Card>
     );
   }
   return (
-    <div className={creatorCollectionClassName}>
+    <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
       {kind === "circles"
         ? filteredCircles.map((circle) => <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />)
         : filteredVoices.map((voice) => <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />)}
@@ -999,14 +1048,6 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
   />;
 }
 
-function FavoriteEntitySkeletonGrid() {
-  return (
-    <div className={creatorCollectionClassName}>
-      {Array.from({ length: 6 }, (_, index) => <CreatorCardSkeleton key={index} />)}
-    </div>
-  );
-}
-
 function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
@@ -1047,22 +1088,11 @@ function FavoriteListAction({
   );
 }
 
-function FavoriteWorkGridSkeleton({ viewMode, mobileColumns, desktopColumns }: { viewMode: WorkCollectionViewMode; mobileColumns: WorkCollectionColumnSetting; desktopColumns: WorkCollectionColumnSetting }) {
+function FavoriteLoadError({ message, compact = false, onRetry }: { message: string; compact?: boolean; onRetry: () => void }) {
   return (
-    <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-      {Array.from({ length: 12 }, (_, index) => (
-        <div key={index} className={`${workCollectionItemClassName(viewMode)} overflow-hidden rounded-lg border bg-card`}>
-          <FavoriteSkeletonLine className="aspect-[4/5] rounded-none" />
-          <div className="space-y-2 p-3">
-            <FavoriteSkeletonLine className="h-4 w-3/4" />
-            <FavoriteSkeletonLine className="h-3 w-1/2" />
-            <div className="flex gap-2 pt-2">
-              <FavoriteSkeletonLine className="h-6 w-16" />
-              <FavoriteSkeletonLine className="h-6 w-20" />
-            </div>
-          </div>
-        </div>
-      ))}
+    <div className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-destructive/30 bg-destructive/5`} role="alert">
+      <p className="text-sm text-destructive">{message}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>
     </div>
   );
 }

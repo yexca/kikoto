@@ -2044,9 +2044,10 @@ export const api = {
     },
   ) => patchJSONBody<WorkflowTrigger>(`/api/workflow-triggers/${id}`, payload),
   deleteWorkflowTrigger: (id: number) => deleteJSON<{ ok: boolean }>(`/api/workflow-triggers/${id}`),
-  listWorkflowRuns: (page = 1, pageSize = 10, view = "running", query = "", workflowCode = "") =>
+  listWorkflowRuns: (page = 1, pageSize = 10, view = "running", query = "", workflowCode = "", signal?: AbortSignal) =>
     getJSON<WorkflowRunsPage>(
       `/api/workflow-runs?page=${page}&pageSize=${pageSize}&view=${encodeURIComponent(view)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}${workflowCode.trim() ? `&workflowCode=${encodeURIComponent(workflowCode.trim())}` : ""}`,
+      signal,
     ),
   getWorkflowRun: (id: number) => getJSON<WorkflowRunDetail>(`/api/workflow-runs/${id}`),
   listWorkflowRunEvents: (id: number, afterId = 0) =>

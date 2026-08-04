@@ -478,6 +478,14 @@ test("activity deep links load a run outside the visible list page", async ({ pa
 });
 
 test("activity uses compact counted tabs and a single empty state", async ({ page }) => {
+  await page.addInitScript(() => {
+    const trackedWindow = window as typeof window & { __activityLoadingSeen?: boolean };
+    trackedWindow.__activityLoadingSeen = false;
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[aria-label="Loading runs"]')) trackedWindow.__activityLoadingSeen = true;
+    });
+    observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-label"] });
+  });
   await mockWorkflows(page, undefined, {
     runs: [],
     page: 1,
@@ -493,9 +501,55 @@ test("activity uses compact counted tabs and a single empty state", async ({ pag
   await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
   await expect(page.getByText("Page 1 / 1", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Select a run to inspect execution by node.", { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __activityLoadingSeen?: boolean }).__activityLoadingSeen)).toBe(false);
 
   const tabs = page.getByRole("button", { name: "Running 0", exact: true }).locator("..");
   await expect.poll(() => tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test("activity only animates loading when the run request is perceptibly slow", async ({ page }) => {
+  let releaseRuns = () => undefined;
+  const runsGate = new Promise<void>((resolve) => { releaseRuns = resolve; });
+  await mockWorkflows(page, undefined, {
+    runs: [],
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
+  });
+  await page.route("**/api/workflow-runs?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("view") !== "running" || url.searchParams.has("workflowCode")) {
+      await route.fallback();
+      return;
+    }
+    await runsGate;
+    await route.fulfill({ json: { runs: [], page: 1, pageSize: 10, total: 0, viewTotals: { running: 0, review: 0, failed: 0, completed: 0 } } });
+  });
+
+  await page.goto("/activity?view=running");
+  await expect(page.getByRole("status", { name: "Loading runs" })).toBeVisible();
+  releaseRuns();
+  await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading runs" })).toHaveCount(0);
+});
+
+test("workflow metadata loads as one snapshot without an interim empty panel", async ({ page }) => {
+  let releaseDefinitions = () => undefined;
+  const definitionsGate = new Promise<void>((resolve) => { releaseDefinitions = resolve; });
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-definitions", async (route) => {
+    await definitionsGate;
+    await route.fulfill({ json: [systemDefinitions[0]] });
+  });
+
+  await page.goto("/workflows");
+  await expect(page.getByRole("status", { name: "Loading workflow data" })).toBeVisible();
+  await expect(page.getByText("No runnable or custom workflow definitions exist yet.", { exact: true })).toHaveCount(0);
+
+  releaseDefinitions();
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading workflow data" })).toHaveCount(0);
 });
 
 test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {

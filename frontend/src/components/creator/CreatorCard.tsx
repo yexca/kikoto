@@ -59,7 +59,7 @@ export function CreatorCard({
 
   return (
     <Card className="h-full overflow-hidden transition-colors hover:border-primary/50">
-      <CardContent className="flex h-full min-h-40 gap-4 p-4">
+      <CardContent className="flex h-full min-h-56 gap-4 p-4">
         <button
           type="button"
           className="group relative aspect-[4/3] w-28 shrink-0 self-start overflow-hidden rounded-md border bg-muted sm:w-[7.5rem]"
@@ -131,7 +131,7 @@ export function CreatorCard({
 export function CreatorCardSkeleton() {
   return (
     <Card className="h-full">
-      <CardContent className="flex min-h-40 gap-4 p-4">
+      <CardContent className="flex min-h-56 gap-4 p-4">
         <div className="aspect-[4/3] w-28 shrink-0 animate-pulse rounded-md bg-muted sm:w-[7.5rem]" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="h-5 w-24 animate-pulse rounded-full bg-muted" />
@@ -141,6 +141,22 @@ export function CreatorCardSkeleton() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+export function CreatorCollectionSkeleton({ label = "Loading creators" }: { label?: string }) {
+  return (
+    <div
+      className={`${creatorCollectionClassName} min-h-56`}
+      role="status"
+      aria-label={label}
+      aria-busy="true"
+    >
+      <CreatorCardSkeleton />
+      <div className="hidden lg:block" aria-hidden="true">
+        <CreatorCardSkeleton />
+      </div>
+    </div>
   );
 }
 

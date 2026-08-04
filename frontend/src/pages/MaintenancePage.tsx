@@ -346,7 +346,7 @@ export function MaintenancePage({
       </div>
 
       <fieldset data-testid="maintenance-content" disabled={readOnly} className={`min-w-0 border-0 p-0 ${maintenanceContentWidthClass(activeTab)}`}>
-      {isSettingsLoading ? (
+      {isSettingsLoading && activeTab !== "unlinked" && activeTab !== "users" ? (
         activeTab === "overview" ? (
           <SettingsOverviewSkeleton />
         ) : activeTab === "library" ? (

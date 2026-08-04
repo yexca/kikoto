@@ -21,7 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { CreatorCard, CreatorCardSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -41,7 +41,6 @@ import {
   workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
-  type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
@@ -116,6 +115,8 @@ function CircleListPage() {
   ), []);
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState(initialBrowseState.query);
   const [requestQuery, setRequestQuery] = useState(initialBrowseState.query);
   const [filter, setFilter] = useState<CircleFilter>(initialBrowseState.filter);
@@ -139,17 +140,18 @@ function CircleListPage() {
   useEffect(() => {
     const controller = new AbortController();
     setIsLoading(true);
+    setLoadError("");
     api.listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal }).then((result) => {
       setCircles(result.circles);
       setTotal(result.total);
       setCatalogWorks(result.catalogWorks);
       setAvailableWorks(result.availableWorks);
+      setHasLoaded(true);
       if (result.page !== page) setPage(result.page);
     }).catch((error) => {
       if (controller.signal.aborted) return;
-      setCircles([]);
+      setLoadError("Circles could not be loaded.");
       toast.notify(toastFromError(error, "Circle API is unavailable."));
-      setTotal(0);
     }).finally(() => {
       if (!controller.signal.aborted) setIsLoading(false);
     });
@@ -230,13 +232,23 @@ function CircleListPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Circle totals">
           <Badge variant="outline">{catalogWorks} catalog works</Badge>
           <Badge variant="outline">{availableWorks} available works</Badge>
-          {isLoading && circles.length > 0 && <span>Refreshing...</span>}
+          <span className="grid h-4 w-4 place-items-center">
+            {isLoading && hasLoaded && <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-label="Refreshing circles" />}
+          </span>
         </div>
 
-        <div className={creatorCollectionClassName}>
-          {isLoading && circles.length === 0 ? (
-            Array.from({ length: Math.min(pageSize, 8) }, (_, index) => <CreatorCardSkeleton key={index} />)
-          ) : circles.length > 0 ? (
+        {isLoading && !hasLoaded ? (
+          <CreatorCollectionSkeleton label="Loading circles" />
+        ) : !hasLoaded && loadError ? (
+          <Card className="min-h-56" role="alert">
+            <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
+              <span>{loadError}</span>
+              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : (
+        <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+          {circles.length > 0 ? (
             circles.map((circle) => (
               <CreatorCard
                 key={circle.externalId}
@@ -256,11 +268,12 @@ function CircleListPage() {
               />
             ))
           ) : (
-            <Card>
-              <CardContent className="p-5 text-sm text-muted-foreground">No circles match this view.</CardContent>
+            <Card className="min-h-56">
+              <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No circles match this view.</CardContent>
             </Card>
           )}
         </div>
+        )}
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
     </div>

@@ -48,6 +48,7 @@ import { parseWorkCodes, WorkCodesField } from "@/features/workflows/WorkCodesFi
 import { WorkflowViewportTools } from "@/features/workflows/WorkflowViewportTools";
 import { workflowDataTypeColor, workflowEdgeClassName, type WorkflowEdgeVisualState } from "@/features/workflows/workflowVisuals";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
+import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import {
   api,
   type LibrarySource,
@@ -244,34 +245,60 @@ export function WorkflowsPage({
   const [isSyncingMetadata, setIsSyncingMetadata] = useState(false);
   const [runningSystemAction, setRunningSystemAction] = useState<SystemRunKind | null>(null);
   const [isWorkflowMetaLoading, setIsWorkflowMetaLoading] = useState(true);
+  const [hasWorkflowMetaSnapshot, setHasWorkflowMetaSnapshot] = useState(false);
+  const [workflowMetaError, setWorkflowMetaError] = useState("");
   const [isRunsLoading, setIsRunsLoading] = useState(true);
+  const [runsError, setRunsError] = useState("");
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
   const [workflowLaunch, setWorkflowLaunch] = useState<{ definition: WorkflowDefinition; inputs: Record<string, unknown>; autoPreview: boolean } | null>(null);
+  const workflowMetaRequestSeq = useRef(0);
+  const runsRequestSeq = useRef(0);
+  const runsAbortController = useRef<AbortController | null>(null);
 
   const refresh = () => {
+    const seq = ++workflowMetaRequestSeq.current;
     setIsWorkflowMetaLoading(true);
+    setWorkflowMetaError("");
     Promise.all([
-      api.listWorkflowDefinitions().then(setDefinitions).catch(() => setDefinitions([])),
-      api.listWorkflowNodeTypes().then(setNodeTypes).catch(() => setNodeTypes(fallbackNodeTypes)),
-      api.listWorkflowTriggers().then(setTriggers).catch(() => setTriggers([])),
-    ]).finally(() => setIsWorkflowMetaLoading(false));
+      api.listWorkflowDefinitions(),
+      api.listWorkflowNodeTypes(),
+      api.listWorkflowTriggers(),
+    ]).then(([nextDefinitions, nextNodeTypes, nextTriggers]) => {
+      if (seq !== workflowMetaRequestSeq.current) return;
+      setDefinitions(nextDefinitions);
+      setNodeTypes(nextNodeTypes);
+      setTriggers(nextTriggers);
+      setHasWorkflowMetaSnapshot(true);
+    }).catch(() => {
+      if (seq === workflowMetaRequestSeq.current) setWorkflowMetaError("Workflow data could not be loaded.");
+    }).finally(() => {
+      if (seq === workflowMetaRequestSeq.current) setIsWorkflowMetaLoading(false);
+    });
   };
 
-  const refreshRuns = (page = runPage, view = activityView, query = runQuery) => {
+  const refreshRuns = (page: number, view: ActivityView, query: string) => {
+    const seq = ++runsRequestSeq.current;
+    runsAbortController.current?.abort();
+    const controller = new AbortController();
+    runsAbortController.current = controller;
     setIsRunsLoading(true);
+    setRunsError("");
     api
-      .listWorkflowRuns(page, runsPage.pageSize, view, query)
+      .listWorkflowRuns(page, 10, view, query, "", controller.signal)
       .then((next) => {
+        if (seq !== runsRequestSeq.current) return;
         setRunsPage(next);
         setRuns(next.runs);
         setRunsView(view);
       })
       .catch(() => {
-        setRunsPage({ runs: [], page, pageSize: runsPage.pageSize, total: 0, viewTotals: emptyRunViewTotals });
-        setRuns([]);
-        setRunsView(view);
+        if (!controller.signal.aborted && seq === runsRequestSeq.current) {
+          setRunsError("Activity could not be loaded.");
+        }
       })
-      .finally(() => setIsRunsLoading(false));
+      .finally(() => {
+        if (seq === runsRequestSeq.current) setIsRunsLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -279,8 +306,14 @@ export function WorkflowsPage({
   }, []);
 
   useEffect(() => {
+    if (surface !== "activity") {
+      runsAbortController.current?.abort();
+      setIsRunsLoading(false);
+      return;
+    }
     refreshRuns(runPage, activityView, runQuery);
-  }, [activityView, runPage]);
+    return () => runsAbortController.current?.abort();
+  }, [activityView, runPage, surface]);
 
   useEffect(() => {
     if (surface !== "activity") return;
@@ -289,7 +322,6 @@ export function WorkflowsPage({
       setActivityView(next);
       setRunPage(1);
       setSelectedRunID(activityRunIDFromLocation());
-      refreshRuns(1, next, runQuery);
     };
     syncView();
     window.addEventListener("popstate", syncView);
@@ -338,6 +370,11 @@ export function WorkflowsPage({
   const selectedRunSummary = visibleRuns.find((run) => run.id === selectedRunId)
     ?? (selectedRunId === null ? visibleRuns[0] ?? null : null);
   const selectedActivityRunID = selectedRunId ?? selectedRunSummary?.id ?? null;
+  const waitingForInitialRuns = surface === "activity"
+    && isRunsLoading
+    && visibleRuns.length === 0
+    && selectedActivityRunID === null;
+  const showRunsLoading = useDeferredBusy(waitingForInitialRuns);
   const activityRun = useWorkflowRunWatcher(surface === "activity" ? selectedActivityRunID : null);
   const previousActivityRunView = useRef<ActivityView | null>(null);
   const selectedSystemRunKinds = selectedDefinition ? manuallyRunnableSystemWorkflows[selectedDefinition.code] : undefined;
@@ -380,7 +417,6 @@ export function WorkflowsPage({
     if (!previousView || previousView === nextView) return;
     setActivityView(nextView);
     setRunPage(1);
-    refreshRuns(1, nextView, runQuery);
     const search = new URLSearchParams({ view: nextView, run: String(activityRun.run.id) });
     window.history.replaceState(window.history.state, "", `/activity?${search}`);
   }, [activityRun.run, runQuery, surface]);
@@ -429,7 +465,6 @@ export function WorkflowsPage({
       refresh();
       setActivityView("running");
       setRunPage(1);
-      refreshRuns(1, "running", runQuery);
     } catch (error) {
       toast.notify(toastFromError(error, "Remote popular collection could not be queued."));
     } finally {
@@ -445,7 +480,6 @@ export function WorkflowsPage({
       refresh();
       setActivityView("running");
       setRunPage(1);
-      refreshRuns(1, "running", runQuery);
     } catch (error) {
       toast.notify(toastFromError(error, "DLsite popular collection could not be queued."));
     } finally {
@@ -527,6 +561,12 @@ export function WorkflowsPage({
           Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.
         </div>
       )}
+      {surface === "workflows" && hasWorkflowMetaSnapshot && workflowMetaError && (
+        <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2" role="alert">
+          <span className="text-sm text-destructive">{workflowMetaError} Existing workflow data is still shown.</span>
+          <Button size="sm" variant="outline" onClick={refresh}>Retry</Button>
+        </div>
+      )}
 
       {surface === "workflows" ? (
         <Workbench
@@ -537,15 +577,21 @@ export function WorkflowsPage({
               selectedId={selectedDefinition?.id ?? null}
               canCreate
 						activeTab={definitionTab}
-              loading={isWorkflowMetaLoading}
+              loading={isWorkflowMetaLoading && !hasWorkflowMetaSnapshot}
+              error={!hasWorkflowMetaSnapshot ? workflowMetaError : ""}
               emptyText={definitionEmptyText}
               onSelect={selectDefinition}
 						onTabChange={selectDefinitionTab}
+              onRetry={refresh}
               onCreate={() => setModalMode("create-workflow")}
             />
           }
           right={
-			selectedDefinition?.code === "availability_watch" ? <AvailabilityWatchPanel readOnly={readOnly} canManageDownloads={canManageDownloads} /> : <WorkflowDetail
+            !hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
+              <WorkflowMetadataLoadingState />
+            ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
+              <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
+            ) : selectedDefinition?.code === "availability_watch" ? <AvailabilityWatchPanel readOnly={readOnly} canManageDownloads={canManageDownloads} /> : <WorkflowDetail
               definition={selectedDefinition}
               definitionTriggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition?.id)}
               nodeTypes={nodeTypes}
@@ -593,15 +639,23 @@ export function WorkflowsPage({
             query={runQuery}
             onQueryChange={setRunQuery}
             onSearch={() => {
-              setRunPage(1);
               setSelectedRunID(null);
-              refreshRuns(1, activityView, runQuery);
+              if (runPage === 1) refreshRuns(1, activityView, runQuery);
+              else setRunPage(1);
             }}
             onRecoverStale={recoverStaleRuns}
             readOnly={readOnly}
           />
-          {isRunsLoading && visibleRuns.length === 0 && selectedActivityRunID === null ? (
-            <ActivityLoadingState />
+          {runsError && (visibleRuns.length > 0 || selectedActivityRunID !== null) && (
+            <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2" role="alert">
+              <span className="text-sm text-destructive">{runsError} Existing activity is still shown.</span>
+              <Button size="sm" variant="outline" onClick={() => refreshRuns(runPage, activityView, runQuery)}>Retry</Button>
+            </div>
+          )}
+          {waitingForInitialRuns || showRunsLoading ? (
+            showRunsLoading ? <ActivityLoadingState /> : <ActivityPendingState />
+          ) : runsError && visibleRuns.length === 0 && selectedActivityRunID === null ? (
+            <ActivityErrorState message={runsError} onRetry={() => refreshRuns(runPage, activityView, runQuery)} />
           ) : visibleRuns.length === 0 && selectedActivityRunID === null ? (
             <ActivityEmptyState view={activityView} filtered={Boolean(runQuery.trim())} />
           ) : <Workbench
@@ -833,27 +887,56 @@ function SkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
+function WorkflowMetadataLoadingState() {
+  return (
+    <Card className="min-h-72" role="status" aria-label="Loading workflow data" aria-busy="true">
+      <CardContent className="flex min-h-72 flex-col justify-center gap-3 p-6">
+        <SkeletonLine className="h-5 w-40" />
+        <SkeletonLine className="h-4 w-72 max-w-full" />
+        <SkeletonLine className="h-32 w-full" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkflowMetadataErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Card className="min-h-72 border-destructive/30" role="alert">
+      <CardContent className="grid min-h-72 place-items-center p-6 text-center">
+        <div>
+          <p className="text-sm text-destructive">{message}</p>
+          <Button className="mt-4" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DefinitionSidebar({
   definitions,
   triggers,
   selectedId,
   canCreate,
-	activeTab,
+  activeTab,
   loading,
+  error,
   emptyText,
   onSelect,
 	onTabChange,
+  onRetry,
   onCreate,
 }: {
   definitions: WorkflowDefinition[];
   triggers: WorkflowTrigger[];
   selectedId: number | null;
   canCreate: boolean;
-	activeTab: WorkflowDefinitionTab;
+  activeTab: WorkflowDefinitionTab;
   loading?: boolean;
+  error?: string;
   emptyText: string;
   onSelect: (definition: WorkflowDefinition) => void;
 	onTabChange: (tab: WorkflowDefinitionTab) => void;
+  onRetry: () => void;
   onCreate: () => void;
 }) {
   const builtInDefinitions = sortDefinitionsForSidebar(
@@ -875,7 +958,14 @@ function DefinitionSidebar({
 		</div>
         <div className="space-y-2">
           {loading ? (
-            <SidebarSkeletonRows count={6} />
+            <SidebarSkeletonRows count={1} />
+          ) : error ? (
+            <div className="grid min-h-32 place-items-center rounded-md border border-destructive/30 bg-destructive/5 p-4 text-center" role="alert">
+              <div>
+                <p className="text-sm text-destructive">{error}</p>
+                <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
+              </div>
+            </div>
           ) : (
             <>
 				{(activeTab === "built-in" ? builtInDefinitions : customDefinitions).map((definition) => (
@@ -883,8 +973,8 @@ function DefinitionSidebar({
                 ))}
             </>
           )}
-			{!loading && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && <EmptyPanel text={activeTab === "custom" ? "No custom definitions yet." : emptyText} />}
-          {!loading && canCreate && activeTab === "custom" && (
+          {!loading && !error && (activeTab === "built-in" ? builtInDefinitions : customDefinitions).length === 0 && <EmptyPanel text={activeTab === "custom" ? "No custom definitions yet." : emptyText} />}
+          {!loading && !error && canCreate && activeTab === "custom" && (
             <Button variant="outline" className="w-full" onClick={onCreate}>
               <Plus className="h-4 w-4" />
               New workflow
@@ -963,13 +1053,28 @@ function ActivityToolbar({
 
 function ActivityLoadingState() {
   return (
-    <div className="rounded-lg border bg-card p-4" aria-label="Loading runs">
+    <div className="flex min-h-32 items-center rounded-lg border bg-card p-4" role="status" aria-label="Loading runs" aria-busy="true">
       <div className="flex items-center gap-3">
         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
         <div className="min-w-0 flex-1 space-y-2">
           <SkeletonLine className="h-4 w-3/4 max-w-48" />
           <SkeletonLine className="h-3 w-72 max-w-full" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityPendingState() {
+  return <div className="min-h-32" aria-busy="true" />;
+}
+
+function ActivityErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="grid min-h-32 place-items-center rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center" role="alert">
+      <div>
+        <p className="text-sm text-destructive">{message}</p>
+        <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
       </div>
     </div>
   );

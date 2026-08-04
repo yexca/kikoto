@@ -163,6 +163,57 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("a one-circle result keeps the initial creator region height", async ({ page }) => {
+  let releaseRequest = () => undefined;
+  const requestGate = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await mockCreatorLists(page);
+  await page.route("**/api/circles?**", async (route) => {
+    await requestGate;
+    await route.fulfill({ json: { circles: [circle], page: 1, pageSize: 24, total: 1, catalogWorks: 5, availableWorks: 3 } });
+  });
+
+  await page.goto("/circles?pageSize=24");
+  const loading = page.getByRole("status", { name: "Loading circles" });
+  await expect(loading).toBeVisible();
+  const loadingBox = await loading.boundingBox();
+
+  releaseRequest();
+  const openCircle = page.getByRole("button", { name: "Open Example Circle" });
+  await expect(openCircle).toBeVisible();
+  const resultCardBox = await openCircle.locator("xpath=../..").boundingBox();
+
+  expect(loadingBox).not.toBeNull();
+  expect(resultCardBox).not.toBeNull();
+  expect(Math.abs(resultCardBox!.height - loadingBox!.height)).toBeLessThanOrEqual(1);
+});
+
+test("voice detail renders one stable work-loading region for local and remote discovery", async ({ page }) => {
+  let releaseWorks = () => undefined;
+  let releaseRemote = () => undefined;
+  const worksGate = new Promise<void>((resolve) => { releaseWorks = resolve; });
+  const remoteGate = new Promise<void>((resolve) => { releaseRemote = resolve; });
+  await mockCreatorDetails(page);
+  await page.route("**/api/voices/7/works", async (route) => {
+    await worksGate;
+    await route.fulfill({ json: { personId: 7, works: [] } });
+  });
+  await page.route("**/api/voices/7/remote-matches", async (route) => {
+    await remoteGate;
+    await route.fulfill({ json: { personId: 7, remoteMatches: [] } });
+  });
+
+  await page.goto("/voices/7");
+  await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
+  const loading = page.getByRole("status", { name: "Loading voice works" });
+  await expect(loading).toHaveCount(1);
+
+  releaseWorks();
+  await expect(loading).toHaveCount(1);
+  releaseRemote();
+  await expect(page.getByText("No works match this view.", { exact: true })).toBeVisible();
+  await expect(loading).toHaveCount(0);
+});
+
 test("voice detail keeps stats together and secondary panels folded on mobile", async ({ page }) => {
   await mockCreatorDetails(page);
   await page.goto("/voices/7");
