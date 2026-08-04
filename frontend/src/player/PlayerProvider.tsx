@@ -31,6 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { ANDROID_BACK_EVENT, PLAYBACK_CURSOR_UPDATED_EVENT } from "@/app/events";
 import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
+import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
 import {
@@ -1437,12 +1438,13 @@ export function PlayerDock() {
   const openWorkDetail = () => {
     if (!track.workCode) return;
     if (isMobile) setDockMode("compact");
+    const returnTo = window.location.pathname + window.location.search;
     window.history.pushState(
-      { returnTo: window.location.pathname + window.location.search, returnLabel: "Back" },
+      historyStateWithReturn(returnTo, "Back"),
       "",
       `/${encodeURIComponent(track.workCode)}`,
     );
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   const handleCoverClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!isMobile) return;

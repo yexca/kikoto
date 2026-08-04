@@ -67,6 +67,7 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { api, ApiError, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceSummary } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 import { mergeVoiceWorks, voiceWorkHasRemoteAvailability, voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
@@ -1442,18 +1443,13 @@ function workProgressPercent(progress: NonNullable<VoiceKnownWork["progress"]>) 
 }
 
 export function openVoiceRoute(personId: number) {
-  window.history.pushState({ returnTo: currentVoiceReturnPath(), returnLabel: "Back" }, "", `/voices/${personId}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  const returnTo = currentVoiceReturnPath();
+  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/voices/${personId}`);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 function navigateToVoicesList() {
-  const state = window.history.state as { returnTo?: unknown } | null;
-  if (typeof state?.returnTo === "string" && state.returnTo.startsWith("/")) {
-    window.history.back();
-    return;
-  }
-  window.history.pushState({}, "", "/voices");
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  navigateToHistoryReturn({ fallbackLocation: "/voices" });
 }
 
 function openWorkRoute(work: VoiceWorkView) {

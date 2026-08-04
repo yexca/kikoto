@@ -88,6 +88,7 @@ import {
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import {
   defaultLibraryBrowseState,
@@ -788,14 +789,11 @@ export function LibraryPage() {
   };
 
   const backToLibrary = () => {
-	const historyState = window.history.state as { returnTo?: unknown } | null;
-	if (typeof historyState?.returnTo === "string" && isInternalReturnPath(historyState.returnTo)) {
-	  window.history.back();
-	  return;
-	}
 	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
-    window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState }, "", returnTarget.path);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    navigateToHistoryReturn({
+      fallbackLocation: returnTarget.path,
+      fallbackState: { libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState },
+    });
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
   };
@@ -5741,8 +5739,8 @@ function openDetailTagSearch(tag: string) {
 function openResolvedEntityRoute(route: string) {
   if (!route.startsWith("/")) return;
   const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.history.pushState({ returnTo, returnLabel: "Back" }, "", route);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", route);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 function ConfirmMediaDeleteModal({

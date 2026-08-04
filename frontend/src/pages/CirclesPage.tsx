@@ -45,6 +45,7 @@ import {
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus } from "@/lib/api";
+import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -95,14 +96,16 @@ export function CirclesPage() {
 }
 
 export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
-  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back" }, "", `/circles/${encodeURIComponent(externalId)}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  const returnTo = currentCircleReturnPath();
+  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/circles/${encodeURIComponent(externalId)}`);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 export function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
   const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
-  window.history.pushState({ returnTo: currentCircleReturnPath(), returnLabel: "Back" }, "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  const returnTo = currentCircleReturnPath();
+  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 function CircleListPage() {
@@ -1422,13 +1425,7 @@ function circleRouteFromPath(path: string) {
 }
 
 function navigateToCirclesList() {
-  const state = window.history.state as { returnTo?: unknown } | null;
-  if (typeof state?.returnTo === "string" && state.returnTo.startsWith("/")) {
-    window.history.back();
-    return;
-  }
-  window.history.pushState({}, "", "/circles");
-  window.dispatchEvent(new Event("kikoto:navigation"));
+  navigateToHistoryReturn({ fallbackLocation: "/circles" });
 }
 
 function safeDecodePathSegment(value: string) {

@@ -57,9 +57,14 @@ const persistedPlayerTracks = new WeakMap<Page, typeof persistedTrack[]>();
 const playerQueueStorageBaseKey = "kikoto:player-queue:v2";
 const playerProgressStorageBaseKey = "kikoto:player-progress:v2";
 
+type MockWork = Omit<typeof work, "voiceActors" | "voiceCredits"> & {
+  voiceActors: string[];
+  voiceCredits: { personId: number; displayName: string }[];
+};
+
 type MockApplicationFixture = {
-  work?: typeof work;
-  recentWorks?: typeof work[];
+  work?: MockWork;
+  recentWorks?: MockWork[];
   librarySources?: Record<string, unknown>[];
   sourceAvailability?: Record<string, unknown>;
   remoteDetail?: Record<string, unknown>;
@@ -143,6 +148,41 @@ async function mockApplication(
       await route.fulfill({ json: { works: fixture.recentWorks ?? [] } });
       return;
     }
+    if (url.pathname === "/api/voices/7") {
+      await route.fulfill({ json: {
+        personId: 7,
+        displayName: "Example Voice",
+        aliases: ["Example Voice"],
+        aliasRecords: [],
+        knownWorks: 1,
+        localWorks: 1,
+        remoteWorks: 0,
+        cachedWorks: 0,
+        playableWorks: 1,
+        lastSeenAt: "2026-01-01T00:00:00Z",
+        rating: null,
+        note: "",
+        favorite: false,
+        userTags: [],
+        sourceSummaries: [{ key: "local", sourceId: null, displayName: "Local", status: "available", count: 1 }],
+        latestWork: null,
+        works: [],
+        remoteMatches: [],
+      } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/works") {
+      await route.fulfill({ json: { personId: 7, works: [] } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/remote-matches") {
+      await route.fulfill({ json: { personId: 7, remoteMatches: [] } });
+      return;
+    }
+    if (url.pathname === "/api/voices/7/merges") {
+      await route.fulfill({ json: [] });
+      return;
+    }
     if (url.pathname === "/api/works") {
       onWorksRequest?.(url);
       await fixture.beforeWorksResponse?.();
@@ -210,7 +250,7 @@ async function mockApplication(
       await route.fulfill({ json: {
         ...detailWork,
         baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null,
-        dlsiteFetchedAt: "", voiceCredits: [], translations: [], manualOverrides: {},
+        dlsiteFetchedAt: "", voiceCredits: detailWork.voiceCredits, translations: [], manualOverrides: {},
         mediaItems: url.searchParams.get("includeMedia") === "false" ? [] : mediaItems,
       } });
       return;
@@ -612,6 +652,44 @@ test("new detail navigation starts at the top, preserves user scroll while media
   await page.getByRole("button", { name: "Back to library" }).click();
   await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedScroll - 80);
+});
+
+test("mobile tabs restore the current Library detail after visiting a voice actor", async ({ page }) => {
+  const voicedWork: MockWork = {
+    ...work,
+    voiceActors: ["Example Voice"],
+    voiceCredits: [{ personId: 7, displayName: "Example Voice" }],
+  };
+  const detailMedia = Array.from({ length: 18 }, (_, index) =>
+    mediaFixture(index + 1, `voice-track-${index + 1}.mp3`, `${voicedWork.primaryCode}/voice-track-${index + 1}.mp3`, "audio"),
+  );
+  await mockApplication(page, undefined, false, 1, 0, detailMedia, undefined, { work: voicedWork });
+  await page.goto("/");
+
+  await page.getByText(voicedWork.title, { exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
+  await page.getByRole("button", { name: "Example Voice", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page.getByText("Example Voice", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
+  await expect(page.getByText(voicedWork.title, { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("directory-file-row")).toHaveCount(detailMedia.length);
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  const savedDetailScroll = await page.evaluate(() => window.scrollY);
+
+  await page.getByRole("button", { name: "Voice Actors", exact: true }).click();
+  await expect(page).toHaveURL(/\/voices\/7$/);
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedDetailScroll - 80);
+
+  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
+  await expect(page.getByText(voicedWork.title, { exact: true }).first()).toBeVisible();
 });
 
 test("mobile library pagination returns to the page top after detail return", async ({ page }) => {

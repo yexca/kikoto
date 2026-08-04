@@ -37,6 +37,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import {
   WorkCardActionButton,
@@ -398,8 +399,8 @@ export function FavoritesPage() {
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
       favoritesAnchor: anchor,
     }, "", returnTo);
-    window.history.pushState({ returnTo, returnLabel: "Back to favorites", workPreview: work }, "", `/${work.primaryCode}`);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    window.history.pushState(historyStateWithReturn(returnTo, "Back to favorites", { workPreview: work }), "", `/${work.primaryCode}`);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
