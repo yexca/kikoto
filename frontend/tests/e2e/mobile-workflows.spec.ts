@@ -118,6 +118,9 @@ const sampleRun = {
   completedJobs: 1,
   failedJobs: 0,
   skippedJobs: 0,
+  progressBytesCurrent: 0,
+  progressBytesTotal: 0,
+  progressBytesUnknownItems: 0,
   candidateCount: 0,
   pendingCandidates: 0,
   acceptedCandidates: 0,
@@ -409,6 +412,50 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
   await expect(page.getByText("Tagging works", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
+});
+
+test("activity reports Fetch byte progress without guessing unknown totals", async ({ page }) => {
+  const knownTotal = 128 * 1024 * 1024;
+  const current = 64 * 1024 * 1024;
+  const unknownRun = {
+    ...sampleRun,
+    id: 52,
+    workflowCode: "remote_work_fetch",
+    displayName: "Fetch remote work",
+    status: "running",
+    finishedAt: "",
+    completedJobs: 0,
+    progressBytesCurrent: current,
+    progressBytesTotal: knownTotal,
+    progressBytesUnknownItems: 1,
+  };
+  const knownRun = { ...unknownRun, id: 53, progressBytesUnknownItems: 0 };
+  await mockWorkflows(page, undefined, {
+    runs: [unknownRun, knownRun],
+    page: 1,
+    pageSize: 10,
+    total: 2,
+    viewTotals: { running: 2, review: 0, failed: 0, completed: 0 },
+  });
+  await page.route(/\/api\/workflow-runs\/(52|53)(?:\/.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/events") || url.pathname.endsWith("/candidates")) {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.fulfill({ json: { ...(url.pathname.endsWith("/52") ? unknownRun : knownRun), nodeRuns: [], graphJson: "{}" } });
+  });
+
+  await page.goto("/activity?view=running&run=52");
+  const unknownProgress = page.getByRole("status", { name: "Fetch transfer progress" });
+  await expect(unknownProgress).toContainText("64.0 MB transferred · 128.0 MB known total · 1 unknown-size file");
+  await expect(unknownProgress.getByRole("progressbar")).toHaveCount(0);
+
+  await page.goto("/activity?view=running&run=53");
+  const progressbar = page.getByRole("progressbar", { name: "Fetch byte progress" });
+  await expect(progressbar).toHaveAttribute("aria-valuenow", String(current));
+  await expect(progressbar).toHaveAttribute("aria-valuemax", String(knownTotal));
+  await expect(progressbar).toHaveAttribute("aria-valuetext", "64.0 MB of 128.0 MB");
 });
 
 test("activity deep links load a run outside the visible list page", async ({ page }) => {

@@ -20,18 +20,21 @@ type NodeRunSpec struct {
 }
 
 type JobSpec struct {
-	NodeRunID       int64
-	WorkerType      string
-	Status          string
-	Priority        int
-	ResourceKey     string
-	Payload         any
-	Checkpoint      any
-	Recoverable     bool
-	MaxRetries      int
-	ProgressCurrent int
-	ProgressTotal   int
-	Error           string
+	NodeRunID                 int64
+	WorkerType                string
+	Status                    string
+	Priority                  int
+	ResourceKey               string
+	Payload                   any
+	Checkpoint                any
+	Recoverable               bool
+	MaxRetries                int
+	ProgressCurrent           int
+	ProgressTotal             int
+	ProgressBytesCurrent      int64
+	ProgressBytesTotal        int64
+	ProgressBytesUnknownItems int
+	Error                     string
 }
 
 const (
@@ -177,14 +180,17 @@ func InsertJob(ctx context.Context, tx *sql.Tx, runID int64, spec JobSpec) (int6
 			max_retries,
 			progress_current,
 			progress_total,
+			progress_bytes_current,
+			progress_bytes_total,
+			progress_bytes_unknown_items,
 			error_message
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, spec.Priority, strings.TrimSpace(spec.ResourceKey), payloadJSON, checkpointJSON, spec.Recoverable, maxRetries, spec.ProgressCurrent, spec.ProgressTotal, spec.Error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, runID, spec.NodeRunID, spec.WorkerType, spec.Status, spec.Priority, strings.TrimSpace(spec.ResourceKey), payloadJSON, checkpointJSON, spec.Recoverable, maxRetries, spec.ProgressCurrent, spec.ProgressTotal, spec.ProgressBytesCurrent, spec.ProgressBytesTotal, spec.ProgressBytesUnknownItems, spec.Error)
 	if err != nil {
 		return 0, err
 	}
-	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "priority": spec.Priority, "resource_key": strings.TrimSpace(spec.ResourceKey), "recoverable": spec.Recoverable, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal}
+	detail := map[string]any{"worker_type": spec.WorkerType, "status": spec.Status, "priority": spec.Priority, "resource_key": strings.TrimSpace(spec.ResourceKey), "recoverable": spec.Recoverable, "progress_current": spec.ProgressCurrent, "progress_total": spec.ProgressTotal, "progress_bytes_current": spec.ProgressBytesCurrent, "progress_bytes_total": spec.ProgressBytesTotal, "progress_bytes_unknown_items": spec.ProgressBytesUnknownItems}
 	if spec.Error != "" {
 		detail["error"] = spec.Error
 	}

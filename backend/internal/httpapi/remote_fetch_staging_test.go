@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 )
@@ -299,5 +301,171 @@ func TestReconcileRemoteFetchDoesNotRequeueFailedRun(t *testing.T) {
 	}
 	if runStatus != "failed" || jobStatus != "failed" || retryCount != 2 {
 		t.Fatalf("run=%s job=%s retries=%d", runStatus, jobStatus, retryCount)
+	}
+}
+
+func TestCleanupExpiredRemoteFetchStagingRemovesOnlyEligibleStateAndKeepsRetry(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES
+			(1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Expired failed Fetch', 'failed', 'manual', '2026-07-20 00:00:00'),
+			(2, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Recent cancelled Fetch', 'cancelled', 'manual', '2026-08-03 00:00:00'),
+			(3, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Active Fetch', 'running', 'manual', NULL),
+			(4, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Published Fetch', 'failed', 'manual', '2026-07-20 00:00:00'),
+			(5, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Completed Fetch', 'succeeded', 'manual', '2026-07-20 00:00:00')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5)`,
+		`INSERT INTO remote_fetch_manifest (id, workflow_run_id, workflow_job_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, backup_root, state, plan_json, updated_at) VALUES
+			(1, 1, 1, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', 'outside/ignored', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00'),
+			(2, 2, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/2/work', '.kikoto-backup/2/work', 'staged', '{}', '2026-08-03 00:00:00'),
+			(3, 3, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/3/work', '.kikoto-backup/3/work', 'staged', '{}', '2026-07-20 00:00:00'),
+			(4, 4, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/4/work', '.kikoto-backup/4/work', 'published', '{}', '2026-07-20 00:00:00'),
+			(5, 5, NULL, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/5/work', '.kikoto-backup/5/work', 'completed', '{}', '2026-07-20 00:00:00')`,
+		`INSERT INTO remote_fetch_manifest_item (manifest_id, relative_path, target_path, source_kind, action, state, content_hash, error_message) VALUES (1, 'track.mp3', 'library/RJ01234567/track.mp3', 'remote', 'cache_download', 'verified', 'hash', 'old error')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, runID := range []int{1, 2, 3, 4, 5} {
+		root := filepath.Join(dataRoot, ".kikoto-staging", fmt.Sprintf("%d", runID), "work")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "track.mp3"), []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := filepath.Join(dataRoot, "outside", "sentinel.txt")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := server.cleanupExpiredRemoteFetchStaging(context.Background(), time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Cleaned != 1 || result.Blocked != 0 || result.Files != 1 || result.Bytes != 5 {
+		t.Fatalf("cleanup result = %+v", result)
+	}
+	if _, err := os.Stat(filepath.Join(dataRoot, ".kikoto-staging", "1")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired staging still exists: %v", err)
+	}
+	for _, runID := range []int{2, 3, 4, 5} {
+		if _, err := os.Stat(filepath.Join(dataRoot, ".kikoto-staging", fmt.Sprintf("%d", runID), "work", "track.mp3")); err != nil {
+			t.Fatalf("run %d staging should remain: %v", runID, err)
+		}
+	}
+	if content, err := os.ReadFile(outside); err != nil || string(content) != "keep" {
+		t.Fatalf("stored manifest path escaped fixed staging namespace: content=%q err=%v", content, err)
+	}
+	var state, cleanedAt, itemState, itemHash, itemError string
+	if err := db.QueryRow(`SELECT state, COALESCE(staging_cleaned_at, '') FROM remote_fetch_manifest WHERE id = 1`).Scan(&state, &cleanedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT state, content_hash, error_message FROM remote_fetch_manifest_item WHERE manifest_id = 1`).Scan(&itemState, &itemHash, &itemError); err != nil {
+		t.Fatal(err)
+	}
+	if state != "planned" || cleanedAt == "" || itemState != "planned" || itemHash != "" || itemError != "" {
+		t.Fatalf("manifest state=%q cleaned=%q item=%q hash=%q error=%q", state, cleanedAt, itemState, itemHash, itemError)
+	}
+	var cleanupEvents int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = 1 AND event_type = 'fetch.staging_cleaned'`).Scan(&cleanupEvents); err != nil || cleanupEvents != 1 {
+		t.Fatalf("cleanup events=%d err=%v", cleanupEvents, err)
+	}
+	if err := server.retryFailedWorkflowJob(context.Background(), 1); err != nil {
+		t.Fatalf("retry after cleanup: %v", err)
+	}
+	var runStatus, jobStatus, retryCleanedAt string
+	if err := db.QueryRow(`SELECT run.status, job.status, COALESCE(manifest.staging_cleaned_at, '') FROM workflow_run AS run INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id INNER JOIN remote_fetch_manifest AS manifest ON manifest.workflow_run_id = run.id WHERE run.id = 1`).Scan(&runStatus, &jobStatus, &retryCleanedAt); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "queued" || jobStatus != "queued" || retryCleanedAt != "" {
+		t.Fatalf("retry state run=%q job=%q cleaned=%q", runStatus, jobStatus, retryCleanedAt)
+	}
+}
+
+func TestCleanupExpiredRemoteFetchStagingStopsAtSymlink(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'failed', 'manual', '2026-07-20 00:00:00')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5)`,
+		`INSERT INTO remote_fetch_manifest (id, workflow_run_id, workflow_job_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, backup_root, state, plan_json, updated_at) VALUES (1, 1, 1, 1, 1, 2, 'RJ01234567', 'library/RJ01234567', '.kikoto-staging/1/work', '.kikoto-backup/1/work', 'staged', '{}', '2026-07-20 00:00:00')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stagingRoot := filepath.Join(dataRoot, ".kikoto-staging", "1", "work")
+	if err := os.MkdirAll(stagingRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "outside.mp3")
+	if err := os.WriteFile(target, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(stagingRoot, "linked.mp3")); err != nil {
+		t.Skipf("symlink is not available on this system: %v", err)
+	}
+	result, err := server.cleanupExpiredRemoteFetchStaging(context.Background(), time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Cleaned != 0 || result.Blocked != 1 {
+		t.Fatalf("cleanup result = %+v", result)
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != "outside" {
+		t.Fatalf("symlink target changed: content=%q err=%v", content, err)
+	}
+	var state, cleanedAt, detail string
+	if err := db.QueryRow(`SELECT state, COALESCE(staging_cleaned_at, '') FROM remote_fetch_manifest WHERE id = 1`).Scan(&state, &cleanedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT detail_json FROM workflow_event WHERE workflow_run_id = 1 AND event_type = 'fetch.staging_cleanup_blocked'`).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if state != "cleaning_staging" || cleanedAt != "" || strings.Contains(detail, dataRoot) || strings.Contains(detail, target) {
+		t.Fatalf("blocked cleanup state=%q cleaned=%q detail=%q", state, cleanedAt, detail)
+	}
+	if err := server.requeueFailedWorkflowJob(context.Background(), workflowJobRecord{ID: 1, RunID: 1, WorkerType: "remote_work_fetch"}, 0, "retry"); err == nil || !strings.Contains(err.Error(), "cleanup is in progress") {
+		t.Fatalf("retry during blocked cleanup error = %v", err)
+	}
+}
+
+func TestRemoveFetchStagingTreeRejectsSymlinkedNamespace(t *testing.T) {
+	dataRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	outsideRun := filepath.Join(outsideRoot, "1")
+	if err := os.MkdirAll(outsideRun, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outsideRun, "keep.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideRoot, filepath.Join(dataRoot, ".kikoto-staging")); err != nil {
+		t.Skipf("symlink is not available on this system: %v", err)
+	}
+
+	_, err := removeFetchStagingTree(dataRoot, filepath.Join(dataRoot, ".kikoto-staging", "1"))
+	if err == nil {
+		t.Fatal("cleanup accepted a symlinked staging namespace")
+	}
+	if content, readErr := os.ReadFile(sentinel); readErr != nil || string(content) != "keep" {
+		t.Fatalf("outside staging changed: content=%q err=%v", content, readErr)
 	}
 }

@@ -36,6 +36,8 @@ async function mockCacheSettings(
     localScanDepth: 4,
     cacheEnabled: true,
     cacheLimitGb: 20,
+    remoteDownloadLimitGb: 100,
+    fetchStagingRetentionDays: 7,
     remoteSaveTemplate: "/data/<source_name>/<code_prefix>/<code_group>/<work_code>",
     remoteDelayBaseSeconds: 0.5,
     remoteDelayRandomSeconds: 1.5,
@@ -203,9 +205,12 @@ test("cache settings scan managed media and require cleanup confirmation", async
     .allTextContents();
   expect(cacheSections).toEqual(["Configuration", "Managed media cache"]);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
+  await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
+  expect(settingsPayloads[0]).toEqual(expect.objectContaining({ remoteDownloadLimitGb: 100, fetchStagingRetentionDays: 7 }));
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();

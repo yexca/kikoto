@@ -1838,6 +1838,7 @@ function RunLogsSkeleton() {
 function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+      <FetchTransferProgress run={run} />
       <div className="rounded-md border bg-muted/30 p-3">
         <div className="text-sm font-semibold">Summary</div>
         <JsonPreview value={run.summaryJson} empty="No summary recorded." />
@@ -1851,6 +1852,46 @@ function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; 
       {nodeRuns.some((node) => node.errorMessage) && (
         <div className="lg:col-span-2">
           <ErrorPanel error={nodeRuns.find((node) => node.errorMessage)?.errorMessage ?? ""} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FetchTransferProgress({ run }: { run: WorkflowRunDetail | WorkflowRun }) {
+  if (run.workflowCode !== "remote_work_fetch") return null;
+  const current = Math.max(0, run.progressBytesCurrent ?? 0);
+  const total = Math.max(0, run.progressBytesTotal ?? 0);
+  const unknownItems = Math.max(0, run.progressBytesUnknownItems ?? 0);
+  if (current === 0 && total === 0 && unknownItems === 0 && !["queued", "running"].includes(run.status)) return null;
+  const determinate = unknownItems === 0 && total > 0;
+  const percent = determinate ? Math.min(100, Math.max(0, (current / total) * 100)) : 0;
+  const label = unknownItems > 0
+    ? `${formatBytes(current)} transferred · ${formatBytes(total)} known total · ${unknownItems} unknown-size ${unknownItems === 1 ? "file" : "files"}`
+    : total > 0
+      ? `${formatBytes(current)} of ${formatBytes(total)}`
+      : `${formatBytes(current)} transferred`;
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3 lg:col-span-2" role="status" aria-label="Fetch transfer progress">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="font-semibold">Transfer</span>
+        <span className="tabular-nums text-muted-foreground">{label}</span>
+      </div>
+      {determinate ? (
+        <div
+          className="h-2 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label="Fetch byte progress"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={Math.min(current, total)}
+          aria-valuetext={label}
+        >
+          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+        </div>
+      ) : (
+        <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
         </div>
       )}
     </div>

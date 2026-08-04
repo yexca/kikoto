@@ -30,13 +30,15 @@ Kikoto currently includes:
 - A persistent browser player plus Android media-session integration.
 - SQLite-backed priority jobs with resource lanes, retry state, notifications,
   and restart recovery for the supported workflow families.
+- Fetch Activity with byte-level remote-transfer progress that distinguishes
+  known totals from files whose size is not declared.
+- Bounded remote media and cover downloads plus retention cleanup for
+  unpublished staging left by failed or cancelled Fetch runs.
 
 ## Current Limits And Remaining Hardening
 
 - The SQLite deployment model is single-instance; distributed worker execution
   is outside the current personal-deployment scope.
-- Fetch progress is primarily file-based. Byte-level progress and
-  retention-based cleanup of failed or cancelled staging manifests remain
-  incomplete.
-- Outbound requests do not yet enforce the complete URL, redirect, address,
-  download-size, and DNS-rebinding contract described by the security guidance.
+- Outbound downloads now enforce destination-size limits, but requests do not
+  yet enforce the complete URL, redirect, address, and DNS-rebinding contract
+  described by the security guidance.

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
+	"github.com/yexca/kikoto/backend/internal/download"
 )
 
 var ErrNoProduct = errors.New("dlsite product not found")
@@ -419,13 +420,7 @@ func (c *Client) DownloadCover(ctx context.Context, product Product, cacheRoot s
 		return "", HTTPStatusError{Operation: "cover download", Status: response.Status, StatusCode: response.StatusCode, RetryAfter: response.Header.Get("Retry-After")}
 	}
 
-	file, err := os.Create(targetPath)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, response.Body); err != nil {
+	if _, err := download.WriteFile(response.Body, response.ContentLength, targetPath, download.Options{MaxBytes: download.CoverMaxBytes}); err != nil {
 		return "", err
 	}
 	return relativePath, nil

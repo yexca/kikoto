@@ -48,8 +48,12 @@ and skips per-work checks. It does not mark every candidate work as missing.
 ## Download Pacing
 
 Remote downloads wait for configured delay and retry temporary errors with
-backoff. DLsite metadata sync also uses configured base delay and backoff for
-provider product and cover requests.
+backoff. Maintenance also configures a bounded per-file media download size;
+the default is 100 GB and the accepted range is 1–2048 GB. The limit applies to
+Fetch and playback-cache materialization even when the source does not declare
+a response size. Remote and DLsite covers use a separate fixed 20 MiB limit.
+DLsite metadata sync also uses configured base delay and backoff for provider
+product and cover requests.
 
 Fetch planning uses already complete persisted metadata and cached source
 availability. When the requested code has no DLsite snapshot or edition

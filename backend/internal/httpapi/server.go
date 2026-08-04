@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -47,6 +46,7 @@ type Server struct {
 	metadataSyncMu                 sync.Mutex
 	jobRunnerMu                    sync.Mutex
 	jobRunnerStarted               bool
+	fetchStagingCleanupMu          sync.Mutex
 	sourceGate                     *sourceRequestGate
 	localMediaIndexMu              sync.Mutex
 	localMediaIndexes              map[string]*localMediaIndexCall
@@ -1651,7 +1651,9 @@ func (s *Server) executeRemoteMediaCacheJob(ctx context.Context, job workflowJob
 		return err
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "download", map[string]any{"cachePath": target.CachePath}, 0, 1)
-	written, err := s.downloadToFile(ctx, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath)
+	written, err := s.downloadToFile(ctx, firstNonEmpty(target.DownloadURL, target.StreamURL), targetPath, remoteDownloadOptions{
+		MaxBytes: s.remoteMediaDownloadLimitBytes(ctx),
+	})
 	if err != nil {
 		_ = s.finishMediaCacheRun(ctx, job.RunID, job.NodeRunID, job.ID, "failed", target.CachePath, err.Error(), 0)
 		return err
@@ -2608,89 +2610,6 @@ func (s *Server) settingBoolContext(ctx context.Context, key string, fallback bo
 		return fallback
 	}
 	return value
-}
-
-func (s *Server) downloadToFile(ctx context.Context, sourceURL string, targetPath string) (int64, error) {
-	if strings.TrimSpace(sourceURL) == "" {
-		return 0, fmt.Errorf("remote media has no download URL")
-	}
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
-			return 0, err
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-		if err != nil {
-			return 0, err
-		}
-		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-		response, err := s.sourceDownloadHTTPClient(0).Do(request)
-		if err != nil {
-			downloadErr := remoteDownloadError{Err: err, Retryable: true}
-			lastErr = downloadErr
-			if attempt < 2 {
-				if sleepErr := sleepContext(ctx, s.remoteBackoffDuration(ctx, nil, attempt)); sleepErr != nil {
-					return 0, sleepErr
-				}
-				continue
-			}
-			return 0, downloadErr
-		}
-		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			defer response.Body.Close()
-			return writeDownloadResponse(response.Body, targetPath)
-		}
-		statusErr := remoteDownloadError{StatusCode: response.StatusCode, Retryable: isRetryableRemoteStatus(response.StatusCode)}
-		lastErr = statusErr
-		retryable := isRetryableRemoteStatus(response.StatusCode)
-		backoff := s.remoteBackoffDuration(ctx, response, attempt)
-		_ = response.Body.Close()
-		if !retryable || attempt >= 2 {
-			return 0, statusErr
-		}
-		if err := sleepContext(ctx, backoff); err != nil {
-			return 0, err
-		}
-	}
-	return 0, lastErr
-}
-
-type remoteDownloadError struct {
-	Err        error
-	StatusCode int
-	Retryable  bool
-}
-
-func (e remoteDownloadError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return fmt.Sprintf("remote media download returned HTTP %d", e.StatusCode)
-}
-
-func (e remoteDownloadError) Unwrap() error { return e.Err }
-
-func writeDownloadResponse(body io.Reader, targetPath string) (int64, error) {
-	tempPath := targetPath + ".tmp"
-	file, err := os.Create(tempPath)
-	if err != nil {
-		return 0, err
-	}
-	written, copyErr := io.Copy(file, body)
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.Remove(tempPath)
-		return 0, copyErr
-	}
-	if closeErr != nil {
-		_ = os.Remove(tempPath)
-		return 0, closeErr
-	}
-	if err := os.Rename(tempPath, targetPath); err != nil {
-		_ = os.Remove(tempPath)
-		return 0, err
-	}
-	return written, nil
 }
 
 func (s *Server) waitRemoteDownloadDelay(ctx context.Context) error {
@@ -4216,7 +4135,11 @@ func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
 	if _, err := s.markStaleWorkflowRuns(ctx, "startup interrupted before completion"); err != nil {
 		return err
 	}
-	return s.reconcileRemoteFetchManifests(ctx)
+	if err := s.reconcileRemoteFetchManifests(ctx); err != nil {
+		return err
+	}
+	_, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now())
+	return err
 }
 
 func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {

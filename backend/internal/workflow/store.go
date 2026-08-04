@@ -478,6 +478,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.CreatedAt, &item.StartedAt, &item.FinishedAt, &item.SummaryJSON,
 		&item.NodeRunCount, &item.CompletedNodeRuns, &item.FailedNodeRuns, &item.SkippedNodeRuns,
 		&item.JobCount, &item.CompletedJobs, &item.FailedJobs, &item.SkippedJobs,
+		&item.ProgressBytesCurrent, &item.ProgressBytesTotal, &item.ProgressBytesUnknownItems,
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
 		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID,
 	)
@@ -519,6 +520,9 @@ func runSelectSQL() string {
 		(SELECT COUNT(*) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id AND workflow_job.status = 'succeeded'),
 		(SELECT COUNT(*) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id AND workflow_job.status = 'failed'),
 		(SELECT COUNT(*) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id AND workflow_job.status = 'skipped'),
+		COALESCE((SELECT SUM(workflow_job.progress_bytes_current) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id), 0),
+		COALESCE((SELECT SUM(workflow_job.progress_bytes_total) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id), 0),
+		COALESCE((SELECT SUM(workflow_job.progress_bytes_unknown_items) FROM workflow_job WHERE workflow_job.workflow_run_id = run.id), 0),
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id),
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status NOT IN ('accepted', 'rejected', 'ignored', 'resolved')),
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'accepted'),

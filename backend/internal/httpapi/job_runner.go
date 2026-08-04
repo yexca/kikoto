@@ -74,6 +74,8 @@ func (s *Server) StartJobRunner(ctx context.Context) {
 func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+	stagingCleanupTicker := time.NewTicker(remoteFetchStagingCleanupPeriod)
+	defer stagingCleanupTicker.Stop()
 	for {
 		if err := s.dispatchDueCustomWorkflowTrigger(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
@@ -88,6 +90,10 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		case <-stagingCleanupTicker.C:
+			if _, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now()); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("clean expired remote Fetch staging", "error", err)
+			}
 		}
 	}
 }
@@ -338,6 +344,27 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if job.WorkerType == "remote_work_fetch" {
+		var stagingCleanupRunning bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM remote_fetch_manifest
+				WHERE workflow_run_id = ? AND state = 'cleaning_staging'
+			)
+		`, job.RunID).Scan(&stagingCleanupRunning); err != nil {
+			return err
+		}
+		if stagingCleanupRunning {
+			return errors.New("Fetch staging cleanup is in progress; retry after cleanup finishes")
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE remote_fetch_manifest
+			SET staging_cleaned_at = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ?
+		`, job.RunID); err != nil {
+			return err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET status = 'queued', retry_count = retry_count + 1, available_at = ?, error_message = '',

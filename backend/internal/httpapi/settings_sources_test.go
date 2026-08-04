@@ -76,6 +76,9 @@ func TestLoadAppSettingsIsReadOnly(t *testing.T) {
 	if settings.LocalScanDepth != 3 {
 		t.Fatalf("local scan depth = %d, want 3", settings.LocalScanDepth)
 	}
+	if settings.RemoteDownloadLimitGB != defaultRemoteDownloadLimitGB || settings.FetchStagingRetentionDays != defaultFetchStagingRetentionDays {
+		t.Fatalf("transfer settings = %d GB / %d days", settings.RemoteDownloadLimitGB, settings.FetchStagingRetentionDays)
+	}
 	localSources := 0
 	for _, source := range settings.FileSources {
 		if source.Code == "main_local_library" {
@@ -84,6 +87,40 @@ func TestLoadAppSettingsIsReadOnly(t *testing.T) {
 	}
 	if localSources != 1 {
 		t.Fatalf("local source count = %d, want 1", localSources)
+	}
+}
+
+func TestUpdateSettingsValidatesAndPersistsFetchTransferLimits(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "valid", body: `{"remoteDownloadLimitGb":256,"fetchStagingRetentionDays":14}`, wantStatus: http.StatusOK},
+		{name: "download too small", body: `{"remoteDownloadLimitGb":0}`, wantStatus: http.StatusBadRequest},
+		{name: "retention too large", body: `{"fetchStagingRetentionDays":366}`, wantStatus: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{})
+			request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(test.body))
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+			response := httptest.NewRecorder()
+			server.updateSettings(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if test.name != "valid" {
+				return
+			}
+			var settings appSettingsResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
+				t.Fatal(err)
+			}
+			if settings.RemoteDownloadLimitGB != 256 || settings.FetchStagingRetentionDays != 14 {
+				t.Fatalf("settings = %d GB / %d days", settings.RemoteDownloadLimitGB, settings.FetchStagingRetentionDays)
+			}
+		})
 	}
 }
 

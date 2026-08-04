@@ -444,6 +444,8 @@ export type AppSettings = {
   localScanDepth: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  remoteDownloadLimitGb: number;
+  fetchStagingRetentionDays: number;
   remoteSaveTemplate: string;
   remoteDelayBaseSeconds: number;
   remoteDelayRandomSeconds: number;
@@ -767,6 +769,9 @@ export type WorkflowRun = {
   completedJobs: number;
   failedJobs: number;
   skippedJobs: number;
+  progressBytesCurrent: number;
+  progressBytesTotal: number;
+  progressBytesUnknownItems: number;
   candidateCount: number;
   pendingCandidates: number;
   acceptedCandidates: number;
@@ -1962,6 +1967,8 @@ export const api = {
     localScanDepth?: number;
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
+    remoteDownloadLimitGb?: number;
+    fetchStagingRetentionDays?: number;
     remoteSaveTemplate?: string;
     remoteDelayBaseSeconds?: number;
     remoteDelayRandomSeconds?: number;

@@ -46,6 +46,9 @@ Demo mode renders Settings read-only.
 - Cache & Fetch presents editable policy first, followed by managed-media usage
   and cleanup controls. Its configuration is a vertical list; resolved save
   paths are read-only previews owned by Paths.
+- Cache & Fetch includes the per-file remote media limit and the retention age
+  for unpublished staging from failed or cancelled Fetch runs. The defaults are
+  100 GB per media file and seven days of staging retention.
 - Managed media cache cleanup is grouped by source scope. Groups can be
   collapsed and selected as a unit while the bounded list scrolls independently
   for large libraries. Cleanup remains a two-step destructive action.

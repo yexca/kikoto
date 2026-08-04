@@ -88,6 +88,8 @@ export function MaintenancePage({
   const [localScanDepth, setLocalScanDepth] = useState(2);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
+  const [remoteDownloadLimitGb, setRemoteDownloadLimitGb] = useState(100);
+  const [fetchStagingRetentionDays, setFetchStagingRetentionDays] = useState(7);
   const [remoteDelayBase, setRemoteDelayBase] = useState(0.5);
   const [remoteDelayRandom, setRemoteDelayRandom] = useState(1.5);
   const [remoteBackoff, setRemoteBackoff] = useState(30);
@@ -120,6 +122,8 @@ export function MaintenancePage({
         setLocalScanDepth(next.localScanDepth);
         setCacheEnabled(next.cacheEnabled);
         setCacheLimitGb(next.cacheLimitGb);
+        setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
+        setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
         setRemoteDelayBase(next.remoteDelayBaseSeconds);
         setRemoteDelayRandom(next.remoteDelayRandomSeconds);
         setRemoteBackoff(next.remoteBackoffSeconds);
@@ -164,6 +168,8 @@ export function MaintenancePage({
       localScanDepth,
       cacheEnabled,
       cacheLimitGb,
+      remoteDownloadLimitGb,
+      fetchStagingRetentionDays,
       remoteDelayBaseSeconds: remoteDelayBase,
       remoteDelayRandomSeconds: remoteDelayRandom,
       remoteBackoffSeconds: remoteBackoff,
@@ -176,6 +182,9 @@ export function MaintenancePage({
     });
     setSettings(next);
     setCacheEnabled(next.cacheEnabled);
+    setCacheLimitGb(next.cacheLimitGb);
+    setRemoteDownloadLimitGb(next.remoteDownloadLimitGb);
+    setFetchStagingRetentionDays(next.fetchStagingRetentionDays);
     setRecommendationConfig(next.recommendationConfig);
     toast.success("Settings saved.");
   };
@@ -397,12 +406,16 @@ export function MaintenancePage({
         <CacheFetchSettings
           cacheEnabled={cacheEnabled}
           cacheLimitGb={cacheLimitGb}
+          remoteDownloadLimitGb={remoteDownloadLimitGb}
+          fetchStagingRetentionDays={fetchStagingRetentionDays}
           remoteDelayBase={remoteDelayBase}
           remoteDelayRandom={remoteDelayRandom}
           remoteBackoff={remoteBackoff}
           remoteMaxBackoff={remoteMaxBackoff}
           onCacheEnabledChange={setCacheEnabled}
           onCacheLimitChange={setCacheLimitGb}
+          onRemoteDownloadLimitChange={setRemoteDownloadLimitGb}
+          onFetchStagingRetentionChange={setFetchStagingRetentionDays}
           onRemoteDelayBaseChange={setRemoteDelayBase}
           onRemoteDelayRandomChange={setRemoteDelayRandom}
           onRemoteBackoffChange={setRemoteBackoff}
@@ -1434,12 +1447,16 @@ function RemoteSourcesSettings({
 function CacheFetchSettings({
   cacheEnabled,
   cacheLimitGb,
+  remoteDownloadLimitGb,
+  fetchStagingRetentionDays,
   remoteDelayBase,
   remoteDelayRandom,
   remoteBackoff,
   remoteMaxBackoff,
   onCacheEnabledChange,
   onCacheLimitChange,
+  onRemoteDownloadLimitChange,
+  onFetchStagingRetentionChange,
   onRemoteDelayBaseChange,
   onRemoteDelayRandomChange,
   onRemoteBackoffChange,
@@ -1448,12 +1465,16 @@ function CacheFetchSettings({
 }: {
   cacheEnabled: boolean;
   cacheLimitGb: number;
+  remoteDownloadLimitGb: number;
+  fetchStagingRetentionDays: number;
   remoteDelayBase: number;
   remoteDelayRandom: number;
   remoteBackoff: number;
   remoteMaxBackoff: number;
   onCacheEnabledChange: (value: boolean) => void;
   onCacheLimitChange: (value: number) => void;
+  onRemoteDownloadLimitChange: (value: number) => void;
+  onFetchStagingRetentionChange: (value: number) => void;
   onRemoteDelayBaseChange: (value: number) => void;
   onRemoteDelayRandomChange: (value: number) => void;
   onRemoteBackoffChange: (value: number) => void;
@@ -1576,6 +1597,36 @@ function CacheFetchSettings({
                 />
                 <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">GB</span>
               </div>
+            </ConfigurationRow>
+
+            <ConfigurationSectionLabel>Transfer safety</ConfigurationSectionLabel>
+            <ConfigurationRow
+              title="Per-file download limit"
+              description="Hard limit applied while streaming Fetch, playback-cache, and other remote media files. Covers use a fixed 20 MiB limit."
+            >
+              <ConfigurationNumberInput
+                label="Per-file download limit"
+                value={remoteDownloadLimitGb}
+                min={1}
+                max={2048}
+                step={1}
+                unit="GB"
+                onChange={onRemoteDownloadLimitChange}
+              />
+            </ConfigurationRow>
+            <ConfigurationRow
+              title="Failed staging retention"
+              description="Remove unpublished staging data after failed or cancelled Fetch runs reach this age."
+            >
+              <ConfigurationNumberInput
+                label="Failed staging retention"
+                value={fetchStagingRetentionDays}
+                min={1}
+                max={365}
+                step={1}
+                unit="days"
+                onChange={onFetchStagingRetentionChange}
+              />
             </ConfigurationRow>
 
             <ConfigurationSectionLabel>Remote download pacing</ConfigurationSectionLabel>
@@ -1831,13 +1882,17 @@ function ConfigurationNumberInput({
   label,
   value,
   min,
+  max,
   step,
+  unit = "sec",
   onChange,
 }: {
   label: string;
   value: number;
   min: number;
+  max?: number;
   step: number;
+  unit?: string;
   onChange: (value: number) => void;
 }) {
   return (
@@ -1847,11 +1902,12 @@ function ConfigurationNumberInput({
         className="min-w-0 flex-1 bg-transparent px-3 text-right outline-none focus:ring-2 focus:ring-ring"
         type="number"
         min={min}
+        max={max}
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">sec</span>
+      <span className="flex items-center border-l bg-muted px-3 text-xs text-muted-foreground">{unit}</span>
     </div>
   );
 }

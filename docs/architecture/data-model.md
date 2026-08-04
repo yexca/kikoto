@@ -65,6 +65,12 @@ review actions inspectable. `workflow_job.priority` is durable queue-ordering
 metadata; higher values claim first, with creation time and id as FIFO
 tie-breakers.
 
+`workflow_job.progress_bytes_current`, `progress_bytes_total`, and
+`progress_bytes_unknown_items` preserve Fetch transfer progress without
+overloading file-count progress. `remote_fetch_manifest.staging_cleaned_at`
+records retention cleanup while the manifest and its reviewable run history
+remain available for retry.
+
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,
 not a per-file index or a directory snapshot.

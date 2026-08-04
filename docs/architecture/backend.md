@@ -69,9 +69,10 @@ revalidate allowed redirects, prevent DNS-rebinding time-of-check/time-of-use
 gaps, remove credentials on origin changes, and bound time, response size,
 stream size, concurrency, and retries.
 
-The current clients do not yet implement that complete transport contract. See
-[Secure development](../development/security.md) and
-[Runtime security](../operations/security.md) before extending an outbound
+Current media and cover file-writing paths enforce streamed destination-size
+limits. The clients do not yet implement the complete origin, redirect,
+address, and DNS-pinning transport contract. See [Secure development](../development/security.md)
+and [Runtime security](../operations/security.md) before extending an outbound
 request path.
 
 ## Current Limits

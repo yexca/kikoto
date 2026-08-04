@@ -21,8 +21,9 @@ Kikoto is configured through environment variables and administrator settings.
 
 ## Administrator Settings
 
-The Settings page manages local scan depth, cache behavior, remote request
-pacing, DLsite metadata language, file sources, and circle auto-refresh.
+Maintenance manages local scan depth, cache behavior, the remote per-file
+download limit, failed Fetch staging retention, remote request pacing, DLsite
+metadata language, file sources, and circle auto-refresh.
 
 See [Settings](../product/settings.md) for user-visible behavior.
 

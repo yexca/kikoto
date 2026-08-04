@@ -59,6 +59,9 @@ Workflows make backend actions inspectable.
 - A queued or running Fetch is unique per canonical work. Repeated Fetch
   requests reuse that run instead of downloading the same work twice, and every
   requesting user receives the shared run's terminal notification.
+- Fetch Activity reports byte-level remote-transfer progress. Unknown-size
+  files stay explicit and suppress percentage presentation until their actual
+  size is known.
 
 ## Current Limits
 
