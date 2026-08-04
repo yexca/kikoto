@@ -96,6 +96,9 @@ anonymous user.
 - Use generic names such as `Example Remote` and identifiers that are obviously
   synthetic. Never copy a configured source, work record, log, database, or
   personal filesystem path into a fixture.
+- A plausible catalog number is not synthetic merely because it was chosen for
+  a test. Use the repository-reserved identities in
+  [Synthetic Fixture Data](testing.md#synthetic-fixture-data).
 - Keep secrets in local environment or mounted configuration. Do not commit an
   `.env` file with real values.
 - Do not treat `.gitignore` as a secrecy boundary. Keep deployment credentials

@@ -103,6 +103,10 @@ app composition -> domain feature -> shared application code -> primitives
 - Tests should protect a concrete user-visible behavior, public contract, state
   transition, or prior regression. Choose the lowest sufficient layer and do
   not repeat the same assertion at every layer.
+- Before adding or changing test fixtures, follow
+  [Synthetic Fixture Data](docs/development/testing.md#synthetic-fixture-data).
+  Use the repository-reserved `RJ00000000` through `RJ00000099` sequence when
+  work identity is incidental; do not improvise a plausible catalog number.
 - Prefer accessible roles, names, and labels in browser tests. Add an authored
   stable semantic marker only when a complex app-owned surface has no useful
   accessible boundary. Do not make utility classes or incidental DOM ancestry a
