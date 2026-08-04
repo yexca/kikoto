@@ -56,7 +56,7 @@ func TestSourceRequestGateSerializesSameOrigin(t *testing.T) {
 	}
 }
 
-func TestSourceRequestGateOnlyPacesDownloadLane(t *testing.T) {
+func TestSourceRequestGatePacesCrawlAndDownloadLanes(t *testing.T) {
 	var requests int32
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&requests, 1)
@@ -80,6 +80,22 @@ func TestSourceRequestGateOnlyPacesDownloadLane(t *testing.T) {
 	}
 	_ = interactiveResponse.Body.Close()
 
+	firstCrawl, err := server.sourceCrawlHTTPClient(source, 250*time.Millisecond).Get(remote.URL)
+	if err != nil {
+		t.Fatalf("first crawl request: %v", err)
+	}
+	_ = firstCrawl.Body.Close()
+
+	crawlContext, cancelCrawl := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancelCrawl()
+	crawlRequest, err := http.NewRequestWithContext(crawlContext, http.MethodGet, remote.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.sourceCrawlHTTPClient(source, 0).Do(crawlRequest); err == nil {
+		t.Fatal("crawl request unexpectedly bypassed pacing")
+	}
+
 	firstDownload, err := server.sourceDownloadHTTPClient(source, 250*time.Millisecond).Get(remote.URL)
 	if err != nil {
 		t.Fatalf("first download request: %v", err)
@@ -95,8 +111,8 @@ func TestSourceRequestGateOnlyPacesDownloadLane(t *testing.T) {
 	if _, err := server.sourceDownloadHTTPClient(source, 0).Do(downloadRequest); err == nil {
 		t.Fatal("download request unexpectedly bypassed pacing")
 	}
-	if got := atomic.LoadInt32(&requests); got != 2 {
-		t.Fatalf("remote requests = %d, want interactive and first download", got)
+	if got := atomic.LoadInt32(&requests); got != 3 {
+		t.Fatalf("remote requests = %d, want interactive, first crawl, and first download", got)
 	}
 }
 

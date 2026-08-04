@@ -33,6 +33,7 @@ type sourceRequestClass uint8
 
 const (
 	sourceRequestInteractive sourceRequestClass = iota
+	sourceRequestCrawl
 	sourceRequestDownload
 )
 
@@ -86,9 +87,12 @@ func newSourceRequestGate() *sourceRequestGate {
 
 func (g *sourceRequestGate) lane(key string, class sourceRequestClass) *sourceRequestLane {
 	laneKey := key
-	if class == sourceRequestDownload {
+	switch class {
+	case sourceRequestCrawl:
+		laneKey += ":crawl"
+	case sourceRequestDownload:
 		laneKey += ":download"
-	} else {
+	default:
 		laneKey += ":interactive"
 	}
 	g.mu.Lock()
@@ -122,7 +126,7 @@ func (t *sourceGateTransport) RoundTrip(request *http.Request) (*http.Response, 
 	lane.mu.Lock()
 	release := lane.mu.Unlock
 	delay := time.Duration(0)
-	if t.class == sourceRequestDownload {
+	if t.class == sourceRequestCrawl || t.class == sourceRequestDownload {
 		delay = t.server.remoteRequestDelayDuration(request.Context())
 	}
 	waitUntil := origin.blockedUntilValue()
@@ -166,6 +170,10 @@ func (transport sourcePolicyErrorTransport) RoundTrip(*http.Request) (*http.Resp
 
 func (s *Server) sourceHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {
 	return s.sourceClient(source, timeout, sourceRequestInteractive)
+}
+
+func (s *Server) sourceCrawlHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {
+	return s.sourceClient(source, timeout, sourceRequestCrawl)
 }
 
 func (s *Server) sourceDownloadHTTPClient(source remoteSourceForUse, timeout time.Duration) *http.Client {

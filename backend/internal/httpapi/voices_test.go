@@ -3,9 +3,73 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
+
+func TestSearchVoiceRemoteSourcesUsesPreferredMetadataLanguageAndPreservesTags(t *testing.T) {
+	tags := []kikoeru.Tag{
+		{Name: "中文标签", I18n: map[string]kikoeru.LocalizedTag{"ja-jp": {Name: "日本語タグ"}}},
+		{Name: "Tag 2"},
+		{Name: "Tag 3"},
+		{Name: "Tag 4"},
+		{Name: "Tag 5"},
+		{Name: "Tag 6"},
+		{Name: "Tag 7"},
+		{Name: "Tag 8"},
+		{Name: "Tag 9"},
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if !strings.HasPrefix(request.URL.Path, "/api/search/") {
+			http.NotFound(w, request)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
+			Works: []kikoeru.Work{{
+				ID: 1, SourceID: "RJ00000001", Title: "Remote voice work", Tags: tags,
+			}},
+			Pagination: kikoeru.Pagination{Page: 1, PageSize: voiceRemotePageSize, TotalCount: 1},
+		})
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{query: `INSERT INTO person (id, display_name) VALUES (1, 'Example voice')`},
+		{query: `INSERT INTO file_source (id, code, display_name, source_type, priority, enabled) VALUES (11, 'example_remote', 'Example Remote', 'kikoeru_compatible', 10, 1)`},
+		{query: `INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (11, ?, ?)`, args: []any{remote.URL, remote.URL}},
+		{query: `INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_language', '"ja-jp"') ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json`},
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement.query, statement.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	server := NewServer(db, config.Config{})
+	results, err := server.searchVoiceRemoteSources(context.Background(), 1, "Example voice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "ok" || len(results[0].Works) != 1 {
+		t.Fatalf("remote results = %+v, want one successful source with one work", results)
+	}
+	projectedTags := results[0].Works[0].Tags
+	if len(projectedTags) != len(tags) {
+		t.Fatalf("tags = %v, want all %d remote tags", projectedTags, len(tags))
+	}
+	if projectedTags[0] != "日本語タグ" || projectedTags[len(projectedTags)-1] != "Tag 9" {
+		t.Fatalf("tags = %v, want Japanese localization without truncation", projectedTags)
+	}
+}
 
 func TestLoadVoiceSummariesSerializesMissingUserTagsAsArray(t *testing.T) {
 	db := openMigratedTestDB(t)

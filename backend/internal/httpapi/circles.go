@@ -2388,7 +2388,7 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	if err != nil {
 		return 0, err
 	}
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(source)
 	keyword := "$circle:" + circleName + "$"
 	pageSize := 20
 	maxPages := 10
@@ -2397,9 +2397,6 @@ func (s *Server) syncCircleRemoteSourceCatalog(ctx context.Context, partyID int6
 	}
 	synced := 0
 	for page := 1; page <= maxPages; page++ {
-		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
-			return synced, err
-		}
 		worksPage, err := client.ListWorks(ctx, page, pageSize, keyword)
 		if err != nil {
 			return synced, err
@@ -2647,10 +2644,7 @@ func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sourc
 		if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 			continue
 		}
-		if err := s.waitRemoteDownloadDelay(ctx); err != nil {
-			return false
-		}
-		remoteWork, err := s.checkRemoteWorkAvailability(ctx, source, code)
+		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, sourceRequestCrawl)
 		if err != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 			continue

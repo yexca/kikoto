@@ -2133,7 +2133,7 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err = s.checkRemoteSourceHealth(healthCtx, source)
+	err = s.checkRemoteSourceHealthWithClass(healthCtx, source, sourceRequestCrawl)
 	cancel()
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -2144,17 +2144,13 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 	maxPages := configInt(node.Config, "maxPages", 10)
 	maxWorks := configInt(node.Config, "maxWorks", 100)
 	keyword := "$va:" + voiceName + "$"
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(source)
+	projector := s.remoteCatalogProjector(ctx)
 	candidates := []customWorkCandidate{}
 	seen := map[string]bool{}
 	for pageNumber := 1; pageNumber <= maxPages && len(candidates) < maxWorks; pageNumber++ {
 		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
 			return customNodeExecution{}, err
-		}
-		if pageNumber > 1 {
-			if err := s.waitRemoteDownloadDelay(ctx); err != nil {
-				return customNodeExecution{}, err
-			}
 		}
 		page, err := client.ListWorks(ctx, pageNumber, pageSize, keyword)
 		if err != nil {
@@ -2167,7 +2163,7 @@ func (s *Server) executeCustomVoiceSourceWorks(ctx context.Context, runID int64,
 				continue
 			}
 			seen[code] = true
-			candidates = append(candidates, customCandidateFromRemoteWork(remoteWork, source.ID))
+			candidates = append(candidates, customCandidateFromRemoteWork(remoteWork, source.ID, projector))
 			if len(candidates) >= maxWorks {
 				break
 			}
@@ -2219,15 +2215,16 @@ func (s *Server) executeCustomSourcePopularWorks(ctx context.Context, node custo
 		return customNodeExecution{}, fmt.Errorf("source is not an enabled compatible remote source")
 	}
 	maxWorks := configInt(node.Config, "maxWorks", 100)
-	page, err := s.kikoeruClientForSource(source).PopularWorks(ctx, 1, maxWorks)
+	page, err := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, maxWorks)
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		return customNodeExecution{}, err
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	projector := s.remoteCatalogProjector(ctx)
 	candidates := make([]customWorkCandidate, 0, min(len(page.Works), maxWorks))
 	for _, work := range page.Works {
-		candidate := customCandidateFromRemoteWork(work, source.ID)
+		candidate := customCandidateFromRemoteWork(work, source.ID, projector)
 		if candidate.Code == "" {
 			continue
 		}
@@ -2241,22 +2238,11 @@ func (s *Server) executeCustomSourcePopularWorks(ctx context.Context, node custo
 	}}, nil
 }
 
-func customCandidateFromRemoteWork(work kikoeru.Work, sourceID int64) customWorkCandidate {
-	voices := make([]string, 0, len(work.VAs))
-	for _, voice := range work.VAs {
-		if name := strings.TrimSpace(voice.Name); name != "" {
-			voices = append(voices, name)
-		}
-	}
-	tags := make([]string, 0, len(work.Tags))
-	for _, tag := range work.Tags {
-		if name := strings.TrimSpace(tag.Name); name != "" {
-			tags = append(tags, name)
-		}
-	}
+func customCandidateFromRemoteWork(work kikoeru.Work, sourceID int64, projector remoteCatalogProjector) customWorkCandidate {
+	projected := projector.project(sourceID, work)
 	return customWorkCandidate{
-		Code: normalizedRemoteWorkCode(work), SourceID: sourceID, Title: firstNonEmpty(work.Title, work.Name),
-		ReleaseDate: normalizeCustomReleaseDate(work.Release), VoiceNames: uniqueFoldedStrings(voices), MetadataTags: uniqueFoldedStrings(tags),
+		Code: projected.RemoteCode, SourceID: sourceID, Title: projected.Title,
+		ReleaseDate: normalizeCustomReleaseDate(projected.ReleaseDate), VoiceNames: uniqueFoldedStrings(projected.VoiceActors), MetadataTags: uniqueFoldedStrings(projected.Tags),
 	}
 }
 
@@ -2490,7 +2476,7 @@ func (s *Server) executeCustomSourceAvailability(ctx context.Context, runID int6
 		return customNodeExecution{Partial: len(failed) > 0, Outputs: customAvailabilityOutputs(available, missing, failed)}, nil
 	}
 	healthCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	healthErr := s.checkRemoteSourceHealth(healthCtx, source)
+	healthErr := s.checkRemoteSourceHealthWithClass(healthCtx, source, sourceRequestCrawl)
 	cancel()
 	if healthErr != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -2502,18 +2488,14 @@ func (s *Server) executeCustomSourceAvailability(ctx context.Context, runID int6
 		return customNodeExecution{Partial: len(failed) > 0, Outputs: customAvailabilityOutputs(available, missing, failed)}, nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	client := s.kikoeruCrawlClientForSource(source)
 	resultsByCode := map[string]sourceAvailabilitySummary{}
-	for index, candidate := range candidates {
+	for _, candidate := range candidates {
 		if err := s.ensureWorkflowRunActive(ctx, runID); err != nil {
 			return customNodeExecution{}, err
 		}
-		if index > 0 {
-			if err := s.waitRemoteDownloadDelay(ctx); err != nil {
-				return customNodeExecution{}, err
-			}
-		}
 		started := time.Now()
-		remoteWork, checkErr := s.checkRemoteWorkAvailability(ctx, source, candidate.Code)
+		remoteWork, _, checkErr := s.resolveKikoeruWork(ctx, client, candidate.Code)
 		summary := sourceAvailabilitySummary{SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, ElapsedMS: time.Since(started).Milliseconds()}
 		candidate.SourceID = source.ID
 		if checkErr != nil {
