@@ -408,10 +408,10 @@ export function HeaderActions({
                       >
                         {notification.status === "succeeded" ? (
                           notification.type === "remote_track"
-                            ? <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                            : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                            ? <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                            : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                         ) : (
-                          <Download className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                          <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
                         )}
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{notification.message}</span>

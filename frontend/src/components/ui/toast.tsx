@@ -113,7 +113,7 @@ function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void
     <div className={cn("relative overflow-hidden rounded-lg border bg-card shadow-xl", toastTone(toast.kind))}>
       <div className="flex items-start gap-3 p-3 pr-10 text-sm">
         <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-        <div className="min-w-0 flex-1 text-card-foreground">{toast.message}</div>
+        <div className="min-w-0 flex-1">{toast.message}</div>
         {toast.actionLabel && toast.onAction && (
           <button
             className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
@@ -131,7 +131,7 @@ function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void
       </div>
       <div className="h-1 bg-muted">
         <div
-          className={cn("h-full origin-left animate-toast-progress", toast.kind === "error" ? "bg-destructive" : toast.kind === "warning" ? "bg-accent-foreground" : "bg-primary")}
+          className={cn("h-full origin-left animate-toast-progress", toastProgressTone(toast.kind))}
           style={{ animationDuration: `${toast.durationMs}ms` }}
         />
       </div>
@@ -186,8 +186,15 @@ function toastDuration(kind: ToastKind) {
 }
 
 function toastTone(kind: ToastKind) {
-  if (kind === "error") return "border-destructive/40 text-destructive";
-  if (kind === "warning") return "border-accent text-accent-foreground";
-  if (kind === "success") return "border-primary/35 text-primary";
-  return "border-border text-foreground";
+  if (kind === "error") return "border-error-border bg-error-surface text-error-foreground";
+  if (kind === "warning") return "border-warning-border bg-warning-surface text-warning-foreground";
+  if (kind === "success") return "border-success-border bg-success-surface text-success-foreground";
+  return "border-info-border bg-info-surface text-info-foreground";
+}
+
+function toastProgressTone(kind: ToastKind) {
+  if (kind === "error") return "bg-error";
+  if (kind === "warning") return "bg-warning";
+  if (kind === "success") return "bg-success";
+  return "bg-info";
 }

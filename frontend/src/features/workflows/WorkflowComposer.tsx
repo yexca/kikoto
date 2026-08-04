@@ -349,7 +349,7 @@ export function WorkflowComposer({
             </Button>
           </nav>
         </div>
-        {error && <div className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
+        {error && <div className="border-t border-error-border bg-error-surface px-4 py-2 text-sm text-error-foreground">{error}</div>}
       </div>
       {confirmingDelete && definition && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-background/75 p-4" onMouseDown={() => !deleting && setConfirmingDelete(false)}>
@@ -456,15 +456,15 @@ function WorkflowInspector({
       </section>
       <section className="space-y-3 border-t pt-4">
         <div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium">Require preview</div><div className="text-xs text-muted-foreground">Confirm the computed plan before queueing</div></div><Switch checked={document.policy.requirePreview} onCheckedChange={(requirePreview) => onDocumentChange({ ...document, policy: { requirePreview } })} aria-label="Require workflow preview" /></div>
-        {!document.policy.requirePreview && <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-muted-foreground">Bounded actions may launch after a server preview. The server rejects actions without explicit limits.</div>}
+        {!document.policy.requirePreview && <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground">Bounded actions may launch after a server preview. The server rejects actions without explicit limits.</div>}
       </section>
       {issues.length > 0 && (
         <section className="space-y-2 border-t pt-4">
           <div className="text-xs font-semibold uppercase text-muted-foreground">Checks</div>
-          {issues.slice(0, 8).map((issue, index) => <div key={`${issue.message}-${index}`} className="flex gap-2 text-xs text-muted-foreground">{issue.level === "error" ? <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" /> : <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />}<span>{issue.message}</span></div>)}
+          {issues.slice(0, 8).map((issue, index) => <div key={`${issue.message}-${index}`} className="flex gap-2 text-xs text-muted-foreground">{issue.level === "error" ? <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" /> : <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />}<span>{issue.message}</span></div>)}
         </section>
       )}
-      {issues.length === 0 && <div className="flex items-center gap-2 border-t pt-4 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-emerald-500" />Graph is ready to save.</div>}
+      {issues.length === 0 && <div className="flex items-center gap-2 border-t pt-4 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4 text-success" />Graph is ready to save.</div>}
     </div>
   );
 }
@@ -499,7 +499,7 @@ function NodeInspector({
     <div className="space-y-5 p-4">
       <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{node.displayName || metadata?.displayName || node.id}</h3><p className="truncate text-xs text-muted-foreground">{node.type}</p></div><Button variant="outline" size="icon" aria-label="Delete selected node" onClick={onRemove}><Trash2 className="h-4 w-4" /></Button></div>
       <InspectorField label="Node name"><input className={inputClass} value={node.displayName ?? ""} onChange={(event) => onChange({ displayName: event.target.value })} /></InspectorField>
-      {issues.length > 0 && <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/10 p-3">{issues.map((issue, index) => <div key={`${issue.message}-${index}`} className="flex gap-2 text-xs text-destructive"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{issue.message}</span></div>)}</div>}
+      {issues.length > 0 && <div className="space-y-1.5 rounded-md border border-error-border bg-error-surface p-3">{issues.map((issue, index) => <div key={`${issue.message}-${index}`} className="flex gap-2 text-xs text-error-foreground"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>{issue.message}</span></div>)}</div>}
       {workflowInput ? (
         <InputInspector input={workflowInput} document={document} node={node} onDocumentChange={onDocumentChange} />
       ) : (
@@ -553,7 +553,7 @@ function ConfigInspector({ node, metadata, sources, workflowDefinitions, onChang
         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium">Advanced JSON<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary>
         <div className="border-t p-2"><textarea className="min-h-32 w-full resize-y rounded border bg-background p-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring" value={jsonDraft} onChange={(event) => setJsonDraft(event.target.value)} onBlur={() => {
           try { const parsed = JSON.parse(jsonDraft); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); onChange({ config: parsed }); setJsonError(""); } catch { setJsonError("Config must be a JSON object."); }
-        }} />{jsonError && <div className="mt-1 text-xs text-destructive">{jsonError}</div>}</div>
+        }} />{jsonError && <div className="mt-1 text-xs text-error-foreground">{jsonError}</div>}</div>
       </details>
     </section>
   );

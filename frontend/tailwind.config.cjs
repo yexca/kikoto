@@ -30,6 +30,30 @@ module.exports = {
           DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
           foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
         },
+        success: {
+          DEFAULT: "hsl(var(--success) / <alpha-value>)",
+          foreground: "hsl(var(--success-foreground) / <alpha-value>)",
+          surface: "hsl(var(--success-surface) / <alpha-value>)",
+          border: "hsl(var(--success-border) / <alpha-value>)",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning) / <alpha-value>)",
+          foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          surface: "hsl(var(--warning-surface) / <alpha-value>)",
+          border: "hsl(var(--warning-border) / <alpha-value>)",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info) / <alpha-value>)",
+          foreground: "hsl(var(--info-foreground) / <alpha-value>)",
+          surface: "hsl(var(--info-surface) / <alpha-value>)",
+          border: "hsl(var(--info-border) / <alpha-value>)",
+        },
+        error: {
+          DEFAULT: "hsl(var(--error) / <alpha-value>)",
+          foreground: "hsl(var(--error-foreground) / <alpha-value>)",
+          surface: "hsl(var(--error-surface) / <alpha-value>)",
+          border: "hsl(var(--error-border) / <alpha-value>)",
+        },
         card: {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",

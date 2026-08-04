@@ -15,7 +15,7 @@ export type SourceTabInfo = {
   fileSourceId: number | null;
   kind?: "local" | "remote" | "tracked" | "no_source";
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
-  status: "green" | "yellow" | "red";
+  status: "available" | "degraded" | "unavailable";
   statusLabel: string;
 };
 
@@ -46,9 +46,9 @@ export type ReforkTarget = {
 };
 
 export function sourceTabStatusClass(status: SourceTabInfo["status"]) {
-  if (status === "green") return "bg-emerald-500";
-  if (status === "yellow") return "bg-amber-500";
-  return "bg-red-500";
+  if (status === "available") return "bg-success";
+  if (status === "degraded") return "bg-warning";
+  return "bg-error";
 }
 
 export function buildSourceTabs(
@@ -68,7 +68,7 @@ export function buildSourceTabs(
           sourceName: location.fileSourceName || "Local",
           fileSourceId: location.fileSourceId,
           kind: "local",
-          status: "green",
+          status: "available",
           statusLabel: "Local files available",
         });
       }
@@ -84,7 +84,7 @@ export function buildSourceTabs(
       sourceName: "Local",
       fileSourceId: -1,
       kind: "local",
-      status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "yellow" : "red",
+      status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "degraded" : "unavailable",
       statusLabel: availableRemotes.length > 0
         ? `Fetch available from ${availableRemotes[0].source.displayName}`
         : pendingRemotes.length > 0 || remoteSources.length === 0
@@ -110,7 +110,7 @@ export function buildSourceTabs(
     sourceName: "Tracked",
     fileSourceId: null,
     kind: "tracked",
-    status: "yellow",
+    status: "degraded",
     statusLabel: "No tracked source linked",
   });
   for (const remote of remoteSources) {
@@ -146,7 +146,7 @@ export function buildTrackedPresenceOptions(
         presence,
         label: presence.fileSourceName || presence.fileSourceCode || "Tracked source",
         forked,
-        status: forked ? "green" : canFork ? "yellow" : "red",
+        status: forked ? "available" : canFork ? "degraded" : "unavailable",
         statusLabel: forked
           ? "Forked directory available"
           : canFork
@@ -157,13 +157,13 @@ export function buildTrackedPresenceOptions(
 }
 
 export function remoteSourceTabStatus(summary: SourceAvailabilitySource): Pick<SourceTabInfo, "status" | "statusLabel"> {
-  if (summary.status === "available") return { status: "green", statusLabel: "Available" };
+  if (summary.status === "available") return { status: "available", statusLabel: "Available" };
   if (summary.status === "unknown" || summary.status === "error") {
-    return { status: "yellow", statusLabel: summary.status === "unknown" ? "Needs checking" : "Check failed" };
+    return { status: "degraded", statusLabel: summary.status === "unknown" ? "Needs checking" : "Check failed" };
   }
-  if (summary.status === "not_found") return { status: "red", statusLabel: "Not found" };
-  if (summary.status === "disabled") return { status: "red", statusLabel: "Disabled" };
-  return { status: "red", statusLabel: summary.error || "Unavailable" };
+  if (summary.status === "not_found") return { status: "unavailable", statusLabel: "Not found" };
+  if (summary.status === "disabled") return { status: "unavailable", statusLabel: "Disabled" };
+  return { status: "unavailable", statusLabel: summary.error || "Unavailable" };
 }
 
 export function trackedPresenceSourceID(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null) {

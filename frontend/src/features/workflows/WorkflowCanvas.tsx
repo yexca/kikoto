@@ -199,7 +199,7 @@ export function WorkflowCanvas({
       >
         <Background gap={24} size={1} color="hsl(var(--workflow-grid))" />
         {connectionNotice && (
-          <Panel position="top-center" className="pointer-events-none rounded-md border border-destructive/30 bg-background/95 px-3 py-2 text-xs text-destructive shadow-sm" aria-live="polite">
+          <Panel position="top-center" className="pointer-events-none rounded-md border border-error-border bg-error-surface/95 px-3 py-2 text-xs text-error-foreground shadow-sm" aria-live="polite">
             {connectionNotice}
           </Panel>
         )}

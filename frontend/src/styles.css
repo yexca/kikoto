@@ -60,6 +60,22 @@
     --accent-foreground: 342 42% 24%;
     --destructive: 0 65% 47%;
     --destructive-foreground: 0 0% 100%;
+    --success: 151 55% 34%;
+    --success-foreground: 151 57% 22%;
+    --success-surface: 148 44% 94%;
+    --success-border: 150 35% 69%;
+    --warning: 35 88% 38%;
+    --warning-foreground: 31 72% 24%;
+    --warning-surface: 42 78% 93%;
+    --warning-border: 38 57% 67%;
+    --info: 213 72% 44%;
+    --info-foreground: 216 62% 29%;
+    --info-surface: 211 70% 95%;
+    --info-border: 213 50% 73%;
+    --error: 0 68% 46%;
+    --error-foreground: 0 64% 34%;
+    --error-surface: 0 75% 96%;
+    --error-border: 0 50% 75%;
     --border: 220 14% 86%;
     --input: 220 14% 86%;
     --ring: 342 62% 58%;
@@ -97,6 +113,22 @@
     --accent-foreground: 330 30% 9%;
     --destructive: 0 62% 52%;
     --destructive-foreground: 0 0% 100%;
+    --success: 151 55% 62%;
+    --success-foreground: 148 58% 82%;
+    --success-surface: 151 35% 15%;
+    --success-border: 151 38% 36%;
+    --warning: 42 90% 65%;
+    --warning-foreground: 43 87% 82%;
+    --warning-surface: 36 42% 15%;
+    --warning-border: 39 54% 38%;
+    --info: 211 85% 70%;
+    --info-foreground: 210 84% 84%;
+    --info-surface: 216 40% 16%;
+    --info-border: 213 48% 39%;
+    --error: 0 75% 68%;
+    --error-foreground: 0 80% 85%;
+    --error-surface: 0 40% 16%;
+    --error-border: 0 50% 41%;
     --border: 224 12% 24%;
     --input: 224 12% 24%;
     --ring: 342 84% 72%;
@@ -422,9 +454,9 @@
   }
 
   .workflow-canvas .workflow-data-edge--failed .react-flow__edge-path {
-    stroke: #ef4444 !important;
+    stroke: hsl(var(--error)) !important;
     opacity: 1;
-    filter: drop-shadow(0 0 3px rgb(239 68 68 / 0.65));
+    filter: drop-shadow(0 0 3px hsl(var(--error) / 0.65));
   }
 
   .workflow-canvas .workflow-data-edge--skipped .react-flow__edge-path {
@@ -445,27 +477,27 @@
 
   .workflow-canvas .workflow-run-node--running,
   .workflow-canvas .workflow-run-node--flowing {
-    border-color: rgb(34 197 94 / 0.9);
+    border-color: hsl(var(--info) / 0.9);
     box-shadow:
-      0 0 0 2px rgb(34 197 94 / 0.2),
-      0 0 16px rgb(34 197 94 / 0.22);
+      0 0 0 2px hsl(var(--info) / 0.2),
+      0 0 16px hsl(var(--info) / 0.22);
     animation: workflow-node-running 1.25s ease-in-out infinite;
   }
 
   .workflow-canvas .workflow-run-node--succeeded {
-    border-color: rgb(16 185 129 / 0.48);
+    border-color: hsl(var(--success) / 0.48);
   }
 
   .workflow-canvas .workflow-run-node--partial {
-    border-color: rgb(234 179 8 / 0.75);
-    box-shadow: 0 0 0 1px rgb(234 179 8 / 0.12);
+    border-color: hsl(var(--warning) / 0.75);
+    box-shadow: 0 0 0 1px hsl(var(--warning) / 0.12);
   }
 
   .workflow-canvas .workflow-run-node--failed {
-    border-color: rgb(239 68 68 / 0.9);
+    border-color: hsl(var(--error) / 0.9);
     box-shadow:
-      0 0 0 2px rgb(239 68 68 / 0.18),
-      0 0 14px rgb(239 68 68 / 0.18);
+      0 0 0 2px hsl(var(--error) / 0.18),
+      0 0 14px hsl(var(--error) / 0.18);
   }
 
   .workflow-canvas .workflow-run-node--skipped {
@@ -536,8 +568,8 @@
   @keyframes workflow-node-running {
     50% {
       box-shadow:
-        0 0 0 3px rgb(34 197 94 / 0.24),
-        0 0 22px rgb(34 197 94 / 0.3);
+        0 0 0 3px hsl(var(--info) / 0.24),
+        0 0 22px hsl(var(--info) / 0.3);
     }
   }
 

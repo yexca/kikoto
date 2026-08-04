@@ -43,11 +43,11 @@ export function WorkCodesField({ value, onChange, className = "" }: { value: str
         spellCheck={false}
       />
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />{parsed.codes.length} valid</span>
+        <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-success" />{parsed.codes.length} valid</span>
         <span className="inline-flex items-center gap-1"><Copy className="h-3.5 w-3.5" />{parsed.duplicates.length} duplicate</span>
-        <span className={`inline-flex items-center gap-1 ${parsed.invalid.length > 0 ? "text-destructive" : ""}`}><AlertCircle className="h-3.5 w-3.5" />{parsed.invalid.length} invalid</span>
+        <span className={`inline-flex items-center gap-1 ${parsed.invalid.length > 0 ? "text-error-foreground" : ""}`}><AlertCircle className="h-3.5 w-3.5" />{parsed.invalid.length} invalid</span>
       </div>
-      {parsed.invalid.length > 0 && <div className="break-words text-xs text-destructive">Invalid: {parsed.invalid.join(", ")}</div>}
+      {parsed.invalid.length > 0 && <div className="break-words text-xs text-error-foreground">Invalid: {parsed.invalid.join(", ")}</div>}
       {parsed.codes.length > 0 && <div className="max-h-20 overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">{parsed.codes.join("\n")}</div>}
     </div>
   );

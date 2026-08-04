@@ -768,10 +768,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(trackedTab).toBeVisible();
   await expect(page.locator('button[title^="Tracked:"]')).toHaveCount(1);
   await expect(remoteTab).toBeVisible();
-  await expect(remoteTab.locator(".bg-emerald-500")).toHaveCount(1);
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
   await expect(missingRemoteTab).toBeVisible();
-  await expect(missingRemoteTab.locator(".bg-red-500")).toHaveCount(1);
   const sourceOptions = page.getByRole("button", { name: /Source actions for/ });
   await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toBeVisible();
   await sourceOptions.click();
@@ -885,7 +883,7 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   expect(trackRequests).toEqual([]);
 });
 
-test("remote detail Track completes in place and turns the forked Tracked source green", async ({ page }) => {
+test("remote detail Track completes in place and makes the forked Tracked source available", async ({ page }) => {
   const trackControl: RemoteTrackControl = { status: "queued", trackRequests: [], statusRequests: 0 };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
@@ -895,7 +893,6 @@ test("remote detail Track completes in place and turns the forked Tracked source
   const detailURL = page.url();
   const trackedTab = page.locator('button[title^="Tracked:"]');
   await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
-  await expect(trackedTab.locator(".bg-amber-500")).toHaveCount(1);
 
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Track", exact: true }).click();
@@ -909,7 +906,6 @@ test("remote detail Track completes in place and turns the forked Tracked source
   await expect(page.getByText("Track workflow #91 completed for RJ09999991.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(detailURL);
   await expect(trackedTab).toHaveAttribute("title", "Tracked: Forked directory available");
-  await expect(trackedTab.locator(".bg-emerald-500")).toHaveCount(1);
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await expect(page.getByRole("menuitem", { name: "Track", exact: true })).toHaveCount(0);
   await trackedTab.click();

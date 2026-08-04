@@ -913,11 +913,11 @@ function quickMarkMeta(value: ListeningStatus) {
     case "listening":
       return { label: "Listening", icon: Headphones, active: true, className: "text-primary" };
     case "finished":
-      return { label: "Finished", icon: CheckCircle2, active: true, className: "text-emerald-600" };
+      return { label: "Finished", icon: CheckCircle2, active: true, className: "text-success" };
     case "relisten":
       return { label: "Relisten", icon: Repeat2, active: true, className: "text-primary" };
     case "paused":
-      return { label: "Shelved", icon: PauseCircle, active: true, className: "text-amber-600" };
+      return { label: "Shelved", icon: PauseCircle, active: true, className: "text-warning" };
     default:
       return { label: "Unmarked", icon: Circle, active: false, className: "" };
   }

@@ -2309,11 +2309,11 @@ function quickMarkFilterMeta(value: ListeningStatus) {
     case "listening":
       return { icon: Headphones, className: "text-primary" };
     case "finished":
-      return { icon: CheckCircle2, className: "text-emerald-600" };
+      return { icon: CheckCircle2, className: "text-success" };
     case "relisten":
       return { icon: Repeat2, className: "text-primary" };
     case "paused":
-      return { icon: PauseCircle, className: "text-amber-600" };
+      return { icon: PauseCircle, className: "text-warning" };
     default:
       return { icon: Circle, className: "" };
   }
@@ -2577,14 +2577,14 @@ function RemoteOnlyWorkDetailController({
   const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
   const activeRemoteTabInfo = remoteTabs.find((tab) => tab.key === activeRemoteTab) ?? null;
   const activeTrackedPresence = activeRemoteTabInfo?.kind === "tracked" ? activeRemoteTabInfo.presence ?? null : null;
-  const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "green");
+  const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "available");
   const activeRemoteAvailability = remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
   const materializedTree = useMemo(() => {
     if (!trackedWork) return emptyTree();
     if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
       return buildTree(trackedWork.mediaItems, activeTrackedPresence?.fileSourceId ?? null, trackedWork.primaryCode);
     }
-    if (activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "green" && activeRemoteTabInfo.fileSourceId) {
+    if (activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available" && activeRemoteTabInfo.fileSourceId) {
       return buildTree(trackedWork.mediaItems, activeRemoteTabInfo.fileSourceId, trackedWork.primaryCode);
     }
     return emptyTree();
@@ -2842,7 +2842,7 @@ function RemoteOnlyWorkDetailController({
   const sourceInfo: ActiveSourceInfoModel = {
     label: displaySourceName,
     kind: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind ?? "remote",
-    status: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "yellow",
+    status: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.status ?? "degraded",
     statusLabel: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.statusLabel ?? "Loading source",
     stats: visibleDirectoryStats,
     loading: primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading),
@@ -2868,7 +2868,7 @@ function RemoteOnlyWorkDetailController({
       description={!primaryRemoteSelected
         ? activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked
           ? `Browsing the tracked directory forked from ${activeTrackedPresence?.fileSourceName || activeTrackedPresence?.fileSourceCode || "the selected source"}.`
-          : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "green"
+          : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available"
             ? "Browsing local files."
             : activeRemoteAvailability?.summary.error || `${activeRemoteTabInfo?.label ?? "Source"} is not selected for this preview.`
         : detail && !message && !treeError
@@ -2892,7 +2892,7 @@ function RemoteOnlyWorkDetailController({
           : isDetailLoading || treeLoading
             ? <DirectorySkeleton />
           : undefined
-        : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "green"
+        : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "available"
           ? <LocalSourceStatePanel status={activeRemoteTabInfo.status} remoteSources={remoteAvailability} onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))} />
           : activeRemoteTabInfo?.kind === "tracked" && !activeTrackedForked
             ? <TrackedUnforkedPanel presence={activeTrackedPresence} remoteSources={remoteAvailability} />
@@ -3567,7 +3567,7 @@ function PersistedWorkDetailController({
   const sourceInfo: ActiveSourceInfoModel = {
     label: activeSourceLabel,
     kind: selectedSource?.kind ?? "no_source",
-    status: selectedSource?.status ?? "yellow",
+    status: selectedSource?.status ?? "degraded",
     statusLabel: selectedSource?.statusLabel ?? "Loading source",
     stats: directoryStats,
     loading: isDirectoryLoading || selectedSourceDetailsLoading,
@@ -3651,7 +3651,7 @@ function PersistedWorkDetailController({
             }
           }}
         />
-      ) : selectedSource?.kind === "local" && selectedSource.status !== "green" ? (
+      ) : selectedSource?.kind === "local" && selectedSource.status !== "available" ? (
         <LocalSourceStatePanel
           status={selectedSource.status}
           remoteSources={remoteSources}
@@ -4415,9 +4415,9 @@ function DirectorySkeleton() {
 
 function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="min-h-[22rem] rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" data-testid="directory-load-error">
+    <div className="min-h-[22rem] rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground" data-testid="directory-load-error">
       <div className="font-medium">Directory unavailable</div>
-      <p className="mt-1 text-amber-900">{message}</p>
+      <p className="mt-1 text-warning-foreground/80">{message}</p>
       {onRetry && <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}><RefreshCw className="h-4 w-4" /> Retry</Button>}
     </div>
   );
@@ -4471,9 +4471,9 @@ function TrackedUnforkedPanel({
 }) {
   const candidates = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+    <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
       <div className="font-medium">{presence ? "Tracked directory not forked" : "No tracked source linked"}</div>
-      <p className="mt-1 text-amber-900">
+      <p className="mt-1 text-warning-foreground/80">
         {presence ? "Choose a fork source from Source to create the browsable tracked directory." : "Track a remote source from its source tab to create a browsable tracked directory."}
       </p>
       {candidates.length === 0 && <Badge variant="warning" className="mt-3">No browsable remote source</Badge>}
@@ -4492,7 +4492,7 @@ function LocalSourceStatePanel({
 }) {
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
-    <div className={`rounded-md border p-4 text-sm ${status === "red" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+    <div className={`rounded-md border p-4 text-sm ${status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}>
       <div className="font-medium">Local files unavailable</div>
       <div className="mt-3 flex flex-wrap gap-2">
         {availableSources.length > 0 ? availableSources.map((remote) => (
@@ -4500,7 +4500,7 @@ function LocalSourceStatePanel({
             Fetch from {remote.source.displayName}
           </Button>
         )) : (
-          <Badge variant={status === "red" ? "outline" : "warning"} className={status === "red" ? "border-red-300 text-red-800" : ""}>{status === "red" ? "No remote source available" : "Check remote sources"}</Badge>
+          <Badge variant={status === "unavailable" ? "error" : "warning"}>{status === "unavailable" ? "No remote source available" : "Check remote sources"}</Badge>
         )}
       </div>
     </div>
@@ -4510,7 +4510,7 @@ function LocalSourceStatePanel({
 function RemoteSourceStatePanel({ remote }: { remote: RemoteSourceAvailability }) {
   const status = remoteSourceTabStatus(remote.summary);
   return (
-    <div className={`rounded-md border p-4 text-sm ${status.status === "red" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+    <div className={`rounded-md border p-4 text-sm ${status.status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}>
       <div className="font-medium">{remote.source.displayName} · {status.statusLabel}</div>
       {remote.summary.error && <div className="mt-1 text-xs opacity-80">{remote.summary.error}</div>}
     </div>
@@ -4530,9 +4530,9 @@ function NoSourceDirectoryPanel({
 }) {
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+    <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
       <div className="font-medium">No source linked</div>
-      <p className="mt-1 text-amber-900">
+      <p className="mt-1 text-warning-foreground/80">
         This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.
       </p>
       {availableSources.length > 0 && (
@@ -4547,7 +4547,7 @@ function NoSourceDirectoryPanel({
           <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
           Refresh sources
         </Button>
-        {!checking && checkedAt && <span className="text-xs text-amber-900">Checked {formatDateTime(checkedAt)}</span>}
+        {!checking && checkedAt && <span className="text-xs text-warning-foreground/80">Checked {formatDateTime(checkedAt)}</span>}
       </div>
     </div>
   );

@@ -145,7 +145,7 @@ export function WorkflowRunDialog({
           )}
 
           {busy && autoPreview && !preview && <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Computing preview</div>}
-          {error && <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
+          {error && <div className="flex gap-2 rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
 
           <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -165,7 +165,7 @@ function RunInput({ input, value, onChange }: { input: WorkflowInputDefinition; 
   const fieldClass = "rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring";
   return (
     <label className="grid gap-1.5 text-sm">
-      <span className="font-medium">{input.label}{input.required && <span className="text-destructive"> *</span>}</span>
+      <span className="font-medium">{input.label}{input.required && <span className="text-error-foreground"> *</span>}</span>
       {input.type === "work_codes" ? (
         <WorkCodesField value={typeof value === "string" ? value : ""} onChange={onChange} />
       ) : (
@@ -203,8 +203,8 @@ function PreviewPlan({ preview, onEdit }: { preview: WorkflowDefinitionRunPrevie
 
       {(preview.plan.limits?.length ?? 0) > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Limits</h3><div className="grid gap-2 sm:grid-cols-2">{preview.plan.limits?.map((limit) => <PreviewLimitRow key={limit.key} limit={limit} />)}</div></section>}
       {(preview.requiredPermissions?.length ?? 0) > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Permissions</h3><div className="flex flex-wrap gap-2">{preview.requiredPermissions?.map((permission) => <Badge key={permission} variant="outline">{permission}</Badge>)}</div></section>}
-      {(preview.warnings?.length ?? 0) > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Review</h3>{preview.warnings?.map((warning) => <div key={warning} className="flex gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" /><span>{warning}</span></div>)}</section>}
-      <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />Preview is bound to this definition and these normalized inputs.</div>
+      {(preview.warnings?.length ?? 0) > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Review</h3>{preview.warnings?.map((warning) => <div key={warning} className="flex gap-2 rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-foreground"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" /><span>{warning}</span></div>)}</section>}
+      <div className="flex items-center gap-2 rounded-md border border-success-border bg-success-surface px-3 py-2 text-xs text-success-foreground"><CheckCircle2 className="h-4 w-4 shrink-0 text-success" />Preview is bound to this definition and these normalized inputs.</div>
     </>
   );
 }
@@ -214,7 +214,7 @@ function PreviewMetric({ label, value }: { label: string; value: string }) {
 }
 
 function PreviewLimitRow({ limit }: { limit: WorkflowPreviewLimit }) {
-  return <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"><span className="min-w-0 flex-1 truncate">{limit.label}</span><span className="font-medium">{formatLimitValue(limit)}</span>{limit.satisfied === false && <AlertCircle className="h-4 w-4 text-destructive" />}</div>;
+  return <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"><span className="min-w-0 flex-1 truncate">{limit.label}</span><span className="font-medium">{formatLimitValue(limit)}</span>{limit.satisfied === false && <AlertCircle className="h-4 w-4 text-error" />}</div>;
 }
 
 function actionRecord(value: unknown) {

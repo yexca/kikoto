@@ -1059,7 +1059,7 @@ function RunSidebar({
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatRunTime(run)}</span>
                 <span>{run.completedNodeRuns}/{run.nodeRunCount} nodes</span>
-                {run.failedNodeRuns > 0 && <span className="text-destructive">{run.failedNodeRuns} failed</span>}
+                {run.failedNodeRuns > 0 && <span className="text-error-foreground">{run.failedNodeRuns} failed</span>}
                 {run.skippedNodeRuns > 0 && <span>{run.skippedNodeRuns} skipped</span>}
                 {pendingReviewCount(run) > 0 && <span className="text-primary">{pendingReviewCount(run)} review</span>}
               </div>
@@ -1335,7 +1335,7 @@ function CustomWorkflowQuickRun({
       <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
         <span className="font-medium">
           {input.label}
-          {input.required && <span className="text-destructive"> *</span>}
+          {input.required && <span className="text-error-foreground"> *</span>}
         </span>
         <input
           className="h-9 w-full rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
@@ -1459,7 +1459,7 @@ function RemotePopularRunPanel({
                   </button>
                 ))}
               </div>
-              {action === "fetch" && !canFetch && <div className="mt-1 text-xs text-destructive">Fetch requires download management permission.</div>}
+              {action === "fetch" && !canFetch && <div className="mt-1 text-xs text-error-foreground">Fetch requires download management permission.</div>}
             </div>
             <label className="grid content-start gap-2 text-sm font-medium">
               Work limit
@@ -1991,7 +1991,7 @@ function WorkflowEventRows({ events, empty }: { events: WorkflowEvent[]; empty: 
       {events.map((event) => (
         <div key={event.id} className="grid gap-1 p-3 text-sm md:grid-cols-[150px_70px_minmax(0,1fr)]">
           <div className="text-xs text-muted-foreground">{event.createdAt}</div>
-          <div className={event.level === "error" ? "text-destructive" : event.level === "warn" ? "text-yellow-600" : "text-muted-foreground"}>{event.level}</div>
+          <div className={event.level === "error" ? "text-error-foreground" : event.level === "warn" ? "text-warning-foreground" : "text-muted-foreground"}>{event.level}</div>
           <div className="min-w-0">
             <div className="font-medium">{event.message}</div>
             <div className="text-xs text-muted-foreground">{event.eventType}</div>
@@ -2173,7 +2173,7 @@ function RunLogs({ run, nodeRuns, events }: { run: WorkflowRunDetail | WorkflowR
       {entries.map((entry, index) => (
         <div key={`${entry.time}-${index}`} className="grid gap-1 p-3 text-sm md:grid-cols-[150px_70px_minmax(0,1fr)]">
           <div className="text-xs text-muted-foreground">{entry.time || "unknown time"}</div>
-          <div className={entry.level === "error" ? "text-destructive" : entry.level === "warn" ? "text-primary" : "text-muted-foreground"}>{entry.level}</div>
+          <div className={entry.level === "error" ? "text-error-foreground" : entry.level === "warn" ? "text-warning-foreground" : "text-muted-foreground"}>{entry.level}</div>
           <div className="min-w-0">
             <div className="font-medium">{entry.message}</div>
             {"type" in entry && entry.type && <div className="text-xs text-muted-foreground">{entry.type}</div>}
@@ -2415,8 +2415,8 @@ function normalizedWorkflowNodeStatus(status: string) {
 }
 
 function StatusPoint({ status }: { status: string }) {
-  if (status === "running") return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-yellow-500" aria-label="Running" />;
-  const color = status === "succeeded" ? "bg-emerald-500" : status === "failed" ? "bg-destructive" : status === "partial" ? "bg-yellow-500" : "bg-muted-foreground/45";
+  if (status === "running") return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-info" aria-label="Running" />;
+  const color = status === "succeeded" ? "bg-success" : status === "failed" ? "bg-error" : status === "partial" ? "bg-warning" : "bg-muted-foreground/45";
   return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color}`} aria-label={status} />;
 }
 
@@ -2546,7 +2546,7 @@ function WorkflowAutomationPanel({
                 </Button>
               )}
               {trigger.lastErrorMessage && (
-                <div className="text-xs text-destructive md:col-start-2 md:col-end-4">Last error: {trigger.lastErrorMessage}</div>
+                <div className="text-xs text-error-foreground md:col-start-2 md:col-end-4">Last error: {trigger.lastErrorMessage}</div>
               )}
             </div>
           ))}
@@ -2875,7 +2875,7 @@ function TriggerModal({
           ))}</div>}
 		<SystemWorkflowTriggerFields definitionCode={definition.code} value={systemConfig} onChange={setSystemConfig} />
         {automationBlockers.length > 0 && (
-          <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-muted-foreground">
+          <div className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
             {automationBlockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
           </div>
         )}
@@ -3113,9 +3113,9 @@ function TagTemplateField({
           <span>{Math.min(preview.renderedLength, TAG_NAME_MAX_LENGTH)}/{TAG_NAME_MAX_LENGTH}</span>
         </div>
         <code className="break-all text-xs text-foreground">{preview.value || "-"}</code>
-        {preview.truncated && <span className="text-xs text-yellow-600">The rendered tag exceeds {TAG_NAME_MAX_LENGTH} characters and will be truncated.</span>}
+        {preview.truncated && <span className="text-xs text-warning-foreground">The rendered tag exceeds {TAG_NAME_MAX_LENGTH} characters and will be truncated.</span>}
       </div>
-      {error && <div className="text-xs text-destructive" role="alert">{error}</div>}
+      {error && <div className="text-xs text-error-foreground" role="alert">{error}</div>}
     </div>
   );
 }
@@ -3256,7 +3256,7 @@ function NodeInlineEditor({
                 onBlur={commitConfigDraft}
                 onChange={(event) => setConfigDraft(event.target.value)}
               />
-              {configError && <span className="text-xs text-destructive">{configError}</span>}
+              {configError && <span className="text-xs text-error-foreground">{configError}</span>}
             </Field>
           </div>
         </div>
@@ -3450,11 +3450,15 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
 
 function StatusBadge({ status }: { status: string }) {
   const variant =
-    status === "failed" || status === "partial" || status === "disabled"
-      ? "warning"
+    status === "failed"
+      ? "error"
+      : status === "partial" || status === "disabled"
+        ? "warning"
       : status === "succeeded" || status === "enabled"
-        ? "secondary"
-        : "outline";
+          ? "success"
+          : status === "running" || status === "queued"
+            ? "info"
+            : "outline";
   return <Badge variant={variant}>{status}</Badge>;
 }
 
@@ -3476,7 +3480,7 @@ function EmptyPanel({ text }: { text: string }) {
 }
 
 function ErrorPanel({ error }: { error: string }) {
-  return <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>;
+  return <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">{error}</div>;
 }
 
 function JsonPreview({ value, empty, compact = false }: { value: string; empty: string; compact?: boolean }) {

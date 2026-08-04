@@ -45,7 +45,7 @@ describe("sourceContextModel", () => {
       label: "Tracked",
       sourceName: "Remote B",
       presence: presences[1],
-      status: "red",
+      status: "unavailable",
       statusLabel: "Tracked directory unavailable",
     });
   });
@@ -74,7 +74,7 @@ describe("sourceContextModel", () => {
 
     expect(buildTrackedPresenceOptions([], [], presences)[0]).toMatchObject({
       forked: true,
-      status: "green",
+      status: "available",
       statusLabel: "Forked directory available",
     });
   });
