@@ -1130,7 +1130,7 @@ export function PlayerDock() {
   const fullDragRef = useRef<{ pointerId: number; startY: number; startedAt: number; moved: boolean } | null>(null);
   const suppressCollapseClickRef = useRef(false);
   const desktopFullHeight = useDesktopFullPlayerHeight(isMobile);
-  const compactFullLayout = desktopFullHeight < 540;
+  const compactFullLayout = !isMobile && desktopFullHeight < 540;
   const track = player.currentTrack;
   const parsedLyrics = useMemo(() => parseTimedLyrics(lyricsText ?? ""), [lyricsText]);
   const activeLyricIndex = useMemo(
@@ -1929,7 +1929,7 @@ export function PlayerDock() {
 
           <div className="flex items-center justify-center gap-2">
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.previous}
@@ -1938,7 +1938,7 @@ export function PlayerDock() {
               <SkipBack className="h-4 w-4" />
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(-5)}
@@ -1955,7 +1955,7 @@ export function PlayerDock() {
               {player.isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={() => player.seekBy(10)}
@@ -1964,7 +1964,7 @@ export function PlayerDock() {
               <SeekIcon direction="forward" seconds={10} />
             </Button>
             <Button
-              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
+              className="h-11 w-11 rounded-full border-white/40 bg-card/55 shadow-sm backdrop-blur hover:border-primary/35 hover:bg-primary/10 hover:text-primary active:border-primary/35 active:bg-primary/10 active:text-primary dark:border-white/10 dark:bg-card/45 lg:h-10 lg:w-10"
               variant="outline"
               size="icon"
               onClick={player.next}

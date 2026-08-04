@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -95,8 +95,8 @@ function ToastViewport({ items, onClose }: { items: ToastItem[]; onClose: (id: n
   if (items.length === 0) return null;
   return (
     <div
-      className="fixed inset-x-3 top-[var(--toast-top)] z-[80] flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))] lg:bottom-[var(--app-update-banner-bottom)] lg:top-auto lg:flex-col-reverse"
-      style={{ "--toast-top": `${top}px` } as CSSProperties}
+      className="fixed inset-x-3 z-[80] flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[min(360px,calc(100vw-2rem))]"
+      style={{ top }}
       aria-live="polite"
       aria-atomic="false"
     >

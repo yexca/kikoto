@@ -1191,6 +1191,23 @@ test("anonymous quick marks show an actionable toast above protected mobile cont
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
 });
 
+test("desktop toasts stay in the upper-right corner", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Mark: Unmarked" }).click();
+  await page.getByRole("button", { name: "Want", exact: true }).click();
+  const toastViewport = page.locator('[aria-live="polite"]');
+  await expect(page.getByText("Please sign in to use this feature.")).toBeVisible();
+
+  const [toastBox, viewport] = await Promise.all([toastViewport.boundingBox(), page.viewportSize()]);
+  expect(toastBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(Math.abs(viewport!.width - toastBox!.x - toastBox!.width - 16)).toBeLessThanOrEqual(1);
+  expect(toastBox!.y + toastBox!.height).toBeLessThan(viewport!.height / 2);
+});
+
 test("detail quick marks preserve the cached directory tree", async ({ page }) => {
   let mediaRequests = 0;
   const mediaItems = [{
@@ -1376,6 +1393,35 @@ test("full player collapses from the upper content area and double-tapping its c
   await cover.tap();
   await expect(page).toHaveURL(/\/RJ09999999$/);
   await expect(fullPlayer).toBeHidden();
+});
+
+test("mobile full player gives artwork room and does not latch transport feedback", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayer(page);
+  await page.goto("/");
+
+  await page.getByText("Test track", { exact: true }).click();
+  const fullPlayer = page.locator("section.fixed.inset-0");
+  const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
+  const forward = fullPlayer.getByRole("button", { name: "Forward 10 seconds" });
+  await expect(fullPlayer).toBeVisible();
+
+  const [fullBox, coverBox] = await Promise.all([fullPlayer.boundingBox(), cover.boundingBox()]);
+  expect(fullBox).not.toBeNull();
+  expect(coverBox).not.toBeNull();
+  expect(coverBox!.width).toBeGreaterThan(fullBox!.width * 0.8);
+
+  const readTransportStyle = () => forward.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      color: style.color,
+    };
+  });
+  const restingStyle = await readTransportStyle();
+  await forward.tap();
+  await expect.poll(readTransportStyle).toEqual(restingStyle);
 });
 
 test("inline lyrics adapt visible rows to height and keep the active line centered", async ({ page }) => {
