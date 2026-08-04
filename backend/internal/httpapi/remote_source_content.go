@@ -19,7 +19,23 @@ import (
 )
 
 func (s *Server) kikoeruClientForSource(source remoteSourceForUse) *kikoeru.Client {
-	httpClient := s.sourceHTTPClient(source, 20*time.Second)
+	return s.kikoeruClientForSourceClass(source, sourceRequestInteractive)
+}
+
+func (s *Server) kikoeruCrawlClientForSource(source remoteSourceForUse) *kikoeru.Client {
+	return s.kikoeruClientForSourceClass(source, sourceRequestCrawl)
+}
+
+func (s *Server) kikoeruClientForSourceClass(source remoteSourceForUse, class sourceRequestClass) *kikoeru.Client {
+	var httpClient *http.Client
+	switch class {
+	case sourceRequestCrawl:
+		httpClient = s.sourceCrawlHTTPClient(source, 20*time.Second)
+	case sourceRequestDownload:
+		httpClient = s.sourceDownloadHTTPClient(source, 20*time.Second)
+	default:
+		httpClient = s.sourceHTTPClient(source, 20*time.Second)
+	}
 	if source.SourceType == sourceTypeKikoeruCompatible178 {
 		return kikoeru.NewNumber178Client(source.Endpoint.APIURL, httpClient)
 	}

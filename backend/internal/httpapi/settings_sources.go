@@ -1045,7 +1045,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 	sortName, upstreamOrder := remoteSourceSort(r.URL.Query().Get("sort"))
 	direction := remoteSortDirection(r.URL.Query().Get("direction"))
 	client := s.kikoeruClientForSource(source)
-	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	language := s.preferredMetadataLanguage(r.Context())
 	includeRecommendation := r.URL.Query().Get("recommendBadges") == "true" && !strings.EqualFold(r.URL.Query().Get("sort"), "recommend")
 	if s.cfg.IsDemo() {
 		works, total, sortApplied, err := s.demoRemoteSourcePage(
@@ -1259,7 +1259,7 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(w, err)
 		return
 	}
-	language := normalizeDLsiteLanguage(s.settingString(r, "dlsite_metadata_language", "ja-jp"))
+	language := s.preferredMetadataLanguage(r.Context())
 	detail, err := s.remoteWorkDetail(r.Context(), source, remoteWork, language)
 	if err != nil {
 		writeError(w, err)
@@ -1378,7 +1378,11 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 			results = append(results, result)
 			continue
 		}
-		remoteWork, err := s.checkRemoteWorkAvailability(ctx, source, code)
+		requestClass := sourceRequestCrawl
+		if triggerType == "manual" {
+			requestClass = sourceRequestInteractive
+		}
+		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, requestClass)
 		result.ElapsedMS = time.Since(started).Milliseconds()
 		if err != nil {
 			result.Status = "error"
@@ -1448,7 +1452,7 @@ func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, only
 			continue
 		}
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := s.checkRemoteSourceHealth(checkCtx, source)
+		err := s.checkRemoteSourceHealthWithClass(checkCtx, source, sourceRequestCrawl)
 		cancel()
 		if err != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
@@ -1461,7 +1465,11 @@ func (s *Server) healthyRemoteSourceIDsForAvailability(ctx context.Context, only
 }
 
 func (s *Server) checkRemoteSourceHealth(ctx context.Context, source remoteSourceForUse) error {
-	client := s.kikoeruClientForSource(source)
+	return s.checkRemoteSourceHealthWithClass(ctx, source, sourceRequestInteractive)
+}
+
+func (s *Server) checkRemoteSourceHealthWithClass(ctx context.Context, source remoteSourceForUse, class sourceRequestClass) error {
+	client := s.kikoeruClientForSourceClass(source, class)
 	if err := client.Health(ctx); err == nil {
 		return nil
 	}
@@ -1881,11 +1889,11 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 	return sources, rows.Err()
 }
 
-func (s *Server) checkRemoteWorkAvailability(ctx context.Context, source remoteSourceForUse, code string) (kikoeru.Work, error) {
+func (s *Server) checkRemoteWorkAvailabilityWithClass(ctx context.Context, source remoteSourceForUse, code string, class sourceRequestClass) (kikoeru.Work, error) {
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
 	}
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruClientForSourceClass(source, class)
 	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	return remoteWork, err
 }
@@ -2321,8 +2329,10 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
+	projector := newRemoteCatalogProjector(language)
 	for _, work := range works {
-		code := normalizedRemoteWorkCode(work)
+		projected := projector.project(sourceID, work)
+		code := projected.RemoteCode
 		displayCode := code
 		ref, err := s.canonicalWorkForCode(ctx, code)
 		if err != nil {
@@ -2356,50 +2366,28 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 				return nil, err
 			}
 		}
-		tags := []string{}
-		for _, tag := range work.Tags {
-			if name := kikoeru.TagName(tag, language); name != "" {
-				tags = append(tags, name)
-			}
-		}
-		circle := ""
-		if work.Circle != nil {
-			circle = work.Circle.Name
-		}
-		voiceActors := make([]string, 0, len(work.VAs))
-		voiceRefs := make([]remoteEntityRef, 0, len(work.VAs))
-		for _, voiceActor := range work.VAs {
-			if name := strings.TrimSpace(voiceActor.Name); name != "" {
-				voiceActors = append(voiceActors, name)
-				voiceRefs = append(voiceRefs, remoteEntityRef{SourceID: sourceID, ExternalID: strings.TrimSpace(voiceActor.ID), Name: name})
-			}
-		}
-		var circleRef *remoteEntityRef
-		if work.Circle != nil && work.Circle.ID > 0 {
-			circleRef = &remoteEntityRef{SourceID: sourceID, ExternalID: strconv.FormatInt(work.Circle.ID, 10), Name: circle}
-		}
 		status := "remote_only"
 		if workID != nil {
 			status = "synced"
 		}
 		item := remoteWorkSummary{
-			RemoteID:        strconv.FormatInt(work.ID, 10),
+			RemoteID:        projected.RemoteID,
 			PrimaryCode:     displayCode,
 			RemoteCode:      code,
-			Title:           firstNonEmpty(work.Title, work.Name, displayCode),
-			ReleaseDate:     work.Release,
-			UpdatedAt:       work.Release,
-			CoverURL:        firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
-			Circle:          circle,
-			CircleRef:       circleRef,
-			AgeRating:       work.AgeCategoryString,
-			Rating:          work.RateAverage2DP,
-			RatingCount:     work.ReviewCount,
-			Sales:           work.DLCount,
-			Price:           work.Price,
-			Tags:            tags,
-			VoiceActors:     voiceActors,
-			VoiceRefs:       voiceRefs,
+			Title:           firstNonEmpty(projected.Title, displayCode),
+			ReleaseDate:     projected.ReleaseDate,
+			UpdatedAt:       projected.ReleaseDate,
+			CoverURL:        projected.CoverURL,
+			Circle:          projected.Circle,
+			CircleRef:       projected.CircleRef,
+			AgeRating:       projected.AgeRating,
+			Rating:          projected.Rating,
+			RatingCount:     projected.RatingCount,
+			Sales:           projected.Sales,
+			Price:           projected.Price,
+			Tags:            projected.Tags,
+			VoiceActors:     projected.VoiceActors,
+			VoiceRefs:       projected.VoiceRefs,
 			ImportStatus:    status,
 			RemotePlayable:  true,
 			WorkID:          workID,
@@ -2407,10 +2395,7 @@ func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID
 			ListeningStatus: listeningStatus,
 			RecommendScore:  recommendScore,
 		}
-		if work.Duration != nil && *work.Duration > 0 {
-			value := int64(*work.Duration)
-			item.DurationSeconds = &value
-		}
+		item.DurationSeconds = projected.DurationSeconds
 		key := strings.ToUpper(strings.TrimSpace(displayCode))
 		if index, ok := seen[key]; ok {
 			existing := &result[index]
@@ -2633,7 +2618,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return preparedRemoteWorkTrack{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(source)
 	remoteWork, rawWork, err := s.resolveRemoteWorkForAccess(ctx, client, requestedCode)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -3174,7 +3159,7 @@ func (s *Server) executeRemotePopularCollectionJob(ctx context.Context, job work
 
 	if checkpoint.Candidates == nil {
 		_, _ = s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["discover"])
-		page, discoverErr := s.kikoeruClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
+		page, discoverErr := s.kikoeruCrawlClientForSource(source).PopularWorks(ctx, 1, payload.Limit)
 		if discoverErr != nil {
 			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 			_ = s.failClaimedWorkflowJob(ctx, job, discoverErr.Error())
@@ -5600,7 +5585,8 @@ func sortedStringKeys(values map[string]bool) []string {
 }
 
 func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, language string) (remoteWorkDetail, error) {
-	code := normalizedRemoteWorkCode(work)
+	projected := newRemoteCatalogProjector(language).project(source.ID, work)
+	code := projected.RemoteCode
 	displayCode := code
 	ref, err := s.canonicalWorkForCode(ctx, code)
 	if err != nil {
@@ -5613,64 +5599,37 @@ func (s *Server) remoteWorkDetail(ctx context.Context, source remoteSourceForUse
 	if ref.Known && ref.WorkID > 0 {
 		workID = &ref.WorkID
 	}
-	tags := make([]string, 0, len(work.Tags))
-	for _, tag := range work.Tags {
-		if name := kikoeru.TagName(tag, language); name != "" {
-			tags = append(tags, name)
-		}
-	}
-	voiceActors := make([]string, 0, len(work.VAs))
-	voiceRefs := make([]remoteEntityRef, 0, len(work.VAs))
-	for _, va := range work.VAs {
-		if strings.TrimSpace(va.Name) != "" {
-			voiceActors = append(voiceActors, va.Name)
-			voiceRefs = append(voiceRefs, remoteEntityRef{SourceID: source.ID, ExternalID: strings.TrimSpace(va.ID), Name: strings.TrimSpace(va.Name)})
-		}
-	}
-	circle := ""
-	if work.Circle != nil {
-		circle = work.Circle.Name
-	}
-	var circleRef *remoteEntityRef
-	if work.Circle != nil && work.Circle.ID > 0 {
-		circleRef = &remoteEntityRef{SourceID: source.ID, ExternalID: strconv.FormatInt(work.Circle.ID, 10), Name: strings.TrimSpace(work.Circle.Name)}
-	}
 	status := "remote_only"
 	if workID != nil {
 		status = "synced"
 	}
-	var duration *int64
-	if work.Duration != nil && *work.Duration > 0 {
-		value := int64(*work.Duration)
-		duration = &value
-	}
 	releaseDate := ""
-	if value, ok := normalizeDate(work.Release).(string); ok {
+	if value, ok := normalizeDate(projected.ReleaseDate).(string); ok {
 		releaseDate = value
 	}
 	return remoteWorkDetail{
 		SourceID:         source.ID,
 		SourceCode:       source.Code,
 		SourceName:       source.DisplayName,
-		RemoteID:         strconv.FormatInt(work.ID, 10),
+		RemoteID:         projected.RemoteID,
 		PrimaryCode:      displayCode,
 		RemoteCode:       code,
-		Title:            firstNonEmpty(work.Title, work.Name, displayCode),
-		CoverURL:         firstNonEmpty(work.MainCoverURL, work.SamCoverURL, work.ThumbnailCoverURL),
-		SourceURL:        work.SourceURL,
+		Title:            firstNonEmpty(projected.Title, displayCode),
+		CoverURL:         projected.CoverURL,
+		SourceURL:        projected.SourceURL,
 		PublicWorkURL:    publicRemoteWorkURL(source.Endpoint, code),
-		Circle:           circle,
-		CircleRef:        circleRef,
-		Rating:           work.RateAverage2DP,
-		RatingCount:      work.ReviewCount,
-		Sales:            work.DLCount,
-		Price:            work.Price,
-		AgeRating:        work.AgeCategoryString,
+		Circle:           projected.Circle,
+		CircleRef:        projected.CircleRef,
+		Rating:           projected.Rating,
+		RatingCount:      projected.RatingCount,
+		Sales:            projected.Sales,
+		Price:            projected.Price,
+		AgeRating:        projected.AgeRating,
 		ReleaseDate:      releaseDate,
-		DurationSeconds:  duration,
-		Tags:             tags,
-		VoiceActors:      voiceActors,
-		VoiceRefs:        voiceRefs,
+		DurationSeconds:  projected.DurationSeconds,
+		Tags:             projected.Tags,
+		VoiceActors:      projected.VoiceActors,
+		VoiceRefs:        projected.VoiceRefs,
 		ImportStatus:     status,
 		WorkID:           workID,
 		LanguageEditions: normalizedRemoteLanguageEditions(work),

@@ -1246,6 +1246,7 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 	semaphore := make(chan struct{}, 3)
 	var wait sync.WaitGroup
 	keyword := "$va:" + strings.TrimSpace(voiceName) + "$"
+	projector := s.remoteCatalogProjector(ctx)
 	for index, source := range sources {
 		wait.Add(1)
 		go func() {
@@ -1305,7 +1306,8 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 					result.Total = page.Pagination.Count
 				}
 				for _, remoteWork := range page.Works {
-					code := normalizedRemoteWorkCode(remoteWork)
+					projected := projector.project(source.ID, remoteWork)
+					code := projected.RemoteCode
 					displayCode := code
 					ref, err := s.canonicalWorkForCode(ctx, code)
 					if err != nil {
@@ -1320,31 +1322,25 @@ func (s *Server) searchVoiceRemoteSources(ctx context.Context, personID int64, v
 						resultErrors[index] = err
 						continue
 					}
-					voiceActors := make([]string, 0, len(remoteWork.VAs))
-					for _, voiceActor := range remoteWork.VAs {
-						if name := strings.TrimSpace(voiceActor.Name); name != "" {
-							voiceActors = append(voiceActors, name)
-						}
-					}
 					result.Works = append(result.Works, voiceRemoteWork{
 						SourceID:       source.ID,
 						SourceCode:     source.Code,
 						SourceName:     source.DisplayName,
-						RemoteID:       fmt.Sprintf("%d", remoteWork.ID),
+						RemoteID:       projected.RemoteID,
 						PrimaryCode:    displayCode,
 						RemoteCode:     code,
-						Title:          firstNonEmpty(remoteWork.Title, remoteWork.Name, displayCode),
-						ReleaseDate:    remoteWork.Release,
-						UpdatedAt:      remoteWork.Release,
-						CoverURL:       firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL),
-						Circle:         remoteCircleName(remoteWork),
-						AgeRating:      remoteWork.AgeCategoryString,
-						Rating:         remoteWork.RateAverage2DP,
-						RatingCount:    remoteWork.ReviewCount,
-						Sales:          remoteWork.DLCount,
-						Price:          remoteWork.Price,
-						Tags:           remoteTagNames(remoteWork.Tags),
-						VoiceActors:    voiceActors,
+						Title:          firstNonEmpty(projected.Title, displayCode),
+						ReleaseDate:    projected.ReleaseDate,
+						UpdatedAt:      projected.ReleaseDate,
+						CoverURL:       projected.CoverURL,
+						Circle:         projected.Circle,
+						AgeRating:      projected.AgeRating,
+						Rating:         projected.Rating,
+						RatingCount:    projected.RatingCount,
+						Sales:          projected.Sales,
+						Price:          projected.Price,
+						Tags:           projected.Tags,
+						VoiceActors:    projected.VoiceActors,
 						ImportStatus:   remoteImportStatus(flags.WorkID),
 						RemotePlayable: true,
 						WorkID:         flags.WorkID,
@@ -2679,27 +2675,6 @@ func voiceSourceSummaries(local int, remote int, cache int) []circleSourceStat {
 		items = append(items, circleSourceStat{Key: "remote", DisplayName: "Remote", Status: "available", Count: remote})
 	}
 	return items
-}
-
-func remoteCircleName(work kikoeru.Work) string {
-	if work.Circle == nil {
-		return ""
-	}
-	return strings.TrimSpace(work.Circle.Name)
-}
-
-func remoteTagNames(tags []kikoeru.Tag) []string {
-	names := []string{}
-	for _, tag := range tags {
-		name := strings.TrimSpace(tag.Name)
-		if name != "" {
-			names = append(names, name)
-		}
-		if len(names) >= 8 {
-			break
-		}
-	}
-	return names
 }
 
 func remoteImportStatus(workID *int64) string {
