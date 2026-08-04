@@ -1,6 +1,7 @@
 package kikoeru
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,29 +32,29 @@ const CompatibilityNumber178 = "number178"
 const maxKikoeruJSONBytes int64 = 32 << 20
 
 type Work struct {
-	ID                 int64             `json:"id"`
-	Title              string            `json:"title"`
-	Name               string            `json:"name"`
-	SourceID           string            `json:"source_id"`
-	SourceType         string            `json:"source_type"`
-	SourceURL          string            `json:"source_url"`
-	Release            string            `json:"release"`
-	AgeCategoryString  string            `json:"age_category_string"`
-	NSFW               bool              `json:"nsfw"`
-	Duration           *float64          `json:"duration"`
-	MainCoverURL       string            `json:"mainCoverUrl"`
-	SamCoverURL        string            `json:"samCoverUrl"`
-	ThumbnailCoverURL  string            `json:"thumbnailCoverUrl"`
-	Circle             *Circle           `json:"circle"`
-	Tags               []Tag             `json:"tags"`
-	VAs                []VA              `json:"vas"`
-	RateAverage2DP     *float64          `json:"rate_average_2dp"`
-	ReviewCount        *int64            `json:"review_count"`
-	DLCount            *int64            `json:"dl_count"`
-	Price              *int64            `json:"price"`
-	OriginalWorkNumber string            `json:"original_workno"`
-	OriginalWorkID     int64             `json:"original_work_id"`
-	LanguageEditions   []LanguageEdition `json:"language_editions"`
+	ID                 int64               `json:"id"`
+	Title              string              `json:"title"`
+	Name               string              `json:"name"`
+	SourceID           string              `json:"source_id"`
+	SourceType         string              `json:"source_type"`
+	SourceURL          string              `json:"source_url"`
+	Release            string              `json:"release"`
+	AgeCategoryString  string              `json:"age_category_string"`
+	NSFW               bool                `json:"nsfw"`
+	Duration           *float64            `json:"duration"`
+	MainCoverURL       string              `json:"mainCoverUrl"`
+	SamCoverURL        string              `json:"samCoverUrl"`
+	ThumbnailCoverURL  string              `json:"thumbnailCoverUrl"`
+	Circle             *Circle             `json:"circle"`
+	Tags               []Tag               `json:"tags"`
+	VAs                []VA                `json:"vas"`
+	RateAverage2DP     *float64            `json:"rate_average_2dp"`
+	ReviewCount        *int64              `json:"review_count"`
+	DLCount            *int64              `json:"dl_count"`
+	Price              *int64              `json:"price"`
+	OriginalWorkNumber string              `json:"original_workno"`
+	OriginalWorkID     int64               `json:"original_work_id"`
+	LanguageEditions   LanguageEditionList `json:"language_editions"`
 }
 
 type LanguageEdition struct {
@@ -60,6 +62,69 @@ type LanguageEdition struct {
 	Language     string `json:"lang"`
 	Label        string `json:"label"`
 	DisplayOrder int    `json:"display_order"`
+}
+
+// LanguageEditionList accepts the array used by the Kikoeru API contract and
+// numeric-keyed objects emitted when an upstream serializes a sparse array.
+type LanguageEditionList []LanguageEdition
+
+func (editions *LanguageEditionList) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if bytes.Equal(data, []byte("null")) {
+		*editions = nil
+		return nil
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("language_editions is empty JSON")
+	}
+	if data[0] == '[' {
+		var decoded []LanguageEdition
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return fmt.Errorf("decode language_editions array: %w", err)
+		}
+		*editions = decoded
+		return nil
+	}
+	if data[0] != '{' {
+		return fmt.Errorf("language_editions must be an array, numeric-keyed object, or null")
+	}
+
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		return fmt.Errorf("decode language_editions object: %w", err)
+	}
+	type indexedEdition struct {
+		index   uint64
+		key     string
+		edition LanguageEdition
+	}
+	indexed := make([]indexedEdition, 0, len(values))
+	for key, raw := range values {
+		if key == "" || strings.IndexFunc(key, func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
+			return fmt.Errorf("language_editions object contains a non-numeric key")
+		}
+		index, err := strconv.ParseUint(key, 10, 64)
+		if err != nil {
+			return fmt.Errorf("language_editions object contains an invalid numeric key")
+		}
+		var edition LanguageEdition
+		if err := json.Unmarshal(raw, &edition); err != nil {
+			return fmt.Errorf("decode language_editions object value: %w", err)
+		}
+		indexed = append(indexed, indexedEdition{index: index, key: key, edition: edition})
+	}
+	sort.Slice(indexed, func(left int, right int) bool {
+		if indexed[left].index != indexed[right].index {
+			return indexed[left].index < indexed[right].index
+		}
+		return indexed[left].key < indexed[right].key
+	})
+	decoded := make(LanguageEditionList, len(indexed))
+	for index, value := range indexed {
+		decoded[index] = value.edition
+	}
+	*editions = decoded
+	return nil
 }
 
 type Circle struct {

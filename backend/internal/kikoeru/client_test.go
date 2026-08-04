@@ -27,6 +27,51 @@ func TestWorkDecodesCurrentPrice(t *testing.T) {
 	}
 }
 
+func TestListWorksDecodesMixedLanguageEditionShapes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"works":[
+				{"source_id":"RJ00000001","language_editions":[{"workno":"RJ00000001","display_order":1}]},
+				{"source_id":"RJ00000002","language_editions":{
+					"6":{"workno":"RJ00000006","display_order":3,"edition_id":6,"edition_type":"official"},
+					"4":{"workno":"RJ00000004","display_order":1,"edition_id":4,"edition_type":"original"},
+					"5":{"workno":"RJ00000005","display_order":2,"edition_id":5,"edition_type":"official"}
+				}},
+				{"source_id":"RJ00000003","language_editions":null}
+			],
+			"pagination":{"page":1,"pageSize":3,"totalCount":3}
+		}`))
+	}))
+	defer server.Close()
+
+	page, err := NewClient(server.URL, server.Client()).ListWorks(context.Background(), 1, 3, "")
+	if err != nil {
+		t.Fatalf("ListWorks() error = %v", err)
+	}
+	if len(page.Works) != 3 {
+		t.Fatalf("len(page.Works) = %d, want 3", len(page.Works))
+	}
+	if got := page.Works[0].LanguageEditions; len(got) != 1 || got[0].WorkNo != "RJ00000001" {
+		t.Fatalf("array language editions = %+v", got)
+	}
+	sparse := page.Works[1].LanguageEditions
+	if len(sparse) != 3 || sparse[0].WorkNo != "RJ00000004" || sparse[1].WorkNo != "RJ00000005" || sparse[2].WorkNo != "RJ00000006" {
+		t.Fatalf("sparse language editions = %+v", sparse)
+	}
+	if got := page.Works[2].LanguageEditions; got != nil {
+		t.Fatalf("null language editions = %+v, want nil", got)
+	}
+}
+
+func TestWorkRejectsNonNumericLanguageEditionObject(t *testing.T) {
+	var work Work
+	err := json.Unmarshal([]byte(`{"language_editions":{"origin":{"workno":"RJ00000001"}}}`), &work)
+	if err == nil {
+		t.Fatal("json.Unmarshal() accepted a non-numeric language_editions object key")
+	}
+}
+
 func TestReadLimitedJSONBodyRejectsOversizedResponse(t *testing.T) {
 	if _, err := readLimitedJSONBody(endlessTestReader{}); err == nil {
 		t.Fatal("readLimitedJSONBody() accepted an oversized response")
