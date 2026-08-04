@@ -1,4 +1,4 @@
-FROM node:22 AS frontend-build
+FROM node:24 AS frontend-build
 
 WORKDIR /src/frontend
 COPY VERSION /src/VERSION
