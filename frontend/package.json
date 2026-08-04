@@ -1,6 +1,9 @@
 {
   "private": true,
   "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
@@ -50,5 +53,8 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.63.0",
     "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
   }
 }
