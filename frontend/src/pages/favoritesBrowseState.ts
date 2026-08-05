@@ -9,6 +9,7 @@ export type FavoritesBrowseState = {
   query: string;
   status: ListeningStatus | "all";
   availability: FavoriteAvailability;
+  sourceIDs: number[];
   list: "all" | number;
   page: number;
   pageSize: 24 | 48;
@@ -22,6 +23,7 @@ export const defaultFavoritesBrowseState: FavoritesBrowseState = {
   query: "",
   status: "all",
   availability: "all",
+  sourceIDs: [],
   list: "all",
   page: 1,
   pageSize: 24,
@@ -68,6 +70,7 @@ export function favoritesBrowseStateFromSearch(
     availability: availabilities.includes(availability as FavoriteAvailability)
       ? (availability as FavoriteAvailability)
       : fallback.availability,
+    sourceIDs: fallback.sourceIDs,
     list:
       rawList === "all" || rawList === null
         ? fallback.list
@@ -109,6 +112,7 @@ export function favoritesBrowseStateFromValue(
     availability: availabilities.includes(availability as FavoriteAvailability)
       ? (availability as FavoriteAvailability)
       : fallback.availability,
+    sourceIDs: normalizedSourceIDs(state.sourceIDs, fallback.sourceIDs),
     list: state.list === "all" ? "all" : Number.isInteger(listID) && listID > 0 ? listID : fallback.list,
     page: Number.isInteger(page) && page > 0 ? page : fallback.page,
     pageSize: pageSize === 48 ? 48 : pageSize === 24 ? 24 : fallback.pageSize,
@@ -117,6 +121,19 @@ export function favoritesBrowseStateFromValue(
     randomSeed:
       Number.isInteger(randomSeed) && randomSeed >= 1 && randomSeed <= 2147483646 ? randomSeed : fallback.randomSeed,
   };
+}
+
+function normalizedSourceIDs(value: unknown, fallback: number[]) {
+  if (!Array.isArray(value)) return fallback;
+  const result: number[] = [];
+  const seen = new Set<number>();
+  for (const candidate of value) {
+    const sourceID = Number(candidate);
+    if (!Number.isInteger(sourceID) || sourceID <= 0 || seen.has(sourceID)) continue;
+    seen.add(sourceID);
+    result.push(sourceID);
+  }
+  return result;
 }
 
 export function readFavoritesBrowseState(principalID: ClientPrincipalID) {

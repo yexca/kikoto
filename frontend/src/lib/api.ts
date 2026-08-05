@@ -1727,13 +1727,25 @@ export const api = {
     listId: number | "all" = "all",
     status = "all",
     availability = "all",
+    sourceIDs: number[] = [],
     sort: FavoriteSort = "activity",
     direction: SortDirection = "desc",
     seed = 1,
-  ) =>
-    getJSON<FavoriteWorksPage>(
-      `/api/favorite-works?page=${page}&pageSize=${pageSize}&listId=${encodeURIComponent(String(listId))}&status=${encodeURIComponent(status)}&availability=${encodeURIComponent(availability)}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
-    ),
+  ) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+      listId: String(listId),
+      status,
+      availability,
+      sort,
+      direction,
+      seed: String(seed),
+    });
+    for (const sourceID of sourceIDs) params.append("sourceId", String(sourceID));
+    if (query.trim()) params.set("q", query.trim());
+    return getJSON<FavoriteWorksPage>(`/api/favorite-works?${params.toString()}`);
+  },
   listLibrarySources: () => getJSON<LibrarySource[]>("/api/library-sources"),
   listRecentlyPlayedWorks: (limit = 10) =>
     getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`),

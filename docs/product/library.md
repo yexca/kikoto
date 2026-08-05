@@ -71,7 +71,11 @@ Favorites keeps only entity/search intent in the canonical URL. Its selected
 list, shelf filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
 Switching lists keeps the full favorite-list row stable while results load, and
-Shelved is the final listening-state option.
+Shelved is the final listening-state option. The source picker can refine shelf
+works to any of several selected configured file sources without creating
+per-source work copies or requesting a live remote refresh. Favorite-list
+creation and contextual list management share the fixed overflow menu beside
+the horizontally scrollable list row.
 
 ## Identity
 

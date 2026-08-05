@@ -160,12 +160,18 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		direction = "desc"
 	}
 	randomSeed := int64(queryInt(r, "seed", 1))
+	sourceIDs, err := favoriteSourceIDs(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	where, args := favoriteWorksWhere(
 		strings.TrimSpace(r.URL.Query().Get("status")),
 		strings.TrimSpace(r.URL.Query().Get("availability")),
 		strings.TrimSpace(r.URL.Query().Get("q")),
 		user.ID,
 		listID,
+		sourceIDs,
 	)
 	where = s.demoWorkWhere(where, "work")
 	countQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + where
@@ -175,7 +181,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	shelfWhere, shelfArgs := favoriteWorksWhere("all", "all", "", user.ID, 0)
+	shelfWhere, shelfArgs := favoriteWorksWhere("all", "all", "", user.ID, 0, nil)
 	shelfWhere = s.demoWorkWhere(shelfWhere, "work")
 	shelfCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + shelfWhere
 	shelfCountArgs := append([]any{user.ID}, shelfArgs...)
@@ -211,7 +217,7 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64) (string, []any) {
+func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64, sourceIDs []int64) (string, []any) {
 	clauses := []string{`(
 		COALESCE(user_work_state.favorite, 0) = 1
 		OR COALESCE(user_work_state.listening_status, 'none') <> 'none'
@@ -238,6 +244,10 @@ func favoriteWorksWhere(status string, availability string, queryText string, us
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
 		args = append(args, status)
 	}
+	if sourceWhere, sourceArgs := favoriteSourceWhere(sourceIDs); sourceWhere != "" {
+		clauses = append(clauses, sourceWhere)
+		args = append(args, sourceArgs...)
+	}
 	switch strings.ToLower(strings.TrimSpace(availability)) {
 	case "local":
 		clauses = append(clauses, favoriteAvailabilityExists("'local'", false))
@@ -263,6 +273,79 @@ func favoriteWorksWhere(status string, availability string, queryText string, us
 			AND edition.is_canonical = 0
 	)`)
 	return strings.Join(clauses, " AND "), args
+}
+
+func favoriteSourceIDs(r *http.Request) ([]int64, error) {
+	const maxFavoriteSourceFilters = 50
+	values := r.URL.Query()["sourceId"]
+	if len(values) > maxFavoriteSourceFilters {
+		return nil, errors.New("too many source ids")
+	}
+	result := make([]int64, 0, len(values))
+	seen := map[int64]bool{}
+	for _, raw := range values {
+		value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || value <= 0 {
+			return nil, errors.New("invalid source id")
+		}
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result, nil
+}
+
+func favoriteSourceWhere(sourceIDs []int64) (string, []any) {
+	if len(sourceIDs) == 0 {
+		return "", nil
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(sourceIDs)), ",")
+	args := make([]any, 0, len(sourceIDs)*2)
+	for _, sourceID := range sourceIDs {
+		args = append(args, sourceID)
+	}
+	for _, sourceID := range sourceIDs {
+		args = append(args, sourceID)
+	}
+	return `(
+		EXISTS (
+			SELECT 1
+			FROM work_source_presence AS favorite_source_presence
+			WHERE favorite_source_presence.file_source_id IN (` + placeholders + `)
+				AND favorite_source_presence.availability = 'available'
+				AND (
+					favorite_source_presence.work_id = work.id
+					OR EXISTS (
+						SELECT 1
+						FROM work_edition AS favorite_current_edition
+						INNER JOIN work_edition AS favorite_source_edition
+							ON favorite_source_edition.logical_work_id = favorite_current_edition.logical_work_id
+						WHERE favorite_current_edition.work_id = work.id
+							AND favorite_source_edition.work_id = favorite_source_presence.work_id
+					)
+				)
+		)
+		OR EXISTS (
+			SELECT 1
+			FROM media_file_location AS favorite_source_location
+			INNER JOIN media_item AS favorite_source_item ON favorite_source_item.id = favorite_source_location.media_item_id
+			WHERE favorite_source_location.file_source_id IN (` + placeholders + `)
+				AND favorite_source_location.availability = 'available'
+				AND (
+					favorite_source_item.work_id = work.id
+					OR EXISTS (
+						SELECT 1
+						FROM work_edition AS favorite_current_edition
+						INNER JOIN work_edition AS favorite_source_edition
+							ON favorite_source_edition.logical_work_id = favorite_current_edition.logical_work_id
+						WHERE favorite_current_edition.work_id = work.id
+							AND favorite_source_edition.work_id = favorite_source_item.work_id
+					)
+				)
+		)
+	)`, args
 }
 
 func favoriteAvailabilityExists(locationTypes string, negated bool) string {
@@ -312,7 +395,7 @@ func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[
 }
 
 func (s *Server) loadFavoriteStatusCounts(ctx context.Context, userID int64) (map[string]int, error) {
-	where, args := favoriteWorksWhere("all", "all", "", userID, 0)
+	where, args := favoriteWorksWhere("all", "all", "", userID, 0, nil)
 	where = s.demoWorkWhere(where, "work")
 	query := `
 		SELECT COALESCE(user_work_state.listening_status, 'none'), COUNT(*)

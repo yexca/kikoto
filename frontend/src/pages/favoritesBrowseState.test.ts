@@ -16,6 +16,7 @@ describe("favorites browse state", () => {
       query: 'mytag:"Sleep aid"',
       status: "listening" as const,
       availability: "local" as const,
+      sourceIDs: [11, 12],
       list: 42,
       page: 3,
       pageSize: 48 as const,
@@ -26,6 +27,16 @@ describe("favorites browse state", () => {
     expect(favoritesBrowseSearch(state)).toBe("?q=mytag%3A%22Sleep+aid%22");
     expect(favoritesBrowseStateFromSearch(favoritesBrowseSearch(state), state)).toEqual(state);
     expect(favoritesBrowseStateFromValue(state)).toEqual(state);
+  });
+
+  it("normalizes persisted source selections without placing them in the canonical URL", () => {
+    const restored = favoritesBrowseStateFromValue({
+      ...defaultFavoritesBrowseState,
+      sourceIDs: [12, "11", 12, 0, -1, "invalid"],
+    });
+
+    expect(restored.sourceIDs).toEqual([12, 11]);
+    expect(favoritesBrowseSearch(restored)).toBe("");
   });
 
   it("continues to read legacy full-state URLs", () => {

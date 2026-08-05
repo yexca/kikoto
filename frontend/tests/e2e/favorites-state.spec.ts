@@ -32,7 +32,11 @@ const baseWork = {
 
 async function mockFavorites(
   page: Page,
-  delayedList?: { id: number; started: () => void; gate: Promise<void> },
+  options: {
+    delayedList?: { id: number; started: () => void; gate: Promise<void> };
+    sources?: Array<{ id: number; code: string; displayName: string; sourceType: string; enabled: boolean; cacheEnabled: boolean }>;
+    onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
+  } = {},
 ) {
   let savedTags = baseWork.userTags;
   const works = Array.from({ length: 24 }, (_, index) => ({
@@ -54,9 +58,10 @@ async function mockFavorites(
       return;
     }
     if (url.pathname === "/api/favorite-works") {
-      if (url.searchParams.get("listId") === String(delayedList?.id)) {
-        delayedList.started();
-        await delayedList.gate;
+      options.onFavoriteWorksRequest?.(url.searchParams.getAll("sourceId").map(Number));
+      if (url.searchParams.get("listId") === String(options.delayedList?.id)) {
+        options.delayedList.started();
+        await options.delayedList.gate;
       }
       await route.fulfill({ json: { works, page: Number(url.searchParams.get("page") ?? 1), pageSize: 24, total: 48, shelfTotal: 48, listCounts: { "1": 24, "2": 24 }, statusCounts: { listening: 48 } } });
       return;
@@ -70,7 +75,7 @@ async function mockFavorites(
       return;
     }
     if (url.pathname === "/api/library-sources") {
-      await route.fulfill({ json: [] });
+      await route.fulfill({ json: options.sources ?? [] });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
@@ -160,18 +165,20 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   const listRequestGate = new Promise<void>((resolve) => { releaseListRequest = resolve; });
   let markListRequestStarted = () => undefined;
   const listRequestStarted = new Promise<void>((resolve) => { markListRequestStarted = resolve; });
-  await mockFavorites(page, { id: 2, started: markListRequestStarted, gate: listRequestGate });
+  await mockFavorites(page, { delayedList: { id: 2, started: markListRequestStarted, gate: listRequestGate } });
   await page.goto("/favorites");
 
   const playlistButtons = [
     page.getByRole("button", { name: /All Shelf/ }),
     page.getByRole("button", { name: /Favorites 24/ }),
     page.getByRole("button", { name: /Study 24/ }),
-    page.getByRole("button", { name: "New list", exact: true }),
-    page.getByRole("button", { name: "List actions", exact: true }),
+    page.getByRole("button", { name: "Favorite list options", exact: true }),
   ];
   await expect(playlistButtons[0]).toBeVisible();
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+  await playlistButtons[3].click();
+  await expect(page.getByRole("menuitem", { name: "New list", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   // Normalize horizontal scroll before measuring; click() may reveal a partially clipped tab.
   await playlistButtons[2].scrollIntoViewIfNeeded();
   const positionsBefore = await Promise.all(playlistButtons.map((button) => button.boundingBox()));
@@ -190,4 +197,31 @@ test("switching favorite lists keeps the entire playlist row stable while works 
 
   releaseListRequest();
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
+});
+
+test("filters favorites by any selected file source and keeps the selection out of the canonical URL", async ({ page }) => {
+  const sourceRequests: number[][] = [];
+  await mockFavorites(page, {
+    sources: [
+      { id: 11, code: "example_remote_a", displayName: "Example Remote A", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
+      { id: 12, code: "example_remote_b", displayName: "Example Remote B", sourceType: "kikoeru_compatible", enabled: false, cacheEnabled: false },
+    ],
+    onFavoriteWorksRequest: (sourceIDs) => sourceRequests.push(sourceIDs),
+  });
+  await page.goto("/favorites");
+
+  await page.getByRole("button", { name: "More shelf options" }).click();
+  await page.getByRole("menuitem", { name: /Sources All sources/ }).click();
+  await page.getByRole("menuitemcheckbox", { name: /Example Remote A/ }).click();
+  await expect.poll(() => sourceRequests.at(-1)).toEqual([11]);
+  await page.getByRole("menuitemcheckbox", { name: /Example Remote B/ }).click();
+  await expect.poll(() => sourceRequests.at(-1)).toEqual([11, 12]);
+
+  expect(new URL(page.url()).searchParams.size).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.sourceIDs)).toEqual([11, 12]);
+
+  await page.getByRole("button", { name: "Back to more options" }).click();
+  await expect(page.getByRole("menuitem", { name: /Sources 2 sources/ })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Clear filters", exact: true }).click();
+  await expect.poll(() => sourceRequests.at(-1)).toEqual([]);
 });

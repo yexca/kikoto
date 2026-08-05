@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   Check,
   ChevronRight,
+  Cloud,
   Columns3,
   ExternalLink,
   Filter,
@@ -70,6 +71,7 @@ import {
   type CircleSummary,
   type FavoriteList,
   type FavoriteSort,
+  type LibrarySource,
   type ListeningStatus,
   type SortDirection,
   type VoiceSummary,
@@ -113,7 +115,7 @@ const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof 
 ];
 
 const availabilityFilters = [
-  { value: "all", label: "All sources" },
+  { value: "all", label: "Any availability" },
   { value: "local", label: "Local" },
   { value: "cache", label: "Cached" },
   { value: "remote", label: "Remote" },
@@ -162,6 +164,8 @@ export function FavoritesPage() {
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
   const [areFavoriteListsLoading, setAreFavoriteListsLoading] = useState(true);
+  const [fileSources, setFileSources] = useState<LibrarySource[]>([]);
+  const [areFileSourcesLoading, setAreFileSourcesLoading] = useState(true);
   const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
@@ -172,6 +176,7 @@ export function FavoritesPage() {
   const [query, setQuery] = useState(initialBrowseState.query);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
+  const [sourceIDs, setSourceIDs] = useState<number[]>(initialBrowseState.sourceIDs);
   const [activeList, setActiveList] = useState<"all" | number>(initialBrowseState.list);
   const [page, setPage] = useState(initialBrowseState.page);
   const [pageSize, setPageSize] = useState<PageSize>(initialBrowseState.pageSize);
@@ -235,6 +240,32 @@ export function FavoritesPage() {
 
   useEffect(() => {
     if (!auth.user) {
+      setFileSources([]);
+      setAreFileSourcesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setAreFileSourcesLoading(true);
+    api.listLibrarySources()
+      .then((sources) => {
+        if (cancelled) return;
+        setFileSources(sources);
+        const availableSourceIDs = new Set(sources.map((source) => source.id));
+        setSourceIDs((current) => current.filter((sourceID) => availableSourceIDs.has(sourceID)));
+      })
+      .catch((error) => {
+        if (!cancelled) toast.notify(toastFromError(error, "File sources could not be loaded."));
+      })
+      .finally(() => {
+        if (!cancelled) setAreFileSourcesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user]);
+
+  useEffect(() => {
+    if (!auth.user) {
       setCircles([]);
       setVoices([]);
       setEntitySnapshotUserID(null);
@@ -284,7 +315,7 @@ export function FavoritesPage() {
     const seq = ++requestSeq.current;
     setIsLoading(true);
     setWorksLoadError("");
-    api.listFavoriteWorksPage(page, pageSize, "", activeList, statusFilter, availabilityFilter, sort, sortDirection, randomSeed)
+    api.listFavoriteWorksPage(page, pageSize, "", activeList, statusFilter, availabilityFilter, sourceIDs, sort, sortDirection, randomSeed)
       .then((result) => {
         if (seq !== requestSeq.current) return;
         setWorks(result.works);
@@ -302,7 +333,7 @@ export function FavoritesPage() {
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
       });
-  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, statusFilter, worksReloadToken]);
+  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, sourceIDs, statusFilter, worksReloadToken]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -316,6 +347,7 @@ export function FavoritesPage() {
       query,
       status: statusFilter,
       availability: availabilityFilter,
+      sourceIDs,
       list: activeList,
       page,
       pageSize,
@@ -332,7 +364,7 @@ export function FavoritesPage() {
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
     };
     window.history.replaceState(state, "", `/favorites${search}`);
-  }, [activeList, auth.user, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, statusFilter]);
+  }, [activeList, auth.user, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, sourceIDs, statusFilter]);
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
@@ -350,7 +382,7 @@ export function FavoritesPage() {
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
   const hasActiveFilters = favoriteEntity === "works"
-    ? statusFilter !== "all" || availabilityFilter !== "all" || activeList !== "all"
+    ? statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0 || activeList !== "all"
     : Boolean(query.trim());
   const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
@@ -383,6 +415,7 @@ export function FavoritesPage() {
       query,
       status: statusFilter,
       availability: availabilityFilter,
+      sourceIDs,
       list: activeList,
       page,
       pageSize,
@@ -412,12 +445,18 @@ export function FavoritesPage() {
     setQuery("");
     setStatusFilter("all");
     setAvailabilityFilter("all");
+    setSourceIDs([]);
     setActiveList("all");
     setPage(1);
   };
 
   const changeAvailabilityFilter = (value: AvailabilityFilter) => {
     setAvailabilityFilter(value);
+    setPage(1);
+  };
+
+  const changeSourceIDs = (value: number[]) => {
+    setSourceIDs(value);
     setPage(1);
   };
 
@@ -465,7 +504,7 @@ export function FavoritesPage() {
   const reloadFavoriteLists = async () => {
     const lists = await api.listFavoriteLists();
     setFavoriteLists(lists);
-    const result = await api.listFavoriteWorksPage(currentPage, pageSize, "", activeList, statusFilter, availabilityFilter, sort, sortDirection, randomSeed);
+    const result = await api.listFavoriteWorksPage(currentPage, pageSize, "", activeList, statusFilter, availabilityFilter, sourceIDs, sort, sortDirection, randomSeed);
     setWorks(result.works);
     setTotalWorks(result.total);
     setShelfTotal(result.shelfTotal);
@@ -647,60 +686,62 @@ export function FavoritesPage() {
       {favoriteEntity === "works" && (
       <>
       <div className="space-y-2">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-        {areFavoriteListsLoading ? <FavoriteListTabSkeletons /> : <button
-          className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === "all" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-          onClick={() => {
-            setActiveList("all");
-            setPage(1);
-          }}
-        >
-          <ListMusic className="h-4 w-4" />
-          All Shelf
-          <span className="text-xs opacity-80">{shelfTotal}</span>
-        </button>}
-        {favoriteLists.map((list) => (
-          <button
-            key={list.id}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium ${activeList === list.id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
-            onClick={() => {
-              setActiveList(list.id);
-              setPage(1);
-            }}
-            title={list.description || list.name}
-          >
-            <ListMusic className="h-4 w-4" />
-            <span className="max-w-48 truncate">{list.name}</span>
-            <span className="text-xs opacity-80">{listCounts[String(list.id)] ?? 0}</span>
-          </button>
-        ))}
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setListEditor("new")} disabled={areFavoriteListsLoading}>
-          <Plus className="h-4 w-4" />
-          New list
-        </Button>
-        <div ref={listActionsRef} className="relative shrink-0">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            disabled={!selectedList || areFavoriteListsLoading}
-            onClick={() => setListActionsOpen((open) => !open)}
-            aria-label="List actions"
-            title={selectedList ? `Manage ${selectedList.name}` : "Select a custom list to manage it"}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-          <AnchoredPopover open={listActionsOpen && Boolean(selectedList)} anchorRef={listActionsRef} onOpenChange={setListActionsOpen} className="w-48 p-1 text-sm">
-            {selectedList && (
-              <>
-                <FavoriteListAction icon={<Pencil className="h-4 w-4" />} label="Rename list" onClick={() => { setListActionsOpen(false); setListEditor(selectedList); }} />
-                <FavoriteListAction icon={<ArrowLeft className="h-4 w-4" />} label="Move list left" disabled={selectedListIndex <= 0} onClick={() => { setListActionsOpen(false); void moveFavoriteList(-1); }} />
-                <FavoriteListAction icon={<ArrowRight className="h-4 w-4" />} label="Move list right" disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1} onClick={() => { setListActionsOpen(false); void moveFavoriteList(1); }} />
-                <FavoriteListAction icon={<Trash2 className="h-4 w-4" />} label="Delete list" destructive onClick={() => { setListActionsOpen(false); setDeleteListTarget(selectedList); }} />
-              </>
-            )}
-          </AnchoredPopover>
-        </div>
+        <div className="flex items-center gap-2 pb-1">
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
+              {areFavoriteListsLoading ? <FavoriteListTabSkeletons /> : (
+                <FavoriteListTab
+                  active={activeList === "all"}
+                  label="All Shelf"
+                  count={shelfTotal}
+                  onClick={() => {
+                    setActiveList("all");
+                    setPage(1);
+                  }}
+                />
+              )}
+              {favoriteLists.map((list) => (
+                <FavoriteListTab
+                  key={list.id}
+                  active={activeList === list.id}
+                  label={list.name}
+                  count={listCounts[String(list.id)] ?? 0}
+                  title={list.description || list.name}
+                  onClick={() => {
+                    setActiveList(list.id);
+                    setPage(1);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <div ref={listActionsRef} className="relative shrink-0">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 md:h-9 md:w-9"
+              disabled={areFavoriteListsLoading}
+              onClick={() => setListActionsOpen((open) => !open)}
+              aria-label="Favorite list options"
+              title="Manage favorite lists"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+            <AnchoredPopover open={listActionsOpen} anchorRef={listActionsRef} onOpenChange={setListActionsOpen} className="w-52 p-1 text-sm">
+              <div role="menu" aria-label="Favorite list options">
+                <FavoriteListAction icon={<Plus className="h-4 w-4" />} label="New list" onClick={() => { setListActionsOpen(false); setListEditor("new"); }} />
+                {selectedList && (
+                  <>
+                    <div className="my-1 border-t" role="separator" />
+                    <FavoriteListAction icon={<Pencil className="h-4 w-4" />} label="Rename list" onClick={() => { setListActionsOpen(false); setListEditor(selectedList); }} />
+                    <FavoriteListAction icon={<ArrowLeft className="h-4 w-4" />} label="Move list left" disabled={selectedListIndex <= 0} onClick={() => { setListActionsOpen(false); void moveFavoriteList(-1); }} />
+                    <FavoriteListAction icon={<ArrowRight className="h-4 w-4" />} label="Move list right" disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1} onClick={() => { setListActionsOpen(false); void moveFavoriteList(1); }} />
+                    <FavoriteListAction icon={<Trash2 className="h-4 w-4" />} label="Delete list" destructive onClick={() => { setListActionsOpen(false); setDeleteListTarget(selectedList); }} />
+                  </>
+                )}
+              </div>
+            </AnchoredPopover>
+          </div>
         </div>
 
         <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
@@ -748,6 +789,9 @@ export function FavoritesPage() {
             <div className="lg:hidden">
               <FavoriteMobileOptions
                 availability={availabilityFilter}
+                sources={fileSources}
+                selectedSourceIDs={sourceIDs}
+                sourcesLoading={areFileSourcesLoading}
                 sort={sort}
                 direction={sortDirection}
                 pageSize={pageSize}
@@ -757,6 +801,7 @@ export function FavoritesPage() {
                 hasActiveFilters={Boolean(hasActiveFilters)}
                 sortDisabled={isLoading}
                 onAvailabilityChange={changeAvailabilityFilter}
+                onSourceIDsChange={changeSourceIDs}
                 onSortChange={changeFavoriteSort}
                 onDirectionChange={changeFavoriteSortDirection}
                 onReshuffle={reshuffleFavorites}
@@ -780,6 +825,12 @@ export function FavoritesPage() {
                   </option>
                 ))}
               </select>
+              <FavoriteSourceFilter
+                sources={fileSources}
+                selectedSourceIDs={sourceIDs}
+                loading={areFileSourcesLoading}
+                onChange={changeSourceIDs}
+              />
               {hasActiveFilters && (
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearFilters} aria-label="Clear shelf filters" title="Clear shelf filters">
                   <X className="h-4 w-4" />
@@ -1053,11 +1104,33 @@ function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
+function FavoriteListTab({ active, label, count, title, onClick }: {
+  active: boolean;
+  label: string;
+  count: number;
+  title?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors md:h-9 ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+      aria-pressed={active}
+      title={title ?? label}
+      onClick={onClick}
+    >
+      <ListMusic className="h-4 w-4" />
+      <span className="max-w-48 truncate">{label}</span>
+      <span className="text-xs tabular-nums opacity-80">{count}</span>
+    </button>
+  );
+}
+
 function FavoriteListTabSkeletons() {
   return (
     <>
       {Array.from({ length: 4 }, (_, index) => (
-        <FavoriteSkeletonLine key={index} className="h-9 w-28 shrink-0" />
+        <FavoriteSkeletonLine key={index} className="h-11 w-28 shrink-0 md:h-9" />
       ))}
     </>
   );
@@ -1079,7 +1152,8 @@ function FavoriteListAction({
   return (
     <button
       type="button"
-      className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left disabled:cursor-not-allowed disabled:opacity-45 ${destructive ? "text-destructive hover:bg-destructive/10" : "hover:bg-muted"}`}
+      role="menuitem"
+      className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45 ${destructive ? "text-destructive hover:bg-destructive/10" : "hover:bg-muted"}`}
       disabled={disabled}
       onClick={onClick}
     >
@@ -1264,10 +1338,109 @@ function FavoriteSortControls({
   );
 }
 
-type FavoriteMobilePanel = "root" | "availability" | "sort" | "view" | "columns" | "page-size";
+function FavoriteSourceFilter({ sources, selectedSourceIDs, loading, onChange }: {
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  loading: boolean;
+  onChange: (sourceIDs: number[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const label = loading
+    ? "Loading sources"
+    : sources.length === 0
+      ? "No sources"
+      : favoriteSourceFilterLabel(sources, selectedSourceIDs);
+  const disabled = loading || sources.length === 0;
+  return (
+    <div className="relative" ref={anchorRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        className={`h-8 max-w-44 ${selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        aria-label={`Source filter: ${label}`}
+        title={`Source filter: ${label}`}
+      >
+        <Cloud className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </Button>
+      <AnchoredPopover open={open && !disabled} anchorRef={anchorRef} onOpenChange={setOpen} align="start" className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm">
+        <div role="menu" aria-label="Source filters">
+          <div className="px-3 py-2 text-xs font-semibold text-foreground">Sources</div>
+          <FavoriteSourceOptions sources={sources} selectedSourceIDs={selectedSourceIDs} onChange={onChange} />
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+function FavoriteSourceOptions({ sources, selectedSourceIDs, onChange }: {
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  onChange: (sourceIDs: number[]) => void;
+}) {
+  const selected = new Set(selectedSourceIDs);
+  const toggleSource = (sourceID: number) => {
+    if (selectedSourceIDs.length === 0) {
+      onChange([sourceID]);
+      return;
+    }
+    const next = selected.has(sourceID)
+      ? selectedSourceIDs.filter((candidate) => candidate !== sourceID)
+      : [...selectedSourceIDs, sourceID];
+    onChange(next);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={selectedSourceIDs.length === 0}
+        className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${selectedSourceIDs.length === 0 ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+        onClick={() => onChange([])}
+      >
+        <Check className={`h-4 w-4 shrink-0 ${selectedSourceIDs.length === 0 ? "opacity-100" : "opacity-0"}`} />
+        <span className="text-foreground">All sources</span>
+      </button>
+      <div className="my-1 border-t" role="separator" />
+      {sources.map((source) => {
+        const checked = selected.has(source.id);
+        return (
+          <button
+            key={source.id}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={checked}
+            className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted ${checked ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+            onClick={() => toggleSource(source.id)}
+          >
+            <Check className={`h-4 w-4 shrink-0 ${checked ? "opacity-100" : "opacity-0"}`} />
+            <Cloud className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-foreground">{source.displayName || source.code}</span>
+            {!source.enabled && <span className="text-[11px] text-muted-foreground">Disabled</span>}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function favoriteSourceFilterLabel(sources: LibrarySource[], selectedSourceIDs: number[]) {
+  if (selectedSourceIDs.length === 0) return "All sources";
+  if (selectedSourceIDs.length > 1) return `${selectedSourceIDs.length} sources`;
+  const selected = sources.find((source) => source.id === selectedSourceIDs[0]);
+  return selected?.displayName || selected?.code || "1 source";
+}
+
+type FavoriteMobilePanel = "root" | "availability" | "sources" | "sort" | "view" | "columns" | "page-size";
 
 function FavoriteMobileOptions({
   availability,
+  sources,
+  selectedSourceIDs,
+  sourcesLoading,
   sort,
   direction,
   pageSize,
@@ -1277,6 +1450,7 @@ function FavoriteMobileOptions({
   hasActiveFilters,
   sortDisabled,
   onAvailabilityChange,
+  onSourceIDsChange,
   onSortChange,
   onDirectionChange,
   onReshuffle,
@@ -1287,6 +1461,9 @@ function FavoriteMobileOptions({
   onClearFilters,
 }: {
   availability: AvailabilityFilter;
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  sourcesLoading: boolean;
   sort: FavoriteSort;
   direction: SortDirection;
   pageSize: PageSize;
@@ -1296,6 +1473,7 @@ function FavoriteMobileOptions({
   hasActiveFilters: boolean;
   sortDisabled: boolean;
   onAvailabilityChange: (value: AvailabilityFilter) => void;
+  onSourceIDsChange: (sourceIDs: number[]) => void;
   onSortChange: (value: FavoriteSort) => void;
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
@@ -1308,7 +1486,12 @@ function FavoriteMobileOptions({
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<FavoriteMobilePanel>("root");
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const availabilityLabel = availabilityFilters.find((option) => option.value === availability)?.label ?? "All sources";
+  const availabilityLabel = availabilityFilters.find((option) => option.value === availability)?.label ?? "Any availability";
+  const sourceLabel = sourcesLoading
+    ? "Loading"
+    : sources.length === 0
+      ? "None configured"
+      : favoriteSourceFilterLabel(sources, selectedSourceIDs);
   const sortLabel = favoriteSortOptions.find((option) => option.value === sort)?.label ?? "Sort";
   const directionLabel = sort === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
   const viewLabel = viewMode === "masonry" ? "Masonry" : "Grid";
@@ -1351,6 +1534,7 @@ function FavoriteMobileOptions({
           <div role="menu" aria-label="More shelf options">
             <div className="px-3 py-2 text-xs font-semibold text-foreground">More options</div>
             <FavoriteMobileMenuRow icon={<Filter className="h-4 w-4" />} label="Availability" value={availabilityLabel} onClick={() => setPanel("availability")} />
+            <FavoriteMobileMenuRow icon={<Cloud className="h-4 w-4" />} label="Sources" value={sourceLabel} disabled={sourcesLoading || sources.length === 0} onClick={() => setPanel("sources")} />
             <FavoriteMobileMenuRow icon={<ArrowUpDown className="h-4 w-4" />} label="Sort" value={sortLabel} disabled={sortDisabled} onClick={() => setPanel("sort")} />
             <FavoriteMobileMenuRow
               icon={sort === "random" ? <RefreshCw className="h-4 w-4" /> : direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
@@ -1368,6 +1552,13 @@ function FavoriteMobileOptions({
               <FavoriteMobileMenuRow icon={<X className="h-4 w-4" />} label="Clear filters" value="" trailing={false} onClick={() => runAndClose(onClearFilters)} />
             )}
           </div>
+        ) : panel === "sources" ? (
+          <FavoriteMobileSourcePanel
+            sources={sources}
+            selectedSourceIDs={selectedSourceIDs}
+            onBack={() => setPanel("root")}
+            onChange={onSourceIDsChange}
+          />
         ) : (
           <FavoriteMobileOptionPanel
             panel={panel}
@@ -1413,6 +1604,25 @@ function FavoriteMobileMenuRow({ icon, label, value, trailing = true, disabled =
   );
 }
 
+function FavoriteMobileSourcePanel({ sources, selectedSourceIDs, onBack, onChange }: {
+  sources: LibrarySource[];
+  selectedSourceIDs: number[];
+  onBack: () => void;
+  onChange: (sourceIDs: number[]) => void;
+}) {
+  return (
+    <div role="menu" aria-label="Source options">
+      <div className="flex min-h-10 items-center gap-2 px-1">
+        <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onBack} aria-label="Back to more options">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-xs font-semibold text-foreground">Sources</span>
+      </div>
+      <FavoriteSourceOptions sources={sources} selectedSourceIDs={selectedSourceIDs} onChange={onChange} />
+    </div>
+  );
+}
+
 function FavoriteMobileOptionPanel({
   panel,
   availability,
@@ -1427,7 +1637,7 @@ function FavoriteMobileOptionPanel({
   onViewModeChange,
   onMobileColumnsChange,
 }: {
-  panel: Exclude<FavoriteMobilePanel, "root">;
+  panel: Exclude<FavoriteMobilePanel, "root" | "sources">;
   availability: AvailabilityFilter;
   sort: FavoriteSort;
   pageSize: PageSize;
