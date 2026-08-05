@@ -83,8 +83,9 @@ func newRemoteTextPreviewServer(t *testing.T, endpoint string, textURL string) *
 		SourceType:  sourceTypeKikoeruCompatible,
 		Enabled:     true,
 		Endpoint: fileSourceEndpoint{
-			APIURL:  endpoint,
-			BaseURL: endpoint,
+			APIURL:                endpoint,
+			BaseURL:               endpoint,
+			RestrictOutboundHosts: true,
 		},
 	}
 	work := kikoeru.Work{ID: 71, SourceID: "RJ00000000", Title: "Synthetic work"}

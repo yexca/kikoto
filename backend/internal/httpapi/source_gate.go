@@ -197,7 +197,10 @@ func sourceOutboundPolicy(source remoteSourceForUse) (*outbound.Policy, error) {
 		}
 		destinations = append(destinations, outbound.Destination{URL: candidate, AllowPrivate: true})
 	}
-	return outbound.NewPolicy(destinations, outbound.Options{})
+	return outbound.NewPolicy(destinations, outbound.Options{
+		AllowPublicOrigins:  !source.Endpoint.RestrictOutboundHosts,
+		AllowedHostPatterns: source.Endpoint.AllowedHostPatterns,
+	})
 }
 
 func (state *sourceOriginState) blockedUntilValue() time.Time {

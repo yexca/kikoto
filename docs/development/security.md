@@ -26,8 +26,10 @@ Every new direct outbound request path must document its allowed destination
 boundary and include tests for it.
 
 - Accept only HTTP(S) and reject embedded URL credentials.
-- Keep source-returned URLs on the configured origin unless an explicit,
-  reviewable allowlist permits another origin.
+- Give source-returned URLs an explicit policy: configured origins only,
+  configured origins plus a reviewable host allowlist, or the declared
+  public-host compatibility mode. An unconfigured destination must never
+  inherit the configured origin's private-address exception.
 - Reject redirects by default. When redirects are required, apply the complete
   URL, origin, DNS, and address checks again at every hop.
 - Never forward authorization, cookies, or proxy authorization to a different

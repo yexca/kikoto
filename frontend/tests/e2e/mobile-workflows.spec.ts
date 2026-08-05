@@ -458,6 +458,76 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
   await expect(progressbar).toHaveAttribute("aria-valuetext", "64.0 MB of 128.0 MB");
 });
 
+test("blocked Fetch origins stay in Review with source recovery actions and bounded layout", async ({ page }) => {
+  const blockedOrigin = "https://media.example.invalid:443";
+  const longLegacyURL = `https://media.example.invalid/${"nested-path/".repeat(120)}track.mp3?token=synthetic`;
+  const reviewRun = {
+    ...sampleRun,
+    workflowCode: "remote_work_fetch",
+    displayName: "Fetch remote work",
+    status: "partial",
+    summaryJson: JSON.stringify({ review_required: true, blocked_origin: blockedOrigin, legacy_detail: longLegacyURL }),
+    completedNodeRuns: 0,
+    failedNodeRuns: 0,
+    completedJobs: 0,
+    failedJobs: 1,
+    candidateCount: 1,
+    pendingCandidates: 1,
+  };
+  const runsPage = { runs: [reviewRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 1, failed: 0, completed: 0 } };
+  await mockWorkflows(page, undefined, runsPage);
+  let retries = 0;
+  await page.route("**/api/workflow-runs/51", async (route) => {
+    await route.fulfill({ json: {
+      ...reviewRun,
+      nodeRuns: [{
+        ...sampleNodes[0],
+        nodeId: "cache",
+        nodeType: "materialize_cache",
+        displayName: "Cache selected files",
+        status: "partial",
+        outputJson: JSON.stringify({ legacy_detail: longLegacyURL }),
+        errorMessage: `Remote download origin is not allowed by the source policy: ${blockedOrigin}`,
+      }],
+      graphJson: "{}",
+    } });
+  });
+  await page.route("**/api/workflow-runs/51/events", async (route) => {
+    await route.fulfill({ json: [] });
+  });
+  await page.route("**/api/workflow-runs/51/candidates", async (route) => {
+    await route.fulfill({ json: [{
+      id: 801,
+      runId: 51,
+      nodeRunId: 501,
+      type: "remote_origin_blocked",
+      externalKey: blockedOrigin,
+      status: "pending",
+      payloadJson: JSON.stringify({ origin: blockedOrigin, source_id: 8, reason: "origin_not_allowed" }),
+      decisionJson: "{}",
+      createdAt: "2026-07-14T00:00:00Z",
+      updatedAt: "2026-07-14T00:00:00Z",
+    }] });
+  });
+  await page.route("**/api/workflow-runs/51/retry", async (route) => {
+    retries += 1;
+    await route.fulfill({ status: 202, json: { runId: 51, status: "retried", message: "retry started" } });
+  });
+
+  await page.setViewportSize({ width: 1265, height: 850 });
+  await page.goto("/activity?view=review&run=51");
+  await expect(page.getByText("Outbound origin blocked", { exact: true })).toBeVisible();
+  await expect(page.getByText(blockedOrigin, { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark resolved" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ignore" })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Retry Fetch", exact: true }).click();
+  await expect.poll(() => retries).toBe(1);
+  await page.getByRole("button", { name: "Configure source", exact: true }).click();
+  await expect(page).toHaveURL(/\/maintenance\?tab=library&source=8$/);
+});
+
 test("activity deep links load a run outside the visible list page", async ({ page }) => {
   await mockWorkflows(page);
   const detachedRun = { ...sampleRun, id: 99, displayName: "Detached cleanup run" };

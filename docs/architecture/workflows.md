@@ -87,4 +87,9 @@ availability.
 
 Workflow candidates capture user-reviewable outcomes such as duplicate local
 folders, unavailable DLsite products, and old local locations left after remote
-fetches.
+fetches. A Fetch from a source with restricted outbound hosts also creates a
+`remote_origin_blocked` candidate when a media origin is outside that source's
+boundary. The run and active node become partial, the recoverable job is not
+automatically retried, and Activity records only the normalized origin rather
+than the media path or query. After an administrator changes the source policy,
+a manual Retry resolves the old candidate and resumes the same run.

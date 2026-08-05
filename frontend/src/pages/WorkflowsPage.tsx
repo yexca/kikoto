@@ -779,7 +779,7 @@ export function WorkflowsPage({
 }
 
 function Workbench({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
-	return <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">{left}{right}</div>;
+	return <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]"><div className="min-w-0">{left}</div><div className="min-w-0">{right}</div></div>;
 }
 
 function AvailabilityWatchPanel({ readOnly, canManageDownloads }: { readOnly: boolean; canManageDownloads: boolean }) {
@@ -1290,8 +1290,8 @@ function WorkflowDetail({
   const legacyUpgrade = parsedDefinition.kind === "legacy" ? upgradeLegacyWorkflowDefinition(parsedDefinition.nodes, definitionTriggers) : null;
   const composerEditable = parsedDefinition.kind === "v2";
   return (
-    <Card>
-      <CardContent className="space-y-5 p-5">
+    <Card className="min-w-0">
+      <CardContent className="min-w-0 space-y-5 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -1942,9 +1942,9 @@ function RunLogsSkeleton() {
 
 function RunOverview({ run, nodeRuns }: { run: WorkflowRunDetail | WorkflowRun; nodeRuns: WorkflowNodeRun[] }) {
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <FetchTransferProgress run={run} />
-      <div className="rounded-md border bg-muted/30 p-3">
+      <div className="min-w-0 rounded-md border bg-muted/30 p-3">
         <div className="text-sm font-semibold">Summary</div>
         <JsonPreview value={run.summaryJson} empty="No summary recorded." />
       </div>
@@ -2115,6 +2115,9 @@ function CandidateReviewCard({ candidate, onCandidateUpdate, readOnly }: { candi
   const cleanupLocations = candidate.type === "local_fetch_merge_cleanup" ? localCleanupLocations(payload) : [];
   const archivedRoots = candidate.type === "local_fetch_merge_cleanup" ? localArchivedRoots(payload) : [];
   const duplicateFolders = candidate.type === "local_duplicate_work_folder" ? localDuplicateFolders(payload) : [];
+  const originBlocked = candidate.type === "remote_origin_blocked";
+  const blockedOrigin = originBlocked ? stringValue(payload.origin) : "";
+  const blockedSourceID = originBlocked ? numberValue(payload.source_id) : null;
   const needsReview = candidateNeedsReview(candidate);
   const cleanup = async (action: "mark_unavailable" | "delete_files") => {
     if (cleanupLocations.length === 0) return;
@@ -2175,12 +2178,43 @@ function CandidateReviewCard({ candidate, onCandidateUpdate, readOnly }: { candi
         </div>
       )}
 
-      {candidate.type !== "local_fetch_merge_cleanup" && candidate.type !== "local_duplicate_work_folder" && (
+      {originBlocked && (
+        <div className="min-w-0 rounded-md border border-warning-border bg-warning-surface p-3 text-sm">
+          <div className="font-medium text-warning-foreground">Outbound origin blocked</div>
+          <div className="mt-1 break-all font-mono text-xs text-warning-foreground">{blockedOrigin || "Origin was not recorded"}</div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            This source restricts outbound hosts. Add the hostname to the source allowlist, or change the source policy, then retry this Fetch.
+          </p>
+        </div>
+      )}
+
+      {candidate.type !== "local_fetch_merge_cleanup" && candidate.type !== "local_duplicate_work_folder" && !originBlocked && (
         <JsonPreview value={candidate.payloadJson} empty="No candidate payload." compact />
       )}
       {hasNonEmptyJSON(candidate.decisionJson) && <JsonPreview value={candidate.decisionJson} empty="No decision payload." compact />}
       {needsReview && !readOnly && (
         <div className="flex flex-wrap gap-2">
+          {originBlocked && (
+            <>
+              {blockedSourceID !== null && blockedSourceID > 0 && (
+                <Button size="sm" variant="outline" onClick={() => openRemoteSourceConfiguration(blockedSourceID)}>
+                  <Settings2 className="h-4 w-4" />
+                  Configure source
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await api.retryWorkflowRun(candidate.runId);
+                  await onCandidateUpdate();
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Retry Fetch
+              </Button>
+            </>
+          )}
           {candidate.type === "local_fetch_merge_cleanup" && cleanupLocations.length > 0 && (
             <>
               <Button size="sm" variant="outline" onClick={() => void cleanup("mark_unavailable")}>
@@ -2197,7 +2231,7 @@ function CandidateReviewCard({ candidate, onCandidateUpdate, readOnly }: { candi
               <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setArchiveDeleteStep(1)}>Delete archive</Button>
             </>
           )}
-          {archivedRoots.length === 0 && (
+          {archivedRoots.length === 0 && !originBlocked && (
             <>
               <Button
                 size="sm"
@@ -3506,7 +3540,7 @@ function RunMetrics({ run }: { run: WorkflowRun }) {
 
 function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () => Promise<void> }) {
   const cancellable = ["queued", "running"].includes(run.status);
-  const retryable = run.status === "failed" && [
+  const retryable = (run.status === "failed" || (run.status === "partial" && run.workflowCode === "remote_work_fetch" && run.pendingCandidates > 0)) && [
     "local_library_scan", "metadata_sync", "remote_work_fetch", "media_cache",
     "media_cache_cleanup", "media_location_cleanup", "local_media_delete", "local_location_cleanup", "remote_popular_collection",
   ].includes(run.workflowCode);
@@ -3585,7 +3619,7 @@ function EmptyPanel({ text }: { text: string }) {
 }
 
 function ErrorPanel({ error }: { error: string }) {
-  return <div className="rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground">{error}</div>;
+  return <div className="min-w-0 break-words rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground [overflow-wrap:anywhere]">{error}</div>;
 }
 
 function JsonPreview({ value, empty, compact = false }: { value: string; empty: string; compact?: boolean }) {
@@ -3594,7 +3628,7 @@ function JsonPreview({ value, empty, compact = false }: { value: string; empty: 
     return <div className="mt-2 text-sm text-muted-foreground">{empty}</div>;
   }
   return (
-    <pre className={`app-scroll mt-2 overflow-auto rounded-md border bg-background p-3 text-xs text-muted-foreground ${compact ? "max-h-32" : "max-h-56"}`}>
+    <pre className={`app-scroll mt-2 min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-xs text-muted-foreground [overflow-wrap:anywhere] ${compact ? "max-h-32" : "max-h-56"}`}>
       {summary}
     </pre>
   );
@@ -3793,6 +3827,12 @@ function openActivityRun(run: WorkflowRun) {
   const view = activityViewForRun(run);
   const search = new URLSearchParams({ view, run: String(run.id) });
   window.history.pushState({}, "", `/activity?${search}`);
+  window.dispatchEvent(new Event("kikoto:navigation"));
+}
+
+function openRemoteSourceConfiguration(sourceID: number) {
+  const search = new URLSearchParams({ tab: "library", source: String(sourceID) });
+  window.history.pushState({}, "", `/maintenance?${search}`);
   window.dispatchEvent(new Event("kikoto:navigation"));
 }
 

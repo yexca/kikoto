@@ -64,7 +64,7 @@ async function mockCacheSettings(
         priority: 10,
         enabled: true,
         config: { scanDepth: 4 },
-        endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "" },
+        endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "", restrictOutboundHosts: false, allowedHostPatterns: [] },
         healthStatus: "healthy",
         lastCheckedAt: "2026-07-26T00:00:00Z",
       },
@@ -76,7 +76,14 @@ async function mockCacheSettings(
         priority: 30,
         enabled: true,
         config: { cacheEnabled: false, cacheLimitGb: 20, saveRootTemplate: "/data/<source_name>/<work_code>" },
-        endpoint: { baseUrl: "https://remote.example", apiUrl: "https://api.remote.example", fallbackUrl: "", workUrlTemplate: "/work/{code}" },
+        endpoint: {
+          baseUrl: "https://remote.example",
+          apiUrl: "https://api.remote.example",
+          fallbackUrl: "",
+          workUrlTemplate: "/work/{code}",
+          restrictOutboundHosts: false,
+          allowedHostPatterns: [],
+        },
         healthStatus: "unknown",
         lastCheckedAt: null,
       },
@@ -366,7 +373,18 @@ test("maintenance combines library sources and exposes read-only paths with heal
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ01234567");
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
-  await sourceDialog.getByRole("button", { name: "Close source modal" }).click();
+  await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute("aria-checked", "false");
+  await expect(sourceDialog.getByLabel("Additional allowed hosts")).toHaveCount(0);
+  await sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" }).click();
+  await expect(sourceDialog.getByText("https://api.remote.example", { exact: true })).toBeVisible();
+  await expect(sourceDialog.getByText("https://remote.example", { exact: true })).toBeVisible();
+  await sourceDialog.getByLabel("Additional allowed hosts").fill("cdn.example.invalid\n*.media.example.invalid");
+  await sourceDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => sourceUpdates.length).toBe(2);
+  expect(sourceUpdates[1]?.endpoint).toEqual(expect.objectContaining({
+    restrictOutboundHosts: true,
+    allowedHostPatterns: ["cdn.example.invalid", "*.media.example.invalid"],
+  }));
 
   await page.getByRole("button", { name: "Delete source", exact: true }).click();
   const deleteDialog = page.getByRole("dialog", { name: "Delete remote source" });
@@ -378,6 +396,17 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ01234567");
   await expect(page.getByRole("button", { name: /Save.*path/i })).toHaveCount(0);
+});
+
+test("remote source deep links open the requested source configuration", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/maintenance?tab=library&source=8");
+
+  const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
+  await expect(sourceDialog).toBeVisible();
+  await expect(sourceDialog.getByLabel("Name")).toHaveValue("Example Remote");
+  await sourceDialog.getByRole("button", { name: "Close source modal" }).click();
+  await expect(page).toHaveURL(/\/maintenance\?tab=library$/);
 });
 
 test("routing drag order becomes the saved internal priority", async ({ page }) => {

@@ -56,7 +56,10 @@ func TestRemoteCoverUsesBoundedDownloadWriter(t *testing.T) {
 
 func TestRemoteDownloadRejectsUnconfiguredOriginWithoutRetrying(t *testing.T) {
 	server := NewServer(openMigratedTestDB(t), config.Config{})
-	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: "https://source.example.invalid/api"}}
+	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{
+		APIURL:                "https://source.example.invalid/api",
+		RestrictOutboundHosts: true,
+	}}
 	target := filepath.Join(t.TempDir(), "media.bin")
 	_, err := server.downloadToFile(
 		context.Background(),

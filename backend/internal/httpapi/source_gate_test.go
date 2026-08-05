@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -173,7 +174,7 @@ func TestSourceClientRejectsURLOutsideConfiguredOrigins(t *testing.T) {
 	defer configured.Close()
 
 	server := NewServer(openMigratedTestDB(t), config.Config{})
-	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: configured.URL}}
+	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: configured.URL, RestrictOutboundHosts: true}}
 	if _, err := server.sourceHTTPClient(source, time.Second).Get(other.URL); err == nil {
 		t.Fatal("source client reached an origin outside its configured boundary")
 	}
@@ -184,6 +185,21 @@ func TestSourceClientRejectsURLOutsideConfiguredOrigins(t *testing.T) {
 	defer server.sourceGate.mu.Unlock()
 	if len(server.sourceGate.lanes) != 0 || len(server.sourceGate.origins) != 0 {
 		t.Fatal("rejected URL allocated persistent source-gate state")
+	}
+}
+
+func TestSourcePolicyCompatibilityAllowsNewPublicOrigin(t *testing.T) {
+	source := remoteSourceForUse{Endpoint: fileSourceEndpoint{APIURL: "https://api.source.example.invalid"}}
+	policy, err := sourceOutboundPolicy(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaURL, err := url.Parse("https://media.storage.example.invalid/RJ00000000/track.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := policy.ValidateURL(mediaURL); err != nil {
+		t.Fatalf("compatibility source rejected a new public origin: %v", err)
 	}
 }
 

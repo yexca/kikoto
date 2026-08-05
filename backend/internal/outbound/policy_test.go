@@ -67,6 +67,76 @@ func TestPolicyUsesCanonicalExactOrigins(t *testing.T) {
 	}
 }
 
+func TestPolicyAllowsPublicOriginsInCompatibilityMode(t *testing.T) {
+	policy, err := NewPolicy([]Destination{{URL: "https://api.source.test", AllowPrivate: true}}, Options{
+		AllowPublicOrigins: true,
+		Resolver: resolverFunc(func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaURL, _ := url.Parse("https://media.storage.test/files/RJ00000000/track.mp3?token=synthetic")
+	if err := policy.ValidateURL(mediaURL); err != nil {
+		t.Fatalf("public compatibility origin was rejected before address validation: %v", err)
+	}
+	if _, err := policy.dial(context.Background(), "tcp", "media.storage.test:443"); err == nil || !errors.Is(err, ErrPolicyViolation) {
+		t.Fatalf("compatibility destination resolving privately returned %v, want policy violation", err)
+	}
+}
+
+func TestPolicyMatchesExactAndWildcardPublicHosts(t *testing.T) {
+	policy, err := NewPolicy([]Destination{{URL: "https://api.source.test", AllowPrivate: true}}, Options{
+		AllowedHostPatterns: []string{"CDN.STORAGE.TEST.", "*.media.storage.test"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{
+		"https://cdn.storage.test/file",
+		"http://a.media.storage.test:8080/file",
+		"https://nested.a.media.storage.test/file",
+	} {
+		candidate, _ := url.Parse(value)
+		if err := policy.ValidateURL(candidate); err != nil {
+			t.Fatalf("allowed host %q was rejected: %v", value, err)
+		}
+	}
+	for _, value := range []string{
+		"https://media.storage.test/file",
+		"https://notmedia.storage.test/file",
+	} {
+		candidate, _ := url.Parse(value)
+		err := policy.ValidateURL(candidate)
+		var originErr OriginNotAllowedError
+		if !errors.As(err, &originErr) {
+			t.Fatalf("blocked host %q error = %v, want OriginNotAllowedError", value, err)
+		}
+		if strings.Contains(originErr.Error(), "/file") {
+			t.Fatalf("origin error exposed a URL path: %q", originErr.Error())
+		}
+	}
+}
+
+func TestNormalizeHostPatternRejectsURLsAndInvalidWildcards(t *testing.T) {
+	for _, value := range []string{
+		"https://cdn.example.invalid",
+		"cdn.example.invalid:443",
+		"cdn.example.invalid/path",
+		"media.*.example.invalid",
+		"*",
+		"*.127.0.0.1",
+	} {
+		if _, err := NormalizeHostPattern(value); err == nil {
+			t.Fatalf("NormalizeHostPattern(%q) unexpectedly succeeded", value)
+		}
+	}
+	if value, err := NormalizeHostPattern(" *.Media.Example.Invalid. "); err != nil || value != "*.media.example.invalid" {
+		t.Fatalf("normalized wildcard = %q, error = %v", value, err)
+	}
+}
+
 func TestPublicPolicyRejectsPrivateAndReservedAddresses(t *testing.T) {
 	addresses := []string{
 		"127.0.0.1",

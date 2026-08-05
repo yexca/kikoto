@@ -21,6 +21,7 @@ const (
 	maxResolvedAddresses         = 32
 	maxResponseHeaderBytes       = 1 << 20
 	maxRedirects                 = 10
+	maxAllowedHostPatterns       = 64
 )
 
 // Destination declares an origin that outbound requests may reach. Private
@@ -44,15 +45,19 @@ type Options struct {
 	DialContext         DialContextFunc
 	ConnectTimeout      time.Duration
 	ResponseReadTimeout time.Duration
+	AllowPublicOrigins  bool
+	AllowedHostPatterns []string
 }
 
 type Policy struct {
-	origins        map[string]originRule
-	endpoints      map[string]endpointRule
-	resolver       Resolver
-	dialContext    DialContextFunc
-	connectTimeout time.Duration
-	readTimeout    time.Duration
+	origins             map[string]originRule
+	endpoints           map[string]endpointRule
+	allowPublicOrigins  bool
+	allowedHostPatterns []hostPattern
+	resolver            Resolver
+	dialContext         DialContextFunc
+	connectTimeout      time.Duration
+	readTimeout         time.Duration
 }
 
 type originRule struct {
@@ -61,6 +66,11 @@ type originRule struct {
 
 type endpointRule struct {
 	allowPrivate bool
+}
+
+type hostPattern struct {
+	host     string
+	wildcard bool
 }
 
 type policyTransport struct {
@@ -93,11 +103,27 @@ type policyViolation struct {
 	detail string
 }
 
+// OriginNotAllowedError identifies a syntactically valid HTTP(S) origin that
+// is outside a policy's configured origins and public-host allowlist. Origin
+// intentionally excludes the URL path, query, and fragment so callers can
+// safely surface it in a review workflow.
+type OriginNotAllowedError struct {
+	Origin string
+}
+
 func (err policyViolation) Error() string {
 	return err.detail
 }
 
 func (err policyViolation) Unwrap() error {
+	return ErrPolicyViolation
+}
+
+func (err OriginNotAllowedError) Error() string {
+	return "outbound URL origin is not allowed: " + err.Origin
+}
+
+func (err OriginNotAllowedError) Unwrap() error {
 	return ErrPolicyViolation
 }
 
@@ -109,12 +135,13 @@ func violation(detail string) error {
 // DNS-pinning policy for it.
 func NewPolicy(destinations []Destination, options Options) (*Policy, error) {
 	policy := &Policy{
-		origins:        make(map[string]originRule),
-		endpoints:      make(map[string]endpointRule),
-		resolver:       options.Resolver,
-		dialContext:    options.DialContext,
-		connectTimeout: options.ConnectTimeout,
-		readTimeout:    options.ResponseReadTimeout,
+		origins:            make(map[string]originRule),
+		endpoints:          make(map[string]endpointRule),
+		allowPublicOrigins: options.AllowPublicOrigins,
+		resolver:           options.Resolver,
+		dialContext:        options.DialContext,
+		connectTimeout:     options.ConnectTimeout,
+		readTimeout:        options.ResponseReadTimeout,
 	}
 	if policy.resolver == nil {
 		policy.resolver = net.DefaultResolver
@@ -148,10 +175,58 @@ func NewPolicy(destinations []Destination, options Options) (*Policy, error) {
 		policy.origins[origin] = originRule{allowPrivate: destination.AllowPrivate}
 		policy.endpoints[endpoint] = endpointRule{allowPrivate: destination.AllowPrivate}
 	}
-	if len(policy.origins) == 0 {
+	if len(options.AllowedHostPatterns) > maxAllowedHostPatterns {
+		return nil, violation("outbound host allowlist has too many entries")
+	}
+	seenPatterns := make(map[string]bool, len(options.AllowedHostPatterns))
+	for _, value := range options.AllowedHostPatterns {
+		normalized, err := NormalizeHostPattern(value)
+		if err != nil {
+			return nil, err
+		}
+		if seenPatterns[normalized] {
+			continue
+		}
+		seenPatterns[normalized] = true
+		pattern := hostPattern{host: normalized}
+		if strings.HasPrefix(normalized, "*.") {
+			pattern.host = strings.TrimPrefix(normalized, "*.")
+			pattern.wildcard = true
+		}
+		policy.allowedHostPatterns = append(policy.allowedHostPatterns, pattern)
+	}
+	if len(policy.origins) == 0 && !policy.allowPublicOrigins && len(policy.allowedHostPatterns) == 0 {
 		return nil, violation("outbound destination allowlist is empty")
 	}
 	return policy, nil
+}
+
+// NormalizeHostPattern validates and canonicalizes an administrator-provided
+// public hostname or a leading-wildcard subdomain pattern. A wildcard matches
+// subdomains only: *.example.com does not match example.com itself.
+func NormalizeHostPattern(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", violation("outbound host pattern is empty")
+	}
+	wildcard := strings.HasPrefix(value, "*.")
+	if wildcard {
+		value = strings.TrimPrefix(value, "*.")
+	}
+	if strings.Contains(value, "*") {
+		return "", violation("outbound host pattern may only use a leading wildcard")
+	}
+	host, err := canonicalHost(value)
+	if err != nil {
+		return "", violation("outbound host pattern must be a hostname without a scheme, port, or path")
+	}
+	if wildcard {
+		if _, err := netip.ParseAddr(host); err == nil {
+			return "", violation("outbound host wildcard must target a hostname")
+		}
+		return "*." + host, nil
+	}
+	return host, nil
 }
 
 // ParseHTTPURL accepts only absolute HTTP(S) URLs without embedded
@@ -209,7 +284,13 @@ func (p *Policy) ValidateURL(value *url.URL) error {
 		return err
 	}
 	if _, ok := p.origins[origin]; !ok {
-		return violation("outbound URL origin is not allowed")
+		host, hostErr := canonicalHost(value.Hostname())
+		if hostErr != nil {
+			return hostErr
+		}
+		if !p.allowsPublicHost(host) {
+			return OriginNotAllowedError{Origin: origin}
+		}
 	}
 	return nil
 }
@@ -380,7 +461,14 @@ func (p *Policy) dial(ctx context.Context, network string, address string) (net.
 	}
 	rule, ok := p.endpoints[endpoint]
 	if !ok {
-		return nil, violation("outbound connection endpoint is not allowed")
+		normalizedHost, hostErr := canonicalHost(host)
+		if hostErr != nil {
+			return nil, hostErr
+		}
+		if !p.allowsPublicHost(normalizedHost) {
+			return nil, violation("outbound connection endpoint is not allowed")
+		}
+		rule = endpointRule{allowPrivate: false}
 	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, p.connectTimeout)
@@ -416,6 +504,21 @@ func (p *Policy) dial(ctx context.Context, network string, address string) (net.
 		lastErr = errors.New("outbound hostname has no compatible address")
 	}
 	return nil, lastErr
+}
+
+func (p *Policy) allowsPublicHost(host string) bool {
+	if p.allowPublicOrigins {
+		return true
+	}
+	for _, pattern := range p.allowedHostPatterns {
+		if !pattern.wildcard && host == pattern.host {
+			return true
+		}
+		if pattern.wildcard && host != pattern.host && strings.HasSuffix(host, "."+pattern.host) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Policy) resolve(ctx context.Context, host string) ([]netip.Addr, error) {

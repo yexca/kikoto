@@ -39,6 +39,10 @@ Demo mode renders Settings read-only.
   confirmed deletion of local database information while retaining media files.
 - Each enabled remote source has an explicit health-check action. The result is
   persisted through the same source health state used by automatic probes.
+- Remote sources default to compatible public storage hosts. Source
+  configuration can enable **Restrict outbound hosts** to allow only the API,
+  Public site, Fallback, and an editable list of exact or `*.example.invalid`
+  public host patterns.
 - Routing rules are ordered preferences. Their timeline position determines
   internal priority; disabled and numeric-weight controls are not exposed.
 - Recommendation starts with named common profiles and keeps the full scoring

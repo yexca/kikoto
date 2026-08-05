@@ -99,13 +99,20 @@ trust levels:
   itself is trusted.
 
 The outbound transport accepts only HTTP(S) URLs without embedded credentials.
-Source-returned media, cover, text, and redirect URLs must remain on the
-configured API, base, or fallback origins; every redirect hop is checked and
-credentials are removed on an explicitly allowed origin change. DNS answers
-are validated as a complete set and the connection is made to one of those same
-validated addresses. Built-in public metadata destinations reject private and
-reserved addresses, while administrator-configured source origins retain the
-intentional private-LAN exception.
+Every redirect hop is checked and credentials are removed on an allowed origin
+change. DNS answers are validated as a complete set and the connection is made
+to one of those same validated addresses. Built-in public metadata destinations
+reject private and reserved addresses, while administrator-configured source
+origins retain the intentional private-LAN exception.
+
+Remote sources use public-host compatibility mode by default: source-returned
+media, cover, and text URLs may use a different origin, but unconfigured
+destinations must resolve only to public addresses. Enable **Restrict outbound
+hosts** on a source when it should stay on the configured API, public-site, and
+fallback origins. Strict sources may also list exact public hostnames or a
+leading wildcard such as `*.media.example.invalid`; that wildcard permits
+subdomains only and does not permit `media.example.invalid` itself. Additional
+allowed hosts never receive the private-LAN exception.
 
 The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
 `HTTPS_PROXY`, or `NO_PROXY` settings. Supporting a proxy would require an

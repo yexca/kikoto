@@ -2,10 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
 func TestClaimNextQueuedWorkflowJobUsesPersistentPriorityBeforeAge(t *testing.T) {
@@ -148,6 +153,106 @@ func TestRetryableWorkflowErrorOnlyAcceptsTransientDownloads(t *testing.T) {
 	}
 	if isRetryableWorkflowError(context.Canceled) {
 		t.Fatal("cancellation should not be retried")
+	}
+	policyErr := remoteDownloadError{
+		Err: &url.Error{
+			Op:  "Get",
+			URL: "https://media.example.invalid/private/path.mp3?token=synthetic",
+			Err: outbound.OriginNotAllowedError{Origin: "https://media.example.invalid:443"},
+		},
+		Retryable: false,
+	}
+	if isRetryableWorkflowError(policyErr) {
+		t.Fatal("a permanent download error wrapped in url.Error should not fall through to generic network retry handling")
+	}
+}
+
+func TestRemoteOriginBlockPausesFetchForReviewAndManualRetryResolvesCandidate(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example-remote', 'Example Remote', 'kikoeru_compatible')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch remote work', 'running', 'manual')`,
+		`INSERT INTO workflow_node_run (id, workflow_run_id, node_id, node_type, display_name, position, status) VALUES (1, 1, 'cache', 'materialize_cache', 'Cache selected files', 4, 'running')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, workflow_node_run_id, worker_type, status, payload_json, checkpoint_json, recoverable, max_retries, retry_count) VALUES (1, 1, 1, 'remote_work_fetch', 'running', '{"source_id":1,"work_code":"RJ00000000"}', '{"phase":"materialize"}', 1, 5, 0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origin := "https://media.example.invalid:443"
+	if err := server.pauseRemoteFetchForOriginReview(
+		context.Background(),
+		1,
+		1,
+		1,
+		0,
+		remoteSourceForUse{ID: 1, DisplayName: "Example Remote"},
+		origin,
+		0,
+		2,
+		remoteWorkSaveSummary{CacheDownload: 1},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var runStatus, nodeStatus, jobStatus, candidateStatus, candidateType, candidatePayload, eventDetail string
+	var candidateID int64
+	var retryCount int
+	if err := db.QueryRow(`
+		SELECT run.status, node.status, job.status, job.retry_count,
+			candidate.id, candidate.status, candidate.candidate_type, candidate.payload_json
+		FROM workflow_run AS run
+		INNER JOIN workflow_node_run AS node ON node.workflow_run_id = run.id
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+		INNER JOIN workflow_candidate AS candidate ON candidate.workflow_run_id = run.id
+		WHERE run.id = 1
+	`).Scan(&runStatus, &nodeStatus, &jobStatus, &retryCount, &candidateID, &candidateStatus, &candidateType, &candidatePayload); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "partial" || nodeStatus != "partial" || jobStatus != "failed" || retryCount != 0 || candidateStatus != "pending" || candidateType != remoteOriginBlockedCandidateType {
+		t.Fatalf("run=%s node=%s job=%s retries=%d candidate=%s/%s", runStatus, nodeStatus, jobStatus, retryCount, candidateType, candidateStatus)
+	}
+	if !strings.Contains(candidatePayload, origin) || strings.Contains(candidatePayload, "path.mp3") || strings.Contains(candidatePayload, "token") {
+		t.Fatalf("candidate payload was not origin-only: %s", candidatePayload)
+	}
+	if err := db.QueryRow(`SELECT detail_json FROM workflow_event WHERE workflow_run_id = 1 AND event_type = 'remote.origin_blocked'`).Scan(&eventDetail); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(eventDetail, "path.mp3") || strings.Contains(eventDetail, "token") {
+		t.Fatalf("event detail exposed the media URL: %s", eventDetail)
+	}
+	request := httptest.NewRequest(http.MethodPatch, "/api/workflow-candidates/1", strings.NewReader(`{"status":"resolved"}`))
+	request.SetPathValue("id", "1")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.updateWorkflowCandidate(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("generic candidate resolution status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if err := db.QueryRow(`SELECT status FROM workflow_candidate WHERE id = ?`, candidateID).Scan(&candidateStatus); err != nil {
+		t.Fatal(err)
+	}
+	if candidateStatus != "pending" {
+		t.Fatalf("generic candidate resolution changed status to %q", candidateStatus)
+	}
+
+	if err := server.retryFailedWorkflowJob(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`
+		SELECT run.status, node.status, job.status, job.retry_count, candidate.status
+		FROM workflow_run AS run
+		INNER JOIN workflow_node_run AS node ON node.workflow_run_id = run.id
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+		INNER JOIN workflow_candidate AS candidate ON candidate.workflow_run_id = run.id
+		WHERE run.id = 1
+	`).Scan(&runStatus, &nodeStatus, &jobStatus, &retryCount, &candidateStatus); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "queued" || nodeStatus != "queued" || jobStatus != "queued" || retryCount != 1 || candidateStatus != "resolved" {
+		t.Fatalf("manual retry run=%s node=%s job=%s retries=%d candidate=%s", runStatus, nodeStatus, jobStatus, retryCount, candidateStatus)
 	}
 }
 

@@ -164,6 +164,10 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context, runnerID string) 
 		}
 		return errors.New(message)
 	}
+	var originReviewErr remoteOriginReviewError
+	if errors.As(runErr, &originReviewErr) {
+		return nil
+	}
 	if runErr != nil && isRetryableWorkflowError(runErr) && job.RetryCount < job.MaxRetries {
 		delay := time.Duration(job.RetryCount+1) * 30 * time.Second
 		if err := s.requeueFailedWorkflowJob(jobCtx, job, delay, "Automatic retry after a transient source failure"); err != nil {
@@ -316,7 +320,10 @@ func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string
 
 func isRetryableWorkflowError(runErr error) bool {
 	var downloadErr remoteDownloadError
-	if (errors.As(runErr, &downloadErr) && downloadErr.Retryable) || dlsite.IsRetryableHTTPError(runErr) || errors.Is(runErr, context.DeadlineExceeded) {
+	if errors.As(runErr, &downloadErr) {
+		return downloadErr.Retryable
+	}
+	if dlsite.IsRetryableHTTPError(runErr) || errors.Is(runErr, context.DeadlineExceeded) {
 		return true
 	}
 	var networkErr net.Error
@@ -364,6 +371,19 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 		`, job.RunID); err != nil {
 			return err
 		}
+		if reason == "Manual retry requested" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE workflow_candidate
+				SET status = 'resolved',
+					decision_json = json_object('action', 'retry_after_source_policy_update'),
+					updated_at = CURRENT_TIMESTAMP
+				WHERE workflow_run_id = ?
+					AND candidate_type = ?
+					AND status = 'pending'
+			`, job.RunID, remoteOriginBlockedCandidateType); err != nil {
+				return err
+			}
+		}
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
@@ -378,7 +398,7 @@ func (s *Server) requeueFailedWorkflowJob(ctx context.Context, job workflowJobRe
 	if err != nil || affected == 0 {
 		return err
 	}
-	nodeStatuses := []string{"failed", "running", "queued"}
+	nodeStatuses := []string{"failed", "running", "queued", "partial"}
 	if job.WorkerType == "custom_workflow" {
 		nodeStatuses = append(nodeStatuses, "skipped")
 	}

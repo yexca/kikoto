@@ -65,6 +65,82 @@ func TestFileSourcePayloadEnforcesOutboundURLContract(t *testing.T) {
 	}
 }
 
+func TestFileSourcePayloadNormalizesOutboundHostPatterns(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
+		"displayName":"Example Remote",
+		"sourceType":"kikoeru_compatible",
+		"endpoint":{
+			"apiUrl":"https://api.example.invalid",
+			"restrictOutboundHosts":true,
+			"allowedHostPatterns":[" CDN.Example.Invalid. ","*.Media.Example.Invalid","cdn.example.invalid"]
+		}
+	}`))
+	response := httptest.NewRecorder()
+	payload, ok := parseFileSourcePayload(response, request, false, false)
+	if !ok {
+		t.Fatalf("payload rejected: %s", response.Body.String())
+	}
+	if !payload.Endpoint.RestrictOutboundHosts {
+		t.Fatal("strict outbound host setting was not retained")
+	}
+	want := []string{"cdn.example.invalid", "*.media.example.invalid"}
+	if fmt.Sprint(payload.Endpoint.AllowedHostPatterns) != fmt.Sprint(want) {
+		t.Fatalf("allowed host patterns = %v, want %v", payload.Endpoint.AllowedHostPatterns, want)
+	}
+}
+
+func TestFileSourcePayloadRejectsInvalidOutboundHostPattern(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
+		"displayName":"Example Remote",
+		"sourceType":"kikoeru_compatible",
+		"endpoint":{
+			"apiUrl":"https://api.example.invalid",
+			"restrictOutboundHosts":true,
+			"allowedHostPatterns":["https://media.example.invalid/path"]
+		}
+	}`))
+	response := httptest.NewRecorder()
+	if _, ok := parseFileSourcePayload(response, request, false, false); ok {
+		t.Fatal("URL was accepted as an outbound host pattern")
+	}
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.Code)
+	}
+}
+
+func TestCreateFileSourcePersistsOutboundPolicy(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/file-sources", strings.NewReader(`{
+		"displayName":"Example Remote",
+		"sourceType":"kikoeru_compatible",
+		"priority":30,
+		"enabled":false,
+		"config":{},
+		"endpoint":{
+			"baseUrl":"https://www.example.invalid",
+			"apiUrl":"https://api.example.invalid",
+			"fallbackUrl":"https://fallback.example.invalid",
+			"workUrlTemplate":"/work/{code}",
+			"restrictOutboundHosts":true,
+			"allowedHostPatterns":["cdn.example.invalid","*.media.example.invalid"]
+		}
+	}`))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+	response := httptest.NewRecorder()
+	server.createFileSource(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var source fileSourceSummary
+	if err := json.Unmarshal(response.Body.Bytes(), &source); err != nil {
+		t.Fatal(err)
+	}
+	if !source.Endpoint.RestrictOutboundHosts || fmt.Sprint(source.Endpoint.AllowedHostPatterns) != "[cdn.example.invalid *.media.example.invalid]" {
+		t.Fatalf("persisted endpoint = %+v", source.Endpoint)
+	}
+}
+
 func TestRuntimeSettingsExposeDeploymentMode(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{Mode: config.ModeDemo})
@@ -565,6 +641,41 @@ func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
 	}
 	if runs != 1 {
 		t.Fatalf("fetch runs = %d, want 1", runs)
+	}
+}
+
+func TestRemoteFetchDeduplicatesOriginReviewBeforeLoadingSource(t *testing.T) {
+	db := openMigratedTestDB(t)
+	result, err := db.Exec(`
+		INSERT INTO workflow_run (workflow_code, display_name, status, trigger_type, input_json)
+		VALUES ('remote_work_fetch', 'Fetch remote work', 'partial', 'manual', '{"work_code":"RJ00000001"}')
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, _ := result.LastInsertId()
+	result, err = db.Exec(`
+		INSERT INTO workflow_job (workflow_run_id, worker_type, status, recoverable)
+		VALUES (?, 'remote_work_fetch', 'failed', 1)
+	`, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobID, _ := result.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json)
+		VALUES (?, 'remote_origin_blocked', 'https://media.example.invalid:443', 'pending', '{"origin":"https://media.example.invalid:443","source_id":1}')
+	`, runID); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer(db, config.Config{})
+	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000001", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fetch.Deduplicated || fetch.RunID != runID || fetch.JobID != jobID || fetch.Status != "partial" {
+		t.Fatalf("deduplicated review Fetch = %+v", fetch)
 	}
 }
 

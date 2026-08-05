@@ -884,6 +884,10 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 	if !requireWorkflowRunAccessFrom(w, r, tx, actor, runID) {
 		return
 	}
+	if candidateType == remoteOriginBlockedCandidateType {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "update the remote source outbound policy, then retry the workflow run"})
+		return
+	}
 	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE workflow_candidate
 		SET status = ?, decision_json = ?, updated_at = CURRENT_TIMESTAMP

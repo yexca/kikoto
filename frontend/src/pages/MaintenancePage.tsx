@@ -57,7 +57,14 @@ const emptyRemoteSource = {
   priority: 30,
   enabled: true,
   config: { cacheEnabled: false, cacheLimitGb: 20 },
-  endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "/work/{code}" },
+  endpoint: {
+    baseUrl: "",
+    apiUrl: "",
+    fallbackUrl: "",
+    workUrlTemplate: "/work/{code}",
+    restrictOutboundHosts: false,
+    allowedHostPatterns: [],
+  },
   healthStatus: "unknown",
   lastCheckedAt: null,
 } satisfies FileSource;
@@ -107,6 +114,7 @@ export function MaintenancePage({
   const [updatingSourceId, setUpdatingSourceId] = useState<number | null>(null);
   const [sourcePendingDelete, setSourcePendingDelete] = useState<FileSource | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
+  const openedLinkedSource = useRef(false);
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -154,10 +162,24 @@ export function MaintenancePage({
     if (activeTab === "users" && !canManageUsers) setActiveTab("overview");
   }, [activeTab, canManageUsers]);
 
+  useEffect(() => {
+    if (openedLinkedSource.current || readOnly || !settings) return;
+    const sourceID = Number(new URLSearchParams(window.location.search).get("source"));
+    if (!Number.isInteger(sourceID) || sourceID <= 0) return;
+    const source = settings.fileSources.find((candidate) => candidate.id === sourceID && REMOTE_SOURCE_TYPES.has(candidate.sourceType));
+    if (!source) return;
+    openedLinkedSource.current = true;
+    setActiveTab("library");
+    setDraftSource(source);
+    setEditingSourceId(source.id);
+    setIsSourceModalOpen(true);
+  }, [readOnly, settings]);
+
   const selectTab = (tab: MaintenanceTab) => {
     setActiveTab(tab);
     const url = new URL(window.location.href);
     url.pathname = "/maintenance";
+    url.searchParams.delete("source");
     if (tab === "overview") url.searchParams.delete("tab"); else url.searchParams.set("tab", tab);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
   };
@@ -207,6 +229,11 @@ export function MaintenancePage({
     setIsSourceModalOpen(false);
     setDraftSource(emptyRemoteSource);
     setEditingSourceId(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("source")) {
+      url.searchParams.delete("source");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   };
 
   const saveSource = async () => {
@@ -2046,6 +2073,7 @@ function SourceModal({
   const sourceSaveTemplate = source.config.saveRootTemplate?.trim() || defaultSaveTemplate;
   const sourceSavePreview = storagePathPreview(sourceSaveTemplate, source.code.trim() || "source");
   const legacyNumber178 = source.sourceType === LEGACY_NUMBER178_SOURCE_TYPE;
+  const configuredOrigins = configuredSourceOrigins(source.endpoint);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2099,6 +2127,48 @@ function SourceModal({
             value={source.endpoint.fallbackUrl}
             onChange={(value) => patch({ endpoint: { ...source.endpoint, fallbackUrl: value } })}
           />
+          <div className="grid gap-3 rounded-md border p-3 text-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="font-medium">Restrict outbound hosts</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  When off, source-provided public HTTP(S) storage hosts are allowed after address and redirect validation.
+                </p>
+              </div>
+              <Switch
+                checked={source.endpoint.restrictOutboundHosts ?? false}
+                onCheckedChange={(restrictOutboundHosts) => patch({ endpoint: { ...source.endpoint, restrictOutboundHosts } })}
+                aria-label="Restrict outbound hosts"
+              />
+            </div>
+            {source.endpoint.restrictOutboundHosts && (
+              <div className="grid gap-3 border-t pt-3">
+                <div>
+                  <div className="text-xs font-medium">Always allowed configured origins</div>
+                  {configuredOrigins.length > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {configuredOrigins.map((origin) => <Badge key={origin} variant="outline" className="max-w-full break-all font-mono text-[11px]">{origin}</Badge>)}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">Add a valid API, Public site, or Fallback URL.</p>
+                  )}
+                </div>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium">Additional allowed hosts</span>
+                  <textarea
+                    className="min-h-28 resize-y rounded-md border bg-card px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
+                    value={(source.endpoint.allowedHostPatterns ?? []).join("\n")}
+                    onChange={(event) => patch({ endpoint: { ...source.endpoint, allowedHostPatterns: event.target.value.split(/\r?\n/u) } })}
+                    placeholder={"cdn.example.invalid\n*.media.example.invalid"}
+                    aria-label="Additional allowed hosts"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    One hostname per line. A leading wildcard such as *.media.example.invalid allows subdomains, but not the parent hostname itself. Additional hosts must resolve only to public addresses.
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Priority</span>
@@ -2321,6 +2391,21 @@ function storagePathPreview(template: string, sourceCode: string) {
     (value, [token, replacement]) => value.split(token).join(replacement),
     template.trim() || `${DATA_PREFIX}${DEFAULT_SAVE_SUFFIX}`,
   );
+}
+
+function configuredSourceOrigins(endpoint: FileSource["endpoint"]) {
+  const origins = new Set<string>();
+  [endpoint.apiUrl, endpoint.baseUrl, endpoint.fallbackUrl].forEach((value) => {
+    try {
+      const parsed = new URL(value.trim());
+      if ((parsed.protocol === "http:" || parsed.protocol === "https:") && !parsed.username && !parsed.password) {
+        origins.add(parsed.origin);
+      }
+    } catch {
+      // Incomplete endpoint input is validated by the server when saved.
+    }
+  });
+  return [...origins];
 }
 
 function splitRuleTokens(value: string) {

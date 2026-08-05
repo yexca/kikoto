@@ -34,7 +34,8 @@ Kikoto currently includes:
   known totals from files whose size is not declared.
 - Bounded remote media and cover downloads plus retention cleanup for
   unpublished staging left by failed or cancelled Fetch runs.
-- Outbound source and metadata requests with explicit origin allowlists,
+- Outbound source and metadata requests with explicit configured origins,
+  optional strict source host allowlists, public-host compatibility,
   per-hop redirect checks, credential stripping, DNS-pinned connections, and
   separate private-origin rules for administrator-configured LAN sources.
 

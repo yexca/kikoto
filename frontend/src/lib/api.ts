@@ -418,6 +418,8 @@ export type FileSource = {
     apiUrl: string;
     fallbackUrl: string;
     workUrlTemplate: string;
+    restrictOutboundHosts: boolean;
+    allowedHostPatterns: string[];
   };
   healthStatus: string;
   lastCheckedAt: string | null;

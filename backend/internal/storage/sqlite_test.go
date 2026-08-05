@@ -396,7 +396,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 23 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" || migrations[18] != "019_local_scan_filesystem_trigger.sql" || migrations[19] != "020_filesystem_event_watcher.sql" || migrations[20] != "021_reconcile_work_party_provenance.sql" || migrations[21] != "022_user_work_playback_cursor.sql" || migrations[22] != "023_fetch_transfer_operations.sql" {
+	if len(migrations) != 24 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" || migrations[18] != "019_local_scan_filesystem_trigger.sql" || migrations[19] != "020_filesystem_event_watcher.sql" || migrations[20] != "021_reconcile_work_party_provenance.sql" || migrations[21] != "022_user_work_playback_cursor.sql" || migrations[22] != "023_fetch_transfer_operations.sql" || migrations[23] != "024_remote_source_outbound_policy.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount int
@@ -509,6 +509,16 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if workURLTemplate != "'/work/{code}'" {
 		t.Fatalf("work_url_template default = %q", workURLTemplate)
+	}
+	var restrictOutboundHostsDefault, allowedHostPatternsDefault string
+	if err := db.QueryRow(`SELECT dflt_value FROM pragma_table_info('file_source_endpoint') WHERE name = 'restrict_outbound_hosts'`).Scan(&restrictOutboundHostsDefault); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT dflt_value FROM pragma_table_info('file_source_endpoint') WHERE name = 'allowed_host_patterns_json'`).Scan(&allowedHostPatternsDefault); err != nil {
+		t.Fatal(err)
+	}
+	if restrictOutboundHostsDefault != "0" || allowedHostPatternsDefault != "'[]'" {
+		t.Fatalf("outbound policy defaults = %q / %q", restrictOutboundHostsDefault, allowedHostPatternsDefault)
 	}
 }
 

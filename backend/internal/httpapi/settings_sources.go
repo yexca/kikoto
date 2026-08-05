@@ -30,6 +30,7 @@ const (
 	historicalMisspelled178Type    = "kikoeru_compilable_number178"
 	sourceTypeLocalFolder          = "local_folder"
 	defaultRemoteWorkURLTemplate   = "/work/{code}"
+	maxRemoteAllowedHostPatterns   = 64
 )
 
 func isKikoeruSourceType(sourceType string) bool {
@@ -162,10 +163,12 @@ type fileSourceConfig struct {
 }
 
 type fileSourceEndpoint struct {
-	BaseURL         string `json:"baseUrl"`
-	APIURL          string `json:"apiUrl"`
-	FallbackURL     string `json:"fallbackUrl"`
-	WorkURLTemplate string `json:"workUrlTemplate"`
+	BaseURL               string   `json:"baseUrl"`
+	APIURL                string   `json:"apiUrl"`
+	FallbackURL           string   `json:"fallbackUrl"`
+	WorkURLTemplate       string   `json:"workUrlTemplate"`
+	RestrictOutboundHosts bool     `json:"restrictOutboundHosts"`
+	AllowedHostPatterns   []string `json:"allowedHostPatterns"`
 }
 
 type remoteWorksResponse struct {
@@ -814,9 +817,13 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
-		VALUES (?, ?, ?, ?, ?)
-	`, sourceID, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate); err != nil {
+		INSERT INTO file_source_endpoint (
+			file_source_id, base_url, api_url, fallback_url, work_url_template,
+			restrict_outbound_hosts, allowed_host_patterns_json
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, sourceID, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate,
+		payload.Endpoint.RestrictOutboundHosts, mustJSON(payload.Endpoint.AllowedHostPatterns)); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -892,14 +899,20 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url, fallback_url, work_url_template)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO file_source_endpoint (
+			file_source_id, base_url, api_url, fallback_url, work_url_template,
+			restrict_outbound_hosts, allowed_host_patterns_json
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(file_source_id) DO UPDATE SET
 			base_url = excluded.base_url,
 			api_url = excluded.api_url,
 			fallback_url = excluded.fallback_url,
-			work_url_template = excluded.work_url_template
-	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate); err != nil {
+			work_url_template = excluded.work_url_template,
+			restrict_outbound_hosts = excluded.restrict_outbound_hosts,
+			allowed_host_patterns_json = excluded.allowed_host_patterns_json
+	`, id, payload.Endpoint.BaseURL, payload.Endpoint.APIURL, payload.Endpoint.FallbackURL, payload.Endpoint.WorkURLTemplate,
+		payload.Endpoint.RestrictOutboundHosts, mustJSON(payload.Endpoint.AllowedHostPatterns)); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -1819,9 +1832,12 @@ type remoteSourceForUse struct {
 
 func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSourceForUse, error) {
 	var source remoteSourceForUse
-	var configJSON string
+	var configJSON, allowedHostPatternsJSON string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''), COALESCE(endpoint.work_url_template, '')
+		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json,
+			COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''),
+			COALESCE(endpoint.work_url_template, ''), COALESCE(endpoint.restrict_outbound_hosts, 0),
+			COALESCE(endpoint.allowed_host_patterns_json, '[]')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
 		WHERE source.id = ?
@@ -1836,6 +1852,8 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 		&source.Endpoint.BaseURL,
 		&source.Endpoint.FallbackURL,
 		&source.Endpoint.WorkURLTemplate,
+		&source.Endpoint.RestrictOutboundHosts,
+		&allowedHostPatternsJSON,
 	); err != nil {
 		return remoteSourceForUse{}, err
 	}
@@ -1845,12 +1863,19 @@ func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSo
 	if strings.TrimSpace(configJSON) != "" {
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
 	}
+	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
+	if source.Endpoint.AllowedHostPatterns == nil {
+		source.Endpoint.AllowedHostPatterns = []string{}
+	}
 	return source, nil
 }
 
 func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remoteSourceForUse, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json, COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''), COALESCE(endpoint.work_url_template, '')
+		SELECT source.id, source.code, source.display_name, source.source_type, source.enabled, source.config_json,
+			COALESCE(endpoint.api_url, ''), COALESCE(endpoint.base_url, ''), COALESCE(endpoint.fallback_url, ''),
+			COALESCE(endpoint.work_url_template, ''), COALESCE(endpoint.restrict_outbound_hosts, 0),
+			COALESCE(endpoint.allowed_host_patterns_json, '[]')
 		FROM file_source AS source
 		LEFT JOIN file_source_endpoint AS endpoint ON endpoint.file_source_id = source.id
 		WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
@@ -1863,7 +1888,7 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 	sources := []remoteSourceForUse{}
 	for rows.Next() {
 		var source remoteSourceForUse
-		var configJSON string
+		var configJSON, allowedHostPatternsJSON string
 		if err := rows.Scan(
 			&source.ID,
 			&source.Code,
@@ -1875,6 +1900,8 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 			&source.Endpoint.BaseURL,
 			&source.Endpoint.FallbackURL,
 			&source.Endpoint.WorkURLTemplate,
+			&source.Endpoint.RestrictOutboundHosts,
+			&allowedHostPatternsJSON,
 		); err != nil {
 			return nil, err
 		}
@@ -1883,6 +1910,10 @@ func (s *Server) loadRemoteSourcesForAvailability(ctx context.Context) ([]remote
 		}
 		if strings.TrimSpace(configJSON) != "" {
 			_ = json.Unmarshal([]byte(configJSON), &source.Config)
+		}
+		_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
+		if source.Endpoint.AllowedHostPatterns == nil {
+			source.Endpoint.AllowedHostPatterns = []string{}
 		}
 		sources = append(sources, source)
 	}
@@ -3805,7 +3836,19 @@ func activeRemoteFetchResult(ctx context.Context, queryer rowQueryer, workCode s
 			ON job.workflow_run_id = run.id AND job.worker_type = 'remote_work_fetch'
 		LEFT JOIN remote_fetch_manifest AS manifest ON manifest.workflow_run_id = run.id
 		WHERE run.workflow_code = 'remote_work_fetch'
-			AND run.status IN ('queued', 'running')
+			AND (
+				run.status IN ('queued', 'running')
+				OR (
+					run.status = 'partial'
+					AND EXISTS (
+						SELECT 1
+						FROM workflow_candidate AS candidate
+						WHERE candidate.workflow_run_id = run.id
+							AND candidate.candidate_type = 'remote_origin_blocked'
+							AND candidate.status = 'pending'
+					)
+				)
+			)
 			AND UPPER(COALESCE(CAST(json_extract(run.input_json, '$.work_code') AS TEXT), '')) = ?
 		ORDER BY run.id ASC
 		LIMIT 1
@@ -3867,6 +3910,11 @@ func (s *Server) executeRemoteWorkFetchJob(ctx context.Context, job workflowJobR
 	}
 	result, err := s.runRemoteWorkFetchJob(ctx, job.RunID, job.ID, payload)
 	if err != nil {
+		var reviewErr remoteOriginReviewError
+		if errors.As(err, &reviewErr) {
+			slog.Info("remote work fetch paused for source policy review", "run_id", job.RunID, "job_id", job.ID, "origin", reviewErr.Origin)
+			return err
+		}
 		slog.Error("remote work fetch job failed", "run_id", job.RunID, "job_id", job.ID, "error", err)
 		return err
 	}
@@ -3999,6 +4047,32 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		})
 		if err != nil {
 			byteProgress.abort(index, item)
+			var blockedOrigin outbound.OriginNotAllowedError
+			if downloadSource.Endpoint.RestrictOutboundHosts && errors.As(err, &blockedOrigin) {
+				slog.Warn("remote Fetch origin blocked by source policy",
+					"run_id", runID,
+					"job_id", jobID,
+					"source_id", downloadSource.ID,
+					"origin", blockedOrigin.Origin,
+					"error", err,
+				)
+				if pauseErr := s.pauseRemoteFetchForOriginReview(
+					ctx,
+					runID,
+					cacheNodeID,
+					jobID,
+					manifest.ID,
+					downloadSource,
+					blockedOrigin.Origin,
+					index,
+					len(plan.Items)*2,
+					plan.Summary,
+				); pauseErr != nil {
+					_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", pauseErr.Error(), index, len(plan.Items)*2, plan.Summary)
+					return remoteWorkSaveResult{}, pauseErr
+				}
+				return remoteWorkSaveResult{}, remoteOriginReviewError{Origin: blockedOrigin.Origin}
+			}
 			_ = s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 			_ = finishWorkflowRunSimple(ctx, s.db, runID, cacheNodeID, jobID, "failed", err.Error(), index, len(plan.Items)*2, plan.Summary)
 			return remoteWorkSaveResult{}, err
@@ -6501,6 +6575,8 @@ func (s *Server) loadFileSources(r *http.Request) ([]fileSourceSummary, error) {
 			COALESCE(endpoint.api_url, ''),
 			COALESCE(endpoint.fallback_url, ''),
 			COALESCE(endpoint.work_url_template, ''),
+			COALESCE(endpoint.restrict_outbound_hosts, 0),
+			COALESCE(endpoint.allowed_host_patterns_json, '[]'),
 			COALESCE(endpoint.health_status, 'unknown'),
 			endpoint.last_checked_at
 		FROM file_source AS source
@@ -6537,6 +6613,8 @@ func (s *Server) loadFileSource(r *http.Request, id int64) (fileSourceSummary, e
 			COALESCE(endpoint.api_url, ''),
 			COALESCE(endpoint.fallback_url, ''),
 			COALESCE(endpoint.work_url_template, ''),
+			COALESCE(endpoint.restrict_outbound_hosts, 0),
+			COALESCE(endpoint.allowed_host_patterns_json, '[]'),
 			COALESCE(endpoint.health_status, 'unknown'),
 			endpoint.last_checked_at
 		FROM file_source AS source
@@ -6552,7 +6630,7 @@ type fileSourceScanner interface {
 
 func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 	var source fileSourceSummary
-	var configJSON string
+	var configJSON, allowedHostPatternsJSON string
 	var lastCheckedAt sql.NullString
 	if err := scanner.Scan(
 		&source.ID,
@@ -6566,6 +6644,8 @@ func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 		&source.Endpoint.APIURL,
 		&source.Endpoint.FallbackURL,
 		&source.Endpoint.WorkURLTemplate,
+		&source.Endpoint.RestrictOutboundHosts,
+		&allowedHostPatternsJSON,
 		&source.HealthStatus,
 		&lastCheckedAt,
 	); err != nil {
@@ -6574,6 +6654,10 @@ func scanFileSource(scanner fileSourceScanner) (fileSourceSummary, error) {
 	source.LastCheckedAt = nullableString(lastCheckedAt)
 	if strings.TrimSpace(configJSON) != "" {
 		_ = json.Unmarshal([]byte(configJSON), &source.Config)
+	}
+	_ = json.Unmarshal([]byte(allowedHostPatternsJSON), &source.Endpoint.AllowedHostPatterns)
+	if source.Endpoint.AllowedHostPatterns == nil {
+		source.Endpoint.AllowedHostPatterns = []string{}
 	}
 	return source, nil
 }
@@ -6631,6 +6715,30 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workUrlTemplate must be a relative path containing {code} or {codeLower}"})
 			return fileSourcePayload{}, false
 		}
+		if len(payload.Endpoint.AllowedHostPatterns) > maxRemoteAllowedHostPatterns {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "allowedHostPatterns must contain at most 64 entries"})
+			return fileSourcePayload{}, false
+		}
+		normalizedPatterns := make([]string, 0, len(payload.Endpoint.AllowedHostPatterns))
+		seenPatterns := make(map[string]bool, len(payload.Endpoint.AllowedHostPatterns))
+		for _, value := range payload.Endpoint.AllowedHostPatterns {
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			normalized, err := outbound.NormalizeHostPattern(value)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "allowedHostPatterns entries must be hostnames or leading-wildcard patterns such as *.media.example.invalid"})
+				return fileSourcePayload{}, false
+			}
+			if !seenPatterns[normalized] {
+				seenPatterns[normalized] = true
+				normalizedPatterns = append(normalizedPatterns, normalized)
+			}
+		}
+		payload.Endpoint.AllowedHostPatterns = normalizedPatterns
+	}
+	if payload.Endpoint.AllowedHostPatterns == nil {
+		payload.Endpoint.AllowedHostPatterns = []string{}
 	}
 	return payload, true
 }
