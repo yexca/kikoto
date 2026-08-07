@@ -65,12 +65,30 @@ import {
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
-import { api, ApiError, type CircleSourceStat, type ListeningStatus, type VoiceAlias, type VoiceAliasCandidate, type VoiceDetail, type VoiceKnownWork, type VoiceMergeReview, type VoiceRemoteSourceSet, type VoiceSummary } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type CircleSourceStat,
+  type ListeningStatus,
+  type VoiceAlias,
+  type VoiceAliasCandidate,
+  type VoiceDetail,
+  type VoiceKnownWork,
+  type VoiceMergeReview,
+  type VoiceRemoteSourceSet,
+  type VoiceSummary,
+} from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { openCircleRoute, openCircleSeriesRoute } from "@/pages/CirclesPage";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
-import { mergeVoiceWorks, voiceWorkHasRemoteAvailability, voiceWorkObservedSourceTags, voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
+import {
+  mergeVoiceWorks,
+  voiceWorkHasRemoteAvailability,
+  voiceWorkObservedSourceTags,
+  voiceWorkRemoteTarget,
+  type VoiceWorkView,
+} from "@/pages/voiceWorkModel";
 import { voiceWorkIsExplicitlyUnavailable } from "@/pages/voiceWorkAvailabilityModel";
 
 type CreatorKind = "circle" | "voice";
@@ -92,7 +110,11 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
 
 export function CreatorWorksPage({ kind }: { kind: CreatorKind }) {
   if (kind !== "voice") {
-    return <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">Circle creator view has moved to Circles.</div>;
+    return (
+      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+        Circle creator view has moved to Circles.
+      </div>
+    );
   }
   return <VoiceCreatorWorksPage />;
 }
@@ -115,12 +137,16 @@ function VoiceCreatorWorksPage() {
 
 function VoiceListPage() {
   const toast = useToast();
-  const initialBrowseState = useMemo(() => creatorBrowseStateFromSearch(
-    window.location.search,
-    { query: "", filter: "all" as VoiceFilter, tag: "", page: 1, pageSize: 24 },
-    voiceFilters,
-    voicePageSizeOptions,
-  ), []);
+  const initialBrowseState = useMemo(
+    () =>
+      creatorBrowseStateFromSearch(
+        window.location.search,
+        { query: "", filter: "all" as VoiceFilter, tag: "", page: 1, pageSize: 24 },
+        voiceFilters,
+        voicePageSizeOptions,
+      ),
+    [],
+  );
   const [voices, setVoices] = useState<VoiceSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -150,20 +176,28 @@ function VoiceListPage() {
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
-    api.listVoices({ page, pageSize, query: requestQuery, filter, tag: tagFilter, signal: controller.signal }).then((result) => {
-      setVoices(result.voices);
-      setTotal(result.total);
-      setTagOptions(result.tagOptions);
-      setHasLoaded(true);
-      setMessage(result.total === 0 && !requestQuery.trim() && filter === "all" && !tagFilter ? "No voice actor credits have been derived from known work metadata yet." : "");
-      if (result.page !== page) setPage(result.page);
-    }).catch((error) => {
-      if (controller.signal.aborted) return;
-      setLoadError("Voice actors could not be loaded.");
-      toast.notify(toastFromError(error, "Voice actor API is unavailable."));
-    }).finally(() => {
-      if (!controller.signal.aborted) setIsLoading(false);
-    });
+    api
+      .listVoices({ page, pageSize, query: requestQuery, filter, tag: tagFilter, signal: controller.signal })
+      .then((result) => {
+        setVoices(result.voices);
+        setTotal(result.total);
+        setTagOptions(result.tagOptions);
+        setHasLoaded(true);
+        setMessage(
+          result.total === 0 && !requestQuery.trim() && filter === "all" && !tagFilter
+            ? "No voice actor credits have been derived from known work metadata yet."
+            : "",
+        );
+        if (result.page !== page) setPage(result.page);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setLoadError("Voice actors could not be loaded.");
+        toast.notify(toastFromError(error, "Voice actor API is unavailable."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
     return () => controller.abort();
   }, [filter, page, pageSize, reloadToken, requestQuery, tagFilter]);
 
@@ -178,7 +212,9 @@ function VoiceListPage() {
     pageSizeOptions: voicePageSizeOptions,
     leadingControls: (
       <span className="grid h-8 w-8 shrink-0 place-items-center">
-        {isLoading && hasLoaded && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Refreshing voice actors" />}
+        {isLoading && hasLoaded && (
+          <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Refreshing voice actors" />
+        )}
       </span>
     ),
     onPageChange: setPage,
@@ -189,13 +225,13 @@ function VoiceListPage() {
   };
 
   const updateVoice = (next: VoiceSummary) => {
-    setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item));
+    setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item)));
     if (filter !== "all" || tagFilter || requestQuery.trim()) setReloadToken((value) => value + 1);
   };
 
   const toggleFavorite = async (voice: VoiceSummary) => {
     try {
-      updateVoice({ ...voice, ...await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite }) });
+      updateVoice({ ...voice, ...(await api.updateVoiceUserState(voice.personId, { favorite: !voice.favorite })) });
     } catch (error) {
       toast.notify(toastFromError(error, "Voice favorite update failed."));
     }
@@ -218,10 +254,21 @@ function VoiceListPage() {
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 text-sm xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3">
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onKeyDown={dismissKeyboardOnEnter} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices or tags" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none"
+              value={query}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search voices or tags"
+            />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={filter} onChange={(event) => setFilter(event.target.value as VoiceFilter)} aria-label="Voice filter">
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value as VoiceFilter)}
+              aria-label="Voice filter"
+            >
               <option value="all">All voices</option>
               <option value="favorite">Favorite</option>
               <option value="tagged">Tagged</option>
@@ -230,9 +277,18 @@ function VoiceListPage() {
               <option value="remote">Remote</option>
               <option value="missing">Missing</option>
             </select>
-            <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} aria-label="Voice tag filter">
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              aria-label="Voice tag filter"
+            >
               <option value="">All tags</option>
-              {tagOptions.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+              {tagOptions.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -245,33 +301,39 @@ function VoiceListPage() {
           <Card className="min-h-56" role="alert">
             <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
               <span>{loadError}</span>
-              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Retry</Button>
+              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
+                Retry
+              </Button>
             </CardContent>
           </Card>
         ) : (
-        <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
-          {voices.length > 0 ? (
-            voices.map((voice) => (
-              <CreatorCard
-                key={voice.personId}
-                name={voice.displayName}
-                identityLabel={voice.latestWork ? undefined : "Voice actor"}
-                aliases={voice.aliases}
-                latestWork={voice.latestWork}
-                favorite={voice.favorite}
-                userTags={voice.userTags}
-                workCount={voice.knownWorks}
-                unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
-                sources={voice.sourceSummaries}
-                onOpen={() => openVoiceRoute(voice.personId)}
-                onFavoriteToggle={() => void toggleFavorite(voice)}
-                onTagsSave={(tags) => saveTags(voice, tags)}
-              />
-            ))
-          ) : (
-            <Card className="min-h-56"><CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No voice actors match this view.</CardContent></Card>
-          )}
-        </div>
+          <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+            {voices.length > 0 ? (
+              voices.map((voice) => (
+                <CreatorCard
+                  key={voice.personId}
+                  name={voice.displayName}
+                  identityLabel={voice.latestWork ? undefined : "Voice actor"}
+                  aliases={voice.aliases}
+                  latestWork={voice.latestWork}
+                  favorite={voice.favorite}
+                  userTags={voice.userTags}
+                  workCount={voice.knownWorks}
+                  unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+                  sources={voice.sourceSummaries}
+                  onOpen={() => openVoiceRoute(voice.personId)}
+                  onFavoriteToggle={() => void toggleFavorite(voice)}
+                  onTagsSave={(tags) => saveTags(voice, tags)}
+                />
+              ))
+            ) : (
+              <Card className="min-h-56">
+                <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+                  No voice actors match this view.
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
 
         <CollectionPagination {...paginationProps} placement="bottom" />
@@ -300,7 +362,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [filter, setFilter] = useState<WorkFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
+    useWorkCollectionLayout();
   const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
@@ -312,23 +375,31 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     setRemoteMatches([]);
     setRemoteError("");
     setNotFound(false);
-    api.getVoiceSummary(personId).then((item) => {
-      setDetail(item);
-      setMessage("");
-      setIsWorksLoading(true);
-      api.getVoiceWorks(personId).then((result) => {
-        setDetail((current) => current?.personId === personId ? { ...current, works: result.works } : current);
-      }).catch((error) => {
-        toast.notify(toastFromError(error, "Voice works are unavailable."));
-      }).finally(() => setIsWorksLoading(false));
-    }).catch((error) => {
-      setDetail(null);
-      if (error instanceof ApiError && error.status === 404) {
-        setNotFound(true);
-        return;
-      }
-      toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
-    }).finally(() => setIsLoading(false));
+    api
+      .getVoiceSummary(personId)
+      .then((item) => {
+        setDetail(item);
+        setMessage("");
+        setIsWorksLoading(true);
+        api
+          .getVoiceWorks(personId)
+          .then((result) => {
+            setDetail((current) => (current?.personId === personId ? { ...current, works: result.works } : current));
+          })
+          .catch((error) => {
+            toast.notify(toastFromError(error, "Voice works are unavailable."));
+          })
+          .finally(() => setIsWorksLoading(false));
+      })
+      .catch((error) => {
+        setDetail(null);
+        if (error instanceof ApiError && error.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        toast.notify(toastFromError(error, "Voice actor detail is unavailable."));
+      })
+      .finally(() => setIsLoading(false));
   }, [personId]);
 
   const loadRemoteMatches = async (notify = false) => {
@@ -340,9 +411,10 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const failed = result.remoteMatches.filter((source) => remoteSourceFailed(source));
       if (failed.length > 0 || notify) {
         const timedOut = failed.some((source) => source.status === "timeout");
-        const message = failed.length > 0
-          ? `${failed.length} remote source${failed.length === 1 ? "" : "s"} ${timedOut ? "timed out or failed" : "failed"}.`
-          : "Remote matches refreshed.";
+        const message =
+          failed.length > 0
+            ? `${failed.length} remote source${failed.length === 1 ? "" : "s"} ${timedOut ? "timed out or failed" : "failed"}.`
+            : "Remote matches refreshed.";
         if (failed.length > 0) toast.info(message);
         else toast.success(message);
       }
@@ -361,28 +433,35 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   }, [detail?.personId]);
 
   const knownWorks = detail?.works ?? [];
-  const remoteMatchCount = useMemo(() => remoteMatches.reduce((total, source) => total + source.works.length, 0), [remoteMatches]);
+  const remoteMatchCount = useMemo(
+    () => remoteMatches.reduce((total, source) => total + source.works.length, 0),
+    [remoteMatches],
+  );
   const mergedWorks = useMemo(() => mergeVoiceWorks(knownWorks, remoteMatches), [knownWorks, remoteMatches]);
   const filteredWorks = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return mergedWorks.filter((work) => {
       const userTagNames = "userTags" in work ? work.userTags.map((tag) => tag.name) : [];
-      const matchesQuery = !needle || [work.primaryCode, work.title, work.circle, ...work.tags, ...userTagNames].some((value) => value.toLowerCase().includes(needle));
+      const matchesQuery =
+        !needle ||
+        [work.primaryCode, work.title, work.circle, ...work.tags, ...userTagNames].some((value) =>
+          value.toLowerCase().includes(needle),
+        );
       if (!matchesQuery) return false;
       const local = "local" in work ? work.local : work.hasLocal;
       const remote = voiceWorkHasRemoteAvailability(work);
       const cache = "cache" in work ? work.cache : work.hasCache;
       switch (filter) {
-      case "available":
-        return local || remote || cache;
-      case "local":
-        return local;
-      case "remote":
-        return remote;
-      case "missing":
-        return voiceWorkIsExplicitlyUnavailable(work);
-      default:
-        return true;
+        case "available":
+          return local || remote || cache;
+        case "local":
+          return local;
+        case "remote":
+          return remote;
+        case "missing":
+          return voiceWorkIsExplicitlyUnavailable(work);
+        default:
+          return true;
       }
     });
   }, [filter, mergedWorks, query]);
@@ -391,12 +470,17 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const pageWorks = filteredWorks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   useEffect(() => setPage(1), [filter, pageSize, query]);
   useEffect(() => {
-    setSelectedWorkKeys((current) => new Set(Array.from(current).filter((key) => filteredWorks.some((work) => voiceWorkSelectionKey(work) === key))));
+    setSelectedWorkKeys(
+      (current) =>
+        new Set(Array.from(current).filter((key) => filteredWorks.some((work) => voiceWorkSelectionKey(work) === key))),
+    );
   }, [filteredWorks]);
   const selectedWorks = mergedWorks.filter((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)));
   const selectablePageWorks = pageWorks.filter(isVoiceBulkSelectable);
   const selectedSaveable = selectedWorks.filter(voiceWorkRemoteTarget);
-  const selectedSyncable = selectedWorks.filter((work) => voiceWorkRemoteTarget(work) && !voiceWorkHasImportedRemote(work));
+  const selectedSyncable = selectedWorks.filter(
+    (work) => voiceWorkRemoteTarget(work) && !voiceWorkHasImportedRemote(work),
+  );
 
   const toggleFavorite = async () => {
     if (!detail) return;
@@ -404,7 +488,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const next = await api.updateVoiceUserState(detail.personId, {
         favorite: !detail.favorite,
       });
-      setDetail((current) => current ? { ...current, ...next, works: current.works, remoteMatches: current.remoteMatches } : current);
+      setDetail((current) =>
+        current ? { ...current, ...next, works: current.works, remoteMatches: current.remoteMatches } : current,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, "Favorite update failed."));
     }
@@ -412,7 +498,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
 
   const refreshDetail = async () => {
     const item = await api.getVoice(personId);
-    setDetail((current) => item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item);
+    setDetail((current) => (item ? { ...item, remoteMatches: current?.remoteMatches ?? [] } : item));
     void loadRemoteMatches(false);
   };
 
@@ -420,13 +506,14 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     const refreshTrackedWork = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
-        !terminal
-        || (terminal.status !== "succeeded" && terminal.status !== "partial")
-        || !mergedWorks.some((work) => {
+        !terminal ||
+        (terminal.status !== "succeeded" && terminal.status !== "partial") ||
+        !mergedWorks.some((work) => {
           const target = voiceWorkRemoteTarget(work);
           return target && isMatchingRemoteTrack(terminal, target.sourceId, target.code, work.primaryCode);
         })
-      ) return;
+      )
+        return;
       void refreshDetail();
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
@@ -438,7 +525,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     if (!detail) return;
     try {
       const result = await api.setVoiceUserTags(detail.personId, tags);
-      setDetail((current) => current ? { ...current, userTags: result.userTags } : current);
+      setDetail((current) => (current ? { ...current, userTags: result.userTags } : current));
     } catch (error) {
       toast.notify(toastFromError(error, "Voice tags update failed."));
     }
@@ -452,10 +539,16 @@ function VoiceDetailPage({ personId }: { personId: number }) {
     }
     try {
       const result = await api.updateWorkUserState(workId, { listeningStatus: status });
-      setDetail((current) => current ? {
-        ...current,
-        works: current.works.map((item) => item.workId === workId ? { ...item, listeningMark: result.listeningStatus } : item),
-      } : current);
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              works: current.works.map((item) =>
+                item.workId === workId ? { ...item, listeningMark: result.listeningStatus } : item,
+              ),
+            }
+          : current,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, "Listening mark update failed."));
     }
@@ -533,7 +626,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
-      if (failed > 0) toast.warning(message); else toast.success(message);
+      if (failed > 0) toast.warning(message);
+      else toast.success(message);
       await refreshDetail();
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk track/fetch failed."));
@@ -558,7 +652,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
-      if (failed > 0) toast.warning(message); else toast.success(message);
+      if (failed > 0) toast.warning(message);
+      else toast.success(message);
       await refreshDetail();
     } catch (error) {
       toast.notify(toastFromError(error, "Bulk fetch failed."));
@@ -598,7 +693,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
       announceRemoteTrackCreated(target.sourceId, target.code, result);
       toast.notify({
         kind: "info",
-        message: result.deduplicated ? `Track workflow #${result.runId} is already queued.` : `Track workflow #${result.runId} queued.`,
+        message: result.deduplicated
+          ? `Track workflow #${result.runId} is already queued.`
+          : `Track workflow #${result.runId} queued.`,
       });
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
@@ -628,7 +725,9 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   if (!detail) {
     return (
       <div className="space-y-3">
-        <Button variant="outline" size="sm" onClick={() => navigateToVoicesList()}><ChevronLeft className="h-4 w-4" /> Back to voices</Button>
+        <Button variant="outline" size="sm" onClick={() => navigateToVoicesList()}>
+          <ChevronLeft className="h-4 w-4" /> Back to voices
+        </Button>
         <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>
       </div>
     );
@@ -654,11 +753,17 @@ function VoiceDetailPage({ personId }: { personId: number }) {
                   <Badge variant="secondary">person route</Badge>
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{detail.displayName}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{detail.aliases.filter((alias) => alias !== detail.displayName).join(", ") || "No aliases"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {detail.aliases.filter((alias) => alias !== detail.displayName).join(", ") || "No aliases"}
+                </p>
                 <UserTagRow tags={detail.userTags} onSave={saveVoiceTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant={detail.favorite ? "default" : "outline"} size="sm" onClick={() => void toggleFavorite()}>
+                <Button
+                  variant={detail.favorite ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => void toggleFavorite()}
+                >
                   <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
                   Favorite
                 </Button>
@@ -672,18 +777,26 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <Stat label="Remote" value={detail.remoteWorks} icon={<Cloud className="h-4 w-4" />} />
               <Stat label="Remote matches" value={remoteMatchCount} icon={<Search className="h-4 w-4" />} />
             </div>
-
           </CardContent>
         </Card>
 
         <div className="space-y-5">
-          {auth.hasPermission("metadata:sync") && (
-            compactDetailPanels ? (
-              <MobileDetailDisclosure title="Aliases" summary={`${detail.aliasRecords?.length ?? detail.aliases.length} known`}>
+          {auth.hasPermission("metadata:sync") &&
+            (compactDetailPanels ? (
+              <MobileDetailDisclosure
+                title="Aliases"
+                summary={`${detail.aliasRecords?.length ?? detail.aliases.length} known`}
+              >
                 <AliasReviewPanel
                   personId={detail.personId}
                   aliases={detail.aliasRecords ?? []}
-                  onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+                  onAliasesChange={(aliases) =>
+                    setDetail((current) =>
+                      current
+                        ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
+                        : current,
+                    )
+                  }
                   onMerged={() => void refreshDetail()}
                   onMessage={setMessage}
                 />
@@ -692,20 +805,27 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <AliasReviewPanel
                 personId={detail.personId}
                 aliases={detail.aliasRecords ?? []}
-                onAliasesChange={(aliases) => setDetail((current) => current ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) } : current)}
+                onAliasesChange={(aliases) =>
+                  setDetail((current) =>
+                    current
+                      ? { ...current, aliasRecords: aliases, aliases: aliases.map((alias) => alias.alias) }
+                      : current,
+                  )
+                }
                 onMerged={() => void refreshDetail()}
                 onMessage={setMessage}
               />
-            )
-          )}
+            ))}
           {compactDetailPanels ? (
             <MobileDetailDisclosure
               title="Remote Sources"
-              summary={remoteError
-                ? "Unavailable"
-                : isRemoteLoading && remoteMatches.length === 0
-                  ? "Checking"
-                  : `${remoteMatches.length} source${remoteMatches.length === 1 ? "" : "s"} · ${remoteMatches.reduce((total, source) => total + (source.total || source.works.length), 0)} matches`}
+              summary={
+                remoteError
+                  ? "Unavailable"
+                  : isRemoteLoading && remoteMatches.length === 0
+                    ? "Checking"
+                    : `${remoteMatches.length} source${remoteMatches.length === 1 ? "" : "s"} · ${remoteMatches.reduce((total, source) => total + (source.total || source.works.length), 0)} matches`
+              }
               warning={Boolean(remoteError) || remoteMatches.some(remoteSourceFailed)}
             >
               <RemoteSourcePanel
@@ -730,7 +850,13 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
             <Search className="h-4 w-4" />
-            <input className="min-w-0 flex-1 bg-transparent outline-none" value={query} onKeyDown={dismissKeyboardOnEnter} onChange={(event) => setQuery(event.target.value)} placeholder="Search voice works" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none"
+              value={query}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search voice works"
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             <WorkCollectionLayoutPicker
@@ -741,7 +867,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               onMobileColumnsChange={setMobileColumns}
               onDesktopColumnsChange={setDesktopColumns}
             />
-            <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={filter} onChange={(event) => setFilter(event.target.value as WorkFilter)} aria-label="Work filter">
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value as WorkFilter)}
+              aria-label="Work filter"
+            >
               <option value="all">All works</option>
               <option value="available">Available</option>
               <option value="local">Local</option>
@@ -752,65 +883,105 @@ function VoiceDetailPage({ personId }: { personId: number }) {
               <SlidersHorizontal className="h-4 w-4" />
               More
             </Button>
-            <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
-              setSelectionMode((value) => {
-                if (value) setSelectedWorkKeys(new Set());
-                return !value;
-              });
-            }}>
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setSelectionMode((value) => {
+                  if (value) setSelectedWorkKeys(new Set());
+                  return !value;
+                });
+              }}
+            >
               Select
             </Button>
           </div>
         </div>
-        {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Checkbox
-              checked={selectablePageWorks.length > 0 && selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))}
-              onCheckedChange={toggleVisibleSelection}
-              aria-label="Select visible works"
-            />
-            {selectedWorks.length} selected
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>Select all</Button>
-            <Button variant="outline" size="sm" onClick={() => {
-              setSelectedWorkKeys(new Set());
-              setSelectionMode(false);
-            }}>Cancel selection</Button>
-            <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncAndSave()}>
-              <GitBranchPlus className="h-4 w-4" />
-              Track + Fetch {selectedSyncable.length}
-            </Button>
-            <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSave()}>
-              <HardDriveDownload className="h-4 w-4" />
-              Fetch {selectedSaveable.length}
-            </Button>
-          </div>
-        </div>}
-        {pageWorks.length > 0 ? (
-        <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)} aria-busy={isWorksLoading || isRemoteLoading}>
-          {pageWorks.map((work) => (
-            <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`} className={workCollectionItemClassName(viewMode)}>
-              <VoiceWorkCard
-                work={work}
-                selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
-                selectable={isVoiceBulkSelectable(work)}
-                selectionActive={selectionMode}
-                onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                onSync={() => void syncSingleWork(work)}
-                onSave={() => void saveSingleWork(work)}
-                onStatusChange={(status) => void updateWorkMark(work, status)}
-                onFavoriteSaved={(favorite) => {
-                  setDetail((current) => current ? {
-                    ...current,
-                    works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
-                  } : current);
-                }}
-                onEnsureWork={() => ensureVoiceWorkForList(work)}
+        {selectionMode && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Checkbox
+                checked={
+                  selectablePageWorks.length > 0 &&
+                  selectablePageWorks.every((work) => selectedWorkKeys.has(voiceWorkSelectionKey(work)))
+                }
+                onCheckedChange={toggleVisibleSelection}
+                aria-label="Select visible works"
               />
+              {selectedWorks.length} selected
             </div>
-          ))}
-        </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
+                Select all
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedWorkKeys(new Set());
+                  setSelectionMode(false);
+                }}
+              >
+                Cancel selection
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isBulkBusy || selectedSyncable.length === 0}
+                onClick={() => void bulkSyncAndSave()}
+              >
+                <GitBranchPlus className="h-4 w-4" />
+                Track + Fetch {selectedSyncable.length}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isBulkBusy || selectedSaveable.length === 0}
+                onClick={() => void bulkSave()}
+              >
+                <HardDriveDownload className="h-4 w-4" />
+                Fetch {selectedSaveable.length}
+              </Button>
+            </div>
+          </div>
+        )}
+        {pageWorks.length > 0 ? (
+          <div
+            className={workCollectionClassName(viewMode)}
+            style={workCollectionStyle(mobileColumns, desktopColumns)}
+            aria-busy={isWorksLoading || isRemoteLoading}
+          >
+            {pageWorks.map((work) => (
+              <div
+                key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}
+                className={workCollectionItemClassName(viewMode)}
+              >
+                <VoiceWorkCard
+                  work={work}
+                  selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
+                  selectable={isVoiceBulkSelectable(work)}
+                  selectionActive={selectionMode}
+                  onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                  onSync={() => void syncSingleWork(work)}
+                  onSave={() => void saveSingleWork(work)}
+                  onStatusChange={(status) => void updateWorkMark(work, status)}
+                  onFavoriteSaved={(favorite) => {
+                    setDetail((current) =>
+                      current
+                        ? {
+                            ...current,
+                            works: current.works.map((item) =>
+                              item.primaryCode === work.primaryCode ? { ...item, favorite } : item,
+                            ),
+                          }
+                        : current,
+                    );
+                  }}
+                  onEnsureWork={() => ensureVoiceWorkForList(work)}
+                />
+              </div>
+            ))}
+          </div>
         ) : isWorksLoading || isRemoteLoading ? (
           <WorkCollectionLoadingState
             label="Loading voice works"
@@ -819,17 +990,58 @@ function VoiceDetailPage({ personId }: { personId: number }) {
             desktopColumns={desktopColumns}
           />
         ) : (
-          <Card className="min-h-72"><CardContent className="grid min-h-72 place-items-center p-5 text-sm text-muted-foreground">No works match this view.</CardContent></Card>
+          <Card className="min-h-72">
+            <CardContent className="grid min-h-72 place-items-center p-5 text-sm text-muted-foreground">
+              No works match this view.
+            </CardContent>
+          </Card>
         )}
-        {totalPages > 1 && <CatalogPagination page={currentPage} pageSize={pageSize} totalItems={filteredWorks.length} totalPages={totalPages} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+        {totalPages > 1 && (
+          <CatalogPagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={filteredWorks.length}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </section>
-      {saveConfirm && <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />}
+      {saveConfirm && (
+        <SaveConfirmModal
+          count={saveConfirm.count}
+          onClose={() => setSaveConfirm(null)}
+          onConfirm={() => void saveConfirm.run()}
+        />
+      )}
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </div>
   );
 }
 
-function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelectedChange, onSync, onSave, onStatusChange, onFavoriteSaved, onEnsureWork }: { work: VoiceWorkView; selected: boolean; selectable: boolean; selectionActive: boolean; onSelectedChange: (checked: boolean) => void; onSync: () => void; onSave: () => void; onStatusChange: (status: ListeningStatus) => void; onFavoriteSaved: (favorite: boolean) => void; onEnsureWork: () => Promise<number | null> }) {
+function VoiceWorkCard({
+  work,
+  selected,
+  selectable,
+  selectionActive,
+  onSelectedChange,
+  onSync,
+  onSave,
+  onStatusChange,
+  onFavoriteSaved,
+  onEnsureWork,
+}: {
+  work: VoiceWorkView;
+  selected: boolean;
+  selectable: boolean;
+  selectionActive: boolean;
+  onSelectedChange: (checked: boolean) => void;
+  onSync: () => void;
+  onSave: () => void;
+  onStatusChange: (status: ListeningStatus) => void;
+  onFavoriteSaved: (favorite: boolean) => void;
+  onEnsureWork: () => Promise<number | null>;
+}) {
   const isKnown = "local" in work;
   const local = "local" in work ? work.local : work.hasLocal;
   const remote = voiceWorkHasRemoteAvailability(work);
@@ -844,44 +1056,60 @@ function VoiceWorkCard({ work, selected, selectable, selectionActive, onSelected
   return (
     <WorkCardShell
       work={view}
-      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      selection={
+        selectionActive ? (
+          <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} />
+        ) : undefined
+      }
       canOpen={canOpen}
       onOpen={() => openWorkRoute(work)}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
-      onSeriesOpen={"seriesTitleId" in work && work.seriesTitleId && "circleExternalId" in work && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
-      footer={(
+      onSeriesOpen={
+        "seriesTitleId" in work && work.seriesTitleId && "circleExternalId" in work && work.circleExternalId
+          ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
+          : undefined
+      }
+      footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={voiceWorkDLsiteURL(work)} />}
-          right={(
+          right={
             <>
-            <WorkCardActionButton title="Track" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onSync();
-            }}>
-              <GitBranchPlus className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardActionButton title="Fetch" disabled={!voiceWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onSave();
-            }}>
-              <HardDriveDownload className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardListButton
-              workId={workId}
-              active={favorite}
-              disabled={!workId && !voiceWorkRemoteTarget(work)}
-              ensureWorkId={onEnsureWork}
-              onSaved={onFavoriteSaved}
-            />
-            <WorkCardQuickMarkButton
-              value={normalizeListeningStatus(listeningMark)}
-              disabled={isUnavailable && !voiceWorkRemoteTarget(work)}
-              onChange={onStatusChange}
-            />
+              <WorkCardActionButton
+                title="Track"
+                disabled={!voiceWorkRemoteTarget(work)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSync();
+                }}
+              >
+                <GitBranchPlus className="h-4 w-4" />
+              </WorkCardActionButton>
+              <WorkCardActionButton
+                title="Fetch"
+                disabled={!voiceWorkRemoteTarget(work)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSave();
+                }}
+              >
+                <HardDriveDownload className="h-4 w-4" />
+              </WorkCardActionButton>
+              <WorkCardListButton
+                workId={workId}
+                active={favorite}
+                disabled={!workId && !voiceWorkRemoteTarget(work)}
+                ensureWorkId={onEnsureWork}
+                onSaved={onFavoriteSaved}
+              />
+              <WorkCardQuickMarkButton
+                value={normalizeListeningStatus(listeningMark)}
+                disabled={isUnavailable && !voiceWorkRemoteTarget(work)}
+                onChange={onStatusChange}
+              />
             </>
-          )}
+          }
         />
-      )}
+      }
     />
   );
 }
@@ -1015,16 +1243,28 @@ function AliasReviewPanel({
           <p className="text-sm text-muted-foreground">Review alternate names and merge duplicate voice actors.</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {aliases.length > 0 ? aliases.map((alias) => (
-            <Badge key={alias.id} variant={alias.source === "primary_name" ? "secondary" : "outline"} className="gap-1">
-              {alias.alias}
-              {alias.source !== "primary_name" && (
-                <button className="rounded-sm hover:text-destructive" aria-label={`Delete alias ${alias.alias}`} onClick={() => void deleteAlias(alias)}>
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              )}
-            </Badge>
-          )) : <Badge variant="warning">No aliases</Badge>}
+          {aliases.length > 0 ? (
+            aliases.map((alias) => (
+              <Badge
+                key={alias.id}
+                variant={alias.source === "primary_name" ? "secondary" : "outline"}
+                className="gap-1"
+              >
+                {alias.alias}
+                {alias.source !== "primary_name" && (
+                  <button
+                    className="rounded-sm hover:text-destructive"
+                    aria-label={`Delete alias ${alias.alias}`}
+                    onClick={() => void deleteAlias(alias)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
+              </Badge>
+            ))
+          ) : (
+            <Badge variant="warning">No aliases</Badge>
+          )}
         </div>
         <div className="relative" ref={suggestRef}>
           <div className="flex gap-2">
@@ -1042,7 +1282,9 @@ function AliasReviewPanel({
                 placeholder="Add alias or search duplicate voice actor"
               />
             </div>
-            <Button variant="outline" size="sm" onClick={() => void addAlias()}><Plus className="h-4 w-4" /> Add</Button>
+            <Button variant="outline" size="sm" onClick={() => void addAlias()}>
+              <Plus className="h-4 w-4" /> Add
+            </Button>
           </div>
           {shouldShowSuggestions && (
             <div className="app-scroll absolute left-0 right-0 top-11 z-30 max-h-72 overflow-auto rounded-md border bg-popover p-1 shadow-lg">
@@ -1060,7 +1302,14 @@ function AliasReviewPanel({
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{candidate.displayName}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+                      {candidate.knownWorks} works ·{" "}
+                      {[
+                        ...new Set(
+                          candidate.aliases
+                            .map((alias) => alias.alias)
+                            .filter((alias) => alias !== candidate.displayName),
+                        ),
+                      ].join(", ") || "No extra aliases"}
                     </span>
                   </span>
                   <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1070,16 +1319,28 @@ function AliasReviewPanel({
           )}
         </div>
         {aliasDraft.trim().length >= aliasSuggestMinChars && candidates.length > aliasSuggestMaxResults && (
-          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">Too many matches. Keep typing to narrow candidates.</div>
+          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+            Too many matches. Keep typing to narrow candidates.
+          </div>
         )}
         {candidates.length > 0 && candidates.length <= aliasSuggestMaxResults && (
           <div className="space-y-2">
             {candidates.slice(0, 4).map((candidate) => (
-              <div key={candidate.personId} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+              <div
+                key={candidate.personId}
+                className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
+              >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{candidate.displayName}</div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {candidate.knownWorks} works · {[...new Set(candidate.aliases.map((alias) => alias.alias).filter((alias) => alias !== candidate.displayName))].join(", ") || "No extra aliases"}
+                    {candidate.knownWorks} works ·{" "}
+                    {[
+                      ...new Set(
+                        candidate.aliases
+                          .map((alias) => alias.alias)
+                          .filter((alias) => alias !== candidate.displayName),
+                      ),
+                    ].join(", ") || "No extra aliases"}
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setMergeTarget(candidate)}>
@@ -1094,12 +1355,22 @@ function AliasReviewPanel({
           <div className="space-y-2 border-t pt-3">
             <div className="text-sm font-medium">Merge history</div>
             {mergeReviews.slice(0, 4).map((review) => (
-              <div key={review.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm">
+              <div
+                key={review.id}
+                className="flex items-center justify-between gap-3 rounded-md border bg-background p-3 text-sm"
+              >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{review.sourceName}</div>
-                  <div className="truncate text-xs text-muted-foreground">{review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {review.status === "undone" ? "Undone" : "Merged"} · {review.createdAt}
+                  </div>
                 </div>
-                <Button variant="ghost" size="sm" disabled={review.status !== "merged"} onClick={() => void undoMerge(review)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={review.status !== "merged"}
+                  onClick={() => void undoMerge(review)}
+                >
                   Undo
                 </Button>
               </div>
@@ -1120,30 +1391,66 @@ function AliasReviewPanel({
   );
 }
 
-function FloatingConfirm({ title, description, confirmLabel, onClose, onConfirm }: { title: string; description: string; confirmLabel: string; onClose: () => void; onConfirm: () => void }) {
+function FloatingConfirm({
+  title,
+  description,
+  confirmLabel,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/40 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">{title}</h3>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>{confirmLabel}</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+function SaveConfirmModal({
+  count,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Fetch remote directory</h3>
-        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Fetch</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onConfirm}>
+            Fetch
+          </Button>
         </div>
       </div>
     </div>
@@ -1157,7 +1464,9 @@ function WorkProgressLine({ progress }: { progress: NonNullable<VoiceKnownWork["
         <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+        {progress.completed
+          ? "Finished"
+          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -1169,11 +1478,24 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
   const observedSourceTags = voiceWorkObservedSourceTags(work);
   const availableBadges = isKnown
     ? circleSourceBadges({ local: work.local, remote: work.remote, cache: work.cache, sourceTags: observedSourceTags })
-    : circleSourceBadges({ local: work.hasLocal, remote: work.hasRemote || work.remotePlayable, cache: work.hasCache, sourceTags: observedSourceTags });
+    : circleSourceBadges({
+        local: work.hasLocal,
+        remote: work.hasRemote || work.remotePlayable,
+        cache: work.hasCache,
+        sourceTags: observedSourceTags,
+      });
   const observedStatusBadges = voiceObservedStatusBadges(observedSourceTags);
-  const sourceBadges = availableBadges.length > 0 || observedStatusBadges.length > 0
-    ? [...availableBadges, ...observedStatusBadges]
-    : [{ key: "source:unknown", label: "Not checked", variant: "warning" as const, title: "No source availability observation has been recorded." }];
+  const sourceBadges =
+    availableBadges.length > 0 || observedStatusBadges.length > 0
+      ? [...availableBadges, ...observedStatusBadges]
+      : [
+          {
+            key: "source:unknown",
+            label: "Not checked",
+            variant: "warning" as const,
+            title: "No source availability observation has been recorded.",
+          },
+        ];
   return {
     code: work.primaryCode || sourceName || "Source",
     title: work.title,
@@ -1197,35 +1519,67 @@ function voiceWorkCardView(work: VoiceWorkView): WorkCardViewModel {
   };
 }
 
-function RemoteSourcePanel({ sources, loading, error, onRetry }: { sources: VoiceRemoteSourceSet[]; loading: boolean; error: string; onRetry: () => void }) {
+function RemoteSourcePanel({
+  sources,
+  loading,
+  error,
+  onRetry,
+}: {
+  sources: VoiceRemoteSourceSet[];
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+}) {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold">Remote Sources</h3>
-            <p className="text-sm text-muted-foreground">Queried after local detail renders, so source outages do not block the page.</p>
+            <p className="text-sm text-muted-foreground">
+              Queried after local detail renders, so source outages do not block the page.
+            </p>
           </div>
           <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Retry
           </Button>
         </div>
-        {loading && sources.length === 0 ? <RemoteSourceSkeleton /> : sources.map((source) => (
+        {loading && sources.length === 0 ? (
+          <RemoteSourceSkeleton />
+        ) : (
+          sources.map((source) => (
             <div key={source.sourceId} className="rounded-md border bg-background p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate font-medium">{source.displayName}</div>
-                  <div className="text-xs text-muted-foreground">{source.total || source.works.length} matches · {source.elapsedMs} ms</div>
+                  <div className="text-xs text-muted-foreground">
+                    {source.total || source.works.length} matches · {source.elapsedMs} ms
+                  </div>
                 </div>
                 <Badge variant={source.status === "ok" ? "outline" : "warning"}>{source.status}</Badge>
               </div>
-              {remoteSourceStatusMessage(source) && <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>}
+              {remoteSourceStatusMessage(source) && (
+                <div className="mt-2 text-xs text-destructive">{remoteSourceStatusMessage(source)}</div>
+              )}
             </div>
-          ))}
-        {loading && sources.length > 0 && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches</div>}
-        {error && <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
-        {!loading && sources.length === 0 && !error && <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">No Kikoeru-compatible sources are configured.</div>}
+          ))
+        )}
+        {loading && sources.length > 0 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing remote matches
+          </div>
+        )}
+        {error && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {!loading && sources.length === 0 && !error && (
+          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+            No Kikoeru-compatible sources are configured.
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1247,21 +1601,21 @@ function RemoteSourceSkeleton() {
 function remoteSourceStatusMessage(source: VoiceRemoteSourceSet) {
   if (source.status === "ok") return "";
   switch (source.status) {
-  case "timeout":
-    return "Remote source timed out.";
-  case "unavailable":
-  case "error":
-    return "Remote source is unavailable.";
-  case "invalid_response":
-    return "Remote source returned an invalid response.";
-  case "misconfigured":
-    return "Remote source API endpoint is not configured.";
-  case "disabled":
-    return "Source is disabled.";
-  case "unsupported":
-    return "Source type is not supported.";
-  default:
-    return source.error || "";
+    case "timeout":
+      return "Remote source timed out.";
+    case "unavailable":
+    case "error":
+      return "Remote source is unavailable.";
+    case "invalid_response":
+      return "Remote source returned an invalid response.";
+    case "misconfigured":
+      return "Remote source API endpoint is not configured.";
+    case "disabled":
+      return "Source is disabled.";
+    case "unsupported":
+      return "Source type is not supported.";
+    default:
+      return source.error || "";
   }
 }
 
@@ -1280,13 +1634,25 @@ function VoiceDetailSkeleton() {
             <EntitySkeletonLine className="h-9 w-64" />
             <EntitySkeletonLine className="h-5 w-80" />
             <div className="grid grid-cols-5 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
-              {Array.from({ length: 5 }, (_, index) => <EntitySkeletonLine key={index} className="h-16 w-full rounded-none sm:h-20 sm:rounded" />)}
+              {Array.from({ length: 5 }, (_, index) => (
+                <EntitySkeletonLine key={index} className="h-16 w-full rounded-none sm:h-20 sm:rounded" />
+              ))}
             </div>
           </CardContent>
         </Card>
         <div className="space-y-5">
-          <Card><CardContent className="space-y-3 p-4"><EntitySkeletonLine className="h-5 w-32" /><EntitySkeletonLine className="h-10 w-full" /></CardContent></Card>
-          <Card><CardContent className="space-y-3 p-4"><EntitySkeletonLine className="h-5 w-32" /><RemoteSourceSkeleton /></CardContent></Card>
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <EntitySkeletonLine className="h-5 w-32" />
+              <EntitySkeletonLine className="h-10 w-full" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <EntitySkeletonLine className="h-5 w-32" />
+              <RemoteSourceSkeleton />
+            </CardContent>
+          </Card>
         </div>
       </section>
       <WorkCollectionLoadingState label="Loading voice works" />
@@ -1321,7 +1687,9 @@ function voiceWorkSales(work: VoiceWorkView) {
 }
 
 function voiceWorkDLsiteURL(work: VoiceWorkView) {
-  return "dlsiteUrl" in work && work.dlsiteUrl ? work.dlsiteUrl : `https://www.dlsite.com/maniax/work/=/product_id/${encodeURIComponent(work.primaryCode)}.html`;
+  return "dlsiteUrl" in work && work.dlsiteUrl
+    ? work.dlsiteUrl
+    : `https://www.dlsite.com/maniax/work/=/product_id/${encodeURIComponent(work.primaryCode)}.html`;
 }
 
 function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (status: ListeningStatus) => void }) {
@@ -1333,7 +1701,9 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
           className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
           onClick={() => onChange(option.value)}
         >
-          <ListChecks className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"} />
+          <ListChecks
+            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
+          />
           {option.label}
         </button>
       ))}
@@ -1342,21 +1712,37 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
 }
 
 function normalizeListeningStatus(status: string): ListeningStatus {
-  return listeningStatusOptions.some((option) => option.value === status) ? status as ListeningStatus : "none";
+  return listeningStatusOptions.some((option) => option.value === status) ? (status as ListeningStatus) : "none";
 }
 
 function listeningStatusLabel(status: string) {
-  return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
+  return (
+    listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked"
+  );
 }
 
 function MiniStat({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-md border bg-background p-2"><div className="font-semibold">{value}</div><div className="text-muted-foreground">{label}</div></div>;
+  return (
+    <div className="rounded-md border bg-background p-2">
+      <div className="font-semibold">{value}</div>
+      <div className="text-muted-foreground">{label}</div>
+    </div>
+  );
 }
 
 function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border"><CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left"><div className="min-w-0"><div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div><div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div></div><div className="hidden text-primary sm:block">{icon}</div></CardContent></Card>;
+  return (
+    <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border">
+      <CardContent className="flex min-w-0 flex-col items-center justify-center gap-1 p-2 text-center sm:flex-row sm:justify-between sm:gap-3 sm:p-4 sm:text-left">
+        <div className="min-w-0">
+          <div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div>
+          <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div>
+        </div>
+        <div className="hidden text-primary sm:block">{icon}</div>
+      </CardContent>
+    </Card>
+  );
 }
-
 
 function voiceObservedStatusBadges(sourceTags: CircleSourceStat[]): WorkCardBadge[] {
   return sourceTags
@@ -1374,15 +1760,30 @@ function voiceObservedStatusBadges(sourceTags: CircleSourceStat[]): WorkCardBadg
 
 function voiceSourceStatusLabel(status: string) {
   switch (status) {
-    case "not_found": return "Not found";
-    case "unavailable": return "Unavailable";
-    case "disabled": return "Disabled";
-    case "error": return "Error";
-    default: return "Not checked";
+    case "not_found":
+      return "Not found";
+    case "unavailable":
+      return "Unavailable";
+    case "disabled":
+      return "Disabled";
+    case "error":
+      return "Error";
+    default:
+      return "Not checked";
   }
 }
 
-function MobileDetailDisclosure({ title, summary, warning = false, children }: { title: string; summary: string; warning?: boolean; children: React.ReactNode }) {
+function MobileDetailDisclosure({
+  title,
+  summary,
+  warning = false,
+  children,
+}: {
+  title: string;
+  summary: string;
+  warning?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <details className="group">
       <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 marker:hidden">
@@ -1408,16 +1809,57 @@ function useCompactDetailPanels() {
   return compact;
 }
 
-function CatalogPagination({ page, pageSize, totalItems, totalPages, onPageChange, onPageSizeChange }: { page: number; pageSize: 24 | 48; totalItems: number; totalPages: number; onPageChange: (page: number) => void; onPageSizeChange: (pageSize: 24 | 48) => void }) {
+function CatalogPagination({
+  page,
+  pageSize,
+  totalItems,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: 24 | 48;
+  totalItems: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: 24 | 48) => void;
+}) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-      <div>{totalItems} works · page {page} of {totalPages}</div>
+      <div>
+        {totalItems} works · page {page} of {totalPages}
+      </div>
       <div className="flex items-center gap-2">
-        <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value) as 24 | 48)} aria-label="Works per page">
-          {workPageSizeOptions.map((value) => <option key={value} value={value}>{value} / page</option>)}
+        <select
+          className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value) as 24 | 48)}
+          aria-label="Works per page"
+        >
+          {workPageSizeOptions.map((value) => (
+            <option key={value} value={value}>
+              {value} / page
+            </option>
+          ))}
         </select>
-        <Button variant="outline" size="icon" aria-label="Previous page" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}><ChevronLeft className="h-4 w-4" /></Button>
-        <Button variant="outline" size="icon" aria-label="Next page" disabled={page >= totalPages} onClick={() => onPageChange(Math.min(totalPages, page + 1))}><ChevronRight className="h-4 w-4" /></Button>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Previous page"
+          disabled={page <= 1}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label="Next page"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -1456,11 +1898,14 @@ function openWorkRoute(work: VoiceWorkView) {
   const remoteTarget = voiceWorkRemoteTarget(work);
   const options = { returnTo: currentVoiceReturnPath(), returnLabel: "Back to voices", workPreview: work };
   if (work.workId) {
-    openWorkDetail({
-      kind: "known",
-      canonicalCode: work.primaryCode,
-      source: remoteTarget ? { sourceId: remoteTarget.sourceId, remoteCode: remoteTarget.code } : null,
-    }, options);
+    openWorkDetail(
+      {
+        kind: "known",
+        canonicalCode: work.primaryCode,
+        source: remoteTarget ? { sourceId: remoteTarget.sourceId, remoteCode: remoteTarget.code } : null,
+      },
+      options,
+    );
     return;
   }
   if (remoteTarget) {

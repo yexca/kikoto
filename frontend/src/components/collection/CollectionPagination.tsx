@@ -55,23 +55,29 @@ export function CollectionPagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          {paginationItems(currentPage, lastPage).map((item) => item === "ellipsis-left" || item === "ellipsis-right" ? (
-            <span key={item} className="inline-flex h-8 w-6 shrink-0 items-center justify-center text-muted-foreground" aria-hidden>
-              ...
-            </span>
-          ) : (
-            <Button
-              key={item}
-              variant={item === currentPage ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8 shrink-0 text-xs tabular-nums"
-              onClick={() => onPageChange(item)}
-              aria-label={`Page ${item}`}
-              aria-current={item === currentPage ? "page" : undefined}
-            >
-              {item}
-            </Button>
-          ))}
+          {paginationItems(currentPage, lastPage).map((item) =>
+            item === "ellipsis-left" || item === "ellipsis-right" ? (
+              <span
+                key={item}
+                className="inline-flex h-8 w-6 shrink-0 items-center justify-center text-muted-foreground"
+                aria-hidden
+              >
+                ...
+              </span>
+            ) : (
+              <Button
+                key={item}
+                variant={item === currentPage ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8 shrink-0 text-xs tabular-nums"
+                onClick={() => onPageChange(item)}
+                aria-label={`Page ${item}`}
+                aria-current={item === currentPage ? "page" : undefined}
+              >
+                {item}
+              </Button>
+            ),
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -93,13 +99,20 @@ export function CollectionPagination({
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm lg:flex-row lg:items-center lg:justify-between">
       <div className="shrink-0 text-xs text-muted-foreground">
-        {summary ?? <>{firstItem}-{lastItem} of {totalItems} {itemLabel}</>}
+        {summary ?? (
+          <>
+            {firstItem}-{lastItem} of {totalItems} {itemLabel}
+          </>
+        )}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
         {leadingControls}
         {pageSizeOptions && onPageSizeChange && (
           <select
-            className={cn("h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring", pageSizeControlClassName)}
+            className={cn(
+              "h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring",
+              pageSizeControlClassName,
+            )}
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
             aria-label={`${itemLabel} per page`}

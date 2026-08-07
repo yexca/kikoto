@@ -37,27 +37,33 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setItems((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  const notify = useCallback((toast: ToastInput) => {
-    const kind = toast.kind ?? "info";
-    const item: ToastItem = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      kind,
-      message: toast.message,
-      actionLabel: toast.actionLabel,
-      onAction: toast.onAction,
-      durationMs: toastDuration(kind),
-    };
-    setItems((current) => [...current.slice(-4), item]);
-    window.setTimeout(() => remove(item.id), item.durationMs);
-  }, [remove]);
+  const notify = useCallback(
+    (toast: ToastInput) => {
+      const kind = toast.kind ?? "info";
+      const item: ToastItem = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        kind,
+        message: toast.message,
+        actionLabel: toast.actionLabel,
+        onAction: toast.onAction,
+        durationMs: toastDuration(kind),
+      };
+      setItems((current) => [...current.slice(-4), item]);
+      window.setTimeout(() => remove(item.id), item.durationMs);
+    },
+    [remove],
+  );
 
-  const value = useMemo<ToastContextValue>(() => ({
-    notify,
-    success: (message) => notify({ kind: "success", message }),
-    info: (message) => notify({ kind: "info", message }),
-    warning: (message) => notify({ kind: "warning", message }),
-    error: (message) => notify({ kind: "error", message }),
-  }), [notify]);
+  const value = useMemo<ToastContextValue>(
+    () => ({
+      notify,
+      success: (message) => notify({ kind: "success", message }),
+      info: (message) => notify({ kind: "info", message }),
+      warning: (message) => notify({ kind: "warning", message }),
+      error: (message) => notify({ kind: "error", message }),
+    }),
+    [notify],
+  );
 
   return (
     <ToastContext.Provider value={value}>
@@ -84,9 +90,9 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
       onAction: () => window.dispatchEvent(new Event(LOGIN_REQUEST_EVENT)),
     };
   }
-	if (error instanceof ApiError && error.code === "database_busy") {
-		return { kind: "warning", message: "The database is busy. Please retry in a moment." };
-	}
+  if (error instanceof ApiError && error.code === "database_busy") {
+    return { kind: "warning", message: "The database is busy. Please retry in a moment." };
+  }
   return { kind: "error", message: error instanceof Error ? error.message : fallback };
 }
 
@@ -125,7 +131,11 @@ function ToastNotice({ toast, onClose }: { toast: ToastItem; onClose: () => void
             {toast.actionLabel}
           </button>
         )}
-        <button className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Dismiss notification" onClick={onClose}>
+        <button
+          className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="Dismiss notification"
+          onClick={onClose}
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>

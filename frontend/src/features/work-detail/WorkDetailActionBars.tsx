@@ -89,12 +89,26 @@ export function WorkIdentityActionBar({
       )}
       {(onSync || onEditMetadata) && (
         <div className="relative" ref={manageMenuRef}>
-          <Button variant="outline" size="sm" className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7" title="Manage metadata" aria-label="Manage metadata" disabled={busy} onClick={() => setManageMenuOpen((open) => !open)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7"
+            title="Manage metadata"
+            aria-label="Manage metadata"
+            disabled={busy}
+            onClick={() => setManageMenuOpen((open) => !open)}
+          >
             <Database className="h-4 w-4" />
             <span className="hidden sm:inline">Metadata</span>
             <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
           </Button>
-          <AnchoredPopover open={manageMenuOpen} anchorRef={manageMenuRef} onOpenChange={setManageMenuOpen} className="w-52 p-1 text-sm" zIndex={70}>
+          <AnchoredPopover
+            open={manageMenuOpen}
+            anchorRef={manageMenuRef}
+            onOpenChange={setManageMenuOpen}
+            className="w-52 p-1 text-sm"
+            zIndex={70}
+          >
             {onSync && (
               <button
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
@@ -174,7 +188,16 @@ export function MediaContextActionBar({
   const optionsMenuRef = useRef<HTMLDivElement | null>(null);
   const optionsMenuId = useId();
   const hasForkOptions = (mode === "tracked_unforked" || mode === "tracked_forked") && Boolean(onFork);
-  const hasOptions = Boolean(onTrack || hasForkOptions || onFetch || remoteSourceWorkUrl || onManageCache || onManageFiles || onRefreshLocalFiles || sourceDetailsLoading);
+  const hasOptions = Boolean(
+    onTrack ||
+    hasForkOptions ||
+    onFetch ||
+    remoteSourceWorkUrl ||
+    onManageCache ||
+    onManageFiles ||
+    onRefreshLocalFiles ||
+    sourceDetailsLoading,
+  );
   const SourceIcon = mode === "local" ? HardDrive : mode === "remote_source" ? Cloud : GitFork;
   const displaySourceLabel = sourceLabel || remoteSourceName || "Source";
 
@@ -211,13 +234,14 @@ export function MediaContextActionBar({
     if (items.length === 0) return;
     event.preventDefault();
     const currentIndex = items.indexOf(document.activeElement as HTMLElement);
-    const nextIndex = event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? items.length - 1
-        : event.key === "ArrowDown"
-          ? (currentIndex + 1 + items.length) % items.length
-          : (currentIndex - 1 + items.length) % items.length;
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (currentIndex + 1 + items.length) % items.length
+            : (currentIndex - 1 + items.length) % items.length;
     items[nextIndex]?.focus();
   };
 
@@ -248,7 +272,13 @@ export function MediaContextActionBar({
         bottomCollisionPadding={96}
         zIndex={70}
       >
-        <div id={optionsMenuId} ref={optionsMenuRef} role="menu" aria-label="Selected source options" onKeyDown={handleMenuKeyDown}>
+        <div
+          id={optionsMenuId}
+          ref={optionsMenuRef}
+          role="menu"
+          aria-label="Selected source options"
+          onKeyDown={handleMenuKeyDown}
+        >
           <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
             <span className="block truncate">{displaySourceLabel}</span>
             {sourceStatus && <span className="mt-0.5 block text-[11px] font-normal">{sourceStatus}</span>}
@@ -275,19 +305,21 @@ export function MediaContextActionBar({
               </div>
               {forkSources.length === 0 ? (
                 <div className="px-2 py-2 text-xs text-muted-foreground">No fork source available</div>
-              ) : forkSources.map((remote) => {
-                const active = currentForkSource?.source.id === remote.source.id;
-                return (
-                  <SourceOptionButton
-                    key={remote.source.id}
-                    icon={<GitFork className="h-4 w-4" />}
-                    label={remote.source.displayName}
-                    trailing={active ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined}
-                    disabled={active}
-                    onClick={() => runOption(() => onFork!(remote))}
-                  />
-                );
-              })}
+              ) : (
+                forkSources.map((remote) => {
+                  const active = currentForkSource?.source.id === remote.source.id;
+                  return (
+                    <SourceOptionButton
+                      key={remote.source.id}
+                      icon={<GitFork className="h-4 w-4" />}
+                      label={remote.source.displayName}
+                      trailing={active ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined}
+                      disabled={active}
+                      onClick={() => runOption(() => onFork!(remote))}
+                    />
+                  );
+                })
+              )}
             </div>
           )}
           {onFetch && (

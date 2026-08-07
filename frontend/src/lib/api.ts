@@ -1531,15 +1531,15 @@ export function assetURL(path: string) {
 
 export class ApiError extends Error {
   status: number;
-	code: string;
-	retryable: boolean;
+  code: string;
+  retryable: boolean;
 
   constructor(message: string, status: number, code = "", retryable = false) {
     super(message);
     this.name = "ApiError";
     this.status = status;
-		this.code = code;
-		this.retryable = retryable;
+    this.code = code;
+    this.retryable = retryable;
   }
 }
 
@@ -1576,15 +1576,12 @@ async function postJSON<T>(path: string): Promise<T> {
 }
 
 async function postJSONBody<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetchAPI(
-    path,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal,
-    },
-  );
+  const response = await fetchAPI(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
   if (!response.ok) {
     throw await responseError(response, `POST ${path} failed with ${response.status}`);
   }
@@ -1592,14 +1589,11 @@ async function postJSONBody<T>(path: string, body: unknown, signal?: AbortSignal
 }
 
 async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetchAPI(
-    path,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const response = await fetchAPI(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) {
     throw await responseError(response, `PATCH ${path} failed with ${response.status}`);
   }
@@ -1607,14 +1601,11 @@ async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetchAPI(
-    path,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const response = await fetchAPI(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) {
     throw await responseError(response, `PUT ${path} failed with ${response.status}`);
   }
@@ -1701,9 +1692,10 @@ export const api = {
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
   listWorks: () => getJSON<Work[]>("/api/works"),
-	getWorkRecommendation: (id: number) => getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation`),
-	recordRecommendationEvents: (events: RecommendationEventInput[]) => postJSONBody<{ recorded: number }>("/api/recommendation-events", { events }),
-	getRecommendationTelemetry: () => getJSON<RecommendationTelemetrySummary>("/api/recommendation-telemetry"),
+  getWorkRecommendation: (id: number) => getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation`),
+  recordRecommendationEvents: (events: RecommendationEventInput[]) =>
+    postJSONBody<{ recorded: number }>("/api/recommendation-events", { events }),
+  getRecommendationTelemetry: () => getJSON<RecommendationTelemetrySummary>("/api/recommendation-telemetry"),
   listWorksPage: (
     page = 1,
     pageSize = 24,
@@ -1776,7 +1768,10 @@ export const api = {
   getRemoteSourceWorkTracks: (id: number, code: string, signal?: AbortSignal) =>
     getJSON<RemoteWorkTracksResponse>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/tracks`, signal),
   getRemoteSourceWork: async (id: number, code: string, signal?: AbortSignal) => {
-    const metadata = await getJSON<RemoteWorkMetadata>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}`, signal);
+    const metadata = await getJSON<RemoteWorkMetadata>(
+      `/api/remote-sources/${id}/works/${encodeURIComponent(code)}`,
+      signal,
+    );
     const tracks = await getJSON<RemoteWorkTracksResponse>(
       `/api/remote-sources/${id}/works/${encodeURIComponent(metadata.remoteCode || code)}/tracks`,
       signal,
@@ -1897,10 +1892,8 @@ export const api = {
   getCacheOverview: () => getJSON<CacheOverview>("/api/cache/overview"),
   cleanupCache: (payload: { mode: "orphans"; groupKeys: string[] } | { mode: "works"; workIds: number[] }) =>
     postJSONBody<CacheMaintenanceResult>("/api/cache/cleanup", payload),
-  deleteMediaCacheLocation: (locationId: number) =>
-    deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
-  deleteMediaLocalLocation: (locationId: number) =>
-    deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/local`),
+  deleteMediaCacheLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/cache`),
+  deleteMediaLocalLocation: (locationId: number) => deleteJSON<MediaCleanupResult>(`/api/media/${locationId}/local`),
   cleanupMediaLocations: (targets: MediaCleanupTarget[]) =>
     postJSONBody<MediaCleanupResult>("/api/media/cleanup", { targets }),
   updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; favorite?: boolean }) =>
@@ -1975,8 +1968,7 @@ export const api = {
   updateMediaProgress: (
     id: number,
     payload: { locationId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean },
-  ) =>
-    patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
+  ) => patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateSettings: (payload: {
@@ -2018,8 +2010,15 @@ export const api = {
   deleteFileSource: (id: number) => deleteJSON<{ ok: boolean }>(`/api/file-sources/${id}`),
   checkFileSourceHealth: (id: number) => postJSON<FileSourceHealthCheckResult>(`/api/file-sources/${id}/health-check`),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
-	getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
-	updateAvailabilityWatch: (payload: { enabled: boolean; intervalMinutes: number; action: AvailabilityWatch["action"]; sourceId: number | null; excludeExtensions: string[]; targetCodes: string[] }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
+  getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
+  updateAvailabilityWatch: (payload: {
+    enabled: boolean;
+    intervalMinutes: number;
+    action: AvailabilityWatch["action"];
+    sourceId: number | null;
+    excludeExtensions: string[];
+    targetCodes: string[];
+  }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
   listWorkflowNodeTypes: () => getJSON<WorkflowNodeType[]>("/api/workflow-node-types"),
   createWorkflowDefinition: (payload: {
     code: string;
@@ -2082,16 +2081,27 @@ export const api = {
     payload: { action: "mark_unavailable" | "delete_files"; locationIds?: number[] },
   ) => postJSONBody<LocalCandidateCleanupResult>(`/api/workflow-candidates/${id}/local-cleanup`, payload),
   reviewArchivedFetchRoots: (id: number, action: "keep_archived" | "delete_archived", confirm = "") =>
-    postJSONBody<{ candidateId: number; status: string; action: string }>(`/api/workflow-candidates/${id}/archived-root-review`, { action, confirm }),
+    postJSONBody<{ candidateId: number; status: string; action: string }>(
+      `/api/workflow-candidates/${id}/archived-root-review`,
+      { action, confirm },
+    ),
   cancelWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/cancel`),
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
   runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
-  runRemotePopularCollection: (payload: { action: "track" | "fetch"; sourceId: number; limit: number; tagNameTemplate: string }) =>
-    postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
-  runDLsitePopularCollection: (payload: { period: "day" | "week" | "month" | "year"; releaseWindow: "30d" | ""; year: number; tagNameTemplate: string }) =>
-    postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
+  runRemotePopularCollection: (payload: {
+    action: "track" | "fetch";
+    sourceId: number;
+    limit: number;
+    tagNameTemplate: string;
+  }) => postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
+  runDLsitePopularCollection: (payload: {
+    period: "day" | "week" | "month" | "year";
+    releaseWindow: "30d" | "";
+    year: number;
+    tagNameTemplate: string;
+  }) => postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
   recordRemoteBulkRun: (payload: {
     action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";
     sourceId: number;

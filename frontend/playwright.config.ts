@@ -13,12 +13,14 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  webServer: externalBaseURL ? undefined : {
-    command: "npm run dev -- --port 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: externalBaseURL
+    ? undefined
+    : {
+        command: "npm run dev -- --port 3100",
+        url: "http://127.0.0.1:3100",
+        reuseExistingServer: true,
+        timeout: 120_000,
+      },
   projects: [
     {
       name: "mobile-chromium",

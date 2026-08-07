@@ -45,7 +45,16 @@ import {
   X,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -99,12 +108,12 @@ import {
   libraryLocation,
   localPageSize,
   localWorkPageSizeOptions,
-	readLibraryBrowseState,
-	readLibrarySortPreference,
+  readLibraryBrowseState,
+  readLibrarySortPreference,
   writeLastLibraryLocation,
   withSharedLibraryQuery,
-	writeLibraryBrowseState,
-	writeLibrarySortPreference,
+  writeLibraryBrowseState,
+  writeLibrarySortPreference,
   type LibraryBrowseState,
   type LibraryColumnSetting,
   type LibraryViewMode,
@@ -141,11 +150,7 @@ import {
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import {
-  preferredLyricsMediaItemID,
-  useLibraryPlayer,
-  usePlayer,
-} from "@/player/PlayerProvider";
+import { preferredLyricsMediaItemID, useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
@@ -220,13 +225,26 @@ import {
   type DetailActionMode,
 } from "@/features/work-detail/WorkDetailActionBars";
 
-type WorkPreview = Pick<Work, "primaryCode" | "title" | "coverUrl" | "circle" | "circleExternalId" | "rating" | "sales" | "releaseDate" | "tags" | "voiceActors"> & {
+type WorkPreview = Pick<
+  Work,
+  | "primaryCode"
+  | "title"
+  | "coverUrl"
+  | "circle"
+  | "circleExternalId"
+  | "rating"
+  | "sales"
+  | "releaseDate"
+  | "tags"
+  | "voiceActors"
+> & {
   id?: number;
 };
 
-type RemoteWorkPreview = WorkPreview & Pick<RemoteWork, "remoteCode" | "ageRating"> & {
-  remoteId?: string;
-};
+type RemoteWorkPreview = WorkPreview &
+  Pick<RemoteWork, "remoteCode" | "ageRating"> & {
+    remoteId?: string;
+  };
 
 type ActiveSourceInfoModel = {
   label: string;
@@ -262,11 +280,13 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
 const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v3";
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
-  return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random" ? value : "recent";
+  return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random"
+    ? value
+    : "recent";
 }
 
 function createRandomSortSeed() {
-  return window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
+  return (window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646) + 1;
 }
 
 function openActivityRun(runId: number) {
@@ -296,66 +316,93 @@ function readLibraryHistoryBrowseState(storageScope: string): LibraryBrowseState
 }
 
 function writeLibraryHistoryBrowseState(storageScope: string, state: LibraryBrowseState) {
-  window.history.replaceState({
-    ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
-    libraryBrowseScope: storageScope,
-    libraryBrowseState: state,
-  }, "");
+  window.history.replaceState(
+    {
+      ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+      libraryBrowseScope: storageScope,
+      libraryBrowseState: state,
+    },
+    "",
+  );
 }
 
 export function LibraryPage() {
   const toast = useToast();
   const auth = useAuth();
   const principalID = auth.user?.id ?? null;
-	const browseStorageScope = currentClientStorageScope(principalID);
-	const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
-	const initialScope = useRef(localScopeFromPath(window.location.pathname)).current;
-	const initialSortPreference = readLibrarySortPreference(libraryBrowseKey(initialTab, initialScope, browseStorageScope));
-	const initialBrowseState = useRef(libraryBrowseStateFromSearch(
-		window.location.search,
-		readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...initialSortPreference },
-	)).current;
+  const browseStorageScope = currentClientStorageScope(principalID);
+  const initialTab = useRef(tabFromPath(window.location.pathname, [])).current;
+  const initialScope = useRef(localScopeFromPath(window.location.pathname)).current;
+  const initialSortPreference = readLibrarySortPreference(
+    libraryBrowseKey(initialTab, initialScope, browseStorageScope),
+  );
+  const initialBrowseState = useRef(
+    libraryBrowseStateFromSearch(
+      window.location.search,
+      readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...initialSortPreference },
+    ),
+  ).current;
   const [works, setWorks] = useState<Work[]>([]);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
-	const [browseHydrated, setBrowseHydrated] = useState(false);
+  const [browseHydrated, setBrowseHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<LibraryTab>(() => tabFromPath(window.location.pathname, []));
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(() => localScopeFromPath(window.location.pathname));
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
-  const [recommendationDialog, setRecommendationDialog] = useState<{ work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string } | null>(null);
-  const [selectedCode, setSelectedCode] = useState<string | null>(() => codeFromLocation(window.location.pathname, window.location.search));
+  const [recommendationDialog, setRecommendationDialog] = useState<{
+    work: Work;
+    breakdown: RecommendationBreakdown | null;
+    loading: boolean;
+    error: string;
+  } | null>(null);
+  const [selectedCode, setSelectedCode] = useState<string | null>(() =>
+    codeFromLocation(window.location.pathname, window.location.search),
+  );
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
   const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
-  const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() => workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)));
+  const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() =>
+    workPreviewFromHistory(codeFromLocation(window.location.pathname, window.location.search)),
+  );
   const [isSelectedMediaLoading, setIsSelectedMediaLoading] = useState(false);
   const [selectedMediaError, setSelectedMediaError] = useState("");
-  const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{ source: LibrarySource; code: string; preview?: RemoteWorkPreview } | null>(null);
+  const [selectedRemoteTarget, setSelectedRemoteTarget] = useState<{
+    source: LibrarySource;
+    code: string;
+    preview?: RemoteWorkPreview;
+  } | null>(null);
   const [libraryLoadError, setLibraryLoadError] = useState("");
-	const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
-	const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
-	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialBrowseState.query);
-	const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState(initialBrowseState.query);
+  const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
+  const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialBrowseState.query);
+  const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState(initialBrowseState.query);
   const [optimisticLibrarySearchClauses, setOptimisticLibrarySearchClauses] = useState<SearchClause[] | null>(null);
-  const [clauseEditor, setClauseEditor] = useState<{ mode: "add" | "edit"; index: number | null; draft: SearchClauseDraft } | null>(null);
-	const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout({
-		mobileColumns: initialBrowseState.mobileColumns,
-		desktopColumns: initialBrowseState.desktopColumns,
-		viewMode: initialBrowseState.view,
-	});
-	const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
-	const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(() => window.localStorage.getItem("kikoto:recommend-badges") === "true");
-	const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
-	const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
-	const [workPage, setWorkPage] = useState(initialBrowseState.page);
-	const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
+  const [clauseEditor, setClauseEditor] = useState<{
+    mode: "add" | "edit";
+    index: number | null;
+    draft: SearchClauseDraft;
+  } | null>(null);
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
+    useWorkCollectionLayout({
+      mobileColumns: initialBrowseState.mobileColumns,
+      desktopColumns: initialBrowseState.desktopColumns,
+      viewMode: initialBrowseState.view,
+    });
+  const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
+  const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(
+    () => window.localStorage.getItem("kikoto:recommend-badges") === "true",
+  );
+  const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
+  const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
+  const [workPage, setWorkPage] = useState(initialBrowseState.page);
+  const [workPageSize, setWorkPageSize] = useState<LocalWorkPageSize>(localPageSize(initialBrowseState.pageSize));
   const [workTotal, setWorkTotal] = useState(0);
-	const [isLibraryLoading, setIsLibraryLoading] = useState(false);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [untrackTarget, setUntrackTarget] = useState<{ work: Work; source: SourcePresenceItem } | null>(null);
   const [isUntracking, setIsUntracking] = useState(false);
   const libraryRequestSeq = useRef(0);
@@ -363,129 +410,148 @@ export function LibraryPage() {
   const recommendationContextRef = useRef<{ id: string; seed: number } | null>(null);
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
-	const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
-	const pendingResultsScroll = useRef(false);
-	const pendingScrollRestore = useRef<number | null>(null);
-	const browseSurfaceActive = useRef(true);
-	browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
+  const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
+  const pendingResultsScroll = useRef(false);
+  const pendingScrollRestore = useRef<number | null>(null);
+  const browseSurfaceActive = useRef(true);
+  browseSurfaceActive.current = selectedCode === null && selectedRemoteTarget === null;
   const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
   const debouncedSearchClauses = useMemo(() => parseSearchClauses(debouncedSearchQuery), [debouncedSearchQuery]);
-  const debouncedRemoteSearchClauses = useMemo(() => parseSearchClauses(debouncedRemoteSearchQuery), [debouncedRemoteSearchQuery]);
-  const remoteSearchQuery = useMemo(() => formatRemoteSearchQuery(debouncedRemoteSearchClauses), [debouncedRemoteSearchClauses]);
+  const debouncedRemoteSearchClauses = useMemo(
+    () => parseSearchClauses(debouncedRemoteSearchQuery),
+    [debouncedRemoteSearchQuery],
+  );
+  const remoteSearchQuery = useMemo(
+    () => formatRemoteSearchQuery(debouncedRemoteSearchClauses),
+    [debouncedRemoteSearchClauses],
+  );
   const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchClauses), [debouncedSearchClauses]);
   const workScope = localScope;
   const activePrimaryTab: "local" | "tracked" | null = activeTab.kind === "source" ? null : localScope;
-	const activeRemoteBrowseState = activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
-	const activeBrowseState: LibraryBrowseState = {
-		query: searchQuery,
-		page: activeTab.kind === "source" ? activeRemoteBrowseState.page : workPage,
-		pageSize: activeTab.kind === "source" ? activeRemoteBrowseState.pageSize : workPageSize,
-		status: statusFilter,
-		sort: librarySort,
-		direction: sortDirection,
-		randomSeed,
-		view: viewMode,
-		mobileColumns,
-		desktopColumns,
-		scrollY: 0,
-	};
-	const applyBrowseState = (state: LibraryBrowseState, tab: LibraryTab, restoreScroll = true) => {
-		setSearchQuery(state.query);
-		setDebouncedSearchQuery(state.query);
-		setDebouncedRemoteSearchQuery(state.query);
-		setStatusFilter(tab.kind === "source" ? "all" : state.status);
-		setLibrarySort(tab.kind === "source" ? remoteLibrarySort(state.sort) : state.sort);
-		setSortDirection(state.direction);
-		setRandomSeed(state.randomSeed);
-		if (restoreScroll) {
-			pendingScrollRestore.current = state.scrollY;
-			window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-				if (pendingScrollRestore.current !== null) window.scrollTo({ top: pendingScrollRestore.current, behavior: "auto" });
-			}));
-		}
-		if (tab.kind === "source") {
-			setRemoteSourceStates((states) => ({
-				...states,
-				[tab.source.id]: { page: state.page, pageSize: state.pageSize },
-			}));
-		} else {
-			setWorkPage(state.page);
-			setWorkPageSize(localPageSize(state.pageSize));
-		}
-	};
-	const completeResultsUpdate = () => {
-		if (pendingScrollRestore.current !== null) {
-			const scrollY = pendingScrollRestore.current;
-			pendingScrollRestore.current = null;
-			pendingResultsScroll.current = false;
-			window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
-			return;
-		}
-		if (!pendingResultsScroll.current) return;
-		pendingResultsScroll.current = false;
-		window.requestAnimationFrame(() => {
-			const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-			if (window.matchMedia("(max-width: 1023px)").matches) {
-				window.scrollTo({ top: 0, behavior });
-				return;
-			}
-			const anchor = resultsAnchorRef.current;
-			if (!anchor) return;
-			anchor.scrollIntoView({ behavior, block: "start" });
-		});
-	};
-	const queueResultsScroll = () => {
-		pendingScrollRestore.current = null;
-		pendingResultsScroll.current = true;
-	};
-	const recordRecommendationEvents = useCallback((events: RecommendationEventInput[]) => {
-		if (!auth.user || auth.demoMode || events.length === 0) return;
-		void api.recordRecommendationEvents(events).catch(() => {});
-	}, [auth.demoMode, auth.user]);
-	const recordWorkRecommendationEvent = (work: Work, eventType: RecommendationEventInput["eventType"]) => {
-		const context = recommendationContextRef.current;
-		if (!context) return;
-		const rank = Math.max(0, worksRef.current.findIndex((candidate) => candidate.id === work.id) + 1);
-		recordRecommendationEvents([{
-			workId: work.id,
-			eventType,
-			contextId: context.id,
-			algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
-			seed: context.seed,
-			rank,
-			score: work.recommendScore,
-		}]);
-	};
+  const activeRemoteBrowseState =
+    activeTab.kind === "source"
+      ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState)
+      : defaultRemoteSourceViewState;
+  const activeBrowseState: LibraryBrowseState = {
+    query: searchQuery,
+    page: activeTab.kind === "source" ? activeRemoteBrowseState.page : workPage,
+    pageSize: activeTab.kind === "source" ? activeRemoteBrowseState.pageSize : workPageSize,
+    status: statusFilter,
+    sort: librarySort,
+    direction: sortDirection,
+    randomSeed,
+    view: viewMode,
+    mobileColumns,
+    desktopColumns,
+    scrollY: 0,
+  };
+  const applyBrowseState = (state: LibraryBrowseState, tab: LibraryTab, restoreScroll = true) => {
+    setSearchQuery(state.query);
+    setDebouncedSearchQuery(state.query);
+    setDebouncedRemoteSearchQuery(state.query);
+    setStatusFilter(tab.kind === "source" ? "all" : state.status);
+    setLibrarySort(tab.kind === "source" ? remoteLibrarySort(state.sort) : state.sort);
+    setSortDirection(state.direction);
+    setRandomSeed(state.randomSeed);
+    if (restoreScroll) {
+      pendingScrollRestore.current = state.scrollY;
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => {
+          if (pendingScrollRestore.current !== null)
+            window.scrollTo({ top: pendingScrollRestore.current, behavior: "auto" });
+        }),
+      );
+    }
+    if (tab.kind === "source") {
+      setRemoteSourceStates((states) => ({
+        ...states,
+        [tab.source.id]: { page: state.page, pageSize: state.pageSize },
+      }));
+    } else {
+      setWorkPage(state.page);
+      setWorkPageSize(localPageSize(state.pageSize));
+    }
+  };
+  const completeResultsUpdate = () => {
+    if (pendingScrollRestore.current !== null) {
+      const scrollY = pendingScrollRestore.current;
+      pendingScrollRestore.current = null;
+      pendingResultsScroll.current = false;
+      window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+      return;
+    }
+    if (!pendingResultsScroll.current) return;
+    pendingResultsScroll.current = false;
+    window.requestAnimationFrame(() => {
+      const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth";
+      if (window.matchMedia("(max-width: 1023px)").matches) {
+        window.scrollTo({ top: 0, behavior });
+        return;
+      }
+      const anchor = resultsAnchorRef.current;
+      if (!anchor) return;
+      anchor.scrollIntoView({ behavior, block: "start" });
+    });
+  };
+  const queueResultsScroll = () => {
+    pendingScrollRestore.current = null;
+    pendingResultsScroll.current = true;
+  };
+  const recordRecommendationEvents = useCallback(
+    (events: RecommendationEventInput[]) => {
+      if (!auth.user || auth.demoMode || events.length === 0) return;
+      void api.recordRecommendationEvents(events).catch(() => {});
+    },
+    [auth.demoMode, auth.user],
+  );
+  const recordWorkRecommendationEvent = (work: Work, eventType: RecommendationEventInput["eventType"]) => {
+    const context = recommendationContextRef.current;
+    if (!context) return;
+    const rank = Math.max(0, worksRef.current.findIndex((candidate) => candidate.id === work.id) + 1);
+    recordRecommendationEvents([
+      {
+        workId: work.id,
+        eventType,
+        contextId: context.id,
+        algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
+        seed: context.seed,
+        rank,
+        score: work.recommendScore,
+      },
+    ]);
+  };
 
   useEffect(() => {
-	const timer = window.setTimeout(() => {
-		if (searchQuery !== debouncedSearchQuery) {
-			queueResultsScroll();
-			if (activeTab.kind !== "source") setWorkPage(1);
-		}
-		setDebouncedSearchQuery(searchQuery);
-	}, librarySearchDebounceMs);
+    const timer = window.setTimeout(() => {
+      if (searchQuery !== debouncedSearchQuery) {
+        queueResultsScroll();
+        if (activeTab.kind !== "source") setWorkPage(1);
+      }
+      setDebouncedSearchQuery(searchQuery);
+    }, librarySearchDebounceMs);
     return () => window.clearTimeout(timer);
-	}, [activeTab.kind, searchQuery, debouncedSearchQuery]);
+  }, [activeTab.kind, searchQuery, debouncedSearchQuery]);
 
   useEffect(() => {
-	const timer = window.setTimeout(() => {
-		if (searchQuery !== debouncedRemoteSearchQuery) {
-			queueResultsScroll();
-			if (activeTab.kind === "source") {
-				setRemoteSourceStates((states) => ({
-					...states,
-					[activeTab.source.id]: {
-						...(states[activeTab.source.id] ?? defaultRemoteSourceViewState),
-						page: 1,
-					},
-				}));
-			}
-		}
-		setDebouncedRemoteSearchQuery(searchQuery);
-	}, remoteSearchDebounceMs);
+    const timer = window.setTimeout(() => {
+      if (searchQuery !== debouncedRemoteSearchQuery) {
+        queueResultsScroll();
+        if (activeTab.kind === "source") {
+          setRemoteSourceStates((states) => ({
+            ...states,
+            [activeTab.source.id]: {
+              ...(states[activeTab.source.id] ?? defaultRemoteSourceViewState),
+              page: 1,
+            },
+          }));
+        }
+      }
+      setDebouncedRemoteSearchQuery(searchQuery);
+    }, remoteSearchDebounceMs);
     return () => window.clearTimeout(timer);
-	}, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
+  }, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
 
   useEffect(() => {
     if (!browseHydrated || activeTab.kind === "source") return;
@@ -496,92 +562,136 @@ export function LibraryPage() {
     const controller = new AbortController();
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
-	setIsLibraryLoading(true);
+    setIsLibraryLoading(true);
     api
-      .listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend", controller.signal)
+      .listWorksPage(
+        workPage,
+        workPageSize,
+        librarySearchQuery,
+        workScope,
+        statusFilter,
+        librarySort,
+        sortDirection,
+        randomSeed,
+        recommendBadgesEnabled && librarySort !== "recommend",
+        controller.signal,
+      )
       .then((page) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(page.works);
         setWorkTotal(page.total);
-		if (librarySort === "recommend") {
-			const context = { id: createRecommendationContextID(), seed: randomSeed };
-			recommendationContextRef.current = context;
-			recordRecommendationEvents(page.works.map((work, index) => ({
-				workId: work.id,
-				eventType: "impression",
-				contextId: context.id,
-				algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
-				seed: randomSeed,
-				rank: (page.page - 1) * page.pageSize + index + 1,
-				score: work.recommendScore,
-			})));
-		} else {
-			recommendationContextRef.current = null;
-		}
+        if (librarySort === "recommend") {
+          const context = { id: createRecommendationContextID(), seed: randomSeed };
+          recommendationContextRef.current = context;
+          recordRecommendationEvents(
+            page.works.map((work, index) => ({
+              workId: work.id,
+              eventType: "impression",
+              contextId: context.id,
+              algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
+              seed: randomSeed,
+              rank: (page.page - 1) * page.pageSize + index + 1,
+              score: work.recommendScore,
+            })),
+          );
+        } else {
+          recommendationContextRef.current = null;
+        }
         setLibraryLoadError("");
         setOptimisticLibrarySearchClauses(null);
-		completeResultsUpdate();
+        completeResultsUpdate();
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (requestSeq !== libraryRequestSeq.current) return;
         setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
         setOptimisticLibrarySearchClauses(null);
-		pendingResultsScroll.current = false;
-	  })
-	  .finally(() => {
-		if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
-	  });
+        pendingResultsScroll.current = false;
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
+      });
     return () => controller.abort();
-  }, [activeTab.kind, browseHydrated, librarySearchQuery, statusFilter, librarySort, randomSeed, recommendBadgesEnabled, recordRecommendationEvents, sortDirection, workPage, workPageSize, workScope]);
+  }, [
+    activeTab.kind,
+    browseHydrated,
+    librarySearchQuery,
+    statusFilter,
+    librarySort,
+    randomSeed,
+    recommendBadgesEnabled,
+    recordRecommendationEvents,
+    sortDirection,
+    workPage,
+    workPageSize,
+    workScope,
+  ]);
 
   useEffect(() => {
     if (auth.isLoading) return;
     let cancelled = false;
     setBrowseHydrated(false);
     setSourceRoutesReady(false);
-    api.listLibrarySources().then((items) => {
-      if (cancelled) return;
-      setSources(items);
-	  setSourceRoutesReady(true);
-	  const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
-	  const scope = localScopeFromPath(window.location.pathname);
-	  const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
-	  const sortPreference = readLibrarySortPreference(libraryBrowseKey(resolved, scope, browseStorageScope));
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference }), resolved, codeFromLocation(window.location.pathname, window.location.search) === null);
-	  setActiveTab(resolved);
-      const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
-      if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
-    }).catch(() => {
-      if (cancelled) return;
-      setSources([]);
-      setSourceRoutesReady(false);
-	}).finally(() => {
-      if (!cancelled) setBrowseHydrated(true);
-    });
+    api
+      .listLibrarySources()
+      .then((items) => {
+        if (cancelled) return;
+        setSources(items);
+        setSourceRoutesReady(true);
+        const resolved = resolveTabFromPath(window.location.pathname, items, activeTab);
+        const scope = localScopeFromPath(window.location.pathname);
+        const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
+        const sortPreference = readLibrarySortPreference(libraryBrowseKey(resolved, scope, browseStorageScope));
+        applyBrowseState(
+          libraryBrowseStateFromSearch(
+            window.location.search,
+            stored ??
+              readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference },
+          ),
+          resolved,
+          codeFromLocation(window.location.pathname, window.location.search) === null,
+        );
+        setActiveTab(resolved);
+        const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
+        if (routeRemoteTarget) setSelectedRemoteTarget(routeRemoteTarget);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSources([]);
+        setSourceRoutesReady(false);
+      })
+      .finally(() => {
+        if (!cancelled) setBrowseHydrated(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [auth.isLoading, browseStorageScope]);
 
   useEffect(() => {
-    api.getRuntimeSettings().then((next) => {
-      setSettings(next);
-      window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
-    }).catch(() => setSettings(null));
+    api
+      .getRuntimeSettings()
+      .then((next) => {
+        setSettings(next);
+        window.localStorage.setItem("kikoto:recommend-threshold", String(next.recommendationThreshold));
+      })
+      .catch(() => setSettings(null));
   }, []);
 
   useEffect(() => {
     if (selectedCode !== null) return;
     let cancelled = false;
-    api.listRecentlyPlayedWorks(10)
+    api
+      .listRecentlyPlayedWorks(10)
       .then((result) => {
         if (!cancelled) setRecentWorks(result.works);
       })
       .catch(() => {
         if (!cancelled) setRecentWorks([]);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCode]);
 
   useEffect(() => {
@@ -600,29 +710,52 @@ export function LibraryPage() {
     const requestSeq = ++remoteRequestSeq.current;
     setRemoteResult((current) => (current?.sourceId === activeTab.source.id ? current : null));
     setIsRemoteLoading(true);
-    api.listRemoteSourceWorks(activeTab.source.id, sourceState.page, sourceState.pageSize, remoteSearchQuery, remoteLibrarySort(librarySort), sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend", controller.signal).then((result) => {
-      if (requestSeq !== remoteRequestSeq.current) return;
-      setRemoteResult(result);
-	  completeResultsUpdate();
-    }).catch((error) => {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      if (requestSeq !== remoteRequestSeq.current) return;
-      setRemoteResult({
-        sourceId: activeTab.source.id,
-        works: [],
-        page: sourceState.page,
-        pageSize: sourceState.pageSize,
-        total: 0,
-        status: "unavailable",
-        sort: remoteLibrarySort(librarySort),
-        direction: sortDirection,
-        sortApplied: false,
+    api
+      .listRemoteSourceWorks(
+        activeTab.source.id,
+        sourceState.page,
+        sourceState.pageSize,
+        remoteSearchQuery,
+        remoteLibrarySort(librarySort),
+        sortDirection,
+        randomSeed,
+        recommendBadgesEnabled && librarySort !== "recommend",
+        controller.signal,
+      )
+      .then((result) => {
+        if (requestSeq !== remoteRequestSeq.current) return;
+        setRemoteResult(result);
+        completeResultsUpdate();
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (requestSeq !== remoteRequestSeq.current) return;
+        setRemoteResult({
+          sourceId: activeTab.source.id,
+          works: [],
+          page: sourceState.page,
+          pageSize: sourceState.pageSize,
+          total: 0,
+          status: "unavailable",
+          sort: remoteLibrarySort(librarySort),
+          direction: sortDirection,
+          sortApplied: false,
+        });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
       });
-    }).finally(() => {
-      if (!controller.signal.aborted && requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
-    });
     return () => controller.abort();
-  }, [activeTab, browseHydrated, librarySort, randomSeed, recommendBadgesEnabled, remoteSearchQuery, remoteSourceStates, sortDirection]);
+  }, [
+    activeTab,
+    browseHydrated,
+    librarySort,
+    randomSeed,
+    recommendBadgesEnabled,
+    remoteSearchQuery,
+    remoteSourceStates,
+    sortDirection,
+  ]);
 
   useEffect(() => {
     if (selectedCode === null) {
@@ -641,48 +774,85 @@ export function LibraryPage() {
     setSelectedWorkPreview(work ?? historyPreview);
     if (workID !== null) {
       setIsSelectedMediaLoading(true);
-      api.getWorkSummary(workID, controller.signal).then((detail) => {
-        if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-          return resolveAndOpenWork(selectedCode, principalID, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
-        }
-        const cachedMedia = getCachedWorkMedia(detail.id, principalID);
-        setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
-        if (cachedMedia) return;
-        return api.getWorkMedia(detail.id, controller.signal).then((media) => {
-          setCachedWorkMedia(detail.id, principalID, media.mediaItems);
-          setSelectedWork((current) => current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current);
-        }).catch((error) => {
-          if (!(error instanceof DOMException && error.name === "AbortError")) {
-            setSelectedMediaError(directoryLoadErrorMessage(error));
+      api
+        .getWorkSummary(workID, controller.signal)
+        .then((detail) => {
+          if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
+            return resolveAndOpenWork(
+              selectedCode,
+              principalID,
+              setSelectedWork,
+              setSelectedWorkPreview,
+              setSelectedCode,
+              setIsSelectedMediaLoading,
+              setSelectedWorkNotFound,
+              setSelectedMediaError,
+              controller.signal,
+            );
           }
+          const cachedMedia = getCachedWorkMedia(detail.id, principalID);
+          setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
+          if (cachedMedia) return;
+          return api
+            .getWorkMedia(detail.id, controller.signal)
+            .then((media) => {
+              setCachedWorkMedia(detail.id, principalID, media.mediaItems);
+              setSelectedWork((current) =>
+                current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current,
+              );
+            })
+            .catch((error) => {
+              if (!(error instanceof DOMException && error.name === "AbortError")) {
+                setSelectedMediaError(directoryLoadErrorMessage(error));
+              }
+            });
+        })
+        .catch((error) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            setSelectedWork(null);
+            setSelectedWorkNotFound(error instanceof ApiError && error.status === 404);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsSelectedMediaLoading(false);
         });
-      }).catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setSelectedWork(null);
-          setSelectedWorkNotFound(error instanceof ApiError && error.status === 404);
-        }
-      }).finally(() => {
-        if (!controller.signal.aborted) setIsSelectedMediaLoading(false);
-      });
       return () => controller.abort();
     }
-    void resolveAndOpenWork(selectedCode, principalID, setSelectedWork, setSelectedWorkPreview, setSelectedCode, setIsSelectedMediaLoading, setSelectedWorkNotFound, setSelectedMediaError, controller.signal);
+    void resolveAndOpenWork(
+      selectedCode,
+      principalID,
+      setSelectedWork,
+      setSelectedWorkPreview,
+      setSelectedCode,
+      setIsSelectedMediaLoading,
+      setSelectedWorkNotFound,
+      setSelectedMediaError,
+      controller.signal,
+    );
     return () => controller.abort();
   }, [selectedCode, works.length]);
 
   useEffect(() => {
     const syncFromPath = () => {
-	  const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
-	  const nextScope = localScopeFromPath(window.location.pathname);
-	  const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
-	  const sortPreference = readLibrarySortPreference(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
-	  const nextCode = codeFromLocation(window.location.pathname, window.location.search);
-	  applyBrowseState(libraryBrowseStateFromSearch(window.location.search, stored ?? readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference }), nextTab, nextCode === null);
+      const nextTab = resolveTabFromPath(window.location.pathname, sources, activeTab);
+      const nextScope = localScopeFromPath(window.location.pathname);
+      const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
+      const sortPreference = readLibrarySortPreference(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
+      const nextCode = codeFromLocation(window.location.pathname, window.location.search);
+      applyBrowseState(
+        libraryBrowseStateFromSearch(
+          window.location.search,
+          stored ??
+            readLibraryHistoryBrowseState(browseStorageScope) ?? { ...defaultLibraryBrowseState, ...sortPreference },
+        ),
+        nextTab,
+        nextCode === null,
+      );
       setSelectedCode(nextCode);
       setSelectedWorkPreview(workPreviewFromHistory(nextCode));
       setSelectedRemoteTarget(remoteTargetFromLocation(window.location.pathname, window.location.search, sources));
-	  setActiveTab(nextTab);
-	  setLocalScope(nextScope);
+      setActiveTab(nextTab);
+      setLocalScope(nextScope);
     };
     const handlePopState = () => syncFromPath();
     const handleAppNavigation = () => syncFromPath();
@@ -692,23 +862,45 @@ export function LibraryPage() {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-	}, [sources, activeTab]);
+  }, [sources, activeTab]);
 
-	useEffect(() => {
-		if (!browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
-		const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-		writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
-		const nextSearch = libraryBrowseSearch(activeBrowseState);
-		if (sourceRoutesReady) {
-			writeLastLibraryLocation(browseStorageScope, `${pathForActiveLibrary(activeTab, localScope)}${nextSearch}`);
-		}
-		window.history.replaceState({
-			...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
-			libraryBrowseScope: browseStorageScope,
-			libraryBrowseState: browseState,
-		}, "", `${window.location.pathname}${nextSearch}`);
-	}, [activeTab, browseHydrated, desktopColumns, librarySort, localScope, mobileColumns, randomSeed, searchQuery, selectedCode, selectedRemoteTarget, sortDirection, sourceRoutesReady, statusFilter, viewMode, workPage, workPageSize, remoteSourceStates]);
+  useEffect(() => {
+    if (!browseHydrated || selectedCode !== null || selectedRemoteTarget !== null) return;
+    const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+    writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
+    const nextSearch = libraryBrowseSearch(activeBrowseState);
+    if (sourceRoutesReady) {
+      writeLastLibraryLocation(browseStorageScope, `${pathForActiveLibrary(activeTab, localScope)}${nextSearch}`);
+    }
+    window.history.replaceState(
+      {
+        ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+        libraryBrowseScope: browseStorageScope,
+        libraryBrowseState: browseState,
+      },
+      "",
+      `${window.location.pathname}${nextSearch}`,
+    );
+  }, [
+    activeTab,
+    browseHydrated,
+    desktopColumns,
+    librarySort,
+    localScope,
+    mobileColumns,
+    randomSeed,
+    searchQuery,
+    selectedCode,
+    selectedRemoteTarget,
+    sortDirection,
+    sourceRoutesReady,
+    statusFilter,
+    viewMode,
+    workPage,
+    workPageSize,
+    remoteSourceStates,
+  ]);
 
   useEffect(() => {
     if (activeTab.kind === "source" || isLibraryLoading) return;
@@ -716,66 +908,98 @@ export function LibraryPage() {
     if (workPage > lastPage) setWorkPage(lastPage);
   }, [activeTab.kind, isLibraryLoading, workPage, workPageSize, workTotal]);
 
-	useEffect(() => {
-		if (selectedCode !== null || selectedRemoteTarget !== null) return;
-		let pendingWrite: number | null = null;
-		const flushScroll = () => {
-			if (pendingWrite !== null) window.clearTimeout(pendingWrite);
-			pendingWrite = null;
-			const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-			writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-			writeLibraryHistoryBrowseState(browseStorageScope, browseState);
-		};
-		const rememberScroll = () => {
-			if (pendingWrite !== null) return;
-			pendingWrite = window.setTimeout(flushScroll, 150);
-		};
-		const handleVisibilityChange = () => {
-			if (document.visibilityState === "hidden") flushScroll();
-		};
-		window.addEventListener("scroll", rememberScroll, { passive: true });
-		document.addEventListener("visibilitychange", handleVisibilityChange);
-		return () => {
-			window.removeEventListener("scroll", rememberScroll);
-			document.removeEventListener("visibilitychange", handleVisibilityChange);
-			if (browseSurfaceActive.current) flushScroll();
-		};
-	}, [activeTab, localScope, selectedCode, selectedRemoteTarget, searchQuery, statusFilter, librarySort, randomSeed, sortDirection, viewMode, mobileColumns, desktopColumns, workPage, workPageSize, remoteSourceStates]);
+  useEffect(() => {
+    if (selectedCode !== null || selectedRemoteTarget !== null) return;
+    let pendingWrite: number | null = null;
+    const flushScroll = () => {
+      if (pendingWrite !== null) window.clearTimeout(pendingWrite);
+      pendingWrite = null;
+      const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+      writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+      writeLibraryHistoryBrowseState(browseStorageScope, browseState);
+    };
+    const rememberScroll = () => {
+      if (pendingWrite !== null) return;
+      pendingWrite = window.setTimeout(flushScroll, 150);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushScroll();
+    };
+    window.addEventListener("scroll", rememberScroll, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("scroll", rememberScroll);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (browseSurfaceActive.current) flushScroll();
+    };
+  }, [
+    activeTab,
+    localScope,
+    selectedCode,
+    selectedRemoteTarget,
+    searchQuery,
+    statusFilter,
+    librarySort,
+    randomSeed,
+    sortDirection,
+    viewMode,
+    mobileColumns,
+    desktopColumns,
+    workPage,
+    workPageSize,
+    remoteSourceStates,
+  ]);
 
   const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
-	recordWorkRecommendationEvent(work, "open");
-	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-	writeLibraryHistoryBrowseState(browseStorageScope, browseState);
-	setSelectedRemoteTarget(null);
-    openWorkDetail({
-      kind: "known",
-      canonicalCode: work.primaryCode,
-      view: sourceIntent === "tracked" ? "tracked" : "local",
-    }, {
-      returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-      returnLabel: "Back to library",
-      workPreview: work,
-    });
+    recordWorkRecommendationEvent(work, "open");
+    const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+    writeLibraryHistoryBrowseState(browseStorageScope, browseState);
+    setSelectedRemoteTarget(null);
+    openWorkDetail(
+      {
+        kind: "known",
+        canonicalCode: work.primaryCode,
+        view: sourceIntent === "tracked" ? "tracked" : "local",
+      },
+      {
+        returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+        returnLabel: "Back to library",
+        workPreview: work,
+      },
+    );
     setSelectedWorkPreview(work);
     setSelectedCode(work.primaryCode);
   };
 
   const openRecommendationExplanation = (work: Work) => {
-	setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
-	void api.getWorkRecommendation(work.id).then((breakdown) => {
-		setRecommendationDialog((current) => current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current);
-	}).catch((error) => {
-		setRecommendationDialog((current) => current?.work.id === work.id ? { ...current, loading: false, error: error instanceof Error ? error.message : "Recommendation explanation failed." } : current);
-	});
+    setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
+    void api
+      .getWorkRecommendation(work.id)
+      .then((breakdown) => {
+        setRecommendationDialog((current) =>
+          current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current,
+        );
+      })
+      .catch((error) => {
+        setRecommendationDialog((current) =>
+          current?.work.id === work.id
+            ? {
+                ...current,
+                loading: false,
+                error: error instanceof Error ? error.message : "Recommendation explanation failed.",
+              }
+            : current,
+        );
+      });
   };
 
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     const code = remoteWorkRouteCode(work);
     if (!code) return;
-	const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-	writeLibraryHistoryBrowseState(browseStorageScope, browseState);
+    const browseState = { ...activeBrowseState, scrollY: window.scrollY };
+    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
+    writeLibraryHistoryBrowseState(browseStorageScope, browseState);
     if (work.workId !== null && work.primaryCode) {
       const preview = remoteWorkPreview(work);
       setSelectedRemoteTarget(null);
@@ -793,12 +1017,20 @@ export function LibraryPage() {
     }
     const preview = remoteOnlyWorkPreview(work);
     setSelectedRemoteTarget({ source, code, preview });
-    openRemoteSourceWorkRoute(source.id, code, libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState), "Back to library", preview);
+    openRemoteSourceWorkRoute(
+      source.id,
+      code,
+      libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+      "Back to library",
+      preview,
+    );
     setSelectedCode(codeFromLocation(window.location.pathname, window.location.search));
   };
 
   const backToLibrary = () => {
-	const returnTarget = detailReturnTarget(libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState));
+    const returnTarget = detailReturnTarget(
+      libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+    );
     navigateToHistoryReturn({
       fallbackLocation: returnTarget.path,
       fallbackState: { libraryBrowseScope: browseStorageScope, libraryBrowseState: activeBrowseState },
@@ -808,38 +1040,44 @@ export function LibraryPage() {
   };
 
   const changeTab = (tab: LibraryTab) => {
-	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
-	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
-	const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
-	const nextKey = libraryBrowseKey(tab, nextScope, browseStorageScope);
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) }, searchQuery);
+    const currentState = { ...activeBrowseState, scrollY: window.scrollY };
+    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
+    writeLibraryHistoryBrowseState(browseStorageScope, currentState);
+    const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
+    const nextKey = libraryBrowseKey(tab, nextScope, browseStorageScope);
+    const nextState = withSharedLibraryQuery(
+      readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) },
+      searchQuery,
+    );
     setActiveTab(tab);
-	if (tab.kind === "all") setLocalScope(nextScope);
-	applyBrowseState(nextState, tab);
+    if (tab.kind === "all") setLocalScope(nextScope);
+    applyBrowseState(nextState, tab);
     setSelectedRemoteTarget(null);
-	const path = libraryLocation(pathForLibraryTab(tab), nextState);
-	if (`${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
+    const path = libraryLocation(pathForLibraryTab(tab), nextState);
+    if (`${window.location.pathname}${window.location.search}` !== path) {
+      window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
 
   const changeLocalScope = (scope: LocalLibraryScope) => {
-	const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-	writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
-	writeLibraryHistoryBrowseState(browseStorageScope, currentState);
-	const nextTab: LibraryTab = { kind: "all" };
-	const nextKey = libraryBrowseKey(nextTab, scope, browseStorageScope);
-	const nextState = withSharedLibraryQuery(readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) }, searchQuery);
+    const currentState = { ...activeBrowseState, scrollY: window.scrollY };
+    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
+    writeLibraryHistoryBrowseState(browseStorageScope, currentState);
+    const nextTab: LibraryTab = { kind: "all" };
+    const nextKey = libraryBrowseKey(nextTab, scope, browseStorageScope);
+    const nextState = withSharedLibraryQuery(
+      readLibraryBrowseState(nextKey) ?? { ...defaultLibraryBrowseState, ...readLibrarySortPreference(nextKey) },
+      searchQuery,
+    );
     setActiveTab({ kind: "all" });
     setLocalScope(scope);
-	applyBrowseState(nextState, nextTab);
+    applyBrowseState(nextState, nextTab);
     setSelectedRemoteTarget(null);
-	const basePath = pathForLocalScope(scope);
-	const path = basePath ? libraryLocation(basePath, nextState) : null;
-	if (path && `${window.location.pathname}${window.location.search}` !== path) {
-	  window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
+    const basePath = pathForLocalScope(scope);
+    const path = basePath ? libraryLocation(basePath, nextState) : null;
+    if (path && `${window.location.pathname}${window.location.search}` !== path) {
+      window.history.pushState({ libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState }, "", path);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
@@ -852,13 +1090,17 @@ export function LibraryPage() {
     try {
       const result = await api.updateWorkUserState(workID, { listeningStatus: status });
       setWorks((items) =>
-        items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)),
+        items.map((item) =>
+          item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item,
+        ),
       );
-      setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
-	  const work = worksRef.current.find((item) => item.id === workID);
-	  if (work && ["relisten", "paused"].includes(status)) {
-		recordWorkRecommendationEvent(work, status === "paused" ? "paused_mark" : "positive_mark");
-	  }
+      setSelectedWork((item) =>
+        item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item,
+      );
+      const work = worksRef.current.find((item) => item.id === workID);
+      if (work && ["relisten", "paused"].includes(status)) {
+        recordWorkRecommendationEvent(work, status === "paused" ? "paused_mark" : "positive_mark");
+      }
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
     }
@@ -877,7 +1119,9 @@ export function LibraryPage() {
   };
 
   const activeRemoteSourceState =
-    activeTab.kind === "source" ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState) : defaultRemoteSourceViewState;
+    activeTab.kind === "source"
+      ? (remoteSourceStates[activeTab.source.id] ?? defaultRemoteSourceViewState)
+      : defaultRemoteSourceViewState;
 
   const updateRemoteSourceState = (sourceID: number, patch: Partial<RemoteSourceViewState>) => {
     setRemoteSourceStates((states) => ({
@@ -892,54 +1136,96 @@ export function LibraryPage() {
   const loadLibraryWorksNow = (query: string, page = 1) => {
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
-	setIsLibraryLoading(true);
-    api.listWorksPage(page, workPageSize, query, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend").then((result) => {
-      if (requestSeq !== libraryRequestSeq.current) return;
-      setWorks(result.works);
-      setWorkTotal(result.total);
-      setLibraryLoadError("");
-      setOptimisticLibrarySearchClauses(null);
-	  completeResultsUpdate();
-    }).catch((error) => {
-      if (requestSeq !== libraryRequestSeq.current) return;
-      setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
-      setOptimisticLibrarySearchClauses(null);
-	  pendingResultsScroll.current = false;
-	}).finally(() => {
-	  if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
-	});
+    setIsLibraryLoading(true);
+    api
+      .listWorksPage(
+        page,
+        workPageSize,
+        query,
+        workScope,
+        statusFilter,
+        librarySort,
+        sortDirection,
+        randomSeed,
+        recommendBadgesEnabled && librarySort !== "recommend",
+      )
+      .then((result) => {
+        if (requestSeq !== libraryRequestSeq.current) return;
+        setWorks(result.works);
+        setWorkTotal(result.total);
+        setLibraryLoadError("");
+        setOptimisticLibrarySearchClauses(null);
+        completeResultsUpdate();
+      })
+      .catch((error) => {
+        if (requestSeq !== libraryRequestSeq.current) return;
+        setLibraryLoadError(error instanceof Error ? error.message : "Library request failed.");
+        setOptimisticLibrarySearchClauses(null);
+        pendingResultsScroll.current = false;
+      })
+      .finally(() => {
+        if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
+      });
   };
 
-  const loadRemoteWorksNow = (source: LibrarySource, query: string, page = 1, options: { clearResult?: boolean } = {}) => {
+  const loadRemoteWorksNow = (
+    source: LibrarySource,
+    query: string,
+    page = 1,
+    options: { clearResult?: boolean } = {},
+  ) => {
     const sourceState = remoteSourceStates[source.id] ?? defaultRemoteSourceViewState;
     const requestSeq = ++remoteRequestSeq.current;
     setIsRemoteLoading(true);
     if (options.clearResult !== false && remoteResult?.sourceId !== source.id) setRemoteResult(null);
-    api.listRemoteSourceWorks(source.id, page, sourceState.pageSize, query, remoteLibrarySort(librarySort), sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend").then((result) => {
-      if (requestSeq !== remoteRequestSeq.current) return;
-      setRemoteResult(result);
-	  completeResultsUpdate();
-    }).catch(() => {
-      if (requestSeq !== remoteRequestSeq.current) return;
-      setRemoteResult({
-        sourceId: source.id,
-        works: [],
+    api
+      .listRemoteSourceWorks(
+        source.id,
         page,
-        pageSize: sourceState.pageSize,
-        total: 0,
-        status: "unavailable",
-        sort: remoteLibrarySort(librarySort),
-        direction: sortDirection,
-        sortApplied: false,
+        sourceState.pageSize,
+        query,
+        remoteLibrarySort(librarySort),
+        sortDirection,
+        randomSeed,
+        recommendBadgesEnabled && librarySort !== "recommend",
+      )
+      .then((result) => {
+        if (requestSeq !== remoteRequestSeq.current) return;
+        setRemoteResult(result);
+        completeResultsUpdate();
+      })
+      .catch(() => {
+        if (requestSeq !== remoteRequestSeq.current) return;
+        setRemoteResult({
+          sourceId: source.id,
+          works: [],
+          page,
+          pageSize: sourceState.pageSize,
+          total: 0,
+          status: "unavailable",
+          sort: remoteLibrarySort(librarySort),
+          direction: sortDirection,
+          sortApplied: false,
+        });
+      })
+      .finally(() => {
+        if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
       });
-    }).finally(() => {
-      if (requestSeq === remoteRequestSeq.current) setIsRemoteLoading(false);
-    });
   };
 
   const refreshCurrentWorksPage = async () => {
     if (activeTab.kind === "source") return;
-    const page = await api.listWorksPage(workPage, workPageSize, librarySearchQuery, workScope, statusFilter, librarySort, sortDirection, randomSeed, recommendBadgesEnabled && librarySort !== "recommend");
+    const page = await api.listWorksPage(
+      workPage,
+      workPageSize,
+      librarySearchQuery,
+      workScope,
+      statusFilter,
+      librarySort,
+      sortDirection,
+      randomSeed,
+      recommendBadgesEnabled && librarySort !== "recommend",
+    );
     setWorks(page.works);
     setWorkTotal(page.total);
     setLibraryLoadError("");
@@ -990,7 +1276,9 @@ export function LibraryPage() {
   const addNamedTagSearchClause = (kind: "tag" | "user_tag", tag: string) => {
     const value = tag.trim();
     if (!value) return;
-    const next = searchClauses.filter((clause) => !(clause.kind === kind && clause.value.toLowerCase() === value.toLowerCase()));
+    const next = searchClauses.filter(
+      (clause) => !(clause.kind === kind && clause.value.toLowerCase() === value.toLowerCase()),
+    );
     const nextClauses = [...next, { kind, value }];
     const nextQuery = nextClauses.map(formatSearchClause).join(" ");
     const nextLibraryQuery = compileLibrarySearchQuery(nextClauses);
@@ -998,14 +1286,14 @@ export function LibraryPage() {
     setSearchQuery(nextQuery);
     setDebouncedSearchQuery(nextQuery);
     setDebouncedRemoteSearchQuery(nextQuery);
-	queueResultsScroll();
+    queueResultsScroll();
     if (activeTab.kind === "source") {
       skipNextRemoteEffect.current = true;
       updateRemoteSourceState(activeTab.source.id, { page: 1 });
       loadRemoteWorksNow(activeTab.source, nextRemoteQuery, 1, { clearResult: false });
       return;
     }
-	setWorkPage(1);
+    setWorkPage(1);
     setOptimisticLibrarySearchClauses(nextClauses);
     skipNextLibraryEffect.current = true;
     loadLibraryWorksNow(nextLibraryQuery, 1);
@@ -1039,7 +1327,12 @@ export function LibraryPage() {
   };
 
   if (sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
-    return <NotFoundPage onBack={() => window.history.length > 1 ? window.history.back() : openLibraryHome()} onOpenLibrary={openLibraryHome} />;
+    return (
+      <NotFoundPage
+        onBack={() => (window.history.length > 1 ? window.history.back() : openLibraryHome())}
+        onOpenLibrary={openLibraryHome}
+      />
+    );
   }
 
   if (selectedRemoteTarget !== null) {
@@ -1086,7 +1379,8 @@ export function LibraryPage() {
         }}
         onWorkReload={async (workID, includeMedia = false) => {
           const detail = await api.getWorkSummary(workID);
-          let mediaItems = getCachedWorkMedia(workID, principalID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
+          let mediaItems =
+            getCachedWorkMedia(workID, principalID) ?? (selectedWork?.id === workID ? selectedWork.mediaItems : []);
           if (includeMedia) {
             invalidateCachedWorkMedia(workID, principalID);
             const media = await api.getWorkMedia(workID);
@@ -1100,72 +1394,77 @@ export function LibraryPage() {
     );
   }
 
-  const visibleWorks = optimisticLibrarySearchClauses === null ? works : works.filter((work) => workMatchesSearch(work, optimisticLibrarySearchClauses));
+  const visibleWorks =
+    optimisticLibrarySearchClauses === null
+      ? works
+      : works.filter((work) => workMatchesSearch(work, optimisticLibrarySearchClauses));
   const totalWorkPages = Math.max(1, Math.ceil(workTotal / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = visibleWorks;
   const activeFilterCount = statusFilter === "all" ? 0 : 1;
-	const changeWorkPage = (page: number) => {
-		queueResultsScroll();
-		setWorkPage(page);
-	};
-	const changeWorkPageSize = (pageSize: LocalWorkPageSize) => {
-		queueResultsScroll();
-		setWorkPage(1);
-		setWorkPageSize(pageSize);
-	};
-	const changeLibrarySort = (sort: LibrarySort) => {
-		queueResultsScroll();
-		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
-		else setWorkPage(1);
-		if (sort === "random") setRandomSeed(createRandomSortSeed());
-		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), sort, sortDirection);
-		setLibrarySort(sort);
-	};
-	const toggleRecommendBadges = () => {
-		setRecommendBadgesEnabled((current) => {
-			const next = !current;
-			window.localStorage.setItem("kikoto:recommend-badges", String(next));
-			return next;
-		});
-	};
-	const reshuffle = () => {
-		const context = recommendationContextRef.current;
-		if (librarySort === "recommend" && context) {
-			recordRecommendationEvents([{ eventType: "reshuffle", contextId: context.id, algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION, seed: context.seed }]);
-		}
-		queueResultsScroll();
-		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
-		else setWorkPage(1);
-		setRandomSeed(createRandomSortSeed());
-	};
-	const changeSortDirection = (direction: SortDirection) => {
-		queueResultsScroll();
-		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
-		else setWorkPage(1);
-		writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, direction);
-		setSortDirection(direction);
-	};
-	const changeStatusFilter = (status: ListeningStatus | "all") => {
-		queueResultsScroll();
-		setWorkPage(1);
-		setStatusFilter(status);
-	};
-  const localPaginationProps = {
-      page: currentWorkPage,
-      pageSize: workPageSize,
-      totalItems: workTotal,
-      totalPages: totalWorkPages,
-      pageSizeOptions: localWorkPageSizeOptions,
-      onPageChange: changeWorkPage,
-      onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
+  const changeWorkPage = (page: number) => {
+    queueResultsScroll();
+    setWorkPage(page);
   };
-  const localTopPagination = (
-    <WorkCollectionPagination
-      {...localPaginationProps}
-      placement="top"
-    />
-  );
+  const changeWorkPageSize = (pageSize: LocalWorkPageSize) => {
+    queueResultsScroll();
+    setWorkPage(1);
+    setWorkPageSize(pageSize);
+  };
+  const changeLibrarySort = (sort: LibrarySort) => {
+    queueResultsScroll();
+    if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+    else setWorkPage(1);
+    if (sort === "random") setRandomSeed(createRandomSortSeed());
+    writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), sort, sortDirection);
+    setLibrarySort(sort);
+  };
+  const toggleRecommendBadges = () => {
+    setRecommendBadgesEnabled((current) => {
+      const next = !current;
+      window.localStorage.setItem("kikoto:recommend-badges", String(next));
+      return next;
+    });
+  };
+  const reshuffle = () => {
+    const context = recommendationContextRef.current;
+    if (librarySort === "recommend" && context) {
+      recordRecommendationEvents([
+        {
+          eventType: "reshuffle",
+          contextId: context.id,
+          algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
+          seed: context.seed,
+        },
+      ]);
+    }
+    queueResultsScroll();
+    if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+    else setWorkPage(1);
+    setRandomSeed(createRandomSortSeed());
+  };
+  const changeSortDirection = (direction: SortDirection) => {
+    queueResultsScroll();
+    if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
+    else setWorkPage(1);
+    writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, direction);
+    setSortDirection(direction);
+  };
+  const changeStatusFilter = (status: ListeningStatus | "all") => {
+    queueResultsScroll();
+    setWorkPage(1);
+    setStatusFilter(status);
+  };
+  const localPaginationProps = {
+    page: currentWorkPage,
+    pageSize: workPageSize,
+    totalItems: workTotal,
+    totalPages: totalWorkPages,
+    pageSizeOptions: localWorkPageSizeOptions,
+    onPageChange: changeWorkPage,
+    onPageSizeChange: (value: number) => changeWorkPageSize(value as LocalWorkPageSize),
+  };
+  const localTopPagination = <WorkCollectionPagination {...localPaginationProps} placement="top" />;
 
   return (
     <div className="space-y-5">
@@ -1186,10 +1485,14 @@ export function LibraryPage() {
             placeholder="Search title, code, circle, tag, or creator"
           />
           {searchQuery.trim() && (
-            <button className="text-muted-foreground hover:text-foreground" onClick={() => {
-              setOptimisticLibrarySearchClauses(null);
-              setSearchQuery("");
-            }} aria-label="Clear search">
+            <button
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setOptimisticLibrarySearchClauses(null);
+                setSearchQuery("");
+              }}
+              aria-label="Clear search"
+            >
               <X className="h-4 w-4" />
             </button>
           )}
@@ -1210,17 +1513,32 @@ export function LibraryPage() {
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
-		  {librarySort === "recommend" ? (
-			<IconButton title="Refresh recommendations" disabled={isLibraryLoading} onClick={reshuffle}>
-			  <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
-			</IconButton>
-		  ) : (
-			<IconButton title={recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"} onClick={toggleRecommendBadges}>
-			  <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
-			</IconButton>
-		  )}
-		  <SortPicker activeTab={activeTab} value={librarySort} direction={sortDirection} onChange={changeLibrarySort} onDirectionChange={changeSortDirection} onReshuffle={reshuffle} />
-		  <FilterPicker value={statusFilter} activeCount={activeFilterCount} disabled={activeTab.kind === "source"} onChange={changeStatusFilter} />
+          {librarySort === "recommend" ? (
+            <IconButton title="Refresh recommendations" disabled={isLibraryLoading} onClick={reshuffle}>
+              <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
+            </IconButton>
+          ) : (
+            <IconButton
+              title={recommendBadgesEnabled ? "Hide recommendation badges" : "Show recommendation badges"}
+              onClick={toggleRecommendBadges}
+            >
+              <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
+            </IconButton>
+          )}
+          <SortPicker
+            activeTab={activeTab}
+            value={librarySort}
+            direction={sortDirection}
+            onChange={changeLibrarySort}
+            onDirectionChange={changeSortDirection}
+            onReshuffle={reshuffle}
+          />
+          <FilterPicker
+            value={statusFilter}
+            activeCount={activeFilterCount}
+            disabled={activeTab.kind === "source"}
+            onChange={changeStatusFilter}
+          />
         </div>
       </section>
       {activeFilterCount > 0 && (
@@ -1228,7 +1546,11 @@ export function LibraryPage() {
           <Badge variant="outline" className="gap-1.5">
             <Filter className="h-4 w-4" />
             Mark: {statusFilterLabel(statusFilter)}
-			<button className="rounded-sm text-muted-foreground hover:text-foreground" aria-label="Clear mark filter" onClick={() => changeStatusFilter("all")}>
+            <button
+              className="rounded-sm text-muted-foreground hover:text-foreground"
+              aria-label="Clear mark filter"
+              onClick={() => changeStatusFilter("all")}
+            >
               <X className="h-3 w-3" />
             </button>
           </Badge>
@@ -1237,8 +1559,15 @@ export function LibraryPage() {
       {searchClauses.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {searchClauses.map((clause, index) => (
-            <Badge key={`${clause.kind}-${clause.value}-${index}`} variant={clause.kind === "exclude_tag" ? "warning" : "outline"} className="gap-1.5">
-              <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => openEditClauseEditor(clause, index)}>
+            <Badge
+              key={`${clause.kind}-${clause.value}-${index}`}
+              variant={clause.kind === "exclude_tag" ? "warning" : "outline"}
+              className="gap-1.5"
+            >
+              <button
+                className="inline-flex items-center gap-1 hover:text-foreground"
+                onClick={() => openEditClauseEditor(clause, index)}
+              >
                 <Edit3 className="h-3 w-3" />
                 {searchClauseLabel(clause)}
               </button>
@@ -1256,7 +1585,7 @@ export function LibraryPage() {
       {clauseEditor && (
         <SearchClauseEditor
           editor={clauseEditor}
-          onChange={(draft) => setClauseEditor((current) => current ? { ...current, draft } : current)}
+          onChange={(draft) => setClauseEditor((current) => (current ? { ...current, draft } : current))}
           onCancel={() => setClauseEditor(null)}
           onSave={saveClauseEditor}
         />
@@ -1269,7 +1598,7 @@ export function LibraryPage() {
         onChange={changePrimaryTab}
         onSourceChange={(source) => changeTab({ kind: "source", source })}
       />
-	  <div ref={resultsAnchorRef} className="scroll-mt-24" />
+      <div ref={resultsAnchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
         <div className="space-y-3">
@@ -1279,29 +1608,37 @@ export function LibraryPage() {
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
             searchClauses={searchClauses}
-			viewMode={viewMode}
-			mobileColumns={mobileColumns}
-			desktopColumns={desktopColumns}
-			onClearSearch={() => setSearchQuery("")}
-			onPageChange={(page) => {
-			  queueResultsScroll();
-			  updateRemoteSourceState(activeTab.source.id, { page });
-			}}
+            viewMode={viewMode}
+            mobileColumns={mobileColumns}
+            desktopColumns={desktopColumns}
+            onClearSearch={() => setSearchQuery("")}
+            onPageChange={(page) => {
+              queueResultsScroll();
+              updateRemoteSourceState(activeTab.source.id, { page });
+            }}
             onPageSizeChange={(value) => {
-			  queueResultsScroll();
+              queueResultsScroll();
               updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
             }}
             onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
             onTagOpen={addTagSearchClause}
             onWorkStateChanged={(primaryCode, patch) => {
-              setRemoteResult((current) => current ? {
-                ...current,
-                works: current.works.map((item) => item.primaryCode === primaryCode ? { ...item, ...patch } : item),
-              } : current);
+              setRemoteResult((current) =>
+                current
+                  ? {
+                      ...current,
+                      works: current.works.map((item) =>
+                        item.primaryCode === primaryCode ? { ...item, ...patch } : item,
+                      ),
+                    }
+                  : current,
+              );
             }}
             onSynced={async (workId, options) => {
               if (workId <= 0) {
-                loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
+                loadRemoteWorksNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, {
+                  clearResult: false,
+                });
                 return;
               }
               if (!options?.openTracked) return;
@@ -1318,58 +1655,68 @@ export function LibraryPage() {
               message={libraryLoadError}
               onRetry={() => loadLibraryWorksNow(librarySearchQuery, currentWorkPage)}
             />
-		  ) : visibleWorks.length === 0 ? (
-			<EmptyLibraryWorksCard
-			  scope={localScope}
-			  filtered={searchQuery.trim() !== "" || statusFilter !== "all"}
-			  onClear={() => {
-				setSearchQuery("");
-				changeStatusFilter("all");
-			  }}
-			/>
+          ) : visibleWorks.length === 0 ? (
+            <EmptyLibraryWorksCard
+              scope={localScope}
+              filtered={searchQuery.trim() !== "" || statusFilter !== "all"}
+              onClear={() => {
+                setSearchQuery("");
+                changeStatusFilter("all");
+              }}
+            />
           ) : viewMode === "masonry" ? (
-            <section className={workCollectionClassName("masonry")} style={workCollectionStyle(mobileColumns, desktopColumns)}>
+            <section
+              className={workCollectionClassName("masonry")}
+              style={workCollectionStyle(mobileColumns, desktopColumns)}
+            >
               {pagedWorks.map((work) => (
                 <div key={work.id} className="mb-4 [break-inside:avoid]">
                   <WorkCard
                     work={work}
-					showRecommendationScore={librarySort === "recommend"}
-					onRecommendationOpen={() => openRecommendationExplanation(work)}
+                    showRecommendationScore={librarySort === "recommend"}
+                    onRecommendationOpen={() => openRecommendationExplanation(work)}
                     onOpen={() => openWork(work)}
                     onStatusChange={updateWorkStatus}
                     onFavoriteSaved={(workID, favorite) => {
                       setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                       setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
-					  if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
+                      if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
                     }}
                     onTagOpen={addTagSearchClause}
                     onUserTagOpen={addUserTagSearchClause}
                     onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
-                    onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                    onFetch={
+                      localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined
+                    }
                     isFetchBusy={trackedFetchWorkspace.isBusy}
                   />
                 </div>
               ))}
             </section>
           ) : (
-            <section className={workCollectionClassName("grid")} style={workCollectionStyle(mobileColumns, desktopColumns)}>
+            <section
+              className={workCollectionClassName("grid")}
+              style={workCollectionStyle(mobileColumns, desktopColumns)}
+            >
               {pagedWorks.map((work) => (
                 <WorkCard
                   key={work.id}
                   work={work}
-				  showRecommendationScore={librarySort === "recommend"}
-				  onRecommendationOpen={() => openRecommendationExplanation(work)}
+                  showRecommendationScore={librarySort === "recommend"}
+                  onRecommendationOpen={() => openRecommendationExplanation(work)}
                   onOpen={() => openWork(work)}
                   onStatusChange={updateWorkStatus}
                   onFavoriteSaved={(workID, favorite) => {
                     setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
                     setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
-					if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
+                    if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
                   }}
                   onTagOpen={addTagSearchClause}
                   onUserTagOpen={addUserTagSearchClause}
                   onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
-                  onFetch={localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined}
+                  onFetch={
+                    localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined
+                  }
                   isFetchBusy={trackedFetchWorkspace.isBusy}
                 />
               ))}
@@ -1389,7 +1736,9 @@ export function LibraryPage() {
           onConfirm={() => void untrackWorkSource()}
         />
       )}
-	  {recommendationDialog && <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />}
+      {recommendationDialog && (
+        <RecommendationExplanationModal state={recommendationDialog} onClose={() => setRecommendationDialog(null)} />
+      )}
       <RemoteFetchWorkspaceDialog workspace={trackedFetchWorkspace} />
     </div>
   );
@@ -1416,11 +1765,21 @@ function LibraryPrimaryTabs({
       <TabButton active={active === "local"} onClick={() => onChange("local")} icon={<HardDrive className="h-4 w-4" />}>
         Local
       </TabButton>
-      <TabButton active={active === "tracked"} onClick={() => onChange("tracked")} icon={<GitBranchPlus className="h-4 w-4" />}>
+      <TabButton
+        active={active === "tracked"}
+        onClick={() => onChange("tracked")}
+        icon={<GitBranchPlus className="h-4 w-4" />}
+      >
         Tracked
       </TabButton>
       {sources.map((source) => (
-        <TabButton key={source.id} active={activeSourceId === source.id} onClick={() => onSourceChange(source)} icon={<Cloud className="h-4 w-4" />} disabled={!source.enabled}>
+        <TabButton
+          key={source.id}
+          active={activeSourceId === source.id}
+          onClick={() => onSourceChange(source)}
+          icon={<Cloud className="h-4 w-4" />}
+          disabled={!source.enabled}
+        >
           {source.displayName}
         </TabButton>
       ))}
@@ -1461,10 +1820,10 @@ function RemoteSourcePanel({
   loading,
   viewState,
   searchClauses,
-	viewMode,
-	mobileColumns,
-	desktopColumns,
-	onClearSearch,
+  viewMode,
+  mobileColumns,
+  desktopColumns,
+  onClearSearch,
   onPageChange,
   onPageSizeChange,
   onOpenPreview,
@@ -1477,15 +1836,18 @@ function RemoteSourcePanel({
   loading: boolean;
   viewState: RemoteSourceViewState;
   searchClauses: SearchClause[];
-	viewMode: LibraryViewMode;
-	mobileColumns: LibraryColumnSetting;
-	desktopColumns: LibraryColumnSetting;
-	onClearSearch: () => void;
+  viewMode: LibraryViewMode;
+  mobileColumns: LibraryColumnSetting;
+  desktopColumns: LibraryColumnSetting;
+  onClearSearch: () => void;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
-  onWorkStateChanged: (primaryCode: string, patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>) => void;
+  onWorkStateChanged: (
+    primaryCode: string,
+    patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>,
+  ) => void;
   onSynced: (workID: number, options?: { openTracked?: boolean }) => Promise<void>;
 }) {
   const toast = useToast();
@@ -1544,15 +1906,13 @@ function RemoteSourcePanel({
     onPageChange,
     onPageSizeChange,
   };
-  const remoteTopPagination = (
-    <WorkCollectionPagination
-      {...remotePaginationProps}
-      placement="top"
-    />
-  );
+  const remoteTopPagination = <WorkCollectionPagination {...remotePaginationProps} placement="top" />;
 
   useEffect(() => {
-    setBulkCodes((current) => new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))));
+    setBulkCodes(
+      (current) =>
+        new Set(Array.from(current).filter((code) => visibleWorks.some((work) => work.primaryCode === code))),
+    );
   }, [visibleWorks]);
 
   useEffect(() => {
@@ -1570,14 +1930,18 @@ function RemoteSourcePanel({
   };
 
   const toggleAllVisible = (checked: boolean) => {
-    setBulkCodes(() => checked ? new Set(selectableWorks.map((work) => work.primaryCode)) : new Set());
+    setBulkCodes(() => (checked ? new Set(selectableWorks.map((work) => work.primaryCode)) : new Set()));
   };
 
   const bulkSyncSelected = async () => {
     if (selectedSyncable.length === 0) return;
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "track", sourceId: source.id, codes: selectedSyncable.map(remoteWorkActionCode) });
+      const parent = await api.recordRemoteBulkRun({
+        action: "track",
+        sourceId: source.id,
+        codes: selectedSyncable.map(remoteWorkActionCode),
+      });
       const message = `Bulk workflow #${parent.runId}: tracked ${parent.synced}, failed ${parent.failed}.`;
       if (parent.failed > 0) toast.warning(message);
       else toast.success(message);
@@ -1599,7 +1963,11 @@ function RemoteSourcePanel({
     if (!requireDownloadsManage()) return;
     setIsBulkBusy(true);
     try {
-      const parent = await api.recordRemoteBulkRun({ action: "fetch", sourceId: source.id, codes: selectedSaveable.map(remoteWorkActionCode) });
+      const parent = await api.recordRemoteBulkRun({
+        action: "fetch",
+        sourceId: source.id,
+        codes: selectedSaveable.map(remoteWorkActionCode),
+      });
       const message = `Bulk workflow #${parent.runId}: queued ${parent.fetched} Fetch jobs, failed ${parent.failed}.`;
       if (parent.failed > 0) toast.warning(message);
       else toast.success(message);
@@ -1616,7 +1984,7 @@ function RemoteSourcePanel({
     if (!work.primaryCode) return;
     setIsSyncingCode(work.primaryCode);
     try {
-      const workId = work.workId ?? await ensureRemoteWorkForState(work, "mark_interest");
+      const workId = work.workId ?? (await ensureRemoteWorkForState(work, "mark_interest"));
       if (!workId) return;
       await api.updateWorkUserState(workId, { listeningStatus: status });
       onWorkStateChanged(work.primaryCode, { workId, listeningStatus: status });
@@ -1657,15 +2025,21 @@ function RemoteSourcePanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{source.displayName}</h2>
-          <p className="text-sm text-muted-foreground">Browse source results without importing until a user action needs local state.</p>
+          <p className="text-sm text-muted-foreground">
+            Browse source results without importing until a user action needs local state.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
-            setSelectionMode((value) => {
-              if (value) setBulkCodes(new Set());
-              return !value;
-            });
-          }}>
+          <Button
+            variant={selectionMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setSelectionMode((value) => {
+                if (value) setBulkCodes(new Set());
+                return !value;
+              });
+            }}
+          >
             Select
           </Button>
           <Badge variant={source.enabled ? "outline" : "warning"}>{source.enabled ? "enabled" : "disabled"}</Badge>
@@ -1674,32 +2048,60 @@ function RemoteSourcePanel({
         </div>
       </div>
       {remoteTopPagination}
-      {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-        <div className="text-muted-foreground">{selectedWorks.length} selected</div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => toggleAllVisible(true)}>Select all</Button>
-          <Button variant="outline" size="sm" onClick={() => {
-            setBulkCodes(new Set());
-            setSelectionMode(false);
-          }}>Cancel selection</Button>
-          <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSyncable.length === 0} onClick={() => void bulkSyncSelected()}>
-            <GitBranchPlus className="h-4 w-4" />
-            Track {selectedSyncable.length}
-          </Button>
-          <Button variant="outline" size="sm" disabled={isBulkBusy || selectedSaveable.length === 0} onClick={() => void bulkSaveSelected()}>
-            <HardDriveDownload className="h-4 w-4" />
-            Fetch {selectedSaveable.length}
-          </Button>
+      {selectionMode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+          <div className="text-muted-foreground">{selectedWorks.length} selected</div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => toggleAllVisible(true)}>
+              Select all
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBulkCodes(new Set());
+                setSelectionMode(false);
+              }}
+            >
+              Cancel selection
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isBulkBusy || selectedSyncable.length === 0}
+              onClick={() => void bulkSyncSelected()}
+            >
+              <GitBranchPlus className="h-4 w-4" />
+              Track {selectedSyncable.length}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isBulkBusy || selectedSaveable.length === 0}
+              onClick={() => void bulkSaveSelected()}
+            >
+              <HardDriveDownload className="h-4 w-4" />
+              Fetch {selectedSaveable.length}
+            </Button>
+          </div>
         </div>
-      </div>}
+      )}
       {isInitialLoading ? (
         <RemoteWorkGridSkeleton viewMode={viewMode} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
       ) : visibleWorks.length === 0 ? (
         <Card>
-		  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
-			<span>{searchClauses.length > 0 ? "No remote works match the current search on this page." : "No remote works on this page."}</span>
-			{searchClauses.length > 0 && <Button variant="outline" size="sm" onClick={onClearSearch}>Clear search</Button>}
-		  </CardContent>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
+            <span>
+              {searchClauses.length > 0
+                ? "No remote works match the current search on this page."
+                : "No remote works on this page."}
+            </span>
+            {searchClauses.length > 0 && (
+              <Button variant="outline" size="sm" onClick={onClearSearch}>
+                Clear search
+              </Button>
+            )}
+          </CardContent>
         </Card>
       ) : (
         <div className="space-y-2">
@@ -1721,12 +2123,14 @@ function RemoteSourcePanel({
                   onFetch={() => void trackWork(work, "manual_track")}
                   onTagOpen={onTagOpen}
                   onMark={(status) => void markRemoteWork(work, status)}
-                  onSave={() => void fetchWorkspace.open({
-                    sourceId: source.id,
-                    remoteCode: remoteWorkActionCode(work),
-                    canonicalCode: work.primaryCode,
-                    sourceDisplayName: source.displayName,
-                  })}
+                  onSave={() =>
+                    void fetchWorkspace.open({
+                      sourceId: source.id,
+                      remoteCode: remoteWorkActionCode(work),
+                      canonicalCode: work.primaryCode,
+                      sourceDisplayName: source.displayName,
+                    })
+                  }
                   onEnsureWork={() => ensureRemoteWorkForList(work)}
                   onListSaved={(workId, favorite) => {
                     onWorkStateChanged(work.primaryCode, { workId, favorite });
@@ -1752,7 +2156,9 @@ function RemoteSourcePanel({
 }
 
 function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: Work) => void }) {
-  const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem("kikoto:recently-played-collapsed") === "true");
+  const [collapsed, setCollapsed] = useState(
+    () => window.localStorage.getItem("kikoto:recently-played-collapsed") === "true",
+  );
   const toggleCollapsed = () => {
     setCollapsed((current) => {
       const next = !current;
@@ -1777,7 +2183,9 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
             <Clock3 className="h-4 w-4 text-primary" />
             Recently played
           </span>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`}
+          />
         </button>
       </h2>
       {!collapsed && (
@@ -1791,20 +2199,37 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
             >
               <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden rounded-md border bg-muted transition-colors group-hover:border-primary/50">
                 {work.coverUrl ? (
-                  <img src={assetURL(work.coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" loading="lazy" />
+                  <img
+                    src={assetURL(work.coverUrl)}
+                    alt=""
+                    className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
+                    loading="lazy"
+                  />
                 ) : (
-                  <span className="grid h-full place-items-center text-xl font-bold text-muted-foreground">{work.primaryCode.slice(0, 2)}</span>
+                  <span className="grid h-full place-items-center text-xl font-bold text-muted-foreground">
+                    {work.primaryCode.slice(0, 2)}
+                  </span>
                 )}
                 <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold">
                   {work.primaryCode}
                 </span>
               </span>
-              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug">{work.title}</span>
-              <span className="mt-0.5 block h-4 w-full truncate text-[11px] text-muted-foreground">{work.circle || "Unknown circle"}</span>
-              <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
-                <span className="block h-full rounded-full bg-primary" style={{ width: `${progressPercent(work.progress)}%` }} />
+              <span className="mt-2 block h-9 w-full line-clamp-2 text-xs font-semibold leading-snug">
+                {work.title}
               </span>
-              <span className="mt-1 block w-full shrink-0 truncate text-[10px] text-muted-foreground" title={recentProgressLabel(work.progress)}>
+              <span className="mt-0.5 block h-4 w-full truncate text-[11px] text-muted-foreground">
+                {work.circle || "Unknown circle"}
+              </span>
+              <span className="mt-auto block h-1 w-full shrink-0 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full rounded-full bg-primary"
+                  style={{ width: `${progressPercent(work.progress)}%` }}
+                />
+              </span>
+              <span
+                className="mt-1 block w-full shrink-0 truncate text-[10px] text-muted-foreground"
+                title={recentProgressLabel(work.progress)}
+              >
                 {recentProgressLabel(work.progress)}
               </span>
             </button>
@@ -1817,12 +2242,15 @@ function RecentlyPlayedStrip({ works, onOpen }: { works: Work[]; onOpen: (work: 
 
 function recentProgressLabel(progress: Work["progress"]) {
   if (progress.completed) return `Finished · ${progress.title || "Track"}`;
-  const duration = progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
+  const duration =
+    progress.durationSeconds && progress.durationSeconds > 0 ? ` / ${formatTime(progress.durationSeconds)}` : "";
   return `${progress.title || "Track"} · ${formatTime(progress.positionSeconds)}${duration}`;
 }
 
 function recentWorkSourceIntent(work: Work): DetailSourceIntent {
-  const hasLocal = (work.sourcePresence ?? []).some((item) => item.type === "local" && item.availability === "available");
+  const hasLocal = (work.sourcePresence ?? []).some(
+    (item) => item.type === "local" && item.availability === "available",
+  );
   return hasLocal ? "local" : "tracked";
 }
 
@@ -1858,14 +2286,18 @@ function WorkCard({
     <WorkCardShell
       work={view}
       onOpen={onOpen}
-	  onRecommendationOpen={onRecommendationOpen}
+      onRecommendationOpen={onRecommendationOpen}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
-      onSeriesOpen={work.seriesTitleId && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
+      onSeriesOpen={
+        work.seriesTitleId && work.circleExternalId
+          ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
+          : undefined
+      }
       onTagOpen={onTagOpen}
-      footer={(
+      footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
-          right={(
+          right={
             <>
               {onUntrack && trackedSource && (
                 <WorkCardActionButton
@@ -1890,12 +2322,19 @@ function WorkCard({
                   <HardDriveDownload className="h-4 w-4" />
                 </WorkCardActionButton>
               )}
-              <WorkCardListButton workId={work.id} active={work.favorite} onSaved={(favorite) => onFavoriteSaved(work.id, favorite)} />
-              <WorkCardQuickMarkButton value={work.listeningStatus} onChange={(status) => void onStatusChange(work.id, status)} />
+              <WorkCardListButton
+                workId={work.id}
+                active={work.favorite}
+                onSaved={(favorite) => onFavoriteSaved(work.id, favorite)}
+              />
+              <WorkCardQuickMarkButton
+                value={work.listeningStatus}
+                onChange={(status) => void onStatusChange(work.id, status)}
+              />
             </>
-          )}
+          }
         />
-      )}
+      }
     />
   );
 }
@@ -1936,47 +2375,55 @@ function RemoteWorkCard({
   return (
     <WorkCardShell
       work={view}
-      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      selection={
+        selectionActive ? (
+          <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} />
+        ) : undefined
+      }
       onOpen={onOpen}
       onTagOpen={onTagOpen}
       canOpen={Boolean(work.primaryCode)}
-      footer={(
+      footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={dlsiteWorkURL(work.primaryCode)} />}
-          right={(
+          right={
             <>
-            <WorkCardActionButton
-              title="Track"
-              disabled={isBusy || !work.primaryCode}
-              onClick={(event) => {
-                event.stopPropagation();
-                onFetch();
-              }}
-            >
-              <GitBranchPlus className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardActionButton
-              title="Fetch"
-              disabled={isBusy || !work.primaryCode}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSave();
-              }}
-            >
-              <HardDriveDownload className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardListButton
-              workId={work.workId}
-              active={work.favorite}
-              disabled={isBusy || !work.primaryCode}
-              ensureWorkId={onEnsureWork}
-              onSaved={(favorite, workId) => onListSaved(workId, favorite)}
-            />
-            <WorkCardQuickMarkButton value={work.listeningStatus} disabled={isBusy || !work.primaryCode} onChange={onMark} />
+              <WorkCardActionButton
+                title="Track"
+                disabled={isBusy || !work.primaryCode}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onFetch();
+                }}
+              >
+                <GitBranchPlus className="h-4 w-4" />
+              </WorkCardActionButton>
+              <WorkCardActionButton
+                title="Fetch"
+                disabled={isBusy || !work.primaryCode}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSave();
+                }}
+              >
+                <HardDriveDownload className="h-4 w-4" />
+              </WorkCardActionButton>
+              <WorkCardListButton
+                workId={work.workId}
+                active={work.favorite}
+                disabled={isBusy || !work.primaryCode}
+                ensureWorkId={onEnsureWork}
+                onSaved={(favorite, workId) => onListSaved(workId, favorite)}
+              />
+              <WorkCardQuickMarkButton
+                value={work.listeningStatus}
+                disabled={isBusy || !work.primaryCode}
+                onChange={onMark}
+              />
             </>
-          )}
+          }
         />
-      )}
+      }
     />
   );
 }
@@ -1991,12 +2438,16 @@ function RemoteWorkGridSkeleton({
   desktopColumns: LibraryColumnSetting;
 }) {
   return (
-    <section
-      className={workCollectionClassName(viewMode)}
-      style={workCollectionStyle(mobileColumns, desktopColumns)}
-    >
+    <section className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
       {Array.from({ length: 12 }, (_, index) => (
-        <div key={index} className={viewMode === "masonry" ? "mb-4 overflow-hidden rounded-lg border bg-card [break-inside:avoid]" : "overflow-hidden rounded-lg border bg-card"}>
+        <div
+          key={index}
+          className={
+            viewMode === "masonry"
+              ? "mb-4 overflow-hidden rounded-lg border bg-card [break-inside:avoid]"
+              : "overflow-hidden rounded-lg border bg-card"
+          }
+        >
           <div className="aspect-[4/5] animate-pulse bg-muted" />
           <div className="space-y-2 p-3">
             <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
@@ -2012,15 +2463,32 @@ function RemoteWorkGridSkeleton({
   );
 }
 
-function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+function SaveConfirmModal({
+  count,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Fetch remote directory</h3>
-        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Fetch</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onConfirm}>
+            Fetch
+          </Button>
         </div>
       </div>
     </div>
@@ -2043,16 +2511,32 @@ function UntrackConfirmModal({
   const sourceName = source.fileSourceName || source.fileSourceCode || "this source";
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Untrack source</h3>
         <div className="mt-2 space-y-2 text-sm text-muted-foreground">
-          <p>{work.primaryCode} will be removed from tracked works for {sourceName}.</p>
+          <p>
+            {work.primaryCode} will be removed from tracked works for {sourceName}.
+          </p>
           <p>Work information, marks, lists, metadata, and local files will be kept.</p>
-          <p>Cached files for this work under /cache will be deleted and their cache locations will be marked unavailable.</p>
+          <p>
+            Cached files for this work under /cache will be deleted and their cache locations will be marked
+            unavailable.
+          </p>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" disabled={disabled} onClick={onClose}>Cancel</Button>
-          <Button variant="outline" size="sm" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={disabled} onClick={onConfirm}>
+          <Button variant="outline" size="sm" disabled={disabled} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            disabled={disabled}
+            onClick={onConfirm}
+          >
             {disabled ? "Untracking" : "Untrack"}
           </Button>
         </div>
@@ -2066,51 +2550,97 @@ function createRecommendationContextID() {
   return `library:${Date.now().toString(36)}:${random}`.slice(0, 64);
 }
 
-function RecommendationExplanationModal({ state, onClose }: {
+function RecommendationExplanationModal({
+  state,
+  onClose,
+}: {
   state: { work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string };
   onClose: () => void;
 }) {
   useEffect(() => {
-	const handleKeyDown = (event: KeyboardEvent) => {
-	  if (event.key === "Escape") onClose();
-	};
-	window.addEventListener("keydown", handleKeyDown);
-	return () => window.removeEventListener("keydown", handleKeyDown);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-  const components = state.breakdown?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
+  const components =
+    state.breakdown?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
   return (
-	<div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" onMouseDown={onClose}>
-	  <div className="w-full max-w-md overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-		<div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
-		  <div className="min-w-0"><div className="truncate text-sm font-semibold">{state.work.title}</div><div className="text-xs text-muted-foreground">{state.work.primaryCode}</div></div>
-		  <IconButton title="Close recommendation explanation" onClick={onClose}><X className="h-4 w-4" /></IconButton>
-		</div>
-		<div className="space-y-4 p-4">
-		  {state.loading ? (
-			<div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground"><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Loading score</div>
-		  ) : state.error ? (
-			<div className="text-sm text-destructive">{state.error}</div>
-		  ) : state.breakdown ? (
-			<>
-			  <div className="flex items-end justify-between gap-4 border-b pb-3">
-				<div><div className="text-xs text-muted-foreground">Affinity score</div><div className="text-3xl font-semibold">{state.breakdown.score}</div></div>
-				<div className="flex flex-col items-end gap-1"><Badge variant="secondary">{recommendationLaneLabel(state.breakdown.lane)}</Badge><Badge variant="outline">{state.breakdown.algorithmVersion}</Badge></div>
-			  </div>
-			  <p className="text-xs text-muted-foreground">Listening state controls placement in the recommendation mix; affinity signals order works within that state.</p>
-			  <div className="space-y-2">
-				{components.map((component) => (
-				  <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
-					<div className="min-w-0"><div className="font-medium">{component.label}</div>{component.matchCount > 0 && component.key !== "state" && <div className="text-xs text-muted-foreground">{component.matchCount} matched signal{component.matchCount === 1 ? "" : "s"}</div>}</div>
-					<span className={component.contribution < 0 ? "font-semibold text-destructive" : "font-semibold text-primary"}>{component.contribution > 0 ? "+" : ""}{component.contribution}</span>
-				  </div>
-				))}
-			  </div>
-			  {state.breakdown.rawScore !== state.breakdown.score && <div className="border-t pt-3 text-xs text-muted-foreground">Raw {state.breakdown.rawScore}, bounded to {state.breakdown.score}</div>}
-			</>
-		  ) : null}
-		</div>
-	  </div>
-	</div>
+    <div
+      className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-lg border bg-background shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{state.work.title}</div>
+            <div className="text-xs text-muted-foreground">{state.work.primaryCode}</div>
+          </div>
+          <IconButton title="Close recommendation explanation" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="space-y-4 p-4">
+          {state.loading ? (
+            <div className="flex min-h-36 items-center justify-center text-sm text-muted-foreground">
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Loading score
+            </div>
+          ) : state.error ? (
+            <div className="text-sm text-destructive">{state.error}</div>
+          ) : state.breakdown ? (
+            <>
+              <div className="flex items-end justify-between gap-4 border-b pb-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Affinity score</div>
+                  <div className="text-3xl font-semibold">{state.breakdown.score}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="secondary">{recommendationLaneLabel(state.breakdown.lane)}</Badge>
+                  <Badge variant="outline">{state.breakdown.algorithmVersion}</Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Listening state controls placement in the recommendation mix; affinity signals order works within that
+                state.
+              </p>
+              <div className="space-y-2">
+                {components.map((component) => (
+                  <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-medium">{component.label}</div>
+                      {component.matchCount > 0 && component.key !== "state" && (
+                        <div className="text-xs text-muted-foreground">
+                          {component.matchCount} matched signal{component.matchCount === 1 ? "" : "s"}
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className={
+                        component.contribution < 0 ? "font-semibold text-destructive" : "font-semibold text-primary"
+                      }
+                    >
+                      {component.contribution > 0 ? "+" : ""}
+                      {component.contribution}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {state.breakdown.rawScore !== state.breakdown.score && (
+                <div className="border-t pt-3 text-xs text-muted-foreground">
+                  Raw {state.breakdown.rawScore}, bounded to {state.breakdown.score}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2131,7 +2661,11 @@ function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {
   }
 }
 
-function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, showRecommendationScore = false): WorkCardViewModel {
+function libraryWorkCardView(
+  work: Work,
+  onUserTagOpen?: (tag: string) => void,
+  showRecommendationScore = false,
+): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
@@ -2151,14 +2685,16 @@ function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, 
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
-		sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
-		recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore),
-		recommendationScore: work.recommendScore,
+    sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+    recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore),
+    recommendationScore: work.recommendScore,
   };
 }
 
 function trackedSourceForWork(work: Work) {
-  return (work.sourcePresence ?? []).find((item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId);
+  return (work.sourcePresence ?? []).find(
+    (item) => item.type === "tracked" && item.availability === "available" && item.fileSourceId,
+  );
 }
 
 function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardViewModel {
@@ -2179,20 +2715,29 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource): WorkCardVi
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: [],
-		recommended: recommendationBadgeVisible(work.recommendScore),
-		recommendationScore: work.recommendScore,
+    recommended: recommendationBadgeVisible(work.recommendScore),
+    recommendationScore: work.recommendScore,
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
       : [{ key: `source:remote:${source.id}:unavailable`, label: `${sourceLabel} unavailable`, variant: "warning" }],
   };
 }
 
-function workHasNoSource(work: { sourcePresence?: SourcePresenceItem[] | null; availability?: string[]; mediaItems?: MediaItem[] }) {
+function workHasNoSource(work: {
+  sourcePresence?: SourcePresenceItem[] | null;
+  availability?: string[];
+  mediaItems?: MediaItem[];
+}) {
   const sourcePresence = work.sourcePresence ?? [];
   const hasPresence = sourcePresence.some((item) => item.type && item.type !== "location" && item.type !== "remote");
   if (hasPresence) return false;
-  if (work.availability && work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item.toLowerCase()))) return false;
-  if ((work.mediaItems ?? []).some((item) => item.locations.some((location) => location.availability === "available"))) return false;
+  if (
+    work.availability &&
+    work.availability.some((item) => ["local", "cache", "cached", "remote"].includes(item.toLowerCase()))
+  )
+    return false;
+  if ((work.mediaItems ?? []).some((item) => item.locations.some((location) => location.availability === "available")))
+    return false;
   return true;
 }
 
@@ -2206,7 +2751,9 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
         <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+        {progress.completed
+          ? "Finished"
+          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -2229,9 +2776,12 @@ function SortPicker({
 }) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-  const options = activeTab.kind === "source"
-	? librarySortOptions.filter((option) => ["recent", "release", "code", "rating", "sales", "random"].includes(option.value))
-	: librarySortOptions;
+  const options =
+    activeTab.kind === "source"
+      ? librarySortOptions.filter((option) =>
+          ["recent", "release", "code", "rating", "sales", "random"].includes(option.value),
+        )
+      : librarySortOptions;
   const label = options.find((option) => option.value === value)?.label ?? "Sort";
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
   const nextDirection = direction === "asc" ? "desc" : "asc";
@@ -2250,25 +2800,36 @@ function SortPicker({
           className="relative inline-flex h-8 w-8 items-center justify-center rounded-r-md border-l text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           title={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
           aria-label={value === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending"}
-          onClick={() => value === "random" ? onReshuffle() : onDirectionChange(nextDirection)}
+          onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(nextDirection))}
         >
-          {value === "random" ? <RefreshCw className="h-4 w-4" /> : direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
+          {value === "random" ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : direction === "asc" ? (
+            <ArrowDownAZ className="h-4 w-4" />
+          ) : (
+            <ArrowDownZA className="h-4 w-4" />
+          )}
         </button>
       </div>
-	  <AnchoredPopover open={open} anchorRef={popoverRef} onOpenChange={setOpen} className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm">
-          {options.map((option) => (
-            <button
-              key={option.value}
-			  className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-              aria-pressed={value === option.value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-			  {option.label}
-            </button>
-          ))}
+      <AnchoredPopover
+        open={open}
+        anchorRef={popoverRef}
+        onOpenChange={setOpen}
+        className="w-[min(11rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
+        {options.map((option) => (
+          <button
+            key={option.value}
+            className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+            aria-pressed={value === option.value}
+            onClick={() => {
+              onChange(option.value);
+              setOpen(false);
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
       </AnchoredPopover>
     </div>
   );
@@ -2290,41 +2851,55 @@ function FilterPicker({
   useDismissiblePopover(open, popoverRef, () => setOpen(false));
   return (
     <div className="relative" ref={popoverRef}>
-      <IconButton title={disabled ? "Mark filters are unavailable for source browsing" : activeCount > 0 ? `Filters: ${activeCount} active` : "Filters"} disabled={disabled} onClick={() => setOpen((current) => !current)}>
+      <IconButton
+        title={
+          disabled
+            ? "Mark filters are unavailable for source browsing"
+            : activeCount > 0
+              ? `Filters: ${activeCount} active`
+              : "Filters"
+        }
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+      >
         <Filter className="h-4 w-4" />
         {activeCount > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
       </IconButton>
-      <AnchoredPopover open={open && !disabled} anchorRef={popoverRef} className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg">
-          <button
-            className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-            aria-pressed={value === "all"}
-            title="All marks"
-            aria-label="All marks"
-            onClick={() => {
-              onChange("all");
-              setOpen(false);
-            }}
-          >
-            <X className="h-4 w-4" />
-          </button>
-          {listeningStatusOptions.map((option) => {
-            const meta = quickMarkFilterMeta(option.value);
-            return (
-              <button
-                key={option.value}
-                className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-                aria-pressed={value === option.value}
-                title={option.label}
-                aria-label={option.label}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                <meta.icon className={`h-4 w-4 ${value === option.value ? "" : meta.className}`} />
-              </button>
-            );
-          })}
+      <AnchoredPopover
+        open={open && !disabled}
+        anchorRef={popoverRef}
+        className="flex w-10 flex-col gap-1 rounded-lg border bg-card p-1 text-sm shadow-lg"
+      >
+        <button
+          className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === "all" ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+          aria-pressed={value === "all"}
+          title="All marks"
+          aria-label="All marks"
+          onClick={() => {
+            onChange("all");
+            setOpen(false);
+          }}
+        >
+          <X className="h-4 w-4" />
+        </button>
+        {listeningStatusOptions.map((option) => {
+          const meta = quickMarkFilterMeta(option.value);
+          return (
+            <button
+              key={option.value}
+              className={`flex h-8 items-center justify-center rounded-md hover:bg-muted ${value === option.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
+              aria-pressed={value === option.value}
+              title={option.label}
+              aria-label={option.label}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              <meta.icon className={`h-4 w-4 ${value === option.value ? "" : meta.className}`} />
+            </button>
+          );
+        })}
       </AnchoredPopover>
     </div>
   );
@@ -2372,14 +2947,24 @@ function statusFilterLabel(value: ListeningStatus | "all") {
   return listeningStatusOptions.find((option) => option.value === value)?.label ?? value;
 }
 
-function EmptyLibraryWorksCard({ scope, filtered, onClear }: { scope: LocalLibraryScope; filtered: boolean; onClear: () => void }) {
+function EmptyLibraryWorksCard({
+  scope,
+  filtered,
+  onClear,
+}: {
+  scope: LocalLibraryScope;
+  filtered: boolean;
+  onClear: () => void;
+}) {
   return (
     <Card>
-	  <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
-		<span>{scope === "tracked"
-          ? "No tracked works match this view."
-          : "No local works match this view."}</span>
-		{filtered && <Button variant="outline" size="sm" onClick={onClear}>Clear search and filters</Button>}
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
+        <span>{scope === "tracked" ? "No tracked works match this view." : "No local works match this view."}</span>
+        {filtered && (
+          <Button variant="outline" size="sm" onClick={onClear}>
+            Clear search and filters
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -2404,7 +2989,10 @@ function SearchClauseEditor({
         value={editor.draft.kind}
         onChange={(event) => {
           const kind = event.target.value as SearchClauseKind;
-          onChange({ kind, value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value });
+          onChange({
+            kind,
+            value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
+          });
         }}
         aria-label="Search clause type"
       >
@@ -2505,7 +3093,9 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
             onChange(option.value);
           }}
         >
-          <ListChecks className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"} />
+          <ListChecks
+            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
+          />
           {option.label}
         </button>
       ))}
@@ -2567,16 +3157,20 @@ function RemoteOnlyWorkDetailController({
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
-  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
+  const [directoryRoutingRules, setDirectoryRoutingRules] =
+    useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const remoteIdentity = identityDetail ?? detail;
   const displaySourceName = remoteIdentity?.sourceName ?? source.displayName;
   const displayPrimaryCode = remoteIdentity?.primaryCode || preview?.primaryCode || code;
-  const displayRemoteCode = detail ? remoteDetailActionCode(detail) : preview?.remoteCode || preview?.primaryCode || code;
+  const displayRemoteCode = detail
+    ? remoteDetailActionCode(detail)
+    : preview?.remoteCode || preview?.primaryCode || code;
   const isDetailLoading = !detail;
   const tree = useMemo(
-    () => detail
-      ? buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) })
-      : emptyTree(),
+    () =>
+      detail
+        ? buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) })
+        : emptyTree(),
     [detail],
   );
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
@@ -2584,35 +3178,51 @@ function RemoteOnlyWorkDetailController({
   const trackCount = useMemo(() => countTreeFiles(tree), [tree]);
   const remotePlayableTracks = useMemo(() => flattenTracks(tree), [tree]);
   const remoteFiles = useMemo(() => flattenTreeFiles(tree), [tree]);
-  const remoteTabs = useMemo<SourceTabInfo[]>(() => buildSourceTabs(trackedWork?.mediaItems ?? [], remoteAvailability.map((item) => item.source.id === source.id
-    ? {
-      ...item,
-      detail: detail ?? undefined,
-      error: message,
-      treeError,
-      treeLoading,
-      summary: {
-        ...item.summary,
-        status: detail && !treeError ? "available" : message || treeError ? "error" : item.summary.status,
-        primaryCode: detail?.primaryCode || item.summary.primaryCode,
-        title: detail?.title || item.summary.title,
-        coverUrl: detail?.coverUrl || item.summary.coverUrl,
-      },
-    }
-    : item), trackedWork?.sourcePresence ?? [], undefined), [detail, message, remoteAvailability, source.id, trackedWork, treeError, treeLoading]);
+  const remoteTabs = useMemo<SourceTabInfo[]>(
+    () =>
+      buildSourceTabs(
+        trackedWork?.mediaItems ?? [],
+        remoteAvailability.map((item) =>
+          item.source.id === source.id
+            ? {
+                ...item,
+                detail: detail ?? undefined,
+                error: message,
+                treeError,
+                treeLoading,
+                summary: {
+                  ...item.summary,
+                  status: detail && !treeError ? "available" : message || treeError ? "error" : item.summary.status,
+                  primaryCode: detail?.primaryCode || item.summary.primaryCode,
+                  title: detail?.title || item.summary.title,
+                  coverUrl: detail?.coverUrl || item.summary.coverUrl,
+                },
+              }
+            : item,
+        ),
+        trackedWork?.sourcePresence ?? [],
+        undefined,
+      ),
+    [detail, message, remoteAvailability, source.id, trackedWork, treeError, treeLoading],
+  );
   const player = useLibraryPlayer();
   const primaryRemoteTabKey = remoteSourceTabKey(source.id);
   const primaryRemoteSelected = activeRemoteTab === primaryRemoteTabKey;
   const activeRemoteTabInfo = remoteTabs.find((tab) => tab.key === activeRemoteTab) ?? null;
-  const activeTrackedPresence = activeRemoteTabInfo?.kind === "tracked" ? activeRemoteTabInfo.presence ?? null : null;
+  const activeTrackedPresence = activeRemoteTabInfo?.kind === "tracked" ? (activeRemoteTabInfo.presence ?? null) : null;
   const activeTrackedForked = Boolean(activeTrackedPresence && activeRemoteTabInfo?.status === "available");
-  const activeRemoteAvailability = remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
+  const activeRemoteAvailability =
+    remoteAvailability.find((item) => remoteSourceTabKey(item.source.id) === activeRemoteTab) ?? null;
   const materializedTree = useMemo(() => {
     if (!trackedWork) return emptyTree();
     if (activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked) {
       return buildTree(trackedWork.mediaItems, activeTrackedPresence?.fileSourceId ?? null, trackedWork.primaryCode);
     }
-    if (activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available" && activeRemoteTabInfo.fileSourceId) {
+    if (
+      activeRemoteTabInfo?.kind === "local" &&
+      activeRemoteTabInfo.status === "available" &&
+      activeRemoteTabInfo.fileSourceId
+    ) {
       return buildTree(trackedWork.mediaItems, activeRemoteTabInfo.fileSourceId, trackedWork.primaryCode);
     }
     return emptyTree();
@@ -2622,7 +3232,8 @@ function RemoteOnlyWorkDetailController({
 
   useEffect(() => {
     let cancelled = false;
-    api.getRuntimeSettings()
+    api
+      .getRuntimeSettings()
       .then((settings) => {
         if (!cancelled) setDirectoryRoutingRules(settings.directoryRoutingRules ?? defaultDirectoryRoutingRules);
       })
@@ -2636,13 +3247,16 @@ function RemoteOnlyWorkDetailController({
 
   useEffect(() => {
     let cancelled = false;
-    api.getSourceAvailability(code)
+    api
+      .getSourceAvailability(code)
       .then((result) => {
         if (cancelled) return;
-        setRemoteAvailability((current) => current.map((item) => {
-          const summary = result.sources.find((candidate) => candidate.sourceId === item.source.id);
-          return summary ? { ...item, summary } : item;
-        }));
+        setRemoteAvailability((current) =>
+          current.map((item) => {
+            const summary = result.sources.find((candidate) => candidate.sourceId === item.source.id);
+            return summary ? { ...item, summary } : item;
+          }),
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -2652,7 +3266,7 @@ function RemoteOnlyWorkDetailController({
 
   useEffect(() => {
     setDetail(null);
-	setIdentityDetail(null);
+    setIdentityDetail(null);
     setTrackedWork(null);
     setNotFound(false);
     setMessage("");
@@ -2671,31 +3285,41 @@ function RemoteOnlyWorkDetailController({
         const next: RemoteWorkDetail = { ...metadata, tracks: [] };
         setDetail(next);
         setIdentityDetail(next);
-        setRemoteAvailability((items) => items.map((item) => item.source.id === source.id
-          ? {
-            ...item,
-            summary: {
-              ...item.summary,
-              status: "available",
-              remoteId: next.remoteId,
-              primaryCode: next.primaryCode,
-              title: next.title,
-              coverUrl: next.coverUrl,
-              workId: next.workId,
-              hasRemote: true,
-            },
-          }
-          : item));
+        setRemoteAvailability((items) =>
+          items.map((item) =>
+            item.source.id === source.id
+              ? {
+                  ...item,
+                  summary: {
+                    ...item.summary,
+                    status: "available",
+                    remoteId: next.remoteId,
+                    primaryCode: next.primaryCode,
+                    title: next.title,
+                    coverUrl: next.coverUrl,
+                    workId: next.workId,
+                    hasRemote: true,
+                  },
+                }
+              : item,
+          ),
+        );
         setTreeLoading(true);
         try {
           const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || code, controller.signal);
           if (!controller.signal.aborted) {
-            setDetail((current) => current ? { ...current, tracks: tracks.tracks } : current);
+            setDetail((current) => (current ? { ...current, tracks: tracks.tracks } : current));
             setTreeError("");
           }
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError" && !timedOut) return;
-          setTreeError(timedOut ? "Remote directory timed out. Retry to try again." : error instanceof Error ? error.message : "Remote directory failed.");
+          setTreeError(
+            timedOut
+              ? "Remote directory timed out. Retry to try again."
+              : error instanceof Error
+                ? error.message
+                : "Remote directory failed.",
+          );
         } finally {
           if (!controller.signal.aborted) setTreeLoading(false);
         }
@@ -2705,7 +3329,11 @@ function RemoteOnlyWorkDetailController({
           setNotFound(true);
           return;
         }
-        const text = timedOut ? "Remote preview timed out. Retry to try again." : error instanceof Error ? error.message : "Remote preview failed.";
+        const text = timedOut
+          ? "Remote preview timed out. Retry to try again."
+          : error instanceof Error
+            ? error.message
+            : "Remote preview failed.";
         setMessage(text);
         toast.notify({ kind: "error", message: text });
       }
@@ -2744,7 +3372,7 @@ function RemoteOnlyWorkDetailController({
     try {
       const result = await api.syncRemoteSourceWork(source.id, remoteDetailActionCode(detail), reason);
       await onWorksChanged();
-      setDetail((current) => current ? { ...current, workId: result.workId, importStatus: "synced" } : current);
+      setDetail((current) => (current ? { ...current, workId: result.workId, importStatus: "synced" } : current));
       return result.workId;
     } catch (error) {
       toast.notify(toastFromError(error, "Remote sync failed."));
@@ -2756,7 +3384,7 @@ function RemoteOnlyWorkDetailController({
 
   const updateRemoteMark = async (status: ListeningStatus) => {
     if (!detail?.primaryCode) return;
-    const workID = detail.workId ?? await syncForUserState("detail_mark_interest");
+    const workID = detail.workId ?? (await syncForUserState("detail_mark_interest"));
     if (!workID) return;
     try {
       const result = await api.updateWorkUserState(workID, { listeningStatus: status });
@@ -2782,11 +3410,12 @@ function RemoteOnlyWorkDetailController({
     const reconcileTrack = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
-        !terminal
-        || (terminal.status !== "succeeded" && terminal.status !== "partial")
-        || !terminal.workId
-        || !isMatchingRemoteTrack(terminal, source.id, code, detail?.primaryCode, detail?.remoteCode)
-      ) return;
+        !terminal ||
+        (terminal.status !== "succeeded" && terminal.status !== "partial") ||
+        !terminal.workId ||
+        !isMatchingRemoteTrack(terminal, source.id, code, detail?.primaryCode, detail?.remoteCode)
+      )
+        return;
       void (async () => {
         const [nextWork, availability] = await Promise.all([
           api.getWork(terminal.workId as number),
@@ -2794,13 +3423,17 @@ function RemoteOnlyWorkDetailController({
           onWorksChanged(),
         ]);
         setTrackedWork(nextWork);
-        setDetail((current) => current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current);
-        setIdentityDetail((current) => current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current);
+        setDetail((current) => (current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current));
+        setIdentityDetail((current) =>
+          current ? { ...current, workId: terminal.workId, importStatus: "synced" } : current,
+        );
         if (availability) {
-          setRemoteAvailability((current) => current.map((item) => {
-            const summary = availability.sources.find((candidate) => candidate.sourceId === item.source.id);
-            return summary ? { ...item, summary } : item;
-          }));
+          setRemoteAvailability((current) =>
+            current.map((item) => {
+              const summary = availability.sources.find((candidate) => candidate.sourceId === item.source.id);
+              return summary ? { ...item, summary } : item;
+            }),
+          );
         }
       })().catch((error) => {
         toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
@@ -2828,7 +3461,10 @@ function RemoteOnlyWorkDetailController({
 
   const playMaterializedTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!trackedWork || tracks.length === 0) return;
-    player.playQueue(tracks.map((track) => toPlayerTrack(track, trackedWork)), locationId);
+    player.playQueue(
+      tracks.map((track) => toPlayerTrack(track, trackedWork)),
+      locationId,
+    );
   };
 
   const queueMaterializedTrack = (track: TreeTrack, next: boolean) => {
@@ -2866,7 +3502,9 @@ function RemoteOnlyWorkDetailController({
       onMark={(status) => void updateRemoteMark(status)}
       dlsiteUrl={dlsiteWorkURL(detail.primaryCode)}
     />
-  ) : <DetailSkeletonActions />;
+  ) : (
+    <DetailSkeletonActions />
+  );
   const sourceInfo: ActiveSourceInfoModel = {
     label: displaySourceName,
     kind: remoteTabs.find((tab) => tab.key === activeRemoteTab)?.kind ?? "remote",
@@ -2876,32 +3514,41 @@ function RemoteOnlyWorkDetailController({
     loading: primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading),
     metadataDurationSeconds: detail?.durationSeconds ?? null,
   };
-  const mediaActions = detail && primaryRemoteSelected ? (
-    <MediaContextActionBar
-      busy={isFetching || fetchWorkspace.isBusy}
-      mode="remote_source"
-      contextKey={remoteSourceTabKey(source.id)}
-      onTrack={detail.workId || trackedWork ? undefined : () => void fetchWork("manual_track")}
-      onFetch={() => void openSaveWorkspace()}
-      remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
-      remoteSourceName={detail.sourceName}
-      sourceLabel={detail.sourceName}
-      sourceStatus="Available"
-    />
-  ) : undefined;
-  const heroActions = <>{identityActions}{mediaActions}</>;
+  const mediaActions =
+    detail && primaryRemoteSelected ? (
+      <MediaContextActionBar
+        busy={isFetching || fetchWorkspace.isBusy}
+        mode="remote_source"
+        contextKey={remoteSourceTabKey(source.id)}
+        onTrack={detail.workId || trackedWork ? undefined : () => void fetchWork("manual_track")}
+        onFetch={() => void openSaveWorkspace()}
+        remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
+        remoteSourceName={detail.sourceName}
+        sourceLabel={detail.sourceName}
+        sourceStatus="Available"
+      />
+    ) : undefined;
+  const heroActions = (
+    <>
+      {identityActions}
+      {mediaActions}
+    </>
+  );
   const directoryPanel = (
     <SourceDirectoryPanel
       title="Directory"
-      description={!primaryRemoteSelected
-        ? activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked
-          ? `Browsing the tracked directory forked from ${activeTrackedPresence?.fileSourceName || activeTrackedPresence?.fileSourceCode || "the selected source"}.`
-          : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available"
-            ? "Browsing local files."
-            : activeRemoteAvailability?.summary.error || `${activeRemoteTabInfo?.label ?? "Source"} is not selected for this preview.`
-        : detail && !message && !treeError
-        ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
-        : message || treeError || `Loading remote files from ${displaySourceName}...`}
+      description={
+        !primaryRemoteSelected
+          ? activeRemoteTabInfo?.kind === "tracked" && activeTrackedForked
+            ? `Browsing the tracked directory forked from ${activeTrackedPresence?.fileSourceName || activeTrackedPresence?.fileSourceCode || "the selected source"}.`
+            : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status === "available"
+              ? "Browsing local files."
+              : activeRemoteAvailability?.summary.error ||
+                `${activeRemoteTabInfo?.label ?? "Source"} is not selected for this preview.`
+          : detail && !message && !treeError
+            ? `Previewing remote files from ${detail.sourceName}; temporary playback does not save progress.`
+            : message || treeError || `Loading remote files from ${displaySourceName}...`
+      }
       statsLabel={formatTreeStats(visibleDirectoryStats)}
       tabs={remoteTabs}
       activeKey={activeRemoteTab}
@@ -2914,40 +3561,65 @@ function RemoteOnlyWorkDetailController({
       currentPlaybackKey={player.currentPlaybackKey}
       emptyLabel={primaryRemoteSelected ? "No remote files detected." : "This source has no preview loaded."}
       toolbar={message || treeError ? <DirectoryMessage message={message || treeError} /> : undefined}
-      emptyState={primaryRemoteSelected
-        ? message || treeError
-          ? <DirectoryLoadErrorPanel message={message || treeError} onRetry={() => setRemoteRetryToken((value) => value + 1)} />
-          : isDetailLoading || treeLoading
-            ? <DirectorySkeleton />
+      emptyState={
+        primaryRemoteSelected ? (
+          message || treeError ? (
+            <DirectoryLoadErrorPanel
+              message={message || treeError}
+              onRetry={() => setRemoteRetryToken((value) => value + 1)}
+            />
+          ) : isDetailLoading || treeLoading ? (
+            <DirectorySkeleton />
+          ) : undefined
+        ) : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "available" ? (
+          <LocalSourceStatePanel
+            status={activeRemoteTabInfo.status}
+            remoteSources={remoteAvailability}
+            onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))}
+          />
+        ) : activeRemoteTabInfo?.kind === "tracked" && !activeTrackedForked ? (
+          <TrackedUnforkedPanel presence={activeTrackedPresence} remoteSources={remoteAvailability} />
+        ) : activeRemoteAvailability ? (
+          <RemoteSourceStatePanel remote={activeRemoteAvailability} />
+        ) : undefined
+      }
+      loadingMessage={
+        primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading)
+          ? `Loading ${displayRemoteCode}...`
           : undefined
-        : activeRemoteTabInfo?.kind === "local" && activeRemoteTabInfo.status !== "available"
-          ? <LocalSourceStatePanel status={activeRemoteTabInfo.status} remoteSources={remoteAvailability} onSelectRemote={(next) => setActiveRemoteTab(remoteSourceTabKey(next.source.id))} />
-          : activeRemoteTabInfo?.kind === "tracked" && !activeTrackedForked
-            ? <TrackedUnforkedPanel presence={activeTrackedPresence} remoteSources={remoteAvailability} />
-            : activeRemoteAvailability
-              ? <RemoteSourceStatePanel remote={activeRemoteAvailability} />
-              : undefined}
-      loadingMessage={primaryRemoteSelected && !message && !treeError && (isDetailLoading || treeLoading) ? `Loading ${displayRemoteCode}...` : undefined}
+      }
       selectionModal={<RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />}
       onPlayFolder={primaryRemoteSelected ? playRemoteTracks : trackedWork ? playMaterializedTracks : undefined}
-      onPlayNext={primaryRemoteSelected ? (track) => queueRemoteTrack(track, true) : trackedWork ? (track) => queueMaterializedTrack(track, true) : undefined}
-      onAppendQueue={primaryRemoteSelected ? (track) => queueRemoteTrack(track, false) : trackedWork ? (track) => queueMaterializedTrack(track, false) : undefined}
+      onPlayNext={
+        primaryRemoteSelected
+          ? (track) => queueRemoteTrack(track, true)
+          : trackedWork
+            ? (track) => queueMaterializedTrack(track, true)
+            : undefined
+      }
+      onAppendQueue={
+        primaryRemoteSelected
+          ? (track) => queueRemoteTrack(track, false)
+          : trackedWork
+            ? (track) => queueMaterializedTrack(track, false)
+            : undefined
+      }
       onPreview={setFilePreview}
     />
   );
-	const remoteLanguageEditions = remoteIdentity?.languageEditions ?? [];
-	const remoteTranslations: WorkDetail["translations"] = remoteLanguageEditions.map((edition) => ({
-		workId: null,
-		primaryCode: edition.remoteCode,
-		title: edition.label,
-		metadataLanguage: edition.language,
-		editionLabel: edition.label,
-		origin: edition.origin,
-		official: !edition.origin,
-		translationKind: edition.origin ? "origin" : "official",
-		current: edition.current,
-		hasMedia: true,
-		mediaState: "indexed_available",
+  const remoteLanguageEditions = remoteIdentity?.languageEditions ?? [];
+  const remoteTranslations: WorkDetail["translations"] = remoteLanguageEditions.map((edition) => ({
+    workId: null,
+    primaryCode: edition.remoteCode,
+    title: edition.label,
+    metadataLanguage: edition.language,
+    editionLabel: edition.label,
+    origin: edition.origin,
+    official: !edition.origin,
+    translationKind: edition.origin ? "origin" : "official",
+    current: edition.current,
+    hasMedia: true,
+    mediaState: "indexed_available",
   }));
   const presentation: UnifiedWorkDetailPresentation = {
     coverUrl: remoteIdentity?.coverUrl ?? preview?.coverUrl ?? "",
@@ -2963,12 +3635,12 @@ function RemoteOnlyWorkDetailController({
     rating: remoteIdentity?.rating ?? preview?.rating ?? null,
     ratingCount: remoteIdentity?.ratingCount ?? null,
     sales: remoteIdentity?.sales ?? preview?.sales ?? null,
-	baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
-	metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
-	translations: remoteTranslations,
-	activeVersionCode: displayRemoteCode,
-	onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
-	remoteVersions: true,
+    baseCode: remoteLanguageEditions.find((edition) => edition.origin)?.remoteCode ?? "",
+    metadataLanguage: remoteLanguageEditions.find((edition) => edition.current)?.language ?? "",
+    translations: remoteTranslations,
+    activeVersionCode: displayRemoteCode,
+    onVersionSelect: (translation) => void selectRemoteLanguageEdition(translation.primaryCode),
+    remoteVersions: true,
     dlsiteFetchedAt: "",
     releaseDate: remoteIdentity?.releaseDate || preview?.releaseDate || "Unknown",
     ageRating: remoteIdentity?.ageRating ?? preview?.ageRating ?? "",
@@ -2979,26 +3651,26 @@ function RemoteOnlyWorkDetailController({
     loading: isDetailLoading,
   };
 
-	const selectRemoteLanguageEdition = async (editionCode: string) => {
-		if (!detail || editionCode.toUpperCase() === remoteDetailActionCode(detail).toUpperCase()) return;
-		setIsFetching(true);
-		setTreeLoading(true);
-		setTreeError("");
-		try {
-			const metadata = await api.getRemoteSourceWorkMetadata(source.id, editionCode);
-			const nextDetail: RemoteWorkDetail = { ...metadata, tracks: [] };
-			setDetail(nextDetail);
-			fetchWorkspace.close();
-			const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || editionCode);
-			setDetail((current) => current ? { ...current, tracks: tracks.tracks } : current);
-		} catch (error) {
-			setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
-			toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
-		} finally {
-			setIsFetching(false);
-			setTreeLoading(false);
-		}
-	};
+  const selectRemoteLanguageEdition = async (editionCode: string) => {
+    if (!detail || editionCode.toUpperCase() === remoteDetailActionCode(detail).toUpperCase()) return;
+    setIsFetching(true);
+    setTreeLoading(true);
+    setTreeError("");
+    try {
+      const metadata = await api.getRemoteSourceWorkMetadata(source.id, editionCode);
+      const nextDetail: RemoteWorkDetail = { ...metadata, tracks: [] };
+      setDetail(nextDetail);
+      fetchWorkspace.close();
+      const tracks = await api.getRemoteSourceWorkTracks(source.id, metadata.remoteCode || editionCode);
+      setDetail((current) => (current ? { ...current, tracks: tracks.tracks } : current));
+    } catch (error) {
+      setTreeError(error instanceof Error ? error.message : "Remote directory failed.");
+      toast.notify(toastFromError(error, `The ${editionCode} edition is not available from ${source.displayName}.`));
+    } finally {
+      setIsFetching(false);
+      setTreeLoading(false);
+    }
+  };
 
   return (
     <UnifiedWorkDetailPage
@@ -3056,7 +3728,14 @@ function PersistedWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
-  const sourceContext = useWorkSourceContext({ code, work, sources, initialSourceIntent, initialTrackedSourceID, initialRemoteCode });
+  const sourceContext = useWorkSourceContext({
+    code,
+    work,
+    sources,
+    initialSourceIntent,
+    initialTrackedSourceID,
+    initialRemoteCode,
+  });
   const {
     remoteSources,
     sourceTabs,
@@ -3064,7 +3743,7 @@ function PersistedWorkDetailController({
     setActiveSourceKey,
     selectSource,
     selectTrackedPresence,
-	selectRemoteEdition,
+    selectRemoteEdition,
     trackedPresenceOptions,
     selectedTrackedPresenceKey,
     selectedSource,
@@ -3097,7 +3776,8 @@ function PersistedWorkDetailController({
   const [activeEditionCode, setActiveEditionCode] = useState("");
   const [isResuming, setIsResuming] = useState(false);
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
-  const [directoryRoutingRules, setDirectoryRoutingRules] = useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
+  const [directoryRoutingRules, setDirectoryRoutingRules] =
+    useState<DirectoryRoutingRule[]>(defaultDirectoryRoutingRules);
   const [mobileDetailTab, setMobileDetailTab] = useState<"info" | "directory">("directory");
   const isCompactDetailLayout = useCompactDetailLayout();
   const localDirectoryWork = activeEdition ?? work;
@@ -3105,7 +3785,7 @@ function PersistedWorkDetailController({
     mediaLoading,
     localItems: localDirectoryWork?.mediaItems ?? [],
     localCode: localDirectoryWork?.primaryCode ?? work?.primaryCode ?? "",
-    fileSourceId: selectedTrackedForked ? selectedTrackedSourceID : selectedSource?.fileSourceId ?? null,
+    fileSourceId: selectedTrackedForked ? selectedTrackedSourceID : (selectedSource?.fileSourceId ?? null),
     selectionKey: `${selectedSource?.key ?? ""}:${selectedTrackedSourceID ?? selectedRemoteSourceID ?? 0}`,
     remoteSelected: Boolean(selectedRemoteSource),
     remoteDetail: selectedRemoteDetail,
@@ -3117,41 +3797,45 @@ function PersistedWorkDetailController({
   const allTracks = useMemo(() => flattenTracks(tree), [tree]);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const playbackTree = useMemo(
-    () => localDirectoryWork
-      ? buildTree(localDirectoryWork.mediaItems, null, localDirectoryWork.primaryCode)
-      : emptyTree(),
+    () =>
+      localDirectoryWork ? buildTree(localDirectoryWork.mediaItems, null, localDirectoryWork.primaryCode) : emptyTree(),
     [localDirectoryWork],
   );
   const { cursor: playbackCursor, isLoading: playbackCursorLoading } = useWorkPlaybackCursor(work?.id ?? null);
   const hasResumableCursor = Boolean(
-    playbackCursor
-    && !playbackCursor.completed
-    && Number.isFinite(playbackCursor.positionSeconds)
-    && playbackCursor.positionSeconds > 0,
+    playbackCursor &&
+    !playbackCursor.completed &&
+    Number.isFinite(playbackCursor.positionSeconds) &&
+    playbackCursor.positionSeconds > 0,
   );
   const fetchRemote = selectedRemoteSource ?? selectedTrackedRemoteSource ?? undefined;
   const fetchRemoteCode = selectedRemoteSource
     ? selectedRemoteWorkCode
     : selectedTrackedPresence
       ? sourcePresenceActionCode(selectedTrackedPresence, work?.primaryCode ?? code)
-      : work?.primaryCode ?? code;
+      : (work?.primaryCode ?? code);
   const trackedCacheAvailable = useMemo(
-    () => Boolean(
-      selectedTrackedSourceID
-      && localDirectoryWork?.mediaItems.some((item) => item.locations.some((location) =>
-        location.fileSourceId === selectedTrackedSourceID
-        && location.locationType === "cache"
-        && location.availability === "available"
-      )),
-    ),
+    () =>
+      Boolean(
+        selectedTrackedSourceID &&
+        localDirectoryWork?.mediaItems.some((item) =>
+          item.locations.some(
+            (location) =>
+              location.fileSourceId === selectedTrackedSourceID &&
+              location.locationType === "cache" &&
+              location.availability === "available",
+          ),
+        ),
+      ),
     [localDirectoryWork?.mediaItems, selectedTrackedSourceID],
   );
   const managementTree = useMemo(
-    () => !isManageOpen
-      ? emptyTree()
-      : selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID
-        ? buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode)
-        : tree,
+    () =>
+      !isManageOpen
+        ? emptyTree()
+        : selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID
+          ? buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode)
+          : tree,
     [isManageOpen, localDirectoryWork, selectedTrackedPresence, selectedTrackedSourceID, tree],
   );
   const player = useLibraryPlayer();
@@ -3185,33 +3869,40 @@ function PersistedWorkDetailController({
       ? `Browsing the tracked directory forked from ${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "the selected source"}.`
       : `${selectedTrackedPresence.fileSourceName || selectedTrackedPresence.fileSourceCode || "The selected source"} is tracked, but its directory has not been forked.`
     : selectedSource?.kind === "tracked"
-    ? "This work is not tracked yet. Track a remote source to keep a browsable source relationship."
-    : selectedRemoteSource
-    ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
-    : workHasNoLinkedSource
-    ? "No local, cached, tracked, or remote source is currently linked to this work."
-    : "File locations are grouped by local, cache, and remote source.";
+      ? "This work is not tracked yet. Track a remote source to keep a browsable source relationship."
+      : selectedRemoteSource
+        ? `Previewing remote files from ${selectedRemoteSource.source.displayName}.`
+        : workHasNoLinkedSource
+          ? "No local, cached, tracked, or remote source is currently linked to this work."
+          : "File locations are grouped by local, cache, and remote source.";
   const sourceStatsLabel = formatTreeStats(directoryStats);
   const favoriteSelected = favoriteLists.some((list) => list.selected);
   const isDetailLoading = !work;
   const actionMode: DetailActionMode = selectedRemoteSource
     ? "remote_source"
     : selectedTrackedPresence
-      ? selectedTrackedForked ? "tracked_forked" : "tracked_unforked"
+      ? selectedTrackedForked
+        ? "tracked_forked"
+        : "tracked_unforked"
       : selectedSource?.kind === "tracked"
-      ? "tracked_unforked"
-      : "local";
+        ? "tracked_unforked"
+        : "local";
   const forkSources = availableForkSources(remoteSources);
   const currentForkSource = selectedTrackedRemoteSource ?? selectedRemoteSource ?? null;
-  const canTrackRemote = Boolean(selectedRemoteSource?.detail?.primaryCode && !selectedRemoteSource.summary.workId && !selectedRemoteSource.summary.hasRemote);
+  const canTrackRemote = Boolean(
+    selectedRemoteSource?.detail?.primaryCode &&
+    !selectedRemoteSource.summary.workId &&
+    !selectedRemoteSource.summary.hasRemote,
+  );
   const selectedSourceDetailsLoading = Boolean(
-    selectedRemoteSource
-    && !selectedRemoteDetail
-    && !selectedRemoteSource.error
-    && remoteSourceCanBrowse(selectedRemoteSource.summary),
+    selectedRemoteSource &&
+    !selectedRemoteDetail &&
+    !selectedRemoteSource.error &&
+    remoteSourceCanBrowse(selectedRemoteSource.summary),
   );
   const directoryMediaError = selectedRemoteSource ? selectedRemoteTreeError : mediaError;
-  const showDirectorySkeleton = !directoryMediaError && (!work || isDirectoryLoading || selectedSourceDetailsLoading || selectedRemoteTreeLoading);
+  const showDirectorySkeleton =
+    !directoryMediaError && (!work || isDirectoryLoading || selectedSourceDetailsLoading || selectedRemoteTreeLoading);
 
   const saveWorkUserTags = async (tags: string[]) => {
     if (!work) return;
@@ -3233,9 +3924,13 @@ function PersistedWorkDetailController({
   useEffect(() => {
     if (!work || activeEditionCode) return;
     const translations = work.translations ?? [];
-    const currentVersion = translations.find((translation) => translation.primaryCode.toUpperCase() === work.primaryCode.toUpperCase());
+    const currentVersion = translations.find(
+      (translation) => translation.primaryCode.toUpperCase() === work.primaryCode.toUpperCase(),
+    );
     if (currentVersion && workVersionAvailable(currentVersion)) return;
-    const firstPlayableVersion = translations.find((translation) => translation.workId && workVersionAvailable(translation));
+    const firstPlayableVersion = translations.find(
+      (translation) => translation.workId && workVersionAvailable(translation),
+    );
     if (firstPlayableVersion) {
       void selectEdition(firstPlayableVersion);
     }
@@ -3244,7 +3939,8 @@ function PersistedWorkDetailController({
   useEffect(() => {
     if (!work?.id) return;
     let cancelled = false;
-    api.getWorkFavoriteLists(work.id)
+    api
+      .getWorkFavoriteLists(work.id)
       .then((lists) => {
         if (!cancelled) setFavoriteLists(lists);
       })
@@ -3258,7 +3954,8 @@ function PersistedWorkDetailController({
 
   useEffect(() => {
     let cancelled = false;
-    api.getRuntimeSettings()
+    api
+      .getRuntimeSettings()
       .then((settings) => {
         if (!cancelled) setDirectoryRoutingRules(settings.directoryRoutingRules ?? defaultDirectoryRoutingRules);
       })
@@ -3273,20 +3970,25 @@ function PersistedWorkDetailController({
   const playTracks = (tracks: TreeTrack[], locationId: number) => {
     if (!localDirectoryWork || tracks.length === 0) return;
     onPlay();
-    player.playQueue(tracks.map((track) => toPlayerTrack(track, localDirectoryWork)), locationId);
+    player.playQueue(
+      tracks.map((track) => toPlayerTrack(track, localDirectoryWork)),
+      locationId,
+    );
   };
 
   const resumePlayback = async () => {
     if (!work || !playbackCursor || !hasResumableCursor) return;
     setIsResuming(true);
     try {
-      const resumeWork = playbackCursor.mediaWorkId && playbackCursor.mediaWorkId !== localDirectoryWork?.id
-        ? await api.getWork(playbackCursor.mediaWorkId)
-        : localDirectoryWork;
+      const resumeWork =
+        playbackCursor.mediaWorkId && playbackCursor.mediaWorkId !== localDirectoryWork?.id
+          ? await api.getWork(playbackCursor.mediaWorkId)
+          : localDirectoryWork;
       if (!resumeWork) throw new Error("The saved playback edition is unavailable.");
-      const resumeTree = resumeWork.id === localDirectoryWork?.id
-        ? playbackTree
-        : buildTree(resumeWork.mediaItems, null, resumeWork.primaryCode);
+      const resumeTree =
+        resumeWork.id === localDirectoryWork?.id
+          ? playbackTree
+          : buildTree(resumeWork.mediaItems, null, resumeWork.primaryCode);
       const resumeQueue = buildWorkResumeQueue(flattenTracks(resumeTree), resumeWork, playbackCursor);
       if (!resumeQueue) throw new Error("The saved track or source is no longer available.");
       if (resumeWork.id !== localDirectoryWork?.id) {
@@ -3403,26 +4105,27 @@ function PersistedWorkDetailController({
     const reconcileTrack = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
-        !terminal
-        || (terminal.status !== "succeeded" && terminal.status !== "partial")
-        || !terminal.workId
-        || !work
-        || !remoteSources.some((remote) => isMatchingRemoteTrack(
-          terminal,
-          remote.source.id,
-          remote.summary.primaryCode,
-          remote.detail?.primaryCode,
-          remote.detail?.remoteCode,
-          work.primaryCode,
-        ))
-      ) return;
-      void Promise.all([
-        onWorkReload(terminal.workId, true),
-        onWorksChanged(),
-        refreshAvailability(),
-      ]).catch((error) => {
-        toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
-      });
+        !terminal ||
+        (terminal.status !== "succeeded" && terminal.status !== "partial") ||
+        !terminal.workId ||
+        !work ||
+        !remoteSources.some((remote) =>
+          isMatchingRemoteTrack(
+            terminal,
+            remote.source.id,
+            remote.summary.primaryCode,
+            remote.detail?.primaryCode,
+            remote.detail?.remoteCode,
+            work.primaryCode,
+          ),
+        )
+      )
+        return;
+      void Promise.all([onWorkReload(terminal.workId, true), onWorksChanged(), refreshAvailability()]).catch(
+        (error) => {
+          toast.notify(toastFromError(error, "Track completed, but this detail could not be refreshed."));
+        },
+      );
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
     return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, reconcileTrack);
@@ -3479,7 +4182,7 @@ function PersistedWorkDetailController({
     try {
       const result = await refreshAvailability();
       if (!result) return;
-		toast.success("Source availability updated.");
+      toast.success("Source availability updated.");
     } catch (error) {
       toast.notify(toastFromError(error, "Source check failed."));
     }
@@ -3527,18 +4230,18 @@ function PersistedWorkDetailController({
     setActiveSourceKey("local");
   };
 
-	const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {
-		if (!selectedRemoteDetail) {
-			await selectEdition(translation);
-			return;
-		}
-		setActiveEditionCode(translation.primaryCode);
-		const selected = await selectRemoteEdition(translation.primaryCode);
-		if (!selected) {
-			setActiveEditionCode(selectedRemoteDetail.remoteCode);
-			toast.error(`The ${translation.primaryCode} edition is not available from this source.`);
-		}
-	};
+  const selectDisplayedEdition = async (translation: WorkDetail["translations"][number]) => {
+    if (!selectedRemoteDetail) {
+      await selectEdition(translation);
+      return;
+    }
+    setActiveEditionCode(translation.primaryCode);
+    const selected = await selectRemoteEdition(translation.primaryCode);
+    if (!selected) {
+      setActiveEditionCode(selectedRemoteDetail.remoteCode);
+      toast.error(`The ${translation.primaryCode} edition is not available from this source.`);
+    }
+  };
 
   const changeSourceKey = (key: string) => {
     selectSource(key);
@@ -3587,11 +4290,12 @@ function PersistedWorkDetailController({
     </div>
   ) : undefined;
   const fetchSelectionModal = <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
-  const activeSourceLabel = selectedTrackedPresence?.fileSourceName
-    || selectedTrackedPresence?.fileSourceCode
-    || selectedSource?.sourceName
-    || selectedSource?.label
-    || "Source";
+  const activeSourceLabel =
+    selectedTrackedPresence?.fileSourceName ||
+    selectedTrackedPresence?.fileSourceCode ||
+    selectedSource?.sourceName ||
+    selectedSource?.label ||
+    "Source";
   const sourceInfo: ActiveSourceInfoModel = {
     label: activeSourceLabel,
     kind: selectedSource?.kind ?? "no_source",
@@ -3601,47 +4305,70 @@ function PersistedWorkDetailController({
     loading: isDirectoryLoading || selectedSourceDetailsLoading,
     metadataDurationSeconds: selectedRemoteDetail?.durationSeconds ?? hero.durationSeconds,
   };
-  const identityActions = work ? <WorkIdentityActionBar
-    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy || isResuming}
-    listeningStatus={work.listeningStatus}
-    favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
-    listWorkId={work.id}
-    onEnsureListWork={ensureDetailListWork}
-    onListSaved={favoriteSaved}
-    onResume={!playbackCursorLoading && hasResumableCursor ? () => void resumePlayback() : undefined}
-    onMark={(status) => void markDetailWork(status)}
-    onSync={() => void syncDetailMetadata()}
-    onEditMetadata={() => setIsMetadataEditorOpen(true)}
-    dlsiteUrl={work.dlsiteUrl}
-    metadataSyncBusy={Boolean(activeMetadataRunId)}
-    syncLabel="Refresh metadata"
-  /> : <DetailSkeletonActions />;
-  const mediaActions = work ? <MediaContextActionBar
-    busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
-    mode={actionMode}
-    contextKey={`${resolvedActiveSourceKey}:${selectedTrackedPresenceKey}`}
-    onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
-    trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
-    trackDisabledReason={selectedSourceDetailsLoading ? "Loading source details" : selectedRemoteSource?.error ? "Source details unavailable" : "Already tracked"}
-    forkSources={forkSources}
-    currentForkSource={currentForkSource}
-    onFork={(remote) => requestForkSource(remote)}
-    onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? openFetchWorkspace : undefined}
-    remoteSourceWorkUrl={safeExternalHTTPURL(selectedRemoteDetail?.publicWorkUrl)}
-    remoteSourceName={selectedRemoteSource?.source.displayName ?? selectedRemoteDetail?.sourceName}
-    sourceLabel={activeSourceLabel}
-    sourceStatus={sourceInfo.statusLabel}
-    sourceDetailsLoading={selectedSourceDetailsLoading}
-    onManageCache={selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
-    manageCacheDisabled={Boolean(selectedTrackedPresence) && !trackedCacheAvailable}
-    onManageFiles={actionMode === "local" ? () => setIsManageOpen(true) : undefined}
-    onRefreshLocalFiles={actionMode === "local" && selectedSource?.kind === "local" ? () => void refreshLocalFiles() : undefined}
-  /> : undefined;
-  const heroActions = <>{identityActions}{mediaActions}</>;
+  const identityActions = work ? (
+    <WorkIdentityActionBar
+      busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy || isResuming}
+      listeningStatus={work.listeningStatus}
+      favorite={favoriteLists.length > 0 ? favoriteSelected : work.favorite}
+      listWorkId={work.id}
+      onEnsureListWork={ensureDetailListWork}
+      onListSaved={favoriteSaved}
+      onResume={!playbackCursorLoading && hasResumableCursor ? () => void resumePlayback() : undefined}
+      onMark={(status) => void markDetailWork(status)}
+      onSync={() => void syncDetailMetadata()}
+      onEditMetadata={() => setIsMetadataEditorOpen(true)}
+      dlsiteUrl={work.dlsiteUrl}
+      metadataSyncBusy={Boolean(activeMetadataRunId)}
+      syncLabel="Refresh metadata"
+    />
+  ) : (
+    <DetailSkeletonActions />
+  );
+  const mediaActions = work ? (
+    <MediaContextActionBar
+      busy={isSyncingDetail || fetchWorkspace.isBusy || isRefreshingLocalFiles || mediaCleanup.isBusy}
+      mode={actionMode}
+      contextKey={`${resolvedActiveSourceKey}:${selectedTrackedPresenceKey}`}
+      onTrack={selectedRemoteSource ? () => void trackSelectedRemoteSource() : undefined}
+      trackDisabled={selectedRemoteSource ? !canTrackRemote : undefined}
+      trackDisabledReason={
+        selectedSourceDetailsLoading
+          ? "Loading source details"
+          : selectedRemoteSource?.error
+            ? "Source details unavailable"
+            : "Already tracked"
+      }
+      forkSources={forkSources}
+      currentForkSource={currentForkSource}
+      onFork={(remote) => requestForkSource(remote)}
+      onFetch={fetchRemote && remoteSourceCanBrowse(fetchRemote.summary) ? openFetchWorkspace : undefined}
+      remoteSourceWorkUrl={safeExternalHTTPURL(selectedRemoteDetail?.publicWorkUrl)}
+      remoteSourceName={selectedRemoteSource?.source.displayName ?? selectedRemoteDetail?.sourceName}
+      sourceLabel={activeSourceLabel}
+      sourceStatus={sourceInfo.statusLabel}
+      sourceDetailsLoading={selectedSourceDetailsLoading}
+      onManageCache={selectedTrackedPresence ? () => setIsManageOpen(true) : undefined}
+      manageCacheDisabled={Boolean(selectedTrackedPresence) && !trackedCacheAvailable}
+      onManageFiles={actionMode === "local" ? () => setIsManageOpen(true) : undefined}
+      onRefreshLocalFiles={
+        actionMode === "local" && selectedSource?.kind === "local" ? () => void refreshLocalFiles() : undefined
+      }
+    />
+  ) : undefined;
+  const heroActions = (
+    <>
+      {identityActions}
+      {mediaActions}
+    </>
+  );
   const directoryPanel = (
     <SourceDirectoryPanel
       title={directoryTitle}
-      description={activeEdition ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.` : directoryDescription}
+      description={
+        activeEdition
+          ? `Showing files from ${activeEdition.primaryCode} ${languageLabel(activeEdition.metadataLanguage)}.`
+          : directoryDescription
+      }
       statsLabel={sourceStatsLabel}
       tabs={sourceTabs}
       activeKey={resolvedActiveSourceKey}
@@ -3658,76 +4385,99 @@ function PersistedWorkDetailController({
       directoryRoutingRules={directoryRoutingRules}
       currentLocationId={player.currentLocationId}
       currentPlaybackKey={player.currentPlaybackKey}
-      emptyLabel={showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
-      toolbar={mediaCleanup.activeRunId ? (
-        <DirectoryOperationBanner
-          runId={mediaCleanup.activeRunId}
-          status={mediaCleanup.runStatus}
-          onOpen={() => openActivityRun(mediaCleanup.activeRunId!)}
-        />
-      ) : message ? <DirectoryMessage message={message} /> : undefined}
+      emptyLabel={
+        showNoSourceDirectory
+          ? "No source linked."
+          : selectedRemoteSource
+            ? "No remote files detected."
+            : "No local files detected."
+      }
+      toolbar={
+        mediaCleanup.activeRunId ? (
+          <DirectoryOperationBanner
+            runId={mediaCleanup.activeRunId}
+            status={mediaCleanup.runStatus}
+            onOpen={() => openActivityRun(mediaCleanup.activeRunId!)}
+          />
+        ) : message ? (
+          <DirectoryMessage message={message} />
+        ) : undefined
+      }
       selectionModal={fetchSelectionModal}
-      emptyState={showDirectorySkeleton ? <DirectorySkeleton /> : directoryMediaError ? (
-        <DirectoryLoadErrorPanel
-          message={directoryMediaError}
-          onRetry={() => {
-            if (selectedRemoteSource) {
-              void refreshAvailability();
-              selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
-            } else if (work) {
-              void onWorkReload(work.id, true);
-            }
-          }}
-        />
-      ) : selectedSource?.kind === "local" && selectedSource.status !== "available" ? (
-        <LocalSourceStatePanel
-          status={selectedSource.status}
-          remoteSources={remoteSources}
-          onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
-        />
-      ) : selectedRemoteSource && !remoteSourceCanBrowse(selectedRemoteSource.summary) ? (
-        <RemoteSourceStatePanel remote={selectedRemoteSource} />
-      ) : selectedSource?.kind === "tracked" && !selectedTrackedForked ? (
-        <TrackedUnforkedPanel
-          presence={selectedTrackedPresence}
-          remoteSources={remoteSources}
-        />
-      ) : showNoSourceDirectory ? (
-        <NoSourceDirectoryPanel
-          checking={isCheckingSources}
-          checkedAt={sourceCheckedAt}
-          remoteSources={remoteSources}
-          onRefresh={() => void refreshSourceAvailability()}
-        />
-      ) : undefined}
-      loadingMessage={selectedRemoteSource && !selectedRemoteDetail && !selectedRemoteSource.loading ? (selectedRemoteSource.error || "Remote directory is not loaded yet.") : ""}
+      emptyState={
+        showDirectorySkeleton ? (
+          <DirectorySkeleton />
+        ) : directoryMediaError ? (
+          <DirectoryLoadErrorPanel
+            message={directoryMediaError}
+            onRetry={() => {
+              if (selectedRemoteSource) {
+                void refreshAvailability();
+                selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
+              } else if (work) {
+                void onWorkReload(work.id, true);
+              }
+            }}
+          />
+        ) : selectedSource?.kind === "local" && selectedSource.status !== "available" ? (
+          <LocalSourceStatePanel
+            status={selectedSource.status}
+            remoteSources={remoteSources}
+            onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
+          />
+        ) : selectedRemoteSource && !remoteSourceCanBrowse(selectedRemoteSource.summary) ? (
+          <RemoteSourceStatePanel remote={selectedRemoteSource} />
+        ) : selectedSource?.kind === "tracked" && !selectedTrackedForked ? (
+          <TrackedUnforkedPanel presence={selectedTrackedPresence} remoteSources={remoteSources} />
+        ) : showNoSourceDirectory ? (
+          <NoSourceDirectoryPanel
+            checking={isCheckingSources}
+            checkedAt={sourceCheckedAt}
+            remoteSources={remoteSources}
+            onRefresh={() => void refreshSourceAvailability()}
+          />
+        ) : undefined
+      }
+      loadingMessage={
+        selectedRemoteSource && !selectedRemoteDetail && !selectedRemoteSource.loading
+          ? selectedRemoteSource.error || "Remote directory is not loaded yet."
+          : ""
+      }
       onPlayFolder={selectedRemoteDetail ? playRemoteTracks : playTracks}
       onPlayNext={(track) => queueTrack(track, true)}
       onAppendQueue={(track) => queueTrack(track, false)}
       onPreview={setPreview}
     />
   );
-	const displayTranslations = (() => {
-		const merged = new Map((localDirectoryWork?.translations ?? []).map((translation) => [translation.primaryCode.toUpperCase(), translation]));
-		for (const edition of selectedRemoteDetail?.languageEditions ?? []) {
-			const key = edition.remoteCode.toUpperCase();
-			const local = merged.get(key);
-			merged.set(key, local ?? {
-				workId: null,
-				primaryCode: edition.remoteCode,
-				title: edition.label,
-				metadataLanguage: edition.language,
-				editionLabel: edition.label,
-				origin: edition.origin,
-				official: !edition.origin,
-				translationKind: edition.origin ? "origin" : "official",
-				current: edition.current,
-				hasMedia: true,
-				mediaState: "indexed_available",
-			});
-		}
-		return Array.from(merged.values());
-	})();
+  const displayTranslations = (() => {
+    const merged = new Map(
+      (localDirectoryWork?.translations ?? []).map((translation) => [
+        translation.primaryCode.toUpperCase(),
+        translation,
+      ]),
+    );
+    for (const edition of selectedRemoteDetail?.languageEditions ?? []) {
+      const key = edition.remoteCode.toUpperCase();
+      const local = merged.get(key);
+      merged.set(
+        key,
+        local ?? {
+          workId: null,
+          primaryCode: edition.remoteCode,
+          title: edition.label,
+          metadataLanguage: edition.language,
+          editionLabel: edition.label,
+          origin: edition.origin,
+          official: !edition.origin,
+          translationKind: edition.origin ? "origin" : "official",
+          current: edition.current,
+          hasMedia: true,
+          mediaState: "indexed_available",
+        },
+      );
+    }
+    return Array.from(merged.values());
+  })();
   const presentation: UnifiedWorkDetailPresentation = {
     coverUrl: hero.coverUrl,
     fallbackCode: hero.primaryCode,
@@ -3747,7 +4497,7 @@ function PersistedWorkDetailController({
     translations: displayTranslations,
     activeVersionCode: activeEditionCode || selectedRemoteDetail?.remoteCode || hero.primaryCode,
     onVersionSelect: (translation) => void selectDisplayedEdition(translation),
-	remoteVersions: Boolean(selectedRemoteDetail),
+    remoteVersions: Boolean(selectedRemoteDetail),
     dlsiteFetchedAt: hero.dlsiteFetchedAt,
     releaseDate: hero.releaseDate ?? "Unknown",
     ageRating: hero.ageRating,
@@ -3769,32 +4519,57 @@ function PersistedWorkDetailController({
       directory={directoryPanel}
       onBack={onBack}
     >
-      {preview && <FilePreviewModal
-        preview={preview}
-        onClose={() => setPreview(null)}
-        onSetCover={work ? async (locationId) => {
-          try {
-            await api.setWorkCoverOverride(work.id, locationId);
-            toast.success("Cover override saved.");
-            setPreview(null);
-            await metadataSaved();
-          } catch (error) {
-            toast.notify(toastFromError(error, "Cover override could not be saved."));
+      {preview && (
+        <FilePreviewModal
+          preview={preview}
+          onClose={() => setPreview(null)}
+          onSetCover={
+            work
+              ? async (locationId) => {
+                  try {
+                    await api.setWorkCoverOverride(work.id, locationId);
+                    toast.success("Cover override saved.");
+                    setPreview(null);
+                    await metadataSaved();
+                  } catch (error) {
+                    toast.notify(toastFromError(error, "Cover override could not be saved."));
+                  }
+                }
+              : undefined
           }
-        } : undefined}
-      />}
+        />
+      )}
       {isManageOpen && (
         <DirectoryManagerModal
           root={managementTree}
           title={selectedTrackedPresence ? "Manage cache" : "Manage files"}
-          description={selectedTrackedPresence ? "Review cached files for this tracked source." : "Review file operations in the same folder structure as the directory tree."}
-          emptyLabel={selectedTrackedPresence ? "No cached files detected." : showNoSourceDirectory ? "No source linked." : selectedRemoteSource ? "No remote files detected." : "No local files detected."}
+          description={
+            selectedTrackedPresence
+              ? "Review cached files for this tracked source."
+              : "Review file operations in the same folder structure as the directory tree."
+          }
+          emptyLabel={
+            selectedTrackedPresence
+              ? "No cached files detected."
+              : showNoSourceDirectory
+                ? "No source linked."
+                : selectedRemoteSource
+                  ? "No remote files detected."
+                  : "No local files detected."
+          }
           onClose={() => setIsManageOpen(false)}
           deleting={mediaCleanup.isSubmitting}
           onDeleteTargets={mediaCleanup.submit}
           allowCacheDelete={!selectedRemoteSource}
           allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
-          localRootPath={work?.sourcePresence?.find((presence) => presence.type === "local" && presence.availability === "available" && presence.fileSourceId === selectedSource?.fileSourceId)?.sourceUrl ?? ""}
+          localRootPath={
+            work?.sourcePresence?.find(
+              (presence) =>
+                presence.type === "local" &&
+                presence.availability === "available" &&
+                presence.fileSourceId === selectedSource?.fileSourceId,
+            )?.sourceUrl ?? ""
+          }
           showCachedFilter={Boolean(selectedTrackedPresence)}
         />
       )}
@@ -4000,7 +4775,7 @@ function DetailHero({
           translations={translations}
           activeVersionCode={activeVersionCode}
           onVersionSelect={onVersionSelect}
-		  remoteVersions={remoteVersions}
+          remoteVersions={remoteVersions}
           sourceInfo={sourceInfo}
           voiceActors={voiceActors}
           voiceCredits={voiceCredits}
@@ -4009,7 +4784,11 @@ function DetailHero({
           entityResolver={entityResolver}
           supplementary={personalTags}
         />
-        {actions && <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>}
+        {actions && (
+          <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">
+            {actions}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -4115,7 +4894,9 @@ function MobileWorkDetailLayout({
         onShowAll={() => onActiveTabChange("info")}
       />
 
-      <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">{actions}</div>
+      <div data-testid="hero-actions" className="flex flex-wrap gap-2 rounded-lg border bg-card p-3">
+        {actions}
+      </div>
 
       <div className="grid grid-cols-2 rounded-lg border bg-card p-1 text-sm">
         <button
@@ -4147,8 +4928,8 @@ function MobileWorkDetailLayout({
             translations={translations}
             activeVersionCode={activeVersionCode}
             onVersionSelect={onVersionSelect}
-			remoteVersions={remoteVersions}
-          sourceInfo={sourceInfo}
+            remoteVersions={remoteVersions}
+            sourceInfo={sourceInfo}
             voiceActors={voiceActors}
             voiceCredits={voiceCredits}
             tags={tags}
@@ -4175,9 +4956,8 @@ function MobileVoiceSummary({
   entityResolver: DetailEntityResolver;
   onShowAll: () => void;
 }) {
-  const credits = voiceCredits.length > 0
-    ? voiceCredits
-    : voiceActors.map((displayName) => ({ personId: 0, displayName }));
+  const credits =
+    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((displayName) => ({ personId: 0, displayName }));
   if (credits.length === 0) return null;
   return (
     <div className="flex min-w-0 items-center gap-2" aria-label="Voice actors">
@@ -4187,7 +4967,11 @@ function MobileVoiceSummary({
           <button
             key={`${credit.personId}:${credit.displayName}`}
             className="min-w-0 truncate rounded-md border bg-card px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-            onClick={() => credit.personId > 0 ? openVoiceRoute(credit.personId) : entityResolver.resolveEntity("voice", credit.displayName)}
+            onClick={() =>
+              credit.personId > 0
+                ? openVoiceRoute(credit.personId)
+                : entityResolver.resolveEntity("voice", credit.displayName)
+            }
           >
             {credit.displayName}
           </button>
@@ -4255,13 +5039,20 @@ function DetailTitleBlock({
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Badge variant="secondary" className="w-fit">{codeLabel}</Badge>
+        <Badge variant="secondary" className="w-fit">
+          {codeLabel}
+        </Badge>
         <h2 className="min-w-0 text-2xl font-semibold leading-tight lg:text-3xl">{title}</h2>
         {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {circle ? (
-          <button className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary" onClick={() => circleExternalId ? openCircleRoute(circleExternalId) : entityResolver.resolveEntity("circle", circle)}>
+          <button
+            className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary"
+            onClick={() =>
+              circleExternalId ? openCircleRoute(circleExternalId) : entityResolver.resolveEntity("circle", circle)
+            }
+          >
             <CircleUserRound className="h-4 w-4 shrink-0" />
             <span className="truncate">{circle || "Unknown circle"}</span>
           </button>
@@ -4274,7 +5065,16 @@ function DetailTitleBlock({
         {series && (
           <span className="inline-flex max-w-full items-center gap-1 truncate">
             <span className="text-border">/</span>
-            <button className="truncate hover:text-primary" onClick={() => seriesTitleId && seriesCircleExternalId ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId) : entityResolver.resolveEntity("series", series)}>{series}</button>
+            <button
+              className="truncate hover:text-primary"
+              onClick={() =>
+                seriesTitleId && seriesCircleExternalId
+                  ? openCircleSeriesRoute(seriesCircleExternalId, seriesTitleId)
+                  : entityResolver.resolveEntity("series", series)
+              }
+            >
+              {series}
+            </button>
           </span>
         )}
       </div>
@@ -4327,21 +5127,23 @@ function DetailMetadataContent({
   entityResolver: DetailEntityResolver;
   supplementary?: ReactNode;
 }) {
-  const displayVoiceCredits = voiceCredits.length > 0
-    ? voiceCredits
-    : voiceActors.map((name) => ({ personId: 0, displayName: name }));
-  const baseTranslation = translations.find((translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase());
-  const versionSelector = (metadataLanguage || baseCode || translations.length > 0) ? (
-    <WorkVersionSelector
-      metadataLanguage={metadataLanguage ?? ""}
-      baseCode={baseCode ?? ""}
-      baseAvailable={Boolean(baseTranslation?.workId)}
-      translations={translations}
-      activeVersionCode={activeVersionCode ?? code}
-      onVersionSelect={onVersionSelect}
-	  remoteVersions={remoteVersions}
-    />
-  ) : null;
+  const displayVoiceCredits =
+    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((name) => ({ personId: 0, displayName: name }));
+  const baseTranslation = translations.find(
+    (translation) => translation.primaryCode.toUpperCase() === (baseCode ?? "").toUpperCase(),
+  );
+  const versionSelector =
+    metadataLanguage || baseCode || translations.length > 0 ? (
+      <WorkVersionSelector
+        metadataLanguage={metadataLanguage ?? ""}
+        baseCode={baseCode ?? ""}
+        baseAvailable={Boolean(baseTranslation?.workId)}
+        translations={translations}
+        activeVersionCode={activeVersionCode ?? code}
+        onVersionSelect={onVersionSelect}
+        remoteVersions={remoteVersions}
+      />
+    ) : null;
   const voiceCard = (
     <div className="rounded-lg border bg-card p-3">
       <DetailChipRow
@@ -4351,7 +5153,10 @@ function DetailMetadataContent({
         items={displayVoiceCredits.map((credit) => ({
           key: `${credit.personId}:${credit.displayName}`,
           label: credit.displayName,
-          onClick: credit.personId > 0 ? () => openVoiceRoute(credit.personId) : () => entityResolver.resolveEntity("voice", credit.displayName),
+          onClick:
+            credit.personId > 0
+              ? () => openVoiceRoute(credit.personId)
+              : () => entityResolver.resolveEntity("voice", credit.displayName),
         }))}
       />
     </div>
@@ -4430,7 +5235,9 @@ function DirectorySkeleton() {
           <div key={index} className="flex min-h-12 items-center gap-3 rounded-md border bg-background px-3 py-2">
             <div className="h-7 w-7 shrink-0 animate-pulse rounded-md bg-muted" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div className={`h-3 animate-pulse rounded bg-muted ${index % 3 === 0 ? "w-2/3" : index % 3 === 1 ? "w-1/2" : "w-3/4"}`} />
+              <div
+                className={`h-3 animate-pulse rounded bg-muted ${index % 3 === 0 ? "w-2/3" : index % 3 === 1 ? "w-1/2" : "w-3/4"}`}
+              />
               <div className="h-2.5 w-24 animate-pulse rounded bg-muted/80" />
             </div>
             <div className="h-8 w-8 shrink-0 animate-pulse rounded-md bg-muted" />
@@ -4443,10 +5250,17 @@ function DirectorySkeleton() {
 
 function DirectoryLoadErrorPanel({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="min-h-[22rem] rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground" data-testid="directory-load-error">
+    <div
+      className="min-h-[22rem] rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground"
+      data-testid="directory-load-error"
+    >
       <div className="font-medium">Directory unavailable</div>
       <p className="mt-1 text-warning-foreground/80">{message}</p>
-      {onRetry && <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}><RefreshCw className="h-4 w-4" /> Retry</Button>}
+      {onRetry && (
+        <Button className="mt-3" variant="outline" size="sm" onClick={onRetry}>
+          <RefreshCw className="h-4 w-4" /> Retry
+        </Button>
+      )}
     </div>
   );
 }
@@ -4472,9 +5286,9 @@ function detailHeroModel(code: string, work: WorkDetail | null, preview: WorkPre
 }
 
 function recommendationBadgeVisible(score: number | undefined) {
-	if (window.localStorage.getItem("kikoto:recommend-badges") !== "true") return false;
-	const threshold = Number(window.localStorage.getItem("kikoto:recommend-threshold") ?? "50");
-	return Number.isFinite(score) && (score ?? 0) >= threshold;
+  if (window.localStorage.getItem("kikoto:recommend-badges") !== "true") return false;
+  const threshold = Number(window.localStorage.getItem("kikoto:recommend-threshold") ?? "50");
+  return Number.isFinite(score) && (score ?? 0) >= threshold;
 }
 
 function useCompactDetailLayout() {
@@ -4502,9 +5316,15 @@ function TrackedUnforkedPanel({
     <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
       <div className="font-medium">{presence ? "Tracked directory not forked" : "No tracked source linked"}</div>
       <p className="mt-1 text-warning-foreground/80">
-        {presence ? "Choose a fork source from Source to create the browsable tracked directory." : "Track a remote source from its source tab to create a browsable tracked directory."}
+        {presence
+          ? "Choose a fork source from Source to create the browsable tracked directory."
+          : "Track a remote source from its source tab to create a browsable tracked directory."}
       </p>
-      {candidates.length === 0 && <Badge variant="warning" className="mt-3">No browsable remote source</Badge>}
+      {candidates.length === 0 && (
+        <Badge variant="warning" className="mt-3">
+          No browsable remote source
+        </Badge>
+      )}
     </div>
   );
 }
@@ -4520,15 +5340,21 @@ function LocalSourceStatePanel({
 }) {
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
-    <div className={`rounded-md border p-4 text-sm ${status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}>
+    <div
+      className={`rounded-md border p-4 text-sm ${status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}
+    >
       <div className="font-medium">Local files unavailable</div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {availableSources.length > 0 ? availableSources.map((remote) => (
-          <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
-            Fetch from {remote.source.displayName}
-          </Button>
-        )) : (
-          <Badge variant={status === "unavailable" ? "error" : "warning"}>{status === "unavailable" ? "No remote source available" : "Check remote sources"}</Badge>
+        {availableSources.length > 0 ? (
+          availableSources.map((remote) => (
+            <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
+              Fetch from {remote.source.displayName}
+            </Button>
+          ))
+        ) : (
+          <Badge variant={status === "unavailable" ? "error" : "warning"}>
+            {status === "unavailable" ? "No remote source available" : "Check remote sources"}
+          </Badge>
         )}
       </div>
     </div>
@@ -4538,8 +5364,12 @@ function LocalSourceStatePanel({
 function RemoteSourceStatePanel({ remote }: { remote: RemoteSourceAvailability }) {
   const status = remoteSourceTabStatus(remote.summary);
   return (
-    <div className={`rounded-md border p-4 text-sm ${status.status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}>
-      <div className="font-medium">{remote.source.displayName} · {status.statusLabel}</div>
+    <div
+      className={`rounded-md border p-4 text-sm ${status.status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}
+    >
+      <div className="font-medium">
+        {remote.source.displayName} · {status.statusLabel}
+      </div>
       {remote.summary.error && <div className="mt-1 text-xs opacity-80">{remote.summary.error}</div>}
     </div>
   );
@@ -4561,12 +5391,15 @@ function NoSourceDirectoryPanel({
     <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
       <div className="font-medium">No source linked</div>
       <p className="mt-1 text-warning-foreground/80">
-        This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.
+        This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source
+        presence for it yet.
       </p>
       {availableSources.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {availableSources.map((remote) => (
-            <Badge key={remote.source.id} variant="outline">{remote.source.displayName} available</Badge>
+            <Badge key={remote.source.id} variant="outline">
+              {remote.source.displayName} available
+            </Badge>
           ))}
         </div>
       )}
@@ -4575,7 +5408,9 @@ function NoSourceDirectoryPanel({
           <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
           Refresh sources
         </Button>
-        {!checking && checkedAt && <span className="text-xs text-warning-foreground/80">Checked {formatDateTime(checkedAt)}</span>}
+        {!checking && checkedAt && (
+          <span className="text-xs text-warning-foreground/80">Checked {formatDateTime(checkedAt)}</span>
+        )}
       </div>
     </div>
   );
@@ -4646,7 +5481,9 @@ function SourceDirectoryPanel({
   const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
   const trackedMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => setTrackedMenuOpen(false), [activeKey, selectedTrackedPresenceKey]);
-  const content = emptyState ? emptyState : directoryMode === "browse" ? (
+  const content = emptyState ? (
+    emptyState
+  ) : directoryMode === "browse" ? (
     <DirectoryBrowser
       root={root}
       directoryRoutingRules={directoryRoutingRules}
@@ -4690,69 +5527,102 @@ function SourceDirectoryPanel({
           </div>
           <div className="col-span-2 row-start-2 flex min-w-0 items-center overflow-hidden rounded-md border bg-card p-1 sm:flex-1">
             <div className="app-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {tabs.map((source) => source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
-                <div key={source.key} ref={trackedMenuRef} className={`relative flex h-7 shrink-0 overflow-hidden rounded ${source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
+              {tabs.map((source) =>
+                source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
+                  <div
+                    key={source.key}
+                    ref={trackedMenuRef}
+                    className={`relative flex h-7 shrink-0 overflow-hidden rounded ${source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                  >
+                    <button
+                      className="inline-flex min-w-0 items-center gap-2 px-2.5 text-xs font-medium"
+                      onClick={() => onActiveKeyChange(source.key)}
+                      title={`${source.label}: ${source.statusLabel}`}
+                    >
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+                        aria-hidden="true"
+                      />
+                      <span>{source.label}</span>
+                      <span className="sr-only">{source.statusLabel}</span>
+                    </button>
+                    <button
+                      className={`grid w-7 place-items-center border-l ${source.key === activeKey ? "border-primary-foreground/25 hover:bg-primary-foreground/10" : "border-border hover:bg-muted"}`}
+                      aria-label="Choose tracked source"
+                      aria-haspopup="menu"
+                      aria-expanded={trackedMenuOpen}
+                      title="Choose tracked source"
+                      onClick={() => setTrackedMenuOpen((open) => !open)}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <AnchoredPopover
+                      open={trackedMenuOpen}
+                      anchorRef={trackedMenuRef}
+                      onOpenChange={setTrackedMenuOpen}
+                      className="w-56 p-1 text-sm"
+                      zIndex={70}
+                    >
+                      <div role="menu" aria-label="Tracked sources">
+                        {trackedPresenceOptions.map((option) => (
+                          <button
+                            key={option.key}
+                            role="menuitemradio"
+                            aria-checked={option.key === selectedTrackedPresenceKey}
+                            className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
+                            onClick={() => {
+                              onTrackedPresenceChange?.(option.key);
+                              setTrackedMenuOpen(false);
+                            }}
+                          >
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`}
+                              aria-hidden="true"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate">{option.label}</span>
+                              <span className="block text-[11px] text-muted-foreground">
+                                {option.forked ? "Forked" : "Unforked"}
+                              </span>
+                            </span>
+                            {option.key === selectedTrackedPresenceKey && (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </AnchoredPopover>
+                  </div>
+                ) : (
                   <button
-                    className="inline-flex min-w-0 items-center gap-2 px-2.5 text-xs font-medium"
+                    key={source.key}
+                    className={`inline-flex h-7 shrink-0 items-center gap-2 rounded px-2.5 text-xs font-medium ${
+                      source.key === activeKey
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
                     onClick={() => onActiveKeyChange(source.key)}
                     title={`${source.label}: ${source.statusLabel}`}
                   >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`} aria-hidden="true" />
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`}
+                      aria-hidden="true"
+                    />
                     <span>{source.label}</span>
                     <span className="sr-only">{source.statusLabel}</span>
                   </button>
-                  <button
-                    className={`grid w-7 place-items-center border-l ${source.key === activeKey ? "border-primary-foreground/25 hover:bg-primary-foreground/10" : "border-border hover:bg-muted"}`}
-                    aria-label="Choose tracked source"
-                    aria-haspopup="menu"
-                    aria-expanded={trackedMenuOpen}
-                    title="Choose tracked source"
-                    onClick={() => setTrackedMenuOpen((open) => !open)}
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  <AnchoredPopover open={trackedMenuOpen} anchorRef={trackedMenuRef} onOpenChange={setTrackedMenuOpen} className="w-56 p-1 text-sm" zIndex={70}>
-                    <div role="menu" aria-label="Tracked sources">
-                      {trackedPresenceOptions.map((option) => (
-                        <button
-                          key={option.key}
-                          role="menuitemradio"
-                          aria-checked={option.key === selectedTrackedPresenceKey}
-                          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                          onClick={() => {
-                            onTrackedPresenceChange?.(option.key);
-                            setTrackedMenuOpen(false);
-                          }}
-                        >
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(option.status)}`} aria-hidden="true" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate">{option.label}</span>
-                            <span className="block text-[11px] text-muted-foreground">{option.forked ? "Forked" : "Unforked"}</span>
-                          </span>
-                          {option.key === selectedTrackedPresenceKey && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
-                        </button>
-                      ))}
-                    </div>
-                  </AnchoredPopover>
-                </div>
-              ) : (
-                <button
-                  key={source.key}
-                  className={`inline-flex h-7 shrink-0 items-center gap-2 rounded px-2.5 text-xs font-medium ${
-                    source.key === activeKey ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                  }`}
-                  onClick={() => onActiveKeyChange(source.key)}
-                  title={`${source.label}: ${source.statusLabel}`}
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${sourceTabStatusClass(source.status)}`} aria-hidden="true" />
-                  <span>{source.label}</span>
-                  <span className="sr-only">{source.statusLabel}</span>
-                </button>
-              ))}
+                ),
+              )}
             </div>
             {onCheckSources && (
               <IconButton
-                title={checkingSources ? "Checking sources" : checkedAt ? `Check sources · Last checked ${formatDateTime(checkedAt)}` : "Check sources"}
+                title={
+                  checkingSources
+                    ? "Checking sources"
+                    : checkedAt
+                      ? `Check sources · Last checked ${formatDateTime(checkedAt)}`
+                      : "Check sources"
+                }
                 onClick={onCheckSources}
                 disabled={checkingSources}
               >
@@ -4768,7 +5638,11 @@ function SourceDirectoryPanel({
       <Card>
         <CardContent className="p-4">
           {toolbar}
-          {loadingMessage && <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">{loadingMessage}</div>}
+          {loadingMessage && (
+            <div className="mb-4 rounded-md border bg-background p-3 text-sm text-muted-foreground">
+              {loadingMessage}
+            </div>
+          )}
           {selectionPanel}
           {content}
         </CardContent>
@@ -4818,9 +5692,7 @@ function DirectoryRouteSummary({ summary, onSelect }: { summary: DirectoryRouteM
         {summary.pathLabel}
       </button>
       {summary.positiveMatches.length > 0 ? (
-        <span className="min-w-0 text-muted-foreground">
-          matched {summary.positiveMatches.join(" + ")}
-        </span>
+        <span className="min-w-0 text-muted-foreground">matched {summary.positiveMatches.join(" + ")}</span>
       ) : (
         <span className="text-muted-foreground">fallback: most playable media</span>
       )}
@@ -4883,7 +5755,15 @@ function SourceDirectoryToolbar({
   );
 }
 
-function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail; onClose: () => void; onSaved: () => void }) {
+function WorkMetadataEditorModal({
+  work,
+  onClose,
+  onSaved,
+}: {
+  work: WorkDetail;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
   const manual = work.manualOverrides ?? {};
   const [title, setTitle] = useState(manual.title ?? work.title);
@@ -4891,13 +5771,25 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
   const [circleExternalId, setCircleExternalId] = useState(manual.circle?.externalId ?? work.circleExternalId);
   const [seriesName, setSeriesName] = useState(manual.series?.name ?? work.series);
   const [seriesTitleId, setSeriesTitleId] = useState(manual.series?.titleId ?? work.seriesTitleId ?? "");
-  const [seriesCircleExternalId, setSeriesCircleExternalId] = useState(manual.series?.circleExternalId ?? work.seriesCircleExternalId ?? work.circleExternalId ?? "");
+  const [seriesCircleExternalId, setSeriesCircleExternalId] = useState(
+    manual.series?.circleExternalId ?? work.seriesCircleExternalId ?? work.circleExternalId ?? "",
+  );
   const [voiceActors, setVoiceActors] = useState<ManualOverridePerson[]>(() => initialManualVoiceActors(work));
   const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
   const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
-  const [circleSuggestions, setCircleSuggestions] = useState<{ items: CircleSuggestion[]; truncated: boolean }>({ items: [], truncated: false });
-  const [seriesSuggestions, setSeriesSuggestions] = useState<{ items: SeriesSuggestion[]; truncated: boolean }>({ items: [], truncated: false });
-  const [voiceSuggestions, setVoiceSuggestions] = useState<{ index: number; items: VoiceSuggestion[]; truncated: boolean }>({ index: -1, items: [], truncated: false });
+  const [circleSuggestions, setCircleSuggestions] = useState<{ items: CircleSuggestion[]; truncated: boolean }>({
+    items: [],
+    truncated: false,
+  });
+  const [seriesSuggestions, setSeriesSuggestions] = useState<{ items: SeriesSuggestion[]; truncated: boolean }>({
+    items: [],
+    truncated: false,
+  });
+  const [voiceSuggestions, setVoiceSuggestions] = useState<{
+    index: number;
+    items: VoiceSuggestion[];
+    truncated: boolean;
+  }>({ index: -1, items: [], truncated: false });
   const [focusedVoiceIndex, setFocusedVoiceIndex] = useState(-1);
   const [loadingCovers, setLoadingCovers] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -4905,7 +5797,8 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
   useEffect(() => {
     let cancelled = false;
     setLoadingCovers(true);
-    api.listWorkCoverCandidates(work.id)
+    api
+      .listWorkCoverCandidates(work.id)
       .then((result) => {
         if (cancelled) return;
         setCoverCandidates(result.candidates);
@@ -4930,11 +5823,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      api.suggestCircles(query).then((result) => {
-        if (!cancelled) setCircleSuggestions(result);
-      }).catch(() => {
-        if (!cancelled) setCircleSuggestions({ items: [], truncated: false });
-      });
+      api
+        .suggestCircles(query)
+        .then((result) => {
+          if (!cancelled) setCircleSuggestions(result);
+        })
+        .catch(() => {
+          if (!cancelled) setCircleSuggestions({ items: [], truncated: false });
+        });
     }, 250);
     return () => {
       cancelled = true;
@@ -4950,11 +5846,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      api.suggestSeries(query, seriesCircleExternalId).then((result) => {
-        if (!cancelled) setSeriesSuggestions(result);
-      }).catch(() => {
-        if (!cancelled) setSeriesSuggestions({ items: [], truncated: false });
-      });
+      api
+        .suggestSeries(query, seriesCircleExternalId)
+        .then((result) => {
+          if (!cancelled) setSeriesSuggestions(result);
+        })
+        .catch(() => {
+          if (!cancelled) setSeriesSuggestions({ items: [], truncated: false });
+        });
     }, 250);
     return () => {
       cancelled = true;
@@ -4971,11 +5870,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      api.suggestVoices(query).then((result) => {
-        if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, ...result });
-      }).catch(() => {
-        if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, items: [], truncated: false });
-      });
+      api
+        .suggestVoices(query)
+        .then((result) => {
+          if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, ...result });
+        })
+        .catch(() => {
+          if (!cancelled) setVoiceSuggestions({ index: focusedVoiceIndex, items: [], truncated: false });
+        });
     }, 250);
     return () => {
       cancelled = true;
@@ -4990,7 +5892,9 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
         title: nullableTrimmed(title),
         circle: nullableEntity(circleName, circleExternalId),
         series: nullableSeries(seriesName, seriesTitleId, seriesCircleExternalId),
-        voiceActors: voiceActors.map((actor) => ({ name: actor.name.trim(), personId: Number(actor.personId) || 0 })).filter((actor) => actor.name),
+        voiceActors: voiceActors
+          .map((actor) => ({ name: actor.name.trim(), personId: Number(actor.personId) || 0 }))
+          .filter((actor) => actor.name),
       });
       if (selectedCoverId !== null) {
         await api.setWorkCoverOverride(work.id, selectedCoverId);
@@ -5021,7 +5925,7 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
 
   const addVoiceActor = () => setVoiceActors((items) => [...items, { name: "", personId: 0 }]);
   const updateVoiceActor = (index: number, patch: Partial<ManualOverridePerson>) => {
-    setVoiceActors((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+    setVoiceActors((items) => items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
   };
   const removeVoiceActor = (index: number) => {
     setVoiceActors((items) => items.filter((_, itemIndex) => itemIndex !== index));
@@ -5043,7 +5947,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
           <EditorSection title="Work">
             <LabeledInput label="Title" value={title} onChange={setTitle} />
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" disabled={saving || !manual.title} onClick={() => void resetField("title")}>Reset title</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.title}
+                onClick={() => void resetField("title")}
+              >
+                Reset title
+              </Button>
             </div>
           </EditorSection>
 
@@ -5058,9 +5969,13 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               </div>
             )}
             {loadingCovers ? (
-              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading cover candidates...</div>
+              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                Loading cover candidates...
+              </div>
             ) : coverCandidates.length === 0 ? (
-              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">No indexed local images found for this work.</div>
+              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                No indexed local images found for this work.
+              </div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
                 {coverCandidates.map((candidate) => (
@@ -5069,7 +5984,12 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
                     className={`flex items-center gap-3 rounded-md border bg-background p-2 text-left hover:border-primary ${selectedCoverId === candidate.locationId ? "border-primary ring-1 ring-primary" : ""}`}
                     onClick={() => setSelectedCoverId(candidate.locationId)}
                   >
-                    <img src={assetURL(candidate.previewUrl)} alt="" className="h-16 w-16 shrink-0 rounded object-contain" loading="lazy" />
+                    <img
+                      src={assetURL(candidate.previewUrl)}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded object-contain"
+                      loading="lazy"
+                    />
                     <span className="min-w-0 flex-1 text-xs">
                       <span className="block truncate font-medium">{candidate.fileName}</span>
                       <span className="block truncate text-muted-foreground">{candidate.path}</span>
@@ -5081,7 +6001,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               </div>
             )}
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" disabled={saving || !manual.cover} onClick={() => void resetField("cover")}>Reset cover</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.cover}
+                onClick={() => void resetField("cover")}
+              >
+                Reset cover
+              </Button>
             </div>
           </EditorSection>
 
@@ -5106,7 +6033,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               }))}
             />
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" disabled={saving || !manual.circle} onClick={() => void resetField("circle")}>Reset circle</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.circle}
+                onClick={() => void resetField("circle")}
+              >
+                Reset circle
+              </Button>
             </div>
           </EditorSection>
 
@@ -5132,7 +6066,14 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
               }))}
             />
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" disabled={saving || !manual.series} onClick={() => void resetField("series")}>Reset series</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.series}
+                onClick={() => void resetField("series")}
+              >
+                Reset series
+              </Button>
             </div>
           </EditorSection>
 
@@ -5140,9 +6081,24 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
             <div className="space-y-2">
               {voiceActors.map((actor, index) => (
                 <div key={`${index}:${actor.personId}`} className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
-                  <LabeledInput label="Name" value={actor.name} onFocus={() => setFocusedVoiceIndex(index)} onChange={(value) => updateVoiceActor(index, { name: value, personId: 0 })} />
-                  <LabeledInput label="Person ID" value={actor.personId ? String(actor.personId) : ""} onChange={(value) => updateVoiceActor(index, { personId: Number(value) || 0 })} />
-                  <Button variant="outline" size="icon" className="mt-5 h-9 w-9" onClick={() => removeVoiceActor(index)} aria-label="Remove voice actor">
+                  <LabeledInput
+                    label="Name"
+                    value={actor.name}
+                    onFocus={() => setFocusedVoiceIndex(index)}
+                    onChange={(value) => updateVoiceActor(index, { name: value, personId: 0 })}
+                  />
+                  <LabeledInput
+                    label="Person ID"
+                    value={actor.personId ? String(actor.personId) : ""}
+                    onChange={(value) => updateVoiceActor(index, { personId: Number(value) || 0 })}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="mt-5 h-9 w-9"
+                    onClick={() => removeVoiceActor(index)}
+                    aria-label="Remove voice actor"
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -5168,12 +6124,21 @@ function WorkMetadataEditorModal({ work, onClose, onSaved }: { work: WorkDetail;
                 <Plus className="h-4 w-4" />
                 Add voice
               </Button>
-              <Button variant="outline" size="sm" disabled={saving || !manual.voiceActors?.length} onClick={() => void resetField("voice_actors")}>Reset voices</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || !manual.voiceActors?.length}
+                onClick={() => void resetField("voice_actors")}
+              >
+                Reset voices
+              </Button>
             </div>
           </EditorSection>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
+            Cancel
+          </Button>
           <Button size="sm" disabled={saving} onClick={() => void save()}>
             {saving ? "Saving" : "Save"}
           </Button>
@@ -5207,17 +6172,33 @@ function SuggestionList({
   return (
     <div className="space-y-1 rounded-md border bg-background p-1">
       {items.map((item) => (
-        <button key={item.key} className="flex min-h-8 w-full items-center justify-between gap-3 rounded px-2 text-left text-xs hover:bg-muted" onClick={item.onSelect}>
+        <button
+          key={item.key}
+          className="flex min-h-8 w-full items-center justify-between gap-3 rounded px-2 text-left text-xs hover:bg-muted"
+          onClick={item.onSelect}
+        >
           <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
           {item.detail && <span className="shrink-0 truncate text-muted-foreground">{item.detail}</span>}
         </button>
       ))}
-      {truncated && <div className="px-2 py-1 text-xs text-muted-foreground">Too many matches. Keep typing to narrow results.</div>}
+      {truncated && (
+        <div className="px-2 py-1 text-xs text-muted-foreground">Too many matches. Keep typing to narrow results.</div>
+      )}
     </div>
   );
 }
 
-function LabeledInput({ label, value, onChange, onFocus }: { label: string; value: string; onChange: (value: string) => void; onFocus?: () => void }) {
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  onFocus,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onFocus?: () => void;
+}) {
   return (
     <label className="block min-w-0 text-xs font-medium text-muted-foreground">
       {label}
@@ -5255,7 +6236,9 @@ function nullableSeries(name: string, titleId: string, circleExternalId: string)
   const nextName = name.trim();
   const nextTitleId = titleId.trim();
   const nextCircleExternalId = circleExternalId.trim();
-  return nextName || nextTitleId || nextCircleExternalId ? { name: nextName, titleId: nextTitleId, circleExternalId: nextCircleExternalId } : null;
+  return nextName || nextTitleId || nextCircleExternalId
+    ? { name: nextName, titleId: nextTitleId, circleExternalId: nextCircleExternalId }
+    : null;
 }
 
 function DirectoryMessage({ message }: { message: string }) {
@@ -5267,9 +6250,13 @@ function DirectoryOperationBanner({ runId, status, onOpen }: { runId: number; st
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
       <div>
         <div className="font-medium">File operation in progress</div>
-        <div className="text-xs text-muted-foreground">Workflow #{runId} · {status}</div>
+        <div className="text-xs text-muted-foreground">
+          Workflow #{runId} · {status}
+        </div>
       </div>
-      <Button size="sm" variant="outline" onClick={onOpen}>View Activity</Button>
+      <Button size="sm" variant="outline" onClick={onOpen}>
+        View Activity
+      </Button>
     </div>
   );
 }
@@ -5302,10 +6289,12 @@ function WorkVersionSelector({
     remoteVersions,
     includeMetadataOnly: true,
   });
-  const collapsedCodes = new Set(collapsedGroups.flatMap((group) => group.versions.map((version) => version.primaryCode.toUpperCase())));
-  const hiddenMetadataOnlyCount = translations.filter((version) =>
-    workVersionMediaState(version) === "metadata_only"
-    && !collapsedCodes.has(version.primaryCode.toUpperCase()),
+  const collapsedCodes = new Set(
+    collapsedGroups.flatMap((group) => group.versions.map((version) => version.primaryCode.toUpperCase())),
+  );
+  const hiddenMetadataOnlyCount = translations.filter(
+    (version) =>
+      workVersionMediaState(version) === "metadata_only" && !collapsedCodes.has(version.primaryCode.toUpperCase()),
   ).length;
   const groups = showMetadataOnly ? expandedGroups : collapsedGroups;
 
@@ -5315,16 +6304,20 @@ function WorkVersionSelector({
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <Languages className="h-3.5 w-3.5" />
           <span className="font-medium text-foreground">Versions</span>
-          <span>Metadata <span className="font-semibold text-foreground">Origin</span></span>
-          {baseCode && (
-            baseAvailable ? (
-              <button className="font-semibold text-primary hover:underline" onClick={() => openWorkCodeRoute(baseCode)}>
+          <span>
+            Metadata <span className="font-semibold text-foreground">Origin</span>
+          </span>
+          {baseCode &&
+            (baseAvailable ? (
+              <button
+                className="font-semibold text-primary hover:underline"
+                onClick={() => openWorkCodeRoute(baseCode)}
+              >
                 Base {baseCode}
               </button>
             ) : (
               <span className="font-semibold text-foreground">Base {baseCode}</span>
-            )
-          )}
+            ))}
         </div>
         {hiddenMetadataOnlyCount > 0 && (
           <button
@@ -5333,19 +6326,22 @@ function WorkVersionSelector({
             aria-expanded={showMetadataOnly}
             onClick={() => setShowMetadataOnly((shown) => !shown)}
           >
-            {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
+            {showMetadataOnly ? "Hide" : "Show"} {hiddenMetadataOnlyCount} metadata-only{" "}
+            {hiddenMetadataOnlyCount === 1 ? "edition" : "editions"}
           </button>
         )}
       </div>
       {groups.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {groups.map((group) => <WorkLanguageVersionPicker
-            key={group.key}
-            group={group}
-            activeVersionCode={activeVersionCode}
-            onVersionSelect={onVersionSelect}
-            remoteVersions={remoteVersions}
-          />)}
+          {groups.map((group) => (
+            <WorkLanguageVersionPicker
+              key={group.key}
+              group={group}
+              activeVersionCode={activeVersionCode}
+              onVersionSelect={onVersionSelect}
+              remoteVersions={remoteVersions}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -5384,13 +6380,15 @@ function WorkLanguageVersionPicker({
 
   return (
     <div ref={anchorRef} role="group" aria-label={`${language} versions`}>
-      <div className={`inline-flex overflow-hidden rounded-md border ${
-        groupActive
-          ? "border-primary bg-primary text-primary-foreground"
-          : preferredAvailable
-            ? "border-primary/30 text-primary"
-            : "border-muted bg-muted text-muted-foreground"
-      }`}>
+      <div
+        className={`inline-flex overflow-hidden rounded-md border ${
+          groupActive
+            ? "border-primary bg-primary text-primary-foreground"
+            : preferredAvailable
+              ? "border-primary/30 text-primary"
+              : "border-muted bg-muted text-muted-foreground"
+        }`}
+      >
         <button
           type="button"
           className={`px-2.5 py-1 font-semibold ${!groupActive && preferredAvailable ? "hover:bg-primary/10" : ""}`}
@@ -5481,9 +6479,8 @@ function DlsiteMetrics({
   ageRating: string;
 }) {
   const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? "Rate" : ratingLabel;
-  const rateValue = rating === null
-    ? "—"
-    : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
+  const rateValue =
+    rating === null ? "—" : `${rating.toFixed(2)}${ratingCount ? ` (${ratingCount.toLocaleString()})` : ""}`;
   const age = ageRatingPresentation(ageRating);
   const ageValue = age.label === "Unknown" ? "—" : age.label;
   const dateValue = dlsiteFetchedAt ? `${releaseDate} / ${dlsiteFetchedAt}` : releaseDate;
@@ -5491,34 +6488,55 @@ function DlsiteMetrics({
     <div data-testid="dlsite-info" className="w-full rounded-lg border bg-card p-3 text-sm">
       <div className="mb-2 text-xs font-medium text-muted-foreground">DLsite info</div>
       <div className="space-y-2">
-        <div data-testid="dlsite-primary-metrics" className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4">
+        <div
+          data-testid="dlsite-primary-metrics"
+          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] leading-4"
+        >
           <InlineDlsiteMetric label={normalizedRatingLabel} value={rateValue} />
           <InlineDlsiteMetric label="Age" value={ageValue} valueClassName={age.textClassName} />
           <InlineDlsiteMetric label="Sales" value={sales === null ? "—" : sales.toLocaleString()} />
         </div>
-        <MetricLine icon={<Clock3 className="h-3.5 w-3.5" />} label={dlsiteFetchedAt ? "Released / Updated" : "Released"} value={dateValue} />
+        <MetricLine
+          icon={<Clock3 className="h-3.5 w-3.5" />}
+          label={dlsiteFetchedAt ? "Released / Updated" : "Released"}
+          value={dateValue}
+        />
       </div>
     </div>
   );
 }
 
 function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
-  const SourceIcon = info.kind === "local" ? HardDrive : info.kind === "tracked" ? GitBranchPlus : info.kind === "remote" ? Cloud : CloudOff;
+  const SourceIcon =
+    info.kind === "local"
+      ? HardDrive
+      : info.kind === "tracked"
+        ? GitBranchPlus
+        : info.kind === "remote"
+          ? Cloud
+          : CloudOff;
   const noFilesValue = info.loading ? "..." : "—";
   const sizeValue = info.stats.knownSizeFiles > 0 ? formatBytes(info.stats.sizeBytes) : noFilesValue;
-  const sizeDetail = info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
-    ? `${info.stats.knownSizeFiles}/${info.stats.files} files measured`
-    : info.stats.knownSizeFiles > 0 ? "All file sizes measured" : "No measured file size";
+  const sizeDetail =
+    info.stats.knownSizeFiles > 0 && info.stats.knownSizeFiles < info.stats.files
+      ? `${info.stats.knownSizeFiles}/${info.stats.files} files measured`
+      : info.stats.knownSizeFiles > 0
+        ? "All file sizes measured"
+        : "No measured file size";
   const hasMeasuredDuration = info.stats.knownDurationMedia > 0;
   const durationValue = hasMeasuredDuration
     ? formatDuration(info.stats.durationSeconds)
-    : info.metadataDurationSeconds ? formatDuration(info.metadataDurationSeconds) : noFilesValue;
+    : info.metadataDurationSeconds
+      ? formatDuration(info.metadataDurationSeconds)
+      : noFilesValue;
   const durationLabel = hasMeasuredDuration ? "Playable duration" : "Metadata duration";
   const durationDetail = hasMeasuredDuration
     ? info.stats.knownDurationMedia < info.stats.playable
       ? `${info.stats.knownDurationMedia}/${info.stats.playable} playable files measured`
       : "All playable durations measured"
-    : info.metadataDurationSeconds ? "No measured source duration" : "No known duration";
+    : info.metadataDurationSeconds
+      ? "No measured source duration"
+      : "No known duration";
 
   return (
     <div data-testid="active-source-info" className="w-full rounded-lg border bg-card p-3 text-sm">
@@ -5527,7 +6545,9 @@ function ActiveSourceInfo({ info }: { info: ActiveSourceInfoModel }) {
           <SourceIcon className="h-4 w-4 shrink-0" />
           <span>Source info</span>
         </div>
-        <div className="mt-1 truncate font-semibold" title={info.label}>{info.label}</div>
+        <div className="mt-1 truncate font-semibold" title={info.label}>
+          {info.label}
+        </div>
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className={`h-2 w-2 rounded-full ${sourceTabStatusClass(info.status)}`} aria-hidden="true" />
           <span>{info.statusLabel}</span>
@@ -5591,7 +6611,15 @@ function InlineSourceMetric({ label, value }: { label: string; value: string }) 
   );
 }
 
-function InlineDlsiteMetric({ label, value, valueClassName = "" }: { label: string; value: string; valueClassName?: string }) {
+function InlineDlsiteMetric({
+  label,
+  value,
+  valueClassName = "",
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <span className="inline-flex shrink-0 items-baseline gap-1">
       <span className="text-muted-foreground">{label}</span>
@@ -5600,7 +6628,17 @@ function InlineDlsiteMetric({ label, value, valueClassName = "" }: { label: stri
   );
 }
 
-function MetricLine({ icon, label, value, valueClassName = "" }: { icon: ReactNode; label: string; value: string; valueClassName?: string }) {
+function MetricLine({
+  icon,
+  label,
+  value,
+  valueClassName = "",
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-muted-foreground">{icon}</span>
@@ -5628,15 +6666,24 @@ function DetailChipRow({
         <div className="font-medium">{label}</div>
         {items.length > 0 ? (
           <div className="mt-1 flex flex-wrap gap-1.5">
-            {items.map((item) => item.onClick ? (
-              <button key={item.key} className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary" onClick={item.onClick}>
-                {item.label}
-              </button>
-            ) : (
-              <span key={item.key} className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground">
-                {item.label}
-              </span>
-            ))}
+            {items.map((item) =>
+              item.onClick ? (
+                <button
+                  key={item.key}
+                  className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                  onClick={item.onClick}
+                >
+                  {item.label}
+                </button>
+              ) : (
+                <span
+                  key={item.key}
+                  className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground"
+                >
+                  {item.label}
+                </span>
+              ),
+            )}
           </div>
         ) : (
           <div className="mt-1 text-muted-foreground">{emptyLabel}</div>
@@ -5671,18 +6718,18 @@ function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
     setShowingAll(false);
     setRevealedLocationIDs(new Set());
   }, [root]);
-  const contains = useCallback(
-    (locationID: number) => attachments.hiddenLocationIds.has(locationID),
-    [attachments],
-  );
+  const contains = useCallback((locationID: number) => attachments.hiddenLocationIds.has(locationID), [attachments]);
   const isHidden = useCallback(
     (locationID: number) => contains(locationID) && !showingAll && !revealedLocationIDs.has(locationID),
     [contains, revealedLocationIDs, showingAll],
   );
-  const reveal = useCallback((locationID: number) => {
-    if (!attachments.hiddenLocationIds.has(locationID)) return;
-    setRevealedLocationIDs((current) => new Set(current).add(locationID));
-  }, [attachments]);
+  const reveal = useCallback(
+    (locationID: number) => {
+      if (!attachments.hiddenLocationIds.has(locationID)) return;
+      setRevealedLocationIDs((current) => new Set(current).add(locationID));
+    },
+    [attachments],
+  );
   const toggleAll = useCallback(() => {
     if (showingAll) setRevealedLocationIDs(new Set());
     setShowingAll(!showingAll);
@@ -5744,7 +6791,9 @@ function DirectoryTree({
   onPreview?: (preview: FilePreviewState) => void;
   emptyLabel?: string;
 }) {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root, directoryRoutingRules));
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() =>
+    initialExpandedTreePaths(root, directoryRoutingRules),
+  );
   const [visibleLimit, setVisibleLimit] = useState(160);
   const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   useEffect(() => {
@@ -5765,9 +6814,10 @@ function DirectoryTree({
     });
   }, [focusPath, root]);
   const rows = useMemo(
-    () => flattenVisibleTreeRows(root, expandedPaths).filter((row) =>
-      row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId)
-    ),
+    () =>
+      flattenVisibleTreeRows(root, expandedPaths).filter(
+        (row) => row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId),
+      ),
     [root, expandedPaths, lyricsAttachments.isHidden],
   );
   const visibleRows = rows.slice(0, visibleLimit);
@@ -5790,29 +6840,34 @@ function DirectoryTree({
         onToggle={lyricsAttachments.toggleAll}
       />
       <div className="space-y-1">
-        {visibleRows.map((row) => row.type === "folder" ? (
-          <TreeFolderRow
-            key={`folder:${row.node.path}`}
-            node={row.node}
-            depth={row.depth}
-            expanded={expandedPaths.has(row.node.path)}
-            onToggle={() => toggleFolder(row.node.path)}
-          />
-        ) : (
-          <TreeFile
-            key={`file:${row.file.playbackKey ?? row.file.locationId}`}
-            file={row.file}
-            files={folderPlaybackTracks(row.parent)}
-            depth={row.depth}
-            isActive={row.file.playbackKey === currentPlaybackKey || (!row.file.playbackKey && row.file.locationId === currentLocationId)}
-            onPlayFolder={onPlayFolder}
-            onPlayNext={onPlayNext}
-            onAppendQueue={onAppendQueue}
-            onPreview={onPreview}
-            isLyricsAttachmentHidden={lyricsAttachments.isHidden}
-            onRevealLyricsAttachment={lyricsAttachments.reveal}
-          />
-        ))}
+        {visibleRows.map((row) =>
+          row.type === "folder" ? (
+            <TreeFolderRow
+              key={`folder:${row.node.path}`}
+              node={row.node}
+              depth={row.depth}
+              expanded={expandedPaths.has(row.node.path)}
+              onToggle={() => toggleFolder(row.node.path)}
+            />
+          ) : (
+            <TreeFile
+              key={`file:${row.file.playbackKey ?? row.file.locationId}`}
+              file={row.file}
+              files={folderPlaybackTracks(row.parent)}
+              depth={row.depth}
+              isActive={
+                row.file.playbackKey === currentPlaybackKey ||
+                (!row.file.playbackKey && row.file.locationId === currentLocationId)
+              }
+              onPlayFolder={onPlayFolder}
+              onPlayNext={onPlayNext}
+              onAppendQueue={onAppendQueue}
+              onPreview={onPreview}
+              isLyricsAttachmentHidden={lyricsAttachments.isHidden}
+              onRevealLyricsAttachment={lyricsAttachments.reveal}
+            />
+          ),
+        )}
       </div>
       {visibleRows.length < rows.length && (
         <Button variant="outline" size="sm" className="w-full" onClick={() => setVisibleLimit((value) => value + 160)}>
@@ -5830,7 +6885,9 @@ function openDetailTagSearch(tag: string) {
   const returnTo = typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : "/";
   const target = new URL(returnTo, window.location.origin);
   const browseState = libraryBrowseStateFromSearch(target.search, defaultLibraryBrowseState);
-  const clauses = parseSearchClauses(browseState.query).filter((clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()));
+  const clauses = parseSearchClauses(browseState.query).filter(
+    (clause) => !(clause.kind === "tag" && clause.value.toLowerCase() === value.toLowerCase()),
+  );
   const query = [...clauses, { kind: "tag" as const, value }].map(formatSearchClause).join(" ");
   target.search = libraryBrowseSearch({ ...browseState, query, page: 1, scrollY: 0 });
   window.history.pushState({}, "", `${target.pathname}${target.search}`);
@@ -5858,12 +6915,17 @@ function ConfirmMediaDeleteModal({
   const isLocal = target.kind === "local";
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onCancel}>
-      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
             <h3 className="text-base font-semibold">{isLocal ? "Delete local file" : "Delete cached file"}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isLocal ? "This removes only this local file location." : "The remote source and saved local files will not be deleted."}
+              {isLocal
+                ? "This removes only this local file location."
+                : "The remote source and saved local files will not be deleted."}
             </p>
           </div>
           <IconButton title="Close" onClick={onCancel}>
@@ -5873,7 +6935,9 @@ function ConfirmMediaDeleteModal({
         <div className="space-y-3 p-4 text-sm">
           <div>
             <div className="font-medium">{target.title}</div>
-            <div className="mt-1 break-all rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">{target.path}</div>
+            <div className="mt-1 break-all rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {target.path}
+            </div>
           </div>
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
             {isLocal
@@ -5885,7 +6949,11 @@ function ConfirmMediaDeleteModal({
           <Button variant="outline" onClick={onCancel} disabled={deleting}>
             Cancel
           </Button>
-          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting}>
+          <Button
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={onConfirm}
+            disabled={deleting}
+          >
             <Trash2 className="h-4 w-4" />
             {deleting ? "Deleting" : isLocal ? "Delete local" : "Delete cache"}
           </Button>
@@ -5910,11 +6978,16 @@ function ReforkConfirmModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
             <h3 className="text-base font-semibold">Switch fork source</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Choose a different remote source for this tracked directory.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose a different remote source for this tracked directory.
+            </p>
           </div>
           <IconButton title="Close" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -5922,11 +6995,14 @@ function ReforkConfirmModal({
         </div>
         <div className="space-y-3 p-4 text-sm">
           <div className="rounded-md border bg-muted px-3 py-2 text-muted-foreground">
-            {currentName} will be replaced by {nextName}. Cached files for the current fork should be cleaned when backend reFork cleanup is added.
+            {currentName} will be replaced by {nextName}. Cached files for the current fork should be cleaned when
+            backend reFork cleanup is added.
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t p-4">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
           <Button onClick={onConfirm} disabled={busy}>
             <GitBranchPlus className="h-4 w-4" />
             Switch fork
@@ -6019,7 +7095,9 @@ function DirectoryBrowser({
             file={file}
             files={folderPlaybackTracks(current)}
             depth={0}
-            isActive={file.playbackKey === currentPlaybackKey || (!file.playbackKey && file.locationId === currentLocationId)}
+            isActive={
+              file.playbackKey === currentPlaybackKey || (!file.playbackKey && file.locationId === currentLocationId)
+            }
             onPlayFolder={onPlayFolder}
             onPlayNext={onPlayNext}
             onAppendQueue={onAppendQueue}
@@ -6200,20 +7278,27 @@ function TreeFile({
   const canPlay = Boolean(playableFiles([file]).length > 0 && onPlayFolder);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
-  const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
+  const canDownload = Boolean(
+    file.locationId > 0 &&
+    ["available"].includes(file.availability) &&
+    (file.locationType === "local" || file.locationType === "cache"),
+  );
   const canOpen = canPlay || canPreview || canDownload;
-  const lyricsChoices = file.kind === "audio" ? file.lyricsChoices ?? [] : [];
+  const lyricsChoices = file.kind === "audio" ? (file.lyricsChoices ?? []) : [];
   const preferredLyricsMediaItemId = preferredLyricsMediaItemID(file, player.lyricsPreferenceOverrides);
   const automaticLyrics = preferredLyricsMediaItemId === null;
-  const selectedLyricsChoice = lyricsChoices.find((choice) => choice.mediaItemId === preferredLyricsMediaItemId)
-    ?? lyricsChoices.find((choice) => choice.locationId === file.autoLyricsLocationId)
-    ?? lyricsChoices[0]
-    ?? null;
+  const selectedLyricsChoice =
+    lyricsChoices.find((choice) => choice.mediaItemId === preferredLyricsMediaItemId) ??
+    lyricsChoices.find((choice) => choice.locationId === file.autoLyricsLocationId) ??
+    lyricsChoices[0] ??
+    null;
   const fileMeta = [
     fileKindLabel(file.kind),
     file.kind === "audio" || file.kind === "video" ? formatTrackDuration(file.durationSeconds) : "",
     file.sizeBytes === null ? "Unknown size" : formatBytes(file.sizeBytes),
-  ].filter(Boolean).join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const openFile = () => {
     if (preview && file.kind === "video") {
       onPreview?.(preview);
@@ -6260,7 +7345,9 @@ function TreeFile({
         </span>
       </span>
       <span className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
-        {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
+        {file.kind === "file" && canDownload && (
+          <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />
+        )}
         {lyricsChoices.length > 0 && (
           <div ref={lyricsMenuRef} onClick={(event) => event.stopPropagation()}>
             <button
@@ -6286,7 +7373,9 @@ function TreeFile({
               <div role="dialog" aria-label={`Lyrics for ${file.title}`} className="space-y-2">
                 <div className="px-1 py-0.5">
                   <div className="text-sm font-semibold">Lyrics</div>
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground" title={file.title}>{file.title}</div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground" title={file.title}>
+                    {file.title}
+                  </div>
                 </div>
                 <div role="radiogroup" aria-label="Lyrics source" className="space-y-1">
                   <button
@@ -6298,7 +7387,9 @@ function TreeFile({
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium">Auto</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {selectedLyricsChoice ? `Matches ${lyricsChoiceDisplayLabel(selectedLyricsChoice, lyricsChoices)}` : "No available match"}
+                        {selectedLyricsChoice
+                          ? `Matches ${lyricsChoiceDisplayLabel(selectedLyricsChoice, lyricsChoices)}`
+                          : "No available match"}
                       </span>
                     </span>
                     {automaticLyrics && <Check className="h-4 w-4 shrink-0 text-primary" />}
@@ -6317,7 +7408,9 @@ function TreeFile({
                           <span className="block truncate font-medium" title={choice.displayPath || choice.title}>
                             {lyricsChoiceDisplayLabel(choice, lyricsChoices)}
                           </span>
-                          <span className="block text-xs text-muted-foreground">{lyricsMatchReasonLabel(choice.reason)}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {lyricsMatchReasonLabel(choice.reason)}
+                          </span>
                         </span>
                         {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
                       </button>
@@ -6372,29 +7465,42 @@ function TreeFile({
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
-            <AnchoredPopover open={queueMenuOpen} anchorRef={queueMenuRef} className="w-44 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl">
+            <AnchoredPopover
+              open={queueMenuOpen}
+              anchorRef={queueMenuRef}
+              className="w-44 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl"
+            >
               {file.kind === "video" && (
-                <button className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted" onClick={() => {
-                  onPlayFolder?.(files, file.locationId);
-                  setQueueMenuOpen(false);
-                }}>
+                <button
+                  className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted"
+                  onClick={() => {
+                    onPlayFolder?.(files, file.locationId);
+                    setQueueMenuOpen(false);
+                  }}
+                >
                   <Headphones className="h-4 w-4" />
                   Play as audio
                 </button>
               )}
               {onPlayNext && (
-                <button className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted" onClick={() => {
-                  onPlayNext(file);
-                  setQueueMenuOpen(false);
-                }}>
+                <button
+                  className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted"
+                  onClick={() => {
+                    onPlayNext(file);
+                    setQueueMenuOpen(false);
+                  }}
+                >
                   Play next
                 </button>
               )}
               {onAppendQueue && (
-                <button className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted" onClick={() => {
-                  onAppendQueue(file);
-                  setQueueMenuOpen(false);
-                }}>
+                <button
+                  className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted"
+                  onClick={() => {
+                    onAppendQueue(file);
+                    setQueueMenuOpen(false);
+                  }}
+                >
                   Add to queue
                 </button>
               )}
@@ -6451,14 +7557,26 @@ function DirectoryManagerModal({
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
   const [showOnlyDeletable, setShowOnlyDeletable] = useState(showCachedFilter);
   const [previewTargets, setPreviewTargets] = useState<MediaDeleteTarget[]>([]);
-  const fileTargets = useMemo(() => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), [root, allowCacheDelete, allowLocalDelete]);
+  const fileTargets = useMemo(
+    () => directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }),
+    [root, allowCacheDelete, allowLocalDelete],
+  );
   const rootTarget = useMemo<MediaDeleteTarget | null>(() => {
     const representative = fileTargets.find((target) => target.kind === "local");
     if (!allowLocalDelete || !localRootPath || !representative) return null;
-    return { kind: "local_root", locationId: representative.locationId, title: "Work root", path: localRootPath, sizeBytes: null };
+    return {
+      kind: "local_root",
+      locationId: representative.locationId,
+      title: "Work root",
+      path: localRootPath,
+      sizeBytes: null,
+    };
   }, [allowLocalDelete, fileTargets, localRootPath]);
-  const targets = useMemo(() => rootTarget ? [...fileTargets, rootTarget] : fileTargets, [fileTargets, rootTarget]);
-  const selectedTargets = useMemo(() => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))), [targets, selectedKeys]);
+  const targets = useMemo(() => (rootTarget ? [...fileTargets, rootTarget] : fileTargets), [fileTargets, rootTarget]);
+  const selectedTargets = useMemo(
+    () => targets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))),
+    [targets, selectedKeys],
+  );
   const selectedSignature = selectedTargets.map(mediaDeleteTargetKey).sort().join("|");
   const previewSignature = previewTargets.map(mediaDeleteTargetKey).sort().join("|");
   const previewRefreshing = selectedTargets.length > 0 && selectedSignature !== previewSignature;
@@ -6506,7 +7624,10 @@ function DirectoryManagerModal({
   }, [selectedSignature, selectedTargets]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" onMouseDown={onClose}>
-      <div className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
           <div>
             <h3 className="text-base font-semibold">{title}</h3>
@@ -6519,11 +7640,21 @@ function DirectoryManagerModal({
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-card md:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
           <div className="app-scroll min-h-0 overflow-auto border-b p-3 md:border-b-0 md:border-r">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={() => setSelectedKeys(new Set(targets.map(mediaDeleteTargetKey)))}>All</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={targets.length === 0 || deleting}
+                onClick={() => setSelectedKeys(new Set(targets.map(mediaDeleteTargetKey)))}
+              >
+                All
+              </Button>
               {(["mp3", "wav", "flac"] as const).map((extension) => {
                 const state = extensionSelection(extension);
                 return (
-                  <label key={extension} className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+                  <label
+                    key={extension}
+                    className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs"
+                  >
                     <Checkbox
                       checked={state.checked}
                       indeterminate={state.indeterminate}
@@ -6535,10 +7666,16 @@ function DirectoryManagerModal({
                   </label>
                 );
               })}
-              <Button variant="outline" size="sm" disabled={deleting} onClick={() => setSelectedKeys(new Set())}>None</Button>
+              <Button variant="outline" size="sm" disabled={deleting} onClick={() => setSelectedKeys(new Set())}>
+                None
+              </Button>
               {showCachedFilter && (
                 <label className="ml-auto inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2 text-xs">
-                  <Checkbox checked={showOnlyDeletable} onCheckedChange={setShowOnlyDeletable} aria-label="Show cached files only" />
+                  <Checkbox
+                    checked={showOnlyDeletable}
+                    onCheckedChange={setShowOnlyDeletable}
+                    aria-label="Show cached files only"
+                  />
                   <span>Cached only</span>
                 </label>
               )}
@@ -6573,10 +7710,20 @@ function DirectoryManagerModal({
             ) : (
               <div className="space-y-1">
                 {previewTargets.map((target) => (
-                  <div key={mediaDeleteTargetKey(target)} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 border-b py-2 text-xs last:border-b-0">
-                    <Badge variant="outline" className="row-span-2 h-fit">{target.kind}</Badge>
-                    <span className="truncate font-medium" title={target.path}>{target.path}</span>
-                    <span className="text-muted-foreground">{target.title}{target.sizeBytes !== null ? ` · ${formatBytes(target.sizeBytes)}` : ""}</span>
+                  <div
+                    key={mediaDeleteTargetKey(target)}
+                    className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 border-b py-2 text-xs last:border-b-0"
+                  >
+                    <Badge variant="outline" className="row-span-2 h-fit">
+                      {target.kind}
+                    </Badge>
+                    <span className="truncate font-medium" title={target.path}>
+                      {target.path}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {target.title}
+                      {target.sizeBytes !== null ? ` · ${formatBytes(target.sizeBytes)}` : ""}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -6585,10 +7732,19 @@ function DirectoryManagerModal({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
-            <span className="text-xs text-muted-foreground">{selectedTargets.length} selected / {targets.length} deletable</span>
+            <Button variant="outline" size="sm" disabled={targets.length === 0 || deleting} onClick={toggleAll}>
+              {allSelected ? "Clear all" : "Select all"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {selectedTargets.length} selected / {targets.length} deletable
+            </span>
           </div>
-          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" disabled={selectedTargets.length === 0 || previewRefreshing || deleting} onClick={() => setConfirmStep(1)}>
+          <Button
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            size="sm"
+            disabled={selectedTargets.length === 0 || previewRefreshing || deleting}
+            onClick={() => setConfirmStep(1)}
+          >
             <Trash2 className="h-4 w-4" />
             {deleting ? "Deleting" : previewRefreshing ? "Refreshing preview" : "Review deletion"}
           </Button>
@@ -6633,21 +7789,31 @@ function DirectoryManager({
   }
   return (
     <div className="space-y-1">
-      {rootTarget && (() => {
-        const rootTargets = [...directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), rootTarget];
-        const selectedCount = rootTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
-        const checked = selectedCount === rootTargets.length;
-        const mixed = selectedCount > 0 && !checked;
-        return (
-          <div className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-muted">
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            <Checkbox checked={checked} indeterminate={mixed} onCheckedChange={() => rootTargets.forEach((target) => onToggleTarget(target, !checked))} aria-label={`Select work root ${rootTarget.path}`} />
-            <Folder className="h-4 w-4 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1 truncate" title={rootTarget.path}>{rootTarget.path}</span>
-            <span className="text-xs text-muted-foreground">{selectedCount}/{rootTargets.length}</span>
-          </div>
-        );
-      })()}
+      {rootTarget &&
+        (() => {
+          const rootTargets = [...directoryManageTargets(root, { allowCacheDelete, allowLocalDelete }), rootTarget];
+          const selectedCount = rootTargets.filter((target) => selectedKeys.has(mediaDeleteTargetKey(target))).length;
+          const checked = selectedCount === rootTargets.length;
+          const mixed = selectedCount > 0 && !checked;
+          return (
+            <div className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-muted">
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <Checkbox
+                checked={checked}
+                indeterminate={mixed}
+                onCheckedChange={() => rootTargets.forEach((target) => onToggleTarget(target, !checked))}
+                aria-label={`Select work root ${rootTarget.path}`}
+              />
+              <Folder className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate" title={rootTarget.path}>
+                {rootTarget.path}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {selectedCount}/{rootTargets.length}
+              </span>
+            </div>
+          );
+        })()}
       <DirectoryManagerNode
         node={root}
         depth={0}
@@ -6683,8 +7849,12 @@ function DirectoryManagerNode({
 }) {
   const [open, setOpen] = useState(isRoot);
   const options = { allowCacheDelete, allowLocalDelete };
-  const folders = sortedFolders(node).filter((folder) => !showOnlyDeletable || directoryManageTargets(folder, options).length > 0);
-  const files = sortedFiles(node).filter((file) => !showOnlyDeletable || mediaDeleteTargetsForFile(file, options).length > 0);
+  const folders = sortedFolders(node).filter(
+    (folder) => !showOnlyDeletable || directoryManageTargets(folder, options).length > 0,
+  );
+  const files = sortedFiles(node).filter(
+    (file) => !showOnlyDeletable || mediaDeleteTargetsForFile(file, options).length > 0,
+  );
   const stats = treeStats(node);
   const hasChildren = folders.length > 0 || files.length > 0;
   const nodeTargets = directoryManageTargets(node, options);
@@ -6707,12 +7877,30 @@ function DirectoryManagerNode({
             onClick={() => setOpen((value) => !value)}
             aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
           >
-            {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            {open ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
           </button>
-          <Checkbox checked={checked} indeterminate={mixed} disabled={nodeTargets.length === 0} onCheckedChange={toggleNode} aria-label={`Select ${node.name}`} />
+          <Checkbox
+            checked={checked}
+            indeterminate={mixed}
+            disabled={nodeTargets.length === 0}
+            onCheckedChange={toggleNode}
+            aria-label={`Select ${node.name}`}
+          />
           <Folder className="h-4 w-4 shrink-0 text-primary" />
-          <button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => setOpen((value) => !value)}>{node.name}</button>
-          <span className="shrink-0 text-xs text-muted-foreground">{selectedCount}/{nodeTargets.length} · {formatFolderStats(stats, playableFiles(node.files).length)}</span>
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {node.name}
+          </button>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {selectedCount}/{nodeTargets.length} · {formatFolderStats(stats, playableFiles(node.files).length)}
+          </span>
         </div>
       )}
       {(isRoot || open) && hasChildren && (
@@ -6730,15 +7918,15 @@ function DirectoryManagerNode({
             />
           ))}
           {files.map((file) => (
-          <ManagedFileRow
-            key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
-            file={file}
-            depth={isRoot ? 0 : depth + 1}
-            selectedKeys={selectedKeys}
-            allowCacheDelete={allowCacheDelete}
-            allowLocalDelete={allowLocalDelete}
-            onToggleTarget={onToggleTarget}
-          />
+            <ManagedFileRow
+              key={`${file.locationType}:${file.locationId}:${file.sourcePath}`}
+              file={file}
+              depth={isRoot ? 0 : depth + 1}
+              selectedKeys={selectedKeys}
+              allowCacheDelete={allowCacheDelete}
+              allowLocalDelete={allowLocalDelete}
+              onToggleTarget={onToggleTarget}
+            />
           ))}
         </>
       )}
@@ -6768,13 +7956,25 @@ function ManagedFileRow({
   const toggleFile = () => {
     for (const target of targets) onToggleTarget(target, !checked);
   };
-  const fileMeta = [file.kind === "audio" || file.kind === "video" ? formatDuration(file.durationSeconds) : "", formatBytes(file.sizeBytes), file.locationType].filter(Boolean).join(" · ");
+  const fileMeta = [
+    file.kind === "audio" || file.kind === "video" ? formatDuration(file.durationSeconds) : "",
+    formatBytes(file.sizeBytes),
+    file.locationType,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div
       className="grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
       style={{ marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` }}
     >
-      <Checkbox checked={checked} indeterminate={mixed} disabled={targets.length === 0} onCheckedChange={toggleFile} aria-label={`Select ${file.title}`} />
+      <Checkbox
+        checked={checked}
+        indeterminate={mixed}
+        disabled={targets.length === 0}
+        onCheckedChange={toggleFile}
+        aria-label={`Select ${file.title}`}
+      />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           {fileIcon(file)}
@@ -6786,7 +7986,11 @@ function ManagedFileRow({
         </div>
       </div>
       <div className="flex flex-wrap justify-end gap-1">
-        {targets.map((target) => <Badge key={mediaDeleteTargetKey(target)} variant="outline">{target.kind === "cache" ? "Cache" : "Local"}</Badge>)}
+        {targets.map((target) => (
+          <Badge key={mediaDeleteTargetKey(target)} variant="outline">
+            {target.kind === "cache" ? "Cache" : "Local"}
+          </Badge>
+        ))}
         {targets.length === 0 && (
           <span className="inline-flex h-8 items-center text-xs text-muted-foreground">No file action</span>
         )}
@@ -6814,11 +8018,18 @@ function ConfirmMediaBatchDeleteModal({
   const cacheCount = targets.filter((target) => target.kind === "cache").length;
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/55 p-4" onMouseDown={onCancel}>
-      <div className="w-full max-w-lg rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-lg rounded-lg border bg-background shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div>
             <h3 className="text-base font-semibold">{step === 1 ? "Review deletion" : "Final confirmation"}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{step === 1 ? "Confirm that the refreshed preview contains only the intended files." : "Deleted files cannot be restored by Kikoto."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {step === 1
+                ? "Confirm that the refreshed preview contains only the intended files."
+                : "Deleted files cannot be restored by Kikoto."}
+            </p>
           </div>
           <IconButton title="Close" onClick={onCancel}>
             <X className="h-4 w-4" />
@@ -6826,7 +8037,9 @@ function ConfirmMediaBatchDeleteModal({
         </div>
         <div className="space-y-3 p-4 text-sm">
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}{localCount > 0 ? `, including ${localCount} local` : ""}{cacheCount > 0 ? ` and ${cacheCount} cache` : ""}.
+            Delete {targets.length} selected location{targets.length === 1 ? "" : "s"}
+            {localCount > 0 ? `, including ${localCount} local` : ""}
+            {cacheCount > 0 ? ` and ${cacheCount} cache` : ""}.
           </div>
           <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {targets.slice(0, 10).map((target) => (
@@ -6843,9 +8056,15 @@ function ConfirmMediaBatchDeleteModal({
             Cancel
           </Button>
           {step === 1 ? (
-            <Button onClick={onContinue} disabled={targets.length === 0}>Continue</Button>
+            <Button onClick={onContinue} disabled={targets.length === 0}>
+              Continue
+            </Button>
           ) : (
-            <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={deleting || targets.length === 0}>
+            <Button
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={onConfirm}
+              disabled={deleting || targets.length === 0}
+            >
               <Trash2 className="h-4 w-4" />
               {deleting ? "Deleting" : "Permanently delete"}
             </Button>
@@ -6860,13 +8079,28 @@ function directoryManageTargets(root: TreeNode, options: { allowCacheDelete?: bo
   return sortedFilesDeep(root).flatMap((file) => mediaDeleteTargetsForFile(file, options));
 }
 
-function mediaDeleteTargetsForFile(file: TreeTrack, options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean }) {
+function mediaDeleteTargetsForFile(
+  file: TreeTrack,
+  options: { allowCacheDelete?: boolean; allowLocalDelete?: boolean },
+) {
   const targets: MediaDeleteTarget[] = [];
   if (options.allowCacheDelete && file.cacheAvailable && file.cacheLocationId !== null) {
-    targets.push({ kind: "cache", locationId: file.cacheLocationId, title: file.title, path: file.cachePath, sizeBytes: file.sizeBytes });
+    targets.push({
+      kind: "cache",
+      locationId: file.cacheLocationId,
+      title: file.title,
+      path: file.cachePath,
+      sizeBytes: file.sizeBytes,
+    });
   }
   if (options.allowLocalDelete && file.localAvailable && file.localLocationId !== null) {
-    targets.push({ kind: "local", locationId: file.localLocationId, title: file.title, path: file.localPath, sizeBytes: file.sizeBytes });
+    targets.push({
+      kind: "local",
+      locationId: file.localLocationId,
+      title: file.title,
+      path: file.localPath,
+      sizeBytes: file.sizeBytes,
+    });
   }
   return targets;
 }
@@ -6932,12 +8166,13 @@ function recommendedDirectoryPath(root: TreeNode, rules: DirectoryRoutingRule[])
 function recommendedDirectoryCandidate(root: TreeNode, rules: DirectoryRoutingRule[]) {
   const candidates = directoryCandidates(root, rules);
   if (candidates.length === 0) return null;
-  return candidates.sort((left, right) =>
-    right.score - left.score
-    || right.audioCount - left.audioCount
-    || right.durationSeconds - left.durationSeconds
-    || left.path.length - right.path.length
-    || left.order - right.order,
+  return candidates.sort(
+    (left, right) =>
+      right.score - left.score ||
+      right.audioCount - left.audioCount ||
+      right.durationSeconds - left.durationSeconds ||
+      left.path.length - right.path.length ||
+      left.order - right.order,
   )[0];
 }
 
@@ -6980,13 +8215,11 @@ function directoryCandidates(root: TreeNode, rules: DirectoryRoutingRule[]) {
 }
 
 function scoreDirectoryCandidate(node: TreeNode, path: string[], files: TreeTrack[], rules: DirectoryRoutingRule[]) {
-  const text = normalizeDirectoryMatchText([
-    ...path,
-    node.name,
-    node.path,
-    ...files.map((file) => file.title),
-    ...files.map((file) => file.baseName),
-  ].join(" / "));
+  const text = normalizeDirectoryMatchText(
+    [...path, node.name, node.path, ...files.map((file) => file.title), ...files.map((file) => file.baseName)].join(
+      " / ",
+    ),
+  );
   let score = 0;
   const positiveMatches: string[] = [];
   const negativeMatches: string[] = [];
@@ -7035,7 +8268,9 @@ function sortedFilesDeep(node: TreeNode) {
   for (const child of node.children.values()) {
     files.push(...sortedFilesDeep(child));
   }
-  return files.sort((a, b) => (a.sourcePath || a.title).localeCompare(b.sourcePath || b.title, undefined, { numeric: true, sensitivity: "base" }));
+  return files.sort((a, b) =>
+    (a.sourcePath || a.title).localeCompare(b.sourcePath || b.title, undefined, { numeric: true, sensitivity: "base" }),
+  );
 }
 
 type VisibleTreeRow =
@@ -7067,7 +8302,9 @@ function initialExpandedTreePaths(root: TreeNode, rules: DirectoryRoutingRule[])
 
 function folderContainsActiveAudio(node: TreeNode) {
   if (playableFiles(node.files).length > 0) return true;
-  return sortedFolders(node).some((child) => folderNameHasPriority(child.name) && playableFiles(child.files).length > 0);
+  return sortedFolders(node).some(
+    (child) => folderNameHasPriority(child.name) && playableFiles(child.files).length > 0,
+  );
 }
 
 function flattenVisibleTreeRows(root: TreeNode, expandedPaths: Set<string>) {
@@ -7106,9 +8343,12 @@ function folderSummary(node: TreeNode) {
 }
 
 function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
-  const countLabel = directPlayableCount > 0
-    ? `${directPlayableCount} ${stats.video > 0 ? "playable" : "audio"}`
-    : stats.files > 0 ? `${stats.files} files` : "";
+  const countLabel =
+    directPlayableCount > 0
+      ? `${directPlayableCount} ${stats.video > 0 ? "playable" : "audio"}`
+      : stats.files > 0
+        ? `${stats.files} files`
+        : "";
   const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
   return [countLabel, sizeLabel].filter(Boolean).join(" · ");
 }
@@ -7131,7 +8371,13 @@ function fileKindLabel(kind: string) {
 
 function previewForFile(file: TreeTrack): FilePreviewState | null {
   if (file.kind === "image" && file.assetUrl) {
-    return { kind: "image", title: file.title, url: file.assetUrl, locationId: file.locationId, canSetCover: file.locationType === "local" && file.locationId > 0 };
+    return {
+      kind: "image",
+      title: file.title,
+      url: file.assetUrl,
+      locationId: file.locationId,
+      canSetCover: file.locationType === "local" && file.locationId > 0,
+    };
   }
   if (file.kind === "video" && file.streamUrl) {
     return { kind: "video", title: file.title, url: file.streamUrl, locationId: file.locationId };
@@ -7147,7 +8393,15 @@ function previewForFile(file: TreeTrack): FilePreviewState | null {
   return null;
 }
 
-function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePreviewState; onClose: () => void; onSetCover?: (locationId: number) => void | Promise<void> }) {
+function FilePreviewModal({
+  preview,
+  onClose,
+  onSetCover,
+}: {
+  preview: FilePreviewState;
+  onClose: () => void;
+  onSetCover?: (locationId: number) => void | Promise<void>;
+}) {
   const player = usePlayer();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [text, setText] = useState<string | null>(null);
@@ -7159,17 +8413,19 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
     if (preview.kind !== "text") return;
     const request = preview.url
       ? fetch(assetURL(preview.url), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-        if (!response.ok) throw new Error(`Text preview returned HTTP ${response.status}.`);
-        const length = Number(response.headers.get("content-length") ?? 0);
-        if (length > 512 * 1024) throw new Error("Text file is too large to preview.");
-        const content = await response.text();
-        if (content.length > 512 * 1024) throw new Error("Text file is too large to preview.");
-        return { content };
-      })
+          if (!response.ok) throw new Error(`Text preview returned HTTP ${response.status}.`);
+          const length = Number(response.headers.get("content-length") ?? 0);
+          if (length > 512 * 1024) throw new Error("Text file is too large to preview.");
+          const content = await response.text();
+          if (content.length > 512 * 1024) throw new Error("Text file is too large to preview.");
+          return { content };
+        })
       : api.getMediaText(preview.locationId);
-    request.then((result) => setText(result.content)).catch((err) => {
-      setError(err instanceof Error ? err.message : "Text preview failed.");
-    });
+    request
+      .then((result) => setText(result.content))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Text preview failed.");
+      });
   }, [preview]);
 
   useEffect(() => {
@@ -7199,7 +8455,12 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
           <div className="min-w-0 truncate text-sm font-semibold">{preview.title}</div>
           <div className="flex items-center gap-2">
             {preview.kind === "image" && (
-              <Button variant="outline" size="sm" disabled={!onSetCover || !preview.canSetCover} onClick={() => void onSetCover?.(preview.locationId)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!onSetCover || !preview.canSetCover}
+                onClick={() => void onSetCover?.(preview.locationId)}
+              >
                 <ImageIcon className="h-4 w-4" />
                 Set cover
               </Button>
@@ -7211,7 +8472,11 @@ function FilePreviewModal({ preview, onClose, onSetCover }: { preview: FilePrevi
         </div>
         <div className="app-scroll min-h-0 flex-1 overflow-auto bg-background p-4">
           {preview.kind === "image" ? (
-            <img src={assetURL(preview.url)} alt="" className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain" />
+            <img
+              src={assetURL(preview.url)}
+              alt=""
+              className="mx-auto max-h-[72vh] max-w-full rounded-md object-contain"
+            />
           ) : preview.kind === "video" ? (
             <div className="grid min-h-[240px] place-items-center">
               <video
@@ -7267,78 +8532,81 @@ function formatDateTime(value: string) {
 
 function languageLabel(value: string) {
   switch (value.trim().toLowerCase()) {
-  case "ja":
-  case "ja-jp":
-	case "jpn":
-    return "Japanese";
-  case "en":
-  case "en-us":
-	case "eng":
-    return "English";
-  case "zh":
-  case "zh-cn":
-	case "chi_hans":
-    return "Simplified Chinese";
-  case "zh-tw":
-	case "chi_hant":
-    return "Traditional Chinese";
-  case "ko":
-  case "ko-kr":
-  case "ko_kr":
-    return "Korean";
-  case "id":
-  case "id-id":
-  case "ind":
-    return "Indonesian";
-  case "es":
-  case "es-es":
-  case "spa":
-    return "Spanish";
-  case "vi":
-  case "vi-vn":
-  case "vie":
-    return "Vietnamese";
-  case "pt":
-  case "pt-br":
-  case "por":
-    return "Portuguese";
-  case "fr":
-  case "fr-fr":
-  case "fre":
-    return "French";
-  case "de":
-  case "de-de":
-  case "ger":
-    return "German";
-  case "it":
-  case "it-it":
-  case "ita":
-    return "Italian";
-  case "th":
-  case "th-th":
-  case "tha":
-    return "Thai";
-  case "sv":
-  case "sv-se":
-  case "swe":
-    return "Swedish";
-  default:
-    return value || "Unknown";
+    case "ja":
+    case "ja-jp":
+    case "jpn":
+      return "Japanese";
+    case "en":
+    case "en-us":
+    case "eng":
+      return "English";
+    case "zh":
+    case "zh-cn":
+    case "chi_hans":
+      return "Simplified Chinese";
+    case "zh-tw":
+    case "chi_hant":
+      return "Traditional Chinese";
+    case "ko":
+    case "ko-kr":
+    case "ko_kr":
+      return "Korean";
+    case "id":
+    case "id-id":
+    case "ind":
+      return "Indonesian";
+    case "es":
+    case "es-es":
+    case "spa":
+      return "Spanish";
+    case "vi":
+    case "vi-vn":
+    case "vie":
+      return "Vietnamese";
+    case "pt":
+    case "pt-br":
+    case "por":
+      return "Portuguese";
+    case "fr":
+    case "fr-fr":
+    case "fre":
+      return "French";
+    case "de":
+    case "de-de":
+    case "ger":
+      return "German";
+    case "it":
+    case "it-it":
+    case "ita":
+      return "Italian";
+    case "th":
+    case "th-th":
+    case "tha":
+      return "Thai";
+    case "sv":
+    case "sv-se":
+    case "swe":
+      return "Swedish";
+    default:
+      return value || "Unknown";
   }
 }
 
 function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceIntent, trackedSourceID?: number | null) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
-  openWorkDetail({
-    kind: "known",
-    canonicalCode: cleanCode,
-    view: sourceIntent === "tracked" ? "tracked" : sourceIntent === "local" ? "local" : undefined,
-    trackedSourceId: sourceIntent === "tracked" ? trackedSourceID : undefined,
-  }, {
-    returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-    returnLabel: "Back",
-  });
+  openWorkDetail(
+    {
+      kind: "known",
+      canonicalCode: cleanCode,
+      view: sourceIntent === "tracked" ? "tracked" : sourceIntent === "local" ? "local" : undefined,
+      trackedSourceId: sourceIntent === "tracked" ? trackedSourceID : undefined,
+    },
+    {
+      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      returnLabel: "Back",
+    },
+  );
 }
 
 function detailSourceIntentFromLocation(search: string): DetailSourceIntent {
@@ -7363,7 +8631,8 @@ function detailRemoteCodeFromLocation(search: string) {
 
 function detailReturnTarget(fallbackPath: string) {
   const state = window.history.state as { returnTo?: unknown; returnLabel?: unknown } | null;
-  const path = typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : fallbackPath;
+  const path =
+    typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : fallbackPath;
   const label = typeof state?.returnLabel === "string" && state.returnLabel.trim() ? state.returnLabel : "Back";
   return { path, label };
 }
@@ -7427,7 +8696,19 @@ function directoryLoadErrorMessage(error: unknown) {
 
 function knownLibraryRoute(path: string, search: string, sources: LibrarySource[]) {
   const normalizedPath = path.length > 1 ? path.replace(/\/+$/, "") : path;
-  if (["/", "/library", "/tracked", "/library/tracked", "/no-source", "/library/no-source", "/library/all", "/library/remote"].includes(normalizedPath)) return true;
+  if (
+    [
+      "/",
+      "/library",
+      "/tracked",
+      "/library/tracked",
+      "/no-source",
+      "/library/no-source",
+      "/library/all",
+      "/library/remote",
+    ].includes(normalizedPath)
+  )
+    return true;
   if (WORK_CODE_PATTERN.test(normalizedPath)) return true;
 
   const sourceID = Number(new URLSearchParams(search).get("source"));
@@ -7437,10 +8718,12 @@ function knownLibraryRoute(path: string, search: string, sources: LibrarySource[
 
   const encodedKey = normalizedPath.startsWith("/library/source/")
     ? normalizedPath.slice("/library/source/".length)
-    : normalizedPath.match(/^\/[^/]+$/)?.[0].slice(1) ?? "";
+    : (normalizedPath.match(/^\/[^/]+$/)?.[0].slice(1) ?? "");
   if (!encodedKey) return false;
   const key = safeDecodePathSegment(encodedKey).toLowerCase();
-  return sources.some((source) => sourceRouteKey(source).toLowerCase() === key || source.displayName.toLowerCase() === key);
+  return sources.some(
+    (source) => sourceRouteKey(source).toLowerCase() === key || source.displayName.toLowerCase() === key,
+  );
 }
 
 function workPreviewFromHistory(code: string | null): WorkPreview | null {
@@ -7459,7 +8742,9 @@ function workPreviewFromHistory(code: string | null): WorkPreview | null {
     sales: typeof preview.sales === "number" ? preview.sales : null,
     releaseDate: typeof preview.releaseDate === "string" ? preview.releaseDate : null,
     tags: Array.isArray(preview.tags) ? preview.tags.filter((item): item is string => typeof item === "string") : [],
-    voiceActors: Array.isArray(preview.voiceActors) ? preview.voiceActors.filter((item): item is string => typeof item === "string") : [],
+    voiceActors: Array.isArray(preview.voiceActors)
+      ? preview.voiceActors.filter((item): item is string => typeof item === "string")
+      : [],
   };
 }
 
@@ -7508,11 +8793,14 @@ function remoteWorkPreviewFromHistory(code: string | null): RemoteWorkPreview | 
   const value = (window.history.state as { workPreview?: unknown } | null)?.workPreview;
   if (!code || !value || typeof value !== "object") return null;
   const preview = value as Partial<RemoteWorkPreview>;
-  const routeCode = typeof preview.remoteCode === "string" && preview.remoteCode
-    ? preview.remoteCode
-    : typeof preview.primaryCode === "string" && preview.primaryCode
-      ? preview.primaryCode
-      : typeof preview.remoteId === "string" ? preview.remoteId : "";
+  const routeCode =
+    typeof preview.remoteCode === "string" && preview.remoteCode
+      ? preview.remoteCode
+      : typeof preview.primaryCode === "string" && preview.primaryCode
+        ? preview.primaryCode
+        : typeof preview.remoteId === "string"
+          ? preview.remoteId
+          : "";
   if (!routeCode || routeCode.toUpperCase() !== code.toUpperCase()) return null;
   if (typeof preview.primaryCode !== "string" || typeof preview.remoteCode !== "string") return null;
   return {
@@ -7526,7 +8814,9 @@ function remoteWorkPreviewFromHistory(code: string | null): RemoteWorkPreview | 
     sales: typeof preview.sales === "number" ? preview.sales : null,
     releaseDate: typeof preview.releaseDate === "string" ? preview.releaseDate : null,
     tags: Array.isArray(preview.tags) ? preview.tags.filter((item): item is string => typeof item === "string") : [],
-    voiceActors: Array.isArray(preview.voiceActors) ? preview.voiceActors.filter((item): item is string => typeof item === "string") : [],
+    voiceActors: Array.isArray(preview.voiceActors)
+      ? preview.voiceActors.filter((item): item is string => typeof item === "string")
+      : [],
     remoteId: typeof preview.remoteId === "string" ? preview.remoteId : undefined,
     remoteCode: preview.remoteCode,
     ageRating: typeof preview.ageRating === "string" ? preview.ageRating : "",
@@ -7595,7 +8885,16 @@ function workMatchesClause(work: Work, clause: SearchClause) {
     case "text":
     default:
       return workMatchesText(
-        [work.primaryCode, work.title, work.circle, work.circleExternalId, work.releaseDate ?? "", ...work.tags, ...(work.userTags ?? []).map((tag) => tag.name), ...work.voiceActors],
+        [
+          work.primaryCode,
+          work.title,
+          work.circle,
+          work.circleExternalId,
+          work.releaseDate ?? "",
+          ...work.tags,
+          ...(work.userTags ?? []).map((tag) => tag.name),
+          ...work.voiceActors,
+        ],
         value,
       );
   }
@@ -7647,7 +8946,10 @@ function searchClauseLabel(clause: SearchClause) {
 }
 
 function searchQueryWithoutClause(clauses: SearchClause[], removeIndex: number) {
-  return clauses.filter((_clause, index) => index !== removeIndex).map(formatSearchClause).join(" ");
+  return clauses
+    .filter((_clause, index) => index !== removeIndex)
+    .map(formatSearchClause)
+    .join(" ");
 }
 
 function codeFromPath(path: string) {
@@ -7687,9 +8989,9 @@ function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTa
   if (path === "/" || path === "/library") {
     return { kind: "all" };
   }
-	if (path === "/library/all" || path === "/library/remote") {
-		return { kind: "all" };
-	}
+  if (path === "/library/all" || path === "/library/remote") {
+    return { kind: "all" };
+  }
   const encodedKey = path.startsWith("/library/source/")
     ? path.slice("/library/source/".length).replace(/\/$/, "")
     : path.replace(/^\//, "").replace(/\/$/, "");
@@ -7700,7 +9002,9 @@ function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTa
     return fallback;
   }
   const key = safeDecodePathSegment(encodedKey).toLowerCase();
-  const source = sources.find((item) => sourceRouteKey(item).toLowerCase() === key || item.displayName.toLowerCase() === key);
+  const source = sources.find(
+    (item) => sourceRouteKey(item).toLowerCase() === key || item.displayName.toLowerCase() === key,
+  );
   return source ? { kind: "source", source } : fallback;
 }
 
@@ -7729,11 +9033,11 @@ function pathForLocalScope(scope: LocalLibraryScope) {
 }
 
 function pathForActiveLibrary(tab: LibraryTab, scope: LocalLibraryScope) {
-	return tab.kind === "source" ? pathForLibraryTab(tab) : pathForLocalScope(scope) ?? "/";
+  return tab.kind === "source" ? pathForLibraryTab(tab) : (pathForLocalScope(scope) ?? "/");
 }
 
 function libraryBrowseKey(tab: LibraryTab, scope: LocalLibraryScope, storageScope: string) {
-	return tab.kind === "source" ? `${storageScope}:source:${tab.source.id}` : `${storageScope}:scope:${scope}`;
+  return tab.kind === "source" ? `${storageScope}:source:${tab.source.id}` : `${storageScope}:scope:${scope}`;
 }
 
 function localScopeFromPath(path: string): LocalLibraryScope {
@@ -7767,7 +9071,13 @@ function safeExternalHTTPURL(value: string | null | undefined) {
   }
 }
 
-function openRemoteSourceWorkRoute(sourceID: number, code: string, returnTo: string, returnLabel: string, workPreview?: RemoteWorkPreview) {
+function openRemoteSourceWorkRoute(
+  sourceID: number,
+  code: string,
+  returnTo: string,
+  returnLabel: string,
+  workPreview?: RemoteWorkPreview,
+) {
   const cleanCode = code.trim();
   if (!cleanCode) return;
   openWorkDetail(
@@ -7784,11 +9094,14 @@ function openPersistedRemoteSourceWorkRoute(
   returnLabel: string,
   workPreview: WorkPreview,
 ) {
-  openWorkDetail({
-    kind: "known",
-    canonicalCode,
-    source: { sourceId: sourceID, remoteCode },
-  }, { returnTo, returnLabel, workPreview });
+  openWorkDetail(
+    {
+      kind: "known",
+      canonicalCode,
+      source: { sourceId: sourceID, remoteCode },
+    },
+    { returnTo, returnLabel, workPreview },
+  );
 }
 
 function sourcePresenceActionCode(presence: SourcePresenceItem, fallbackCode: string) {

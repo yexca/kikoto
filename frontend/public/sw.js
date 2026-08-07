@@ -1,5 +1,14 @@
 const CACHE_NAME = "kikoto-app-v1";
-const APP_SHELL = ["/", "/index.html", "/offline.html", "/manifest.webmanifest", "/kikoto-icon.svg", "/kikoto-icon-192.png", "/kikoto-icon-512.png", "/kikoto-maskable-512.png"];
+const APP_SHELL = [
+  "/",
+  "/index.html",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/kikoto-icon.svg",
+  "/kikoto-icon-192.png",
+  "/kikoto-icon-512.png",
+  "/kikoto-maskable-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -7,7 +16,8 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
@@ -22,7 +32,13 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || request.headers.has("range") || request.destination === "audio" || request.destination === "video") return;
+  if (
+    url.pathname.startsWith("/api/") ||
+    request.headers.has("range") ||
+    request.destination === "audio" ||
+    request.destination === "video"
+  )
+    return;
 
   if (request.mode === "navigate") {
     event.respondWith(
@@ -39,7 +55,8 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     caches.match(request).then((cached) => {
       const network = fetch(request).then((response) => {
-        if (response.ok && response.type === "basic") void caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+        if (response.ok && response.type === "basic")
+          void caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
         return response;
       });
       return cached ?? network;

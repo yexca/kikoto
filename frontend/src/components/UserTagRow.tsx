@@ -55,7 +55,13 @@ export function UserTagRow({ tags, onSave, className = "", compact = false }: Us
         <Button size="sm" variant="outline" disabled={isSaving} onClick={() => void save()}>
           Save
         </Button>
-        <Button size="icon" variant="ghost" aria-label="Cancel tag edit" disabled={isSaving} onClick={() => setIsEditing(false)}>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Cancel tag edit"
+          disabled={isSaving}
+          onClick={() => setIsEditing(false)}
+        >
           <X className="h-4 w-4" />
         </Button>
       </div>

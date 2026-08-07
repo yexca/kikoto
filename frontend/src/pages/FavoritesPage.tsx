@@ -135,7 +135,7 @@ const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
 ];
 
 function createFavoriteRandomSeed() {
-  return window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646 + 1;
+  return (window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646) + 1;
 }
 
 type PageSize = (typeof pageSizeOptions)[number];
@@ -154,12 +154,12 @@ export function FavoritesPage() {
   const principalID = auth.user?.id ?? null;
   const favoritesStorageScope = currentClientStorageScope(principalID);
   const initialEntryState = useRef(readFavoritesEntryState(favoritesStorageScope)).current;
-  const initialBrowseState = useRef(favoritesBrowseStateFromSearch(
-    window.location.search,
-    initialEntryState.favoritesBrowseState
-      ?? readFavoritesBrowseState(principalID)
-      ?? defaultFavoritesBrowseState,
-  )).current;
+  const initialBrowseState = useRef(
+    favoritesBrowseStateFromSearch(
+      window.location.search,
+      initialEntryState.favoritesBrowseState ?? readFavoritesBrowseState(principalID) ?? defaultFavoritesBrowseState,
+    ),
+  ).current;
   const pendingAnchor = useRef(initialEntryState.favoritesAnchor ?? null);
   const [works, setWorks] = useState<Work[]>([]);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
@@ -187,9 +187,12 @@ export function FavoritesPage() {
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
+    useWorkCollectionLayout();
   const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
-  const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(() => new Set(initialEntryState.favoritesSelection?.workIDs ?? []));
+  const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(
+    () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
+  );
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -223,7 +226,8 @@ export function FavoritesPage() {
     }
     let cancelled = false;
     setAreFavoriteListsLoading(true);
-    api.listFavoriteLists()
+    api
+      .listFavoriteLists()
       .then((lists) => {
         if (!cancelled) setFavoriteLists(lists);
       })
@@ -246,7 +250,8 @@ export function FavoritesPage() {
     }
     let cancelled = false;
     setAreFileSourcesLoading(true);
-    api.listLibrarySources()
+    api
+      .listLibrarySources()
       .then((sources) => {
         if (cancelled) return;
         setFileSources(sources);
@@ -315,7 +320,19 @@ export function FavoritesPage() {
     const seq = ++requestSeq.current;
     setIsLoading(true);
     setWorksLoadError("");
-    api.listFavoriteWorksPage(page, pageSize, "", activeList, statusFilter, availabilityFilter, sourceIDs, sort, sortDirection, randomSeed)
+    api
+      .listFavoriteWorksPage(
+        page,
+        pageSize,
+        "",
+        activeList,
+        statusFilter,
+        availabilityFilter,
+        sourceIDs,
+        sort,
+        sortDirection,
+        randomSeed,
+      )
       .then((result) => {
         if (seq !== requestSeq.current) return;
         setWorks(result.works);
@@ -333,7 +350,19 @@ export function FavoritesPage() {
       .finally(() => {
         if (seq === requestSeq.current) setIsLoading(false);
       });
-  }, [activeList, availabilityFilter, auth.user, page, pageSize, randomSeed, sort, sortDirection, sourceIDs, statusFilter, worksReloadToken]);
+  }, [
+    activeList,
+    availabilityFilter,
+    auth.user,
+    page,
+    pageSize,
+    randomSeed,
+    sort,
+    sortDirection,
+    sourceIDs,
+    statusFilter,
+    worksReloadToken,
+  ]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -364,7 +393,22 @@ export function FavoritesPage() {
       favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
     };
     window.history.replaceState(state, "", `/favorites${search}`);
-  }, [activeList, auth.user, availabilityFilter, favoriteEntity, page, pageSize, query, randomSeed, selectedWorkIDs, selectionMode, sort, sortDirection, sourceIDs, statusFilter]);
+  }, [
+    activeList,
+    auth.user,
+    availabilityFilter,
+    favoriteEntity,
+    page,
+    pageSize,
+    query,
+    randomSeed,
+    selectedWorkIDs,
+    selectionMode,
+    sort,
+    sortDirection,
+    sourceIDs,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     const anchor = pendingAnchor.current;
@@ -372,19 +416,22 @@ export function FavoritesPage() {
     const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${anchor.workID}"]`);
     pendingAnchor.current = null;
     if (!target) return;
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      const top = window.scrollY + target.getBoundingClientRect().top - anchor.viewportOffset;
-      window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
-      target.focus({ preventScroll: true });
-    }));
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => {
+        const top = window.scrollY + target.getBoundingClientRect().top - anchor.viewportOffset;
+        window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+        target.focus({ preventScroll: true });
+      }),
+    );
   }, [favoriteEntity, isLoading, works]);
 
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const hasActiveFilters = favoriteEntity === "works"
-    ? statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0 || activeList !== "all"
-    : Boolean(query.trim());
-  const selectedList = activeList === "all" ? null : favoriteLists.find((list) => list.id === activeList) ?? null;
+  const hasActiveFilters =
+    favoriteEntity === "works"
+      ? statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0 || activeList !== "all"
+      : Boolean(query.trim());
+  const selectedList = activeList === "all" ? null : (favoriteLists.find((list) => list.id === activeList) ?? null);
   const selectedListIndex = selectedList ? favoriteLists.findIndex((list) => list.id === selectedList.id) : -1;
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
   const allPagedWorksSelected = works.length > 0 && works.every((work) => selectedWorkIDs.has(work.id));
@@ -426,19 +473,31 @@ export function FavoritesPage() {
     const target = document.querySelector<HTMLElement>(`[data-favorite-work-id="${work.id}"]`);
     const anchor = { workID: work.id, viewportOffset: target?.getBoundingClientRect().top ?? 0 };
     const returnTo = favoritesLocation(browseState);
-    window.history.replaceState({
-      ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
-      favoritesBrowseScope: favoritesStorageScope,
-      favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
-      favoritesAnchor: anchor,
-    }, "", returnTo);
-    window.history.pushState(historyStateWithReturn(returnTo, "Back to favorites", { workPreview: work }), "", `/${work.primaryCode}`);
+    window.history.replaceState(
+      {
+        ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
+        favoritesBrowseScope: favoritesStorageScope,
+        favoritesSelection: { active: selectionMode, workIDs: Array.from(selectedWorkIDs) },
+        favoritesAnchor: anchor,
+      },
+      "",
+      returnTo,
+    );
+    window.history.pushState(
+      historyStateWithReturn(returnTo, "Back to favorites", { workPreview: work }),
+      "",
+      `/${work.primaryCode}`,
+    );
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
 
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
     const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-    setWorks((items) => items.map((item) => (item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item)));
+    setWorks((items) =>
+      items.map((item) =>
+        item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item,
+      ),
+    );
   };
 
   const clearFilters = () => {
@@ -504,7 +563,18 @@ export function FavoritesPage() {
   const reloadFavoriteLists = async () => {
     const lists = await api.listFavoriteLists();
     setFavoriteLists(lists);
-    const result = await api.listFavoriteWorksPage(currentPage, pageSize, "", activeList, statusFilter, availabilityFilter, sourceIDs, sort, sortDirection, randomSeed);
+    const result = await api.listFavoriteWorksPage(
+      currentPage,
+      pageSize,
+      "",
+      activeList,
+      statusFilter,
+      availabilityFilter,
+      sourceIDs,
+      sort,
+      sortDirection,
+      randomSeed,
+    );
     setWorks(result.works);
     setTotalWorks(result.total);
     setShelfTotal(result.shelfTotal);
@@ -597,9 +667,27 @@ export function FavoritesPage() {
         <div className="flex min-w-0 items-end gap-3">
           <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Favorite categories">
             <div className="flex w-max min-w-full gap-6">
-              <FavoriteEntityTab active={favoriteEntity === "works"} icon={ListMusic} label="Works" count={shelfTotal} onClick={() => setFavoriteEntity("works")} />
-              <FavoriteEntityTab active={favoriteEntity === "circles"} icon={UsersRound} label="Circles" count={favoriteCircles.length} onClick={() => setFavoriteEntity("circles")} />
-              <FavoriteEntityTab active={favoriteEntity === "voices"} icon={Mic2} label="Voice Actors" count={favoriteVoices.length} onClick={() => setFavoriteEntity("voices")} />
+              <FavoriteEntityTab
+                active={favoriteEntity === "works"}
+                icon={ListMusic}
+                label="Works"
+                count={shelfTotal}
+                onClick={() => setFavoriteEntity("works")}
+              />
+              <FavoriteEntityTab
+                active={favoriteEntity === "circles"}
+                icon={UsersRound}
+                label="Circles"
+                count={favoriteCircles.length}
+                onClick={() => setFavoriteEntity("circles")}
+              />
+              <FavoriteEntityTab
+                active={favoriteEntity === "voices"}
+                icon={Mic2}
+                label="Voice Actors"
+                count={favoriteVoices.length}
+                onClick={() => setFavoriteEntity("voices")}
+              />
             </div>
           </div>
 
@@ -618,7 +706,14 @@ export function FavoritesPage() {
                   />
                 </label>
                 {query.trim() && (
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setQuery("")} aria-label="Clear search" title="Clear search">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 )}
@@ -657,7 +752,14 @@ export function FavoritesPage() {
                     />
                   </label>
                   {query.trim() && (
-                    <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setQuery("")} aria-label="Clear search" title="Clear search">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => setQuery("")}
+                      aria-label="Clear search"
+                      title="Clear search"
+                    >
                       <X className="h-4 w-4" />
                     </Button>
                   )}
@@ -678,296 +780,399 @@ export function FavoritesPage() {
           circles={favoriteCircles}
           voices={favoriteVoices}
           onRetry={() => setEntityReloadToken((value) => value + 1)}
-          onCircleChange={(next) => setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item))}
-          onVoiceChange={(next) => setVoices((items) => items.map((item) => item.personId === next.personId ? { ...item, ...next } : item))}
+          onCircleChange={(next) =>
+            setCircles((items) =>
+              items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item)),
+            )
+          }
+          onVoiceChange={(next) =>
+            setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item)))
+          }
         />
       )}
 
       {favoriteEntity === "works" && (
-      <>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 pb-1">
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
-              {areFavoriteListsLoading ? <FavoriteListTabSkeletons /> : (
-                <FavoriteListTab
-                  active={activeList === "all"}
-                  label="All Shelf"
-                  count={shelfTotal}
+        <>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 pb-1">
+              <div className="min-w-0 flex-1 overflow-x-auto">
+                <div className="flex w-max min-w-full gap-2" role="group" aria-label="Favorite lists">
+                  {areFavoriteListsLoading ? (
+                    <FavoriteListTabSkeletons />
+                  ) : (
+                    <FavoriteListTab
+                      active={activeList === "all"}
+                      label="All Shelf"
+                      count={shelfTotal}
+                      onClick={() => {
+                        setActiveList("all");
+                        setPage(1);
+                      }}
+                    />
+                  )}
+                  {favoriteLists.map((list) => (
+                    <FavoriteListTab
+                      key={list.id}
+                      active={activeList === list.id}
+                      label={list.name}
+                      count={listCounts[String(list.id)] ?? 0}
+                      title={list.description || list.name}
+                      onClick={() => {
+                        setActiveList(list.id);
+                        setPage(1);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div ref={listActionsRef} className="relative shrink-0">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-11 w-11 md:h-9 md:w-9"
+                  disabled={areFavoriteListsLoading}
+                  onClick={() => setListActionsOpen((open) => !open)}
+                  aria-label="Favorite list options"
+                  title="Manage favorite lists"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+                <AnchoredPopover
+                  open={listActionsOpen}
+                  anchorRef={listActionsRef}
+                  onOpenChange={setListActionsOpen}
+                  className="w-52 p-1 text-sm"
+                >
+                  <div role="menu" aria-label="Favorite list options">
+                    <FavoriteListAction
+                      icon={<Plus className="h-4 w-4" />}
+                      label="New list"
+                      onClick={() => {
+                        setListActionsOpen(false);
+                        setListEditor("new");
+                      }}
+                    />
+                    {selectedList && (
+                      <>
+                        <div className="my-1 border-t" role="separator" />
+                        <FavoriteListAction
+                          icon={<Pencil className="h-4 w-4" />}
+                          label="Rename list"
+                          onClick={() => {
+                            setListActionsOpen(false);
+                            setListEditor(selectedList);
+                          }}
+                        />
+                        <FavoriteListAction
+                          icon={<ArrowLeft className="h-4 w-4" />}
+                          label="Move list left"
+                          disabled={selectedListIndex <= 0}
+                          onClick={() => {
+                            setListActionsOpen(false);
+                            void moveFavoriteList(-1);
+                          }}
+                        />
+                        <FavoriteListAction
+                          icon={<ArrowRight className="h-4 w-4" />}
+                          label="Move list right"
+                          disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1}
+                          onClick={() => {
+                            setListActionsOpen(false);
+                            void moveFavoriteList(1);
+                          }}
+                        />
+                        <FavoriteListAction
+                          icon={<Trash2 className="h-4 w-4" />}
+                          label="Delete list"
+                          destructive
+                          onClick={() => {
+                            setListActionsOpen(false);
+                            setDeleteListTarget(selectedList);
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+                </AnchoredPopover>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
+              <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+                <Filter className="h-3 w-3" />
+                Status
+              </span>
+              {statusTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${statusFilter === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                   onClick={() => {
-                    setActiveList("all");
+                    setStatusFilter(tab.value);
                     setPage(1);
                   }}
-                />
-              )}
-              {favoriteLists.map((list) => (
-                <FavoriteListTab
-                  key={list.id}
-                  active={activeList === list.id}
-                  label={list.name}
-                  count={listCounts[String(list.id)] ?? 0}
-                  title={list.description || list.name}
-                  onClick={() => {
-                    setActiveList(list.id);
-                    setPage(1);
-                  }}
-                />
+                  aria-pressed={statusFilter === tab.value}
+                >
+                  <tab.icon className="h-3 w-3" />
+                  {tab.label}
+                  <span className="text-[11px] tabular-nums opacity-65">
+                    {tab.value === "all" ? shelfTotal : (statusCounts[tab.value] ?? 0)}
+                  </span>
+                </button>
               ))}
             </div>
           </div>
-          <div ref={listActionsRef} className="relative shrink-0">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 md:h-9 md:w-9"
-              disabled={areFavoriteListsLoading}
-              onClick={() => setListActionsOpen((open) => !open)}
-              aria-label="Favorite list options"
-              title="Manage favorite lists"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-            <AnchoredPopover open={listActionsOpen} anchorRef={listActionsRef} onOpenChange={setListActionsOpen} className="w-52 p-1 text-sm">
-              <div role="menu" aria-label="Favorite list options">
-                <FavoriteListAction icon={<Plus className="h-4 w-4" />} label="New list" onClick={() => { setListActionsOpen(false); setListEditor("new"); }} />
-                {selectedList && (
-                  <>
-                    <div className="my-1 border-t" role="separator" />
-                    <FavoriteListAction icon={<Pencil className="h-4 w-4" />} label="Rename list" onClick={() => { setListActionsOpen(false); setListEditor(selectedList); }} />
-                    <FavoriteListAction icon={<ArrowLeft className="h-4 w-4" />} label="Move list left" disabled={selectedListIndex <= 0} onClick={() => { setListActionsOpen(false); void moveFavoriteList(-1); }} />
-                    <FavoriteListAction icon={<ArrowRight className="h-4 w-4" />} label="Move list right" disabled={selectedListIndex < 0 || selectedListIndex >= favoriteLists.length - 1} onClick={() => { setListActionsOpen(false); void moveFavoriteList(1); }} />
-                    <FavoriteListAction icon={<Trash2 className="h-4 w-4" />} label="Delete list" destructive onClick={() => { setListActionsOpen(false); setDeleteListTarget(selectedList); }} />
-                  </>
-                )}
-              </div>
-            </AnchoredPopover>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label="Listening status filters">
-          <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
-            <Filter className="h-3 w-3" />
-            Status
-          </span>
-          {statusTabs.map((tab) => (
-            <button
-              key={tab.value}
-              className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${statusFilter === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-              onClick={() => {
-                setStatusFilter(tab.value);
-                setPage(1);
-              }}
-              aria-pressed={statusFilter === tab.value}
-            >
-              <tab.icon className="h-3 w-3" />
-              {tab.label}
-              <span className="text-[11px] tabular-nums opacity-65">{tab.value === "all" ? shelfTotal : statusCounts[tab.value] ?? 0}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <WorkCollectionPagination
-        placement="top"
-        page={currentPage}
-        pageSize={pageSize}
-        totalItems={totalWorks}
-        totalPages={totalPages}
-        pageSizeOptions={pageSizeOptions}
-        pageSizeControlClassName="hidden lg:block"
-        onPageChange={setPage}
-        onPageSizeChange={(value) => changePageSize(value as PageSize)}
-        leadingControls={(
-          <>
-            <span className="grid h-8 w-8 shrink-0 place-items-center" aria-live="polite">
-              {isLoading && hasWorksSnapshot && (
-                <span role="status" aria-label="Refreshing favorites">
-                  <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                </span>
-              )}
-            </span>
-            <div className="lg:hidden">
-              <FavoriteMobileOptions
-                availability={availabilityFilter}
-                sources={fileSources}
-                selectedSourceIDs={sourceIDs}
-                sourcesLoading={areFileSourcesLoading}
-                sort={sort}
-                direction={sortDirection}
-                pageSize={pageSize}
-                viewMode={viewMode}
-                mobileColumns={mobileColumns}
-                selectionMode={selectionMode}
-                hasActiveFilters={Boolean(hasActiveFilters)}
-                sortDisabled={isLoading}
-                onAvailabilityChange={changeAvailabilityFilter}
-                onSourceIDsChange={changeSourceIDs}
-                onSortChange={changeFavoriteSort}
-                onDirectionChange={changeFavoriteSortDirection}
-                onReshuffle={reshuffleFavorites}
-                onPageSizeChange={changePageSize}
-                onViewModeChange={setViewMode}
-                onMobileColumnsChange={setMobileColumns}
-                onToggleSelection={toggleSelectionMode}
-                onClearFilters={clearFilters}
-              />
-            </div>
-            <div className="hidden items-center gap-2 lg:flex">
-              <select
-                className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-                value={availabilityFilter}
-                onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
-                aria-label="Availability filter"
-              >
-                {availabilityFilters.map((filter) => (
-                  <option key={filter.value} value={filter.value}>
-                    {filter.label}
-                  </option>
-                ))}
-              </select>
-              <FavoriteSourceFilter
-                sources={fileSources}
-                selectedSourceIDs={sourceIDs}
-                loading={areFileSourcesLoading}
-                onChange={changeSourceIDs}
-              />
-              {hasActiveFilters && (
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearFilters} aria-label="Clear shelf filters" title="Clear shelf filters">
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-              <Button variant={selectionMode ? "default" : "outline"} size="sm" className="h-8" onClick={toggleSelectionMode}>
-                Select
-              </Button>
-              <WorkCollectionLayoutPicker
-                viewMode={viewMode}
-                mobileColumns={mobileColumns}
-                desktopColumns={desktopColumns}
-                onViewModeChange={setViewMode}
-                onMobileColumnsChange={setMobileColumns}
-                onDesktopColumnsChange={setDesktopColumns}
-              />
-              <FavoriteSortControls
-                value={sort}
-                direction={sortDirection}
-                disabled={isLoading}
-                onChange={changeFavoriteSort}
-                onDirectionChange={changeFavoriteSortDirection}
-                onReshuffle={reshuffleFavorites}
-              />
-            </div>
-          </>
-        )}
-      />
-
-      {selectionMode && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Checkbox
-              checked={allPagedWorksSelected}
-              disabled={works.length === 0}
-              onCheckedChange={togglePagedSelection}
-              aria-label="Select current page"
-            />
-            {selectedWorks.length} selected
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>Select page</Button>
-            <Button variant="outline" size="sm" onClick={() => {
-              setSelectedWorkIDs(new Set());
-              setSelectionMode(false);
-            }}>Cancel</Button>
-            <div className="relative">
-              <Button variant="outline" size="sm" disabled={selectedWorks.length === 0 || isBulkUpdating} onClick={() => setListDialogTarget((target) => target ? null : { mode: "bulk" })}>
-                Change lists
-              </Button>
-              {listDialogTarget && (
-                <ListMembershipPopover
-                  title={`${selectedWorks.length} selected works`}
-                  work={null}
-                  favoriteLists={favoriteLists}
-                  defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
-                  disabled={isBulkUpdating}
-                  align="right"
-                  onClose={() => setListDialogTarget(null)}
-                  onSave={applyListMembership}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {hasWorksSnapshot && worksLoadError && (
-        <FavoriteLoadError message={worksLoadError} compact onRetry={() => setWorksReloadToken((value) => value + 1)} />
-      )}
-      {!hasWorksSnapshot ? (
-        worksLoadError ? (
-          <FavoriteLoadError message={worksLoadError} onRetry={() => setWorksReloadToken((value) => value + 1)} />
-        ) : (
-          <WorkCollectionLoadingState
-            label="Loading favorite works"
-            viewMode={viewMode}
-            mobileColumns={mobileColumns}
-            desktopColumns={desktopColumns}
-          />
-        )
-      ) : works.length > 0 ? (
-        <>
-          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)} aria-busy={isLoading}>
-            {works.map((work) => (
-              <div key={work.id} data-favorite-work-id={work.id} tabIndex={-1} className={`${workCollectionItemClassName(viewMode)} outline-none`}>
-                <FavoriteWorkCard
-                  work={work}
-                  selected={selectedWorkIDs.has(work.id)}
-                  selectionActive={selectionMode}
-                  onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
-                  favoriteLists={favoriteLists}
-                  isListSaving={isBulkUpdating}
-                  onListsChanged={async () => {
-                    await reloadFavoriteLists();
-                    toast.success(`Updated list membership for ${work.primaryCode}.`);
-                  }}
-                  onOpen={() => openWork(work)}
-                  onUserTagOpen={openShelfUserTag}
-                  onStatusChange={updateWorkStatus}
-                />
-              </div>
-            ))}
-          </div>
           <WorkCollectionPagination
-            placement="bottom"
+            placement="top"
             page={currentPage}
             pageSize={pageSize}
             totalItems={totalWorks}
             totalPages={totalPages}
+            pageSizeOptions={pageSizeOptions}
+            pageSizeControlClassName="hidden lg:block"
             onPageChange={setPage}
+            onPageSizeChange={(value) => changePageSize(value as PageSize)}
+            leadingControls={
+              <>
+                <span className="grid h-8 w-8 shrink-0 place-items-center" aria-live="polite">
+                  {isLoading && hasWorksSnapshot && (
+                    <span role="status" aria-label="Refreshing favorites">
+                      <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                    </span>
+                  )}
+                </span>
+                <div className="lg:hidden">
+                  <FavoriteMobileOptions
+                    availability={availabilityFilter}
+                    sources={fileSources}
+                    selectedSourceIDs={sourceIDs}
+                    sourcesLoading={areFileSourcesLoading}
+                    sort={sort}
+                    direction={sortDirection}
+                    pageSize={pageSize}
+                    viewMode={viewMode}
+                    mobileColumns={mobileColumns}
+                    selectionMode={selectionMode}
+                    hasActiveFilters={Boolean(hasActiveFilters)}
+                    sortDisabled={isLoading}
+                    onAvailabilityChange={changeAvailabilityFilter}
+                    onSourceIDsChange={changeSourceIDs}
+                    onSortChange={changeFavoriteSort}
+                    onDirectionChange={changeFavoriteSortDirection}
+                    onReshuffle={reshuffleFavorites}
+                    onPageSizeChange={changePageSize}
+                    onViewModeChange={setViewMode}
+                    onMobileColumnsChange={setMobileColumns}
+                    onToggleSelection={toggleSelectionMode}
+                    onClearFilters={clearFilters}
+                  />
+                </div>
+                <div className="hidden items-center gap-2 lg:flex">
+                  <select
+                    className="h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+                    value={availabilityFilter}
+                    onChange={(event) => changeAvailabilityFilter(event.target.value as AvailabilityFilter)}
+                    aria-label="Availability filter"
+                  >
+                    {availabilityFilters.map((filter) => (
+                      <option key={filter.value} value={filter.value}>
+                        {filter.label}
+                      </option>
+                    ))}
+                  </select>
+                  <FavoriteSourceFilter
+                    sources={fileSources}
+                    selectedSourceIDs={sourceIDs}
+                    loading={areFileSourcesLoading}
+                    onChange={changeSourceIDs}
+                  />
+                  {hasActiveFilters && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={clearFilters}
+                      aria-label="Clear shelf filters"
+                      title="Clear shelf filters"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant={selectionMode ? "default" : "outline"}
+                    size="sm"
+                    className="h-8"
+                    onClick={toggleSelectionMode}
+                  >
+                    Select
+                  </Button>
+                  <WorkCollectionLayoutPicker
+                    viewMode={viewMode}
+                    mobileColumns={mobileColumns}
+                    desktopColumns={desktopColumns}
+                    onViewModeChange={setViewMode}
+                    onMobileColumnsChange={setMobileColumns}
+                    onDesktopColumnsChange={setDesktopColumns}
+                  />
+                  <FavoriteSortControls
+                    value={sort}
+                    direction={sortDirection}
+                    disabled={isLoading}
+                    onChange={changeFavoriteSort}
+                    onDirectionChange={changeFavoriteSortDirection}
+                    onReshuffle={reshuffleFavorites}
+                  />
+                </div>
+              </>
+            }
           />
+
+          {selectionMode && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Checkbox
+                  checked={allPagedWorksSelected}
+                  disabled={works.length === 0}
+                  onCheckedChange={togglePagedSelection}
+                  aria-label="Select current page"
+                />
+                {selectedWorks.length} selected
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => togglePagedSelection(true)}>
+                  Select page
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedWorkIDs(new Set());
+                    setSelectionMode(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedWorks.length === 0 || isBulkUpdating}
+                    onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
+                  >
+                    Change lists
+                  </Button>
+                  {listDialogTarget && (
+                    <ListMembershipPopover
+                      title={`${selectedWorks.length} selected works`}
+                      work={null}
+                      favoriteLists={favoriteLists}
+                      defaultSelectedListIDs={selectedList ? [selectedList.id] : undefined}
+                      disabled={isBulkUpdating}
+                      align="right"
+                      onClose={() => setListDialogTarget(null)}
+                      onSave={applyListMembership}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hasWorksSnapshot && worksLoadError && (
+            <FavoriteLoadError
+              message={worksLoadError}
+              compact
+              onRetry={() => setWorksReloadToken((value) => value + 1)}
+            />
+          )}
+          {!hasWorksSnapshot ? (
+            worksLoadError ? (
+              <FavoriteLoadError message={worksLoadError} onRetry={() => setWorksReloadToken((value) => value + 1)} />
+            ) : (
+              <WorkCollectionLoadingState
+                label="Loading favorite works"
+                viewMode={viewMode}
+                mobileColumns={mobileColumns}
+                desktopColumns={desktopColumns}
+              />
+            )
+          ) : works.length > 0 ? (
+            <>
+              <div
+                className={workCollectionClassName(viewMode)}
+                style={workCollectionStyle(mobileColumns, desktopColumns)}
+                aria-busy={isLoading}
+              >
+                {works.map((work) => (
+                  <div
+                    key={work.id}
+                    data-favorite-work-id={work.id}
+                    tabIndex={-1}
+                    className={`${workCollectionItemClassName(viewMode)} outline-none`}
+                  >
+                    <FavoriteWorkCard
+                      work={work}
+                      selected={selectedWorkIDs.has(work.id)}
+                      selectionActive={selectionMode}
+                      onSelectedChange={(selected) => toggleWorkSelection(work.id, selected)}
+                      favoriteLists={favoriteLists}
+                      isListSaving={isBulkUpdating}
+                      onListsChanged={async () => {
+                        await reloadFavoriteLists();
+                        toast.success(`Updated list membership for ${work.primaryCode}.`);
+                      }}
+                      onOpen={() => openWork(work)}
+                      onUserTagOpen={openShelfUserTag}
+                      onStatusChange={updateWorkStatus}
+                    />
+                  </div>
+                ))}
+              </div>
+              <WorkCollectionPagination
+                placement="bottom"
+                page={currentPage}
+                pageSize={pageSize}
+                totalItems={totalWorks}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </>
+          ) : (
+            <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
+          )}
+          {listEditor && (
+            <FavoriteListEditor
+              list={listEditor === "new" ? null : listEditor}
+              onClose={() => setListEditor(null)}
+              onSave={saveFavoriteList}
+            />
+          )}
+          {deleteListTarget && (
+            <ConfirmDeleteList
+              list={deleteListTarget}
+              onClose={() => setDeleteListTarget(null)}
+              onConfirm={() => void deleteFavoriteList()}
+            />
+          )}
         </>
-      ) : (
-        <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
-      )}
-      {listEditor && (
-        <FavoriteListEditor
-          list={listEditor === "new" ? null : listEditor}
-          onClose={() => setListEditor(null)}
-          onSave={saveFavoriteList}
-        />
-      )}
-      {deleteListTarget && (
-        <ConfirmDeleteList
-          list={deleteListTarget}
-          onClose={() => setDeleteListTarget(null)}
-          onConfirm={() => void deleteFavoriteList()}
-        />
-      )}
-      </>
       )}
     </section>
   );
 }
 
-function FavoriteEntityTab({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Heart; label: string; count: number; onClick: () => void }) {
+function FavoriteEntityTab({
+  active,
+  icon: Icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof Heart;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
   return (
     <button
       className={`relative inline-flex h-11 shrink-0 items-center gap-2 px-1 text-sm font-medium transition-colors ${active ? "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary" : "text-muted-foreground hover:text-foreground"}`}
@@ -977,7 +1182,11 @@ function FavoriteEntityTab({ active, icon: Icon, label, count, onClick }: { acti
     >
       <Icon className="h-4 w-4" />
       {label}
-      <span className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{count}</span>
+      <span
+        className={`rounded-full px-1.5 py-0.5 text-[11px] tabular-nums ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -1006,32 +1215,58 @@ function FavoriteEntitySection({
   onVoiceChange: (voice: VoiceSummary) => void;
 }) {
   const needle = query.trim().toLowerCase();
-  const filteredCircles = circles.filter((circle) => !needle || [circle.externalId, circle.displayName, ...circle.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle)));
-  const filteredVoices = voices.filter((voice) => !needle || [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some((value) => value.toLowerCase().includes(needle)));
+  const filteredCircles = circles.filter(
+    (circle) =>
+      !needle ||
+      [circle.externalId, circle.displayName, ...circle.userTags.map((tag) => tag.name)].some((value) =>
+        value.toLowerCase().includes(needle),
+      ),
+  );
+  const filteredVoices = voices.filter(
+    (voice) =>
+      !needle ||
+      [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some(
+        (value) => value.toLowerCase().includes(needle),
+      ),
+  );
   const items = kind === "circles" ? filteredCircles : filteredVoices;
 
   if (!hasSnapshot) {
-    return loadError
-      ? <FavoriteLoadError message={loadError} onRetry={onRetry} />
-      : <CreatorCollectionSkeleton label={`Loading favorite ${kind === "circles" ? "circles" : "voice actors"}`} />;
+    return loadError ? (
+      <FavoriteLoadError message={loadError} onRetry={onRetry} />
+    ) : (
+      <CreatorCollectionSkeleton label={`Loading favorite ${kind === "circles" ? "circles" : "voice actors"}`} />
+    );
   }
   if (items.length === 0) {
     return (
       <Card className="min-h-56" aria-busy={isLoading}>
-        <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.</CardContent>
+        <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+          No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.
+        </CardContent>
       </Card>
     );
   }
   return (
     <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
       {kind === "circles"
-        ? filteredCircles.map((circle) => <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />)
-        : filteredVoices.map((voice) => <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />)}
+        ? filteredCircles.map((circle) => (
+            <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />
+          ))
+        : filteredVoices.map((voice) => (
+            <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />
+          ))}
     </div>
   );
 }
 
-function FavoriteCircleCard({ circle, onChange }: { circle: CircleSummary; onChange: (circle: CircleSummary) => void }) {
+function FavoriteCircleCard({
+  circle,
+  onChange,
+}: {
+  circle: CircleSummary;
+  onChange: (circle: CircleSummary) => void;
+}) {
   const toast = useToast();
   const saveTags = async (tags: string[]) => {
     try {
@@ -1049,21 +1284,23 @@ function FavoriteCircleCard({ circle, onChange }: { circle: CircleSummary; onCha
       toast.notify(toastFromError(error, "Circle favorite update failed."));
     }
   };
-  return <CreatorCard
-    name={circle.displayName}
-    identityLabel={circle.externalId}
-    aliases={circle.aliases}
-    latestWork={circle.latestWork}
-    favorite={circle.favorite}
-    userTags={circle.userTags}
-    syncState={circle.syncState}
-    workCount={circle.catalogWorks}
-    unavailableCount={circle.missingWorks}
-    sources={circle.sourceSummaries}
-    onOpen={() => openCircleRoute(circle.externalId)}
-    onFavoriteToggle={() => void removeFavorite()}
-    onTagsSave={saveTags}
-  />;
+  return (
+    <CreatorCard
+      name={circle.displayName}
+      identityLabel={circle.externalId}
+      aliases={circle.aliases}
+      latestWork={circle.latestWork}
+      favorite={circle.favorite}
+      userTags={circle.userTags}
+      syncState={circle.syncState}
+      workCount={circle.catalogWorks}
+      unavailableCount={circle.missingWorks}
+      sources={circle.sourceSummaries}
+      onOpen={() => openCircleRoute(circle.externalId)}
+      onFavoriteToggle={() => void removeFavorite()}
+      onTagsSave={saveTags}
+    />
+  );
 }
 
 function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange: (voice: VoiceSummary) => void }) {
@@ -1084,27 +1321,35 @@ function FavoriteVoiceCard({ voice, onChange }: { voice: VoiceSummary; onChange:
       toast.notify(toastFromError(error, "Voice favorite update failed."));
     }
   };
-  return <CreatorCard
-    name={voice.displayName}
-    identityLabel={voice.latestWork ? undefined : "Voice actor"}
-    aliases={voice.aliases}
-    latestWork={voice.latestWork}
-    favorite={voice.favorite}
-    userTags={voice.userTags}
-    workCount={voice.knownWorks}
-    unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
-    sources={voice.sourceSummaries}
-    onOpen={() => openVoiceRoute(voice.personId)}
-    onFavoriteToggle={() => void removeFavorite()}
-    onTagsSave={saveTags}
-  />;
+  return (
+    <CreatorCard
+      name={voice.displayName}
+      identityLabel={voice.latestWork ? undefined : "Voice actor"}
+      aliases={voice.aliases}
+      latestWork={voice.latestWork}
+      favorite={voice.favorite}
+      userTags={voice.userTags}
+      workCount={voice.knownWorks}
+      unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
+      sources={voice.sourceSummaries}
+      onOpen={() => openVoiceRoute(voice.personId)}
+      onFavoriteToggle={() => void removeFavorite()}
+      onTagsSave={saveTags}
+    />
+  );
 }
 
 function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
-function FavoriteListTab({ active, label, count, title, onClick }: {
+function FavoriteListTab({
+  active,
+  label,
+  count,
+  title,
+  onClick,
+}: {
   active: boolean;
   label: string;
   count: number;
@@ -1163,11 +1408,24 @@ function FavoriteListAction({
   );
 }
 
-function FavoriteLoadError({ message, compact = false, onRetry }: { message: string; compact?: boolean; onRetry: () => void }) {
+function FavoriteLoadError({
+  message,
+  compact = false,
+  onRetry,
+}: {
+  message: string;
+  compact?: boolean;
+  onRetry: () => void;
+}) {
   return (
-    <div className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-destructive/30 bg-destructive/5`} role="alert">
+    <div
+      className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-destructive/30 bg-destructive/5`}
+      role="alert"
+    >
       <p className="text-sm text-destructive">{message}</p>
-      <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
@@ -1202,23 +1460,30 @@ function FavoriteWorkCard({
       work={view}
       selection={selectionActive ? <WorkCardSelection checked={selected} onChange={onSelectedChange} /> : undefined}
       onOpen={onOpen}
-      onSeriesOpen={work.seriesTitleId && work.circleExternalId ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId) : undefined}
-      footer={(
+      onSeriesOpen={
+        work.seriesTitleId && work.circleExternalId
+          ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
+          : undefined
+      }
+      footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
-          right={(
+          right={
             <>
-            <WorkCardListButton
-              workId={work.id}
-              active={work.favorite}
-              disabled={isListSaving}
-              onSaved={() => void onListsChanged()}
-            />
-            <WorkCardQuickMarkButton value={work.listeningStatus} onChange={(status) => void onStatusChange(work.id, status)} />
+              <WorkCardListButton
+                workId={work.id}
+                active={work.favorite}
+                disabled={isListSaving}
+                onSaved={() => void onListsChanged()}
+              />
+              <WorkCardQuickMarkButton
+                value={work.listeningStatus}
+                onChange={(status) => void onStatusChange(work.id, status)}
+              />
             </>
-          )}
+          }
         />
-      )}
+      }
     />
   );
 }
@@ -1233,7 +1498,9 @@ function WorkProgress({ progress }: { progress: Work["progress"] }) {
         <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+        {progress.completed
+          ? "Finished"
+          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
@@ -1258,7 +1525,11 @@ function favoriteWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void)
     series: work.series || null,
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: [
-      { key: `status:${work.listeningStatus}`, label: listeningStatusLabel(work.listeningStatus), variant: "secondary" },
+      {
+        key: `status:${work.listeningStatus}`,
+        label: listeningStatusLabel(work.listeningStatus),
+        variant: "secondary",
+      },
       ...dlsiteTagBadges(work.tags),
     ],
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
@@ -1304,18 +1575,25 @@ function FavoriteSortControls({
           size="icon"
           className="h-7 w-8 rounded-l-none border-l"
           disabled={disabled}
-          onClick={() => value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc")}
+          onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc"))}
           aria-label={directionTitle}
           title={directionTitle}
         >
-          {value === "random"
-            ? <RefreshCw className="h-4 w-4" />
-            : direction === "asc"
-              ? <ArrowDownAZ className="h-4 w-4" />
-              : <ArrowDownZA className="h-4 w-4" />}
+          {value === "random" ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : direction === "asc" ? (
+            <ArrowDownAZ className="h-4 w-4" />
+          ) : (
+            <ArrowDownZA className="h-4 w-4" />
+          )}
         </Button>
       </div>
-      <AnchoredPopover open={open && !disabled} anchorRef={anchorRef} onOpenChange={setOpen} className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm">
+      <AnchoredPopover
+        open={open && !disabled}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
         <div role="menu" aria-label="Shelf sort options">
           {favoriteSortOptions.map((option) => (
             <button
@@ -1338,7 +1616,12 @@ function FavoriteSortControls({
   );
 }
 
-function FavoriteSourceFilter({ sources, selectedSourceIDs, loading, onChange }: {
+function FavoriteSourceFilter({
+  sources,
+  selectedSourceIDs,
+  loading,
+  onChange,
+}: {
   sources: LibrarySource[];
   selectedSourceIDs: number[];
   loading: boolean;
@@ -1366,7 +1649,13 @@ function FavoriteSourceFilter({ sources, selectedSourceIDs, loading, onChange }:
         <Cloud className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{label}</span>
       </Button>
-      <AnchoredPopover open={open && !disabled} anchorRef={anchorRef} onOpenChange={setOpen} align="start" className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm">
+      <AnchoredPopover
+        open={open && !disabled}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        align="start"
+        className="w-[min(17rem,calc(100vw-1.5rem))] p-1 text-sm"
+      >
         <div role="menu" aria-label="Source filters">
           <div className="px-3 py-2 text-xs font-semibold text-foreground">Sources</div>
           <FavoriteSourceOptions sources={sources} selectedSourceIDs={selectedSourceIDs} onChange={onChange} />
@@ -1376,7 +1665,11 @@ function FavoriteSourceFilter({ sources, selectedSourceIDs, loading, onChange }:
   );
 }
 
-function FavoriteSourceOptions({ sources, selectedSourceIDs, onChange }: {
+function FavoriteSourceOptions({
+  sources,
+  selectedSourceIDs,
+  onChange,
+}: {
   sources: LibrarySource[];
   selectedSourceIDs: number[];
   onChange: (sourceIDs: number[]) => void;
@@ -1486,7 +1779,8 @@ function FavoriteMobileOptions({
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<FavoriteMobilePanel>("root");
   const anchorRef = useRef<HTMLDivElement | null>(null);
-  const availabilityLabel = availabilityFilters.find((option) => option.value === availability)?.label ?? "Any availability";
+  const availabilityLabel =
+    availabilityFilters.find((option) => option.value === availability)?.label ?? "Any availability";
   const sourceLabel = sourcesLoading
     ? "Loading"
     : sources.length === 0
@@ -1522,7 +1816,9 @@ function FavoriteMobileOptions({
         data-shelf-sort={sort}
       >
         <SlidersHorizontal className="h-4 w-4" />
-        {(hasActiveFilters || selectionMode) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />}
+        {(hasActiveFilters || selectionMode) && (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
+        )}
       </Button>
       <AnchoredPopover
         open={open}
@@ -1533,23 +1829,79 @@ function FavoriteMobileOptions({
         {panel === "root" ? (
           <div role="menu" aria-label="More shelf options">
             <div className="px-3 py-2 text-xs font-semibold text-foreground">More options</div>
-            <FavoriteMobileMenuRow icon={<Filter className="h-4 w-4" />} label="Availability" value={availabilityLabel} onClick={() => setPanel("availability")} />
-            <FavoriteMobileMenuRow icon={<Cloud className="h-4 w-4" />} label="Sources" value={sourceLabel} disabled={sourcesLoading || sources.length === 0} onClick={() => setPanel("sources")} />
-            <FavoriteMobileMenuRow icon={<ArrowUpDown className="h-4 w-4" />} label="Sort" value={sortLabel} disabled={sortDisabled} onClick={() => setPanel("sort")} />
             <FavoriteMobileMenuRow
-              icon={sort === "random" ? <RefreshCw className="h-4 w-4" /> : direction === "asc" ? <ArrowDownAZ className="h-4 w-4" /> : <ArrowDownZA className="h-4 w-4" />}
+              icon={<Filter className="h-4 w-4" />}
+              label="Availability"
+              value={availabilityLabel}
+              onClick={() => setPanel("availability")}
+            />
+            <FavoriteMobileMenuRow
+              icon={<Cloud className="h-4 w-4" />}
+              label="Sources"
+              value={sourceLabel}
+              disabled={sourcesLoading || sources.length === 0}
+              onClick={() => setPanel("sources")}
+            />
+            <FavoriteMobileMenuRow
+              icon={<ArrowUpDown className="h-4 w-4" />}
+              label="Sort"
+              value={sortLabel}
+              disabled={sortDisabled}
+              onClick={() => setPanel("sort")}
+            />
+            <FavoriteMobileMenuRow
+              icon={
+                sort === "random" ? (
+                  <RefreshCw className="h-4 w-4" />
+                ) : direction === "asc" ? (
+                  <ArrowDownAZ className="h-4 w-4" />
+                ) : (
+                  <ArrowDownZA className="h-4 w-4" />
+                )
+              }
               label={sort === "random" ? "Shuffle" : "Sort direction"}
               value={directionLabel}
               disabled={sortDisabled}
               trailing={false}
-              onClick={() => runAndClose(sort === "random" ? onReshuffle : () => onDirectionChange(direction === "asc" ? "desc" : "asc"))}
+              onClick={() =>
+                runAndClose(
+                  sort === "random" ? onReshuffle : () => onDirectionChange(direction === "asc" ? "desc" : "asc"),
+                )
+              }
             />
-            <FavoriteMobileMenuRow icon={viewMode === "masonry" ? <PanelsTopLeft className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />} label="Layout" value={viewLabel} onClick={() => setPanel("view")} />
-            <FavoriteMobileMenuRow icon={<Columns3 className="h-4 w-4" />} label="Columns" value={columnsLabel} onClick={() => setPanel("columns")} />
-            <FavoriteMobileMenuRow icon={<ListMusic className="h-4 w-4" />} label="Per page" value={String(pageSize)} onClick={() => setPanel("page-size")} />
-            <FavoriteMobileMenuRow icon={<ListChecks className="h-4 w-4" />} label="Selection mode" value={selectionMode ? "On" : "Off"} trailing={false} onClick={() => runAndClose(onToggleSelection)} />
+            <FavoriteMobileMenuRow
+              icon={viewMode === "masonry" ? <PanelsTopLeft className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+              label="Layout"
+              value={viewLabel}
+              onClick={() => setPanel("view")}
+            />
+            <FavoriteMobileMenuRow
+              icon={<Columns3 className="h-4 w-4" />}
+              label="Columns"
+              value={columnsLabel}
+              onClick={() => setPanel("columns")}
+            />
+            <FavoriteMobileMenuRow
+              icon={<ListMusic className="h-4 w-4" />}
+              label="Per page"
+              value={String(pageSize)}
+              onClick={() => setPanel("page-size")}
+            />
+            <FavoriteMobileMenuRow
+              icon={<ListChecks className="h-4 w-4" />}
+              label="Selection mode"
+              value={selectionMode ? "On" : "Off"}
+              trailing={false}
+              onClick={() => runAndClose(onToggleSelection)}
+            />
             {hasActiveFilters && (
-              <FavoriteMobileMenuRow icon={<X className="h-4 w-4" />} label="Clear filters" value="" trailing={false} onClick={() => runAndClose(onClearFilters)} />
+              <FavoriteMobileMenuRow
+                icon={<X className="h-4 w-4" />}
+                label="Clear filters"
+                value=""
+                trailing={false}
+                onClick={() => runAndClose(onClearFilters)}
+              />
             )}
           </div>
         ) : panel === "sources" ? (
@@ -1580,7 +1932,14 @@ function FavoriteMobileOptions({
   );
 }
 
-function FavoriteMobileMenuRow({ icon, label, value, trailing = true, disabled = false, onClick }: {
+function FavoriteMobileMenuRow({
+  icon,
+  label,
+  value,
+  trailing = true,
+  disabled = false,
+  onClick,
+}: {
   icon: ReactNode;
   label: string;
   value: string;
@@ -1604,7 +1963,12 @@ function FavoriteMobileMenuRow({ icon, label, value, trailing = true, disabled =
   );
 }
 
-function FavoriteMobileSourcePanel({ sources, selectedSourceIDs, onBack, onChange }: {
+function FavoriteMobileSourcePanel({
+  sources,
+  selectedSourceIDs,
+  onBack,
+  onChange,
+}: {
   sources: LibrarySource[];
   selectedSourceIDs: number[];
   onBack: () => void;
@@ -1613,7 +1977,12 @@ function FavoriteMobileSourcePanel({ sources, selectedSourceIDs, onBack, onChang
   return (
     <div role="menu" aria-label="Source options">
       <div className="flex min-h-10 items-center gap-2 px-1">
-        <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onBack} aria-label="Back to more options">
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={onBack}
+          aria-label="Back to more options"
+        >
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span className="text-xs font-semibold text-foreground">Sources</span>
@@ -1650,23 +2019,63 @@ function FavoriteMobileOptionPanel({
   onViewModeChange: (value: WorkCollectionViewMode) => void;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
-  const title = panel === "availability" ? "Availability" : panel === "sort" ? "Sort" : panel === "view" ? "Layout" : panel === "columns" ? "Columns" : "Per page";
-  const options = panel === "availability"
-    ? availabilityFilters.map((option) => ({ key: option.value, label: option.label, selected: option.value === availability, select: () => onAvailabilityChange(option.value) }))
-    : panel === "sort"
-      ? favoriteSortOptions.map((option) => ({ key: option.value, label: option.label, selected: option.value === sort, select: () => onSortChange(option.value) }))
-      : panel === "view"
-        ? ([
-            { key: "grid", label: "Grid", selected: viewMode === "grid", select: () => onViewModeChange("grid") },
-            { key: "masonry", label: "Masonry", selected: viewMode === "masonry", select: () => onViewModeChange("masonry") },
-          ])
-        : panel === "columns"
-          ? (["auto", 1, 2] as const).map((option) => ({ key: String(option), label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`, selected: option === mobileColumns, select: () => onMobileColumnsChange(option) }))
-          : pageSizeOptions.map((option) => ({ key: String(option), label: `${option} per page`, selected: option === pageSize, select: () => onPageSizeChange(option) }));
+  const title =
+    panel === "availability"
+      ? "Availability"
+      : panel === "sort"
+        ? "Sort"
+        : panel === "view"
+          ? "Layout"
+          : panel === "columns"
+            ? "Columns"
+            : "Per page";
+  const options =
+    panel === "availability"
+      ? availabilityFilters.map((option) => ({
+          key: option.value,
+          label: option.label,
+          selected: option.value === availability,
+          select: () => onAvailabilityChange(option.value),
+        }))
+      : panel === "sort"
+        ? favoriteSortOptions.map((option) => ({
+            key: option.value,
+            label: option.label,
+            selected: option.value === sort,
+            select: () => onSortChange(option.value),
+          }))
+        : panel === "view"
+          ? [
+              { key: "grid", label: "Grid", selected: viewMode === "grid", select: () => onViewModeChange("grid") },
+              {
+                key: "masonry",
+                label: "Masonry",
+                selected: viewMode === "masonry",
+                select: () => onViewModeChange("masonry"),
+              },
+            ]
+          : panel === "columns"
+            ? (["auto", 1, 2] as const).map((option) => ({
+                key: String(option),
+                label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`,
+                selected: option === mobileColumns,
+                select: () => onMobileColumnsChange(option),
+              }))
+            : pageSizeOptions.map((option) => ({
+                key: String(option),
+                label: `${option} per page`,
+                selected: option === pageSize,
+                select: () => onPageSizeChange(option),
+              }));
   return (
     <div role="menu" aria-label={`${title} options`}>
       <div className="flex min-h-10 items-center gap-2 px-1">
-        <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onBack} aria-label="Back to more options">
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          onClick={onBack}
+          aria-label="Back to more options"
+        >
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span className="text-xs font-semibold text-foreground">{title}</span>
@@ -1695,7 +2104,9 @@ function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; o
         <Heart className="mx-auto h-8 w-8 text-primary" />
         <h3 className="text-base font-semibold">{hasFilters ? "No matches" : "No shelf works yet"}</h3>
         <p className="text-sm text-muted-foreground">
-          {hasFilters ? "The current filters do not match any shelf works." : "Favorite or quick mark works from Library or Work Detail to build this shelf."}
+          {hasFilters
+            ? "The current filters do not match any shelf works."
+            : "Favorite or quick mark works from Library or Work Detail to build this shelf."}
         </p>
         {hasFilters && (
           <Button variant="outline" size="sm" onClick={onClearFilters}>
@@ -1762,10 +2173,14 @@ function FavoriteListEditor({
               onChange={(event) => setDescription(event.target.value)}
             />
           </label>
-          {error && <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>}
+          {error && (
+            <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
+          )}
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
           <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
             {isSaving ? "Saving" : "Save"}
           </Button>
@@ -1786,11 +2201,18 @@ function ConfirmDeleteList({
 }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Delete list</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Delete "{list.name}"? Works stay in the library, but this list membership is removed.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Delete "{list.name}"? Works stay in the library, but this list membership is removed.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
           <Button size="sm" onClick={onConfirm}>
             Delete
           </Button>
@@ -1828,12 +2250,14 @@ function ListMembershipPopover({
     if (!work) return;
     let cancelled = false;
     setIsLoading(true);
-    api.getWorkFavoriteLists(work.id)
+    api
+      .getWorkFavoriteLists(work.id)
       .then((lists) => {
         if (!cancelled) setSelectedIDs(new Set(lists.filter((list) => list.selected).map((list) => list.id)));
       })
       .catch((nextError) => {
-        if (!cancelled) setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
+        if (!cancelled)
+          setError(nextError instanceof Error ? nextError.message : "Favorite lists could not be loaded.");
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -1887,19 +2311,38 @@ function ListMembershipPopover({
       <h3 className="text-sm font-semibold">{title}</h3>
       <div className="app-scroll mt-3 max-h-64 space-y-2 overflow-auto">
         {isLoading ? (
-          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Loading lists...</div>
-        ) : favoriteLists.length > 0 ? favoriteLists.map((list) => (
-          <div key={list.id} className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted ${selectedIDs.has(list.id) ? "border-primary/30 bg-primary/10" : "bg-background"}`} onClick={() => toggleList(list.id, !selectedIDs.has(list.id))}>
-            <Checkbox checked={selectedIDs.has(list.id)} onCheckedChange={(checked) => toggleList(list.id, checked)} onClick={(event) => event.stopPropagation()} aria-label={`${selectedIDs.has(list.id) ? "Remove from" : "Add to"} ${list.name}`} />
-            <span className="min-w-0 flex-1 truncate">{list.name}</span>
+          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            Loading lists...
           </div>
-        )) : (
-          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
+        ) : favoriteLists.length > 0 ? (
+          favoriteLists.map((list) => (
+            <div
+              key={list.id}
+              className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted ${selectedIDs.has(list.id) ? "border-primary/30 bg-primary/10" : "bg-background"}`}
+              onClick={() => toggleList(list.id, !selectedIDs.has(list.id))}
+            >
+              <Checkbox
+                checked={selectedIDs.has(list.id)}
+                onCheckedChange={(checked) => toggleList(list.id, checked)}
+                onClick={(event) => event.stopPropagation()}
+                aria-label={`${selectedIDs.has(list.id) ? "Remove from" : "Add to"} ${list.name}`}
+              />
+              <span className="min-w-0 flex-1 truncate">{list.name}</span>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+            No favorite lists yet.
+          </div>
         )}
-        {error && <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>}
+        {error && (
+          <div className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">{error}</div>
+        )}
       </div>
       <div className="mt-3 flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
         <Button size="sm" disabled={disabled || isLoading} onClick={() => void save()}>
           Save
         </Button>
@@ -1934,11 +2377,16 @@ function readFavoritesEntryState(storageScope: string): FavoritesEntryState {
   const anchor = state.favoritesAnchor;
   return {
     favoritesBrowseState: state.favoritesBrowseState ? browseState : undefined,
-    favoritesSelection: selection && Array.isArray(selection.workIDs)
-      ? { active: Boolean(selection.active), workIDs: selection.workIDs.filter((id) => Number.isInteger(id) && id > 0) }
-      : undefined,
-    favoritesAnchor: anchor && Number.isInteger(anchor.workID) && anchor.workID > 0 && Number.isFinite(anchor.viewportOffset)
-      ? { workID: anchor.workID, viewportOffset: anchor.viewportOffset }
-      : undefined,
+    favoritesSelection:
+      selection && Array.isArray(selection.workIDs)
+        ? {
+            active: Boolean(selection.active),
+            workIDs: selection.workIDs.filter((id) => Number.isInteger(id) && id > 0),
+          }
+        : undefined,
+    favoritesAnchor:
+      anchor && Number.isInteger(anchor.workID) && anchor.workID > 0 && Number.isFinite(anchor.viewportOffset)
+        ? { workID: anchor.workID, viewportOffset: anchor.viewportOffset }
+        : undefined,
   };
 }

@@ -73,12 +73,14 @@ describe("workflow definition model", () => {
   });
 
   it("keeps legacy linear definitions readable", () => {
-    const parsed = parseWorkflowDefinition(JSON.stringify({
-      nodes: [
-        { id: "select", type: "select_works", displayName: "Select works" },
-        { id: "sync", type: "sync_metadata", config: { forceRefresh: false } },
-      ],
-    }));
+    const parsed = parseWorkflowDefinition(
+      JSON.stringify({
+        nodes: [
+          { id: "select", type: "select_works", displayName: "Select works" },
+          { id: "sync", type: "sync_metadata", config: { forceRefresh: false } },
+        ],
+      }),
+    );
 
     expect(parsed).toEqual({
       kind: "legacy",
@@ -90,10 +92,13 @@ describe("workflow definition model", () => {
   });
 
   it("upgrades only lossless legacy metadata flows in memory", () => {
-    const upgrade = upgradeLegacyWorkflowDefinition([
-      { id: "select", type: "select_works", config: { codes: ["RJ01234567"] } },
-      { id: "sync", type: "sync_metadata" },
-    ], [{ triggerType: "schedule", scheduleJson: '{"intervalMinutes":60}', configJson: "{\"inputs\":{}}" }]);
+    const upgrade = upgradeLegacyWorkflowDefinition(
+      [
+        { id: "select", type: "select_works", config: { codes: ["RJ01234567"] } },
+        { id: "sync", type: "sync_metadata" },
+      ],
+      [{ triggerType: "schedule", scheduleJson: '{"intervalMinutes":60}', configJson: '{"inputs":{}}' }],
+    );
 
     expect(upgrade.kind).toBe("upgradeable");
     if (upgrade.kind !== "upgradeable") return;
@@ -103,10 +108,13 @@ describe("workflow definition model", () => {
   });
 
   it("blocks legacy upgrades with unsupported nodes or triggers", () => {
-    const upgrade = upgradeLegacyWorkflowDefinition([
-      { id: "scan", type: "discover_local_files" },
-      { id: "sync", type: "sync_file_locations" },
-    ], [{ triggerType: "filesystem_event", scheduleJson: "{}", configJson: "{}" }]);
+    const upgrade = upgradeLegacyWorkflowDefinition(
+      [
+        { id: "scan", type: "discover_local_files" },
+        { id: "sync", type: "sync_file_locations" },
+      ],
+      [{ triggerType: "filesystem_event", scheduleJson: "{}", configJson: "{}" }],
+    );
 
     expect(upgrade.kind).toBe("blocked");
     if (upgrade.kind === "blocked") expect(upgrade.reasons.join(" ")).toContain("filesystem_event");
@@ -128,9 +136,21 @@ describe("workflow definition model", () => {
 
   it("accepts configured entity values in place of required entity ports", () => {
     const entityNodeTypes: WorkflowNodeType[] = [
-      { ...nodeTypes[0], type: "circle_catalog", inputPorts: [{ id: "circle", label: "Circle", type: "circle_id", required: true }] },
-      { ...nodeTypes[0], type: "series_catalog", inputPorts: [{ id: "series", label: "Series", type: "series_id", required: true }] },
-      { ...nodeTypes[0], type: "voice_source_works", inputPorts: [{ id: "voice", label: "Voice", type: "voice_name", required: true }] },
+      {
+        ...nodeTypes[0],
+        type: "circle_catalog",
+        inputPorts: [{ id: "circle", label: "Circle", type: "circle_id", required: true }],
+      },
+      {
+        ...nodeTypes[0],
+        type: "series_catalog",
+        inputPorts: [{ id: "series", label: "Series", type: "series_id", required: true }],
+      },
+      {
+        ...nodeTypes[0],
+        type: "voice_source_works",
+        inputPorts: [{ id: "voice", label: "Voice", type: "voice_name", required: true }],
+      },
     ];
     const cases = [
       { type: "circle_catalog", config: { circleId: "RG01234" } },
@@ -141,7 +161,9 @@ describe("workflow definition model", () => {
     for (const [index, item] of cases.entries()) {
       const definition = createEmptyWorkflowDefinition();
       definition.nodes = [{ id: `entity_${index}`, type: item.type, config: item.config, position: { x: 0, y: 0 } }];
-      expect(validateWorkflowDefinition(definition, entityNodeTypes).filter((issue) => issue.level === "error")).toEqual([]);
+      expect(
+        validateWorkflowDefinition(definition, entityNodeTypes).filter((issue) => issue.level === "error"),
+      ).toEqual([]);
     }
   });
 
@@ -149,7 +171,13 @@ describe("workflow definition model", () => {
     const definition = validDefinition();
     definition.edges = [
       { id: "wrong_type", source: "circle_input", sourceHandle: "value", target: "filter", targetHandle: "candidates" },
-      { id: "missing_node", source: "catalog", sourceHandle: "candidates", target: "removed", targetHandle: "candidates" },
+      {
+        id: "missing_node",
+        source: "catalog",
+        sourceHandle: "candidates",
+        target: "removed",
+        targetHandle: "candidates",
+      },
     ];
 
     const messages = validateWorkflowDefinition(definition, nodeTypes).map((issue) => issue.message);

@@ -5,7 +5,9 @@ export function cursorUpdateAffectsWork(
   currentCursor: WorkProgressSummary | null,
   update: MediaProgressUpdate,
 ) {
-  return update.workId === requestedWorkId
-    || update.mediaWorkId === requestedWorkId
-    || currentCursor?.workId === update.workId;
+  return (
+    update.workId === requestedWorkId ||
+    update.mediaWorkId === requestedWorkId ||
+    currentCursor?.workId === update.workId
+  );
 }

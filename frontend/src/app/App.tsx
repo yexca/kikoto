@@ -1,6 +1,16 @@
 import { App as CapacitorApp } from "@capacitor/app";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Download, ExternalLink, Lock, PanelLeftClose, PanelLeftOpen, Server, WifiOff, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  Lock,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Server,
+  WifiOff,
+  X,
+} from "lucide-react";
 
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { canAccessPage, navItems, visibleNavigationItems, type PageID } from "@/app/navigation";
@@ -39,10 +49,14 @@ import {
 
 const LibraryPage = lazy(() => import("@/pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
-const MaintenancePage = lazy(() => import("@/pages/MaintenancePage").then((module) => ({ default: module.MaintenancePage })));
+const MaintenancePage = lazy(() =>
+  import("@/pages/MaintenancePage").then((module) => ({ default: module.MaintenancePage })),
+);
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
-const CreatorWorksPage = lazy(() => import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })));
+const CreatorWorksPage = lazy(() =>
+  import("@/pages/CreatorWorksPage").then((module) => ({ default: module.CreatorWorksPage })),
+);
 const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({ default: module.CirclesPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 
@@ -66,7 +80,9 @@ function AuthenticatedApp() {
   const auth = useAuth();
   const [page, setPage] = useState<AppPage>(resolveAppPageFromLocation);
   const [routeRenderKey, setRouteRenderKey] = useState(resolveRouteRenderKey);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
+  );
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandPaletteBusy, setCommandPaletteBusy] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -138,17 +154,15 @@ function AuthenticatedApp() {
   const openPage = (id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
-    const path = id === "library"
-      ? readLastLibraryLocation(clientStorageScope) ?? item.path
-      : item.path;
-    if (id === "library" && page === "library" && `${window.location.pathname}${window.location.search}` === path) return;
+    const path = id === "library" ? (readLastLibraryLocation(clientStorageScope) ?? item.path) : item.path;
+    if (id === "library" && page === "library" && `${window.location.pathname}${window.location.search}` === path)
+      return;
     openPath(path);
   };
 
   const openPath = (path: string, state?: unknown, restoredScrollY?: number) => {
-    const nextState = restoredScrollY === undefined
-      ? state ?? {}
-      : requestHistoryScrollRestoration(state, restoredScrollY);
+    const nextState =
+      restoredScrollY === undefined ? (state ?? {}) : requestHistoryScrollRestoration(state, restoredScrollY);
     window.history.pushState(nextState, "", path);
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
     setPage(resolveAppPageFromLocation());
@@ -242,7 +256,11 @@ function AuthenticatedApp() {
   }, [commandPaletteBusy, commandPaletteOpen, loginOpen, toast]);
 
   if (auth.isLoading) {
-    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading Kikoto...</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Loading Kikoto...
+      </div>
+    );
   }
 
   return (
@@ -267,7 +285,11 @@ function AuthenticatedApp() {
             {visibleNavItems.map((item) => (
               <Button
                 key={item.id}
-                className={cn("mb-1 w-full", sidebarCollapsed ? "justify-center px-0" : "justify-start", page === item.id && "bg-muted")}
+                className={cn(
+                  "mb-1 w-full",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start",
+                  page === item.id && "bg-muted",
+                )}
                 variant="ghost"
                 size={sidebarCollapsed ? "icon" : "default"}
                 title={sidebarCollapsed ? item.label : undefined}
@@ -295,12 +317,19 @@ function AuthenticatedApp() {
         </aside>
 
         <main className="app-main min-w-0">
-          <header className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0" data-toast-avoid>
+          <header
+            className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0"
+            data-toast-avoid
+          >
             <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 py-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
               <div className="flex min-w-0 flex-col lg:flex-row lg:items-baseline lg:gap-3">
-                <h1 className="truncate text-xl font-semibold lg:text-2xl">{page === "not-found" ? "Not found" : activeItem?.label ?? "Library"}</h1>
+                <h1 className="truncate text-xl font-semibold lg:text-2xl">
+                  {page === "not-found" ? "Not found" : (activeItem?.label ?? "Library")}
+                </h1>
                 <p className="line-clamp-2 text-xs text-muted-foreground lg:line-clamp-1 lg:text-sm">
-                  {page === "not-found" ? "The requested page could not be found" : activeItem?.description ?? "Browse your audio library"}
+                  {page === "not-found"
+                    ? "The requested page could not be found"
+                    : (activeItem?.description ?? "Browse your audio library")}
                 </p>
               </div>
               <HeaderActions
@@ -325,10 +354,12 @@ function AuthenticatedApp() {
           <RouteErrorBoundary resetKey={routeRenderKey} onOpenLibrary={() => openPath("/")}>
             <Suspense fallback={<PageLoading />}>
               <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
-                {page !== "not-found" && !canAccessCurrentPage && <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />}
+                {page !== "not-found" && !canAccessCurrentPage && (
+                  <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />
+                )}
                 {page === "not-found" && (
                   <NotFoundPage
-                    onBack={() => window.history.length > 1 ? window.history.back() : openPath("/")}
+                    onBack={() => (window.history.length > 1 ? window.history.back() : openPath("/"))}
                     onOpenLibrary={() => openPath("/")}
                   />
                 )}
@@ -336,37 +367,66 @@ function AuthenticatedApp() {
                 {canAccessCurrentPage && page === "favorites" && <FavoritesPage />}
                 {canAccessCurrentPage && page === "circles" && <CirclesPage />}
                 {canAccessCurrentPage && page === "voice-actors" && <CreatorWorksPage kind="voice" />}
-                {canAccessCurrentPage && page === "settings" && auth.user && <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />}
-                {canAccessCurrentPage && page === "maintenance" && auth.user && <MaintenancePage canManageSources={auth.demoMode || auth.hasPermission("sources:write")} canManageUsers={auth.demoMode || auth.hasPermission("users:manage")} currentUserId={auth.user.id} isSuperAdmin={auth.user.role === "super_admin"} readOnly={auth.demoMode} />}
-                {canAccessCurrentPage && (page === "workflows" || page === "activity") && <WorkflowsPage surface={page} canRun={auth.demoMode || auth.hasPermission("workflows:run")} canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")} canTagWorks={auth.demoMode || auth.hasPermission("tags:write")} canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")} readOnly={auth.demoMode} />}
-                {canAccessCurrentPage && page === "about" && <AboutPage />}
-                {!["library", "favorites", "circles", "voice-actors", "settings", "maintenance", "workflows", "activity", "about"].includes(page) && (
-                  <PlaceholderPage title={activeItem?.label ?? "Page"} />
+                {canAccessCurrentPage && page === "settings" && auth.user && (
+                  <SettingsPage user={auth.user} readOnly={auth.demoMode} onAccountUpdated={auth.refresh} />
                 )}
+                {canAccessCurrentPage && page === "maintenance" && auth.user && (
+                  <MaintenancePage
+                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
+                    canManageUsers={auth.demoMode || auth.hasPermission("users:manage")}
+                    currentUserId={auth.user.id}
+                    isSuperAdmin={auth.user.role === "super_admin"}
+                    readOnly={auth.demoMode}
+                  />
+                )}
+                {canAccessCurrentPage && (page === "workflows" || page === "activity") && (
+                  <WorkflowsPage
+                    surface={page}
+                    canRun={auth.demoMode || auth.hasPermission("workflows:run")}
+                    canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
+                    canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
+                    canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")}
+                    readOnly={auth.demoMode}
+                  />
+                )}
+                {canAccessCurrentPage && page === "about" && <AboutPage />}
+                {![
+                  "library",
+                  "favorites",
+                  "circles",
+                  "voice-actors",
+                  "settings",
+                  "maintenance",
+                  "workflows",
+                  "activity",
+                  "about",
+                ].includes(page) && <PlaceholderPage title={activeItem?.label ?? "Page"} />}
               </div>
             </Suspense>
           </RouteErrorBoundary>
         </main>
 
-        {!mobileRuntime.keyboardOpen && <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
-          <nav className="grid grid-cols-4">
-            {mobileNavItems.map((item) => {
-              return (
-                <button
-                  key={item.id}
-                  className={cn(
-                    "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
-                    page === item.id && "bg-muted text-foreground",
-                  )}
-                  onClick={() => openMobilePage(item.id)}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </footer>}
+        {!mobileRuntime.keyboardOpen && (
+          <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
+            <nav className="grid grid-cols-4">
+              {mobileNavItems.map((item) => {
+                return (
+                  <button
+                    key={item.id}
+                    className={cn(
+                      "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
+                      page === item.id && "bg-muted text-foreground",
+                    )}
+                    onClick={() => openMobilePage(item.id)}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </footer>
+        )}
         {!mobileRuntime.keyboardOpen && <PlayerDock />}
         <CommandPalette
           open={commandPaletteOpen}
@@ -555,7 +615,12 @@ function MobileConnectionBanner({
 
 function LoginOverlay({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
       <div onMouseDown={(event) => event.stopPropagation()}>
         <LoginPage embedded onSuccess={onClose} />
       </div>
@@ -623,7 +688,12 @@ function pageFromPath(rawPath: string): AppPage {
   if (path === "/voices" || /^\/voices\/\d+$/.test(path)) {
     return "voice-actors";
   }
-  if (path === "/tracked" || path === "/no-source" || ["/library", "/library/tracked", "/library/no-source", "/library/all", "/library/remote"].includes(path) || /^\/library\/source\/[^/]+$/.test(path)) {
+  if (
+    path === "/tracked" ||
+    path === "/no-source" ||
+    ["/library", "/library/tracked", "/library/no-source", "/library/all", "/library/remote"].includes(path) ||
+    /^\/library\/source\/[^/]+$/.test(path)
+  ) {
     return "library";
   }
   return "not-found";

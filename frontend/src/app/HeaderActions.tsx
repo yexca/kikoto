@@ -117,14 +117,16 @@ export function HeaderActions({
   }, []);
 
   useEffect(() => {
-    const syncAccent = (event: Event) => setThemeAccent((event as CustomEvent<ThemeAccent>).detail ?? getStoredThemeAccent());
+    const syncAccent = (event: Event) =>
+      setThemeAccent((event as CustomEvent<ThemeAccent>).detail ?? getStoredThemeAccent());
     window.addEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
     return () => window.removeEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
   }, []);
 
   const refreshNotificationCenter = () => {
     if (user) {
-      api.listNotifications(20)
+      api
+        .listNotifications(20)
         .then((page) => {
           setNotifications(page.notifications);
           setNotificationCount(page.total);
@@ -138,7 +140,8 @@ export function HeaderActions({
       setNotificationCount(0);
     }
     if (canRunWorkflows) {
-      api.listWorkflowRuns(1, 5, "review")
+      api
+        .listWorkflowRuns(1, 5, "review")
         .then((page) => {
           setReviewRuns(page.runs);
           setReviewCount(page.total);
@@ -192,7 +195,9 @@ export function HeaderActions({
   const checkConnection = async () => {
     setConnectionStatus("Checking...");
     const health = await mobileRuntime.reconnect();
-    setConnectionStatus(health ? `Connected · ${health.version}` : mobileRuntime.connection.message || "Connection check failed.");
+    setConnectionStatus(
+      health ? `Connected · ${health.version}` : mobileRuntime.connection.message || "Connection check failed.",
+    );
   };
 
   const showDiagnostics = async () => {
@@ -224,7 +229,9 @@ export function HeaderActions({
           trigger={
             <Button variant="outline" size="icon" aria-label="Open menu" title="Menu" className="relative">
               <MoreHorizontal className="h-4 w-4" />
-              {totalNotificationCount > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />}
+              {totalNotificationCount > 0 && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />
+              )}
             </Button>
           }
           align="right"
@@ -234,18 +241,72 @@ export function HeaderActions({
             <MenuList>
               {canRunWorkflows && (
                 <>
-                  <ActionItem icon={<Activity className="h-4 w-4" />} label="Activity" onClick={() => { setMobileMenuOpen(false); onOpenPath("/activity"); }} />
-                  <ActionItem icon={<ListChecks className="h-4 w-4" />} label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"} onClick={() => { setMobileMenuOpen(false); onOpenPath("/activity?view=review"); }} />
+                  <ActionItem
+                    icon={<Activity className="h-4 w-4" />}
+                    label="Activity"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenPath("/activity");
+                    }}
+                  />
+                  <ActionItem
+                    icon={<ListChecks className="h-4 w-4" />}
+                    label={reviewCount > 0 ? `Review (${reviewCount})` : "Review"}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenPath("/activity?view=review");
+                    }}
+                  />
                 </>
               )}
-                  <ActionItem icon={<Settings className="h-4 w-4" />} label="Settings" onClick={() => { setMobileMenuOpen(false); onOpenPage("settings"); }} />
-                  {canManageUsers && <ActionItem icon={<Users className="h-4 w-4" />} label="Users" onClick={() => { setMobileMenuOpen(false); onOpenPath("/maintenance?tab=users"); }} />}
+              <ActionItem
+                icon={<Settings className="h-4 w-4" />}
+                label="Settings"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenPage("settings");
+                }}
+              />
+              {canManageUsers && (
+                <ActionItem
+                  icon={<Users className="h-4 w-4" />}
+                  label="Users"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenPath("/maintenance?tab=users");
+                  }}
+                />
+              )}
             </MenuList>
             <div className="border-t p-2">
               <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Theme</div>
-              <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
-              <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
-              <ThemeItem mode="system" current={themeMode} icon={<Command className="h-4 w-4" />} onSelect={(mode) => { setThemeMode(mode); setMobileMenuOpen(false); }} />
+              <ThemeItem
+                mode="light"
+                current={themeMode}
+                icon={<Sun className="h-4 w-4" />}
+                onSelect={(mode) => {
+                  setThemeMode(mode);
+                  setMobileMenuOpen(false);
+                }}
+              />
+              <ThemeItem
+                mode="dark"
+                current={themeMode}
+                icon={<Moon className="h-4 w-4" />}
+                onSelect={(mode) => {
+                  setThemeMode(mode);
+                  setMobileMenuOpen(false);
+                }}
+              />
+              <ThemeItem
+                mode="system"
+                current={themeMode}
+                icon={<Command className="h-4 w-4" />}
+                onSelect={(mode) => {
+                  setThemeMode(mode);
+                  setMobileMenuOpen(false);
+                }}
+              />
               <div className="mt-2 border-t px-2 pt-3">
                 <AccentColorPicker value={themeAccent} onChange={setThemeAccent} />
               </div>
@@ -253,16 +314,48 @@ export function HeaderActions({
             {isNativeApp() && (
               <div className="border-t p-2">
                 <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Server</div>
-                <ActionItem icon={<Server className="h-4 w-4" />} label="Reconnect" onClick={() => void checkConnection()} />
-                <ActionItem icon={<Clipboard className="h-4 w-4" />} label="Copy diagnostics" onClick={() => void showDiagnostics()} />
-                <ActionItem icon={<RotateCcw className="h-4 w-4" />} label="Clear server" onClick={() => { clearStoredServerURL(); window.location.reload(); }} />
+                <ActionItem
+                  icon={<Server className="h-4 w-4" />}
+                  label="Reconnect"
+                  onClick={() => void checkConnection()}
+                />
+                <ActionItem
+                  icon={<Clipboard className="h-4 w-4" />}
+                  label="Copy diagnostics"
+                  onClick={() => void showDiagnostics()}
+                />
+                <ActionItem
+                  icon={<RotateCcw className="h-4 w-4" />}
+                  label="Clear server"
+                  onClick={() => {
+                    clearStoredServerURL();
+                    window.location.reload();
+                  }}
+                />
               </div>
             )}
             <div className="border-t p-2">
               {user ? (
-                !user.devMode && !user.demoMode && <ActionItem icon={<LogOut className="h-4 w-4" />} label="Sign out" onClick={() => { setMobileMenuOpen(false); onLogout(); }} />
+                !user.devMode &&
+                !user.demoMode && (
+                  <ActionItem
+                    icon={<LogOut className="h-4 w-4" />}
+                    label="Sign out"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onLogout();
+                    }}
+                  />
+                )
               ) : (
-                <ActionItem icon={<LogIn className="h-4 w-4" />} label="Sign in" onClick={() => { setMobileMenuOpen(false); onOpenLogin(); }} />
+                <ActionItem
+                  icon={<LogIn className="h-4 w-4" />}
+                  label="Sign in"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenLogin();
+                  }}
+                />
               )}
             </div>
           </div>
@@ -270,205 +363,222 @@ export function HeaderActions({
       </div>
 
       {isNativeApp() && (
-        <div className="hidden sm:block"><HeaderPopover
-          open={connectionOpen}
-          onOpenChange={(open) => {
-            setConnectionOpen(open);
-            if (open) {
-              setConnectionStatus("");
-              setDiagnosticsText("");
+        <div className="hidden sm:block">
+          <HeaderPopover
+            open={connectionOpen}
+            onOpenChange={(open) => {
+              setConnectionOpen(open);
+              if (open) {
+                setConnectionStatus("");
+                setDiagnosticsText("");
+              }
+            }}
+            trigger={
+              <Button variant="outline" size="icon" aria-label="Server connection" title="Server connection">
+                <Server className="h-4 w-4" />
+              </Button>
             }
-          }}
-          trigger={
-            <Button variant="outline" size="icon" aria-label="Server connection" title="Server connection">
-              <Server className="h-4 w-4" />
-            </Button>
-          }
-          align="right"
-        >
-          <div className="w-80">
-            <PopoverHeader title="Connection" subtitle="Android client server" />
-            <div className="space-y-3 border-b p-3 text-sm">
-              <div>
-                <div className="text-xs font-medium text-muted-foreground">Server</div>
-                <div className="mt-1 break-all font-medium">{getStoredServerURL() || "Not configured"}</div>
+            align="right"
+          >
+            <div className="w-80">
+              <PopoverHeader title="Connection" subtitle="Android client server" />
+              <div className="space-y-3 border-b p-3 text-sm">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Server</div>
+                  <div className="mt-1 break-all font-medium">{getStoredServerURL() || "Not configured"}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md border bg-muted px-2 py-1.5">
+                    <div className="text-muted-foreground">Client</div>
+                    <div className="truncate font-medium">{versionLabel()}</div>
+                  </div>
+                  <div className="rounded-md border bg-muted px-2 py-1.5">
+                    <div className="text-muted-foreground">Server</div>
+                    <div className="truncate font-medium">{mobileRuntime.connection.serverVersion || "unknown"}</div>
+                  </div>
+                </div>
+                {mobileRuntime.connection.message && (
+                  <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                    {mobileRuntime.connection.message}
+                  </div>
+                )}
+                {connectionStatus && (
+                  <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                    {connectionStatus}
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-md border bg-muted px-2 py-1.5">
-                  <div className="text-muted-foreground">Client</div>
-                  <div className="truncate font-medium">{versionLabel()}</div>
-                </div>
-                <div className="rounded-md border bg-muted px-2 py-1.5">
-                  <div className="text-muted-foreground">Server</div>
-                  <div className="truncate font-medium">{mobileRuntime.connection.serverVersion || "unknown"}</div>
-                </div>
-              </div>
-              {mobileRuntime.connection.message && (
-                <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-                  {mobileRuntime.connection.message}
-                </div>
-              )}
-              {connectionStatus && (
-                <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-                  {connectionStatus}
+              <MenuList>
+                <ActionItem
+                  icon={<Server className="h-4 w-4" />}
+                  label="Reconnect"
+                  onClick={() => void checkConnection()}
+                />
+                {user && (
+                  <ActionItem
+                    icon={<LogOut className="h-4 w-4" />}
+                    label="Sign out"
+                    onClick={() => {
+                      setConnectionOpen(false);
+                      onLogout();
+                    }}
+                  />
+                )}
+                <ActionItem
+                  icon={<RotateCcw className="h-4 w-4" />}
+                  label="Clear server"
+                  onClick={() => {
+                    clearStoredServerURL();
+                    window.location.reload();
+                  }}
+                />
+                <ActionItem
+                  icon={<Clipboard className="h-4 w-4" />}
+                  label="Copy diagnostics"
+                  onClick={() => void showDiagnostics()}
+                />
+              </MenuList>
+              {diagnosticsText && (
+                <div className="border-t p-2">
+                  <textarea
+                    className="h-32 w-full resize-none rounded-md border bg-background p-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                    readOnly
+                    value={diagnosticsText}
+                  />
                 </div>
               )}
             </div>
-            <MenuList>
-              <ActionItem
-                icon={<Server className="h-4 w-4" />}
-                label="Reconnect"
-                onClick={() => void checkConnection()}
-              />
-              {user && (
-                <ActionItem
-                  icon={<LogOut className="h-4 w-4" />}
-                  label="Sign out"
-                  onClick={() => {
-                    setConnectionOpen(false);
-                    onLogout();
-                  }}
-                />
-              )}
-              <ActionItem
-                icon={<RotateCcw className="h-4 w-4" />}
-                label="Clear server"
-                onClick={() => {
-                  clearStoredServerURL();
-                  window.location.reload();
-                }}
-              />
-              <ActionItem
-                icon={<Clipboard className="h-4 w-4" />}
-                label="Copy diagnostics"
-                onClick={() => void showDiagnostics()}
-              />
-            </MenuList>
-            {diagnosticsText && (
-              <div className="border-t p-2">
-                <textarea
-                  className="h-32 w-full resize-none rounded-md border bg-background p-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-                  readOnly
-                  value={diagnosticsText}
-                />
-              </div>
-            )}
-          </div>
-        </HeaderPopover></div>
+          </HeaderPopover>
+        </div>
       )}
 
       {user && (
-        <div><HeaderPopover
-          open={reviewOpen}
-          onOpenChange={(open) => {
-            setReviewOpen(open);
-            if (open) refreshNotificationCenter();
-          }}
-          trigger={
-            <Button variant="outline" size="icon" aria-label="Notifications" title="Notifications" className="relative">
-              <Bell className="h-4 w-4" />
-              {totalNotificationCount > 0 && (
-                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">
-                  {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
-                </span>
-              )}
-            </Button>
-          }
-          align="right"
-        >
-          <div className="w-[min(20rem,calc(100vw-1rem))]">
-            <PopoverHeader
-              title="Notifications"
-              subtitle={totalNotificationCount > 0 ? `${totalNotificationCount} items` : "Nothing new"}
-            />
-            <div className="app-scroll max-h-80 overflow-auto p-2">
-              {notifications.length === 0 && reviewRuns.length === 0 ? (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No notifications right now.
-                </div>
-              ) : (
-                <>
-                  {notifications.map((notification) => (
-                    <div key={`notification-${notification.id}`} className="mb-1 flex items-start rounded-md hover:bg-muted">
-                      <button
-                        className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
-                        onClick={() => {
-                          setReviewOpen(false);
-                          if (notification.type === "remote_track" && notification.status === "failed") {
-                            if (canRunWorkflows) onOpenPath(`/activity?run=${notification.workflowRunId}`);
-                            return;
-                          }
-                          const trackedSource = notification.fileSourceId
-                            ? `&trackedSource=${notification.fileSourceId}`
-                            : "";
-                          onOpenPath(notification.type === "remote_track"
-                            ? `/${encodeURIComponent(notification.workCode)}?view=tracked${trackedSource}`
-                            : `/${encodeURIComponent(notification.workCode)}?view=local`);
-                        }}
-                      >
-                        {notification.status === "succeeded" ? (
-                          notification.type === "remote_track"
-                            ? <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                            : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                        ) : (
-                          <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{notification.message}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            Workflow #{notification.workflowRunId} · {notification.status}
-                          </span>
-                        </span>
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="m-1 h-8 w-8 shrink-0"
-                        aria-label={`Dismiss notification for ${notification.workCode}`}
-                        title="Dismiss notification"
-                        onClick={() => void dismissFetchNotification(notification.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  {reviewRuns.map((run) => (
-                    <button
-                      key={`review-${run.id}`}
-                      className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
-                      onClick={() => {
-                        setReviewOpen(false);
-                        onOpenPath(`/activity?view=review&run=${run.id}`);
-                      }}
-                    >
-                      <Workflow className="mt-0.5 h-4 w-4 text-primary" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{run.displayName}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {run.workflowCode} · review
-                        </span>
-                      </span>
-                      <Badge variant="warning">{workflowReviewCount(run)}</Badge>
-                    </button>
-                  ))}
-                </>
-              )}
-            </div>
-            <PopoverFooter>
+        <div>
+          <HeaderPopover
+            open={reviewOpen}
+            onOpenChange={(open) => {
+              setReviewOpen(open);
+              if (open) refreshNotificationCenter();
+            }}
+            trigger={
               <Button
                 variant="outline"
-                size="sm"
-                onClick={() => {
-                  setReviewOpen(false);
-                  onOpenPath("/activity");
-                }}
+                size="icon"
+                aria-label="Notifications"
+                title="Notifications"
+                className="relative"
               >
-                <Activity className="h-4 w-4" />
-                Open Activity
+                <Bell className="h-4 w-4" />
+                {totalNotificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-[10px] font-semibold leading-5 text-destructive-foreground">
+                    {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
+                  </span>
+                )}
               </Button>
-            </PopoverFooter>
-          </div>
-        </HeaderPopover></div>
+            }
+            align="right"
+          >
+            <div className="w-[min(20rem,calc(100vw-1rem))]">
+              <PopoverHeader
+                title="Notifications"
+                subtitle={totalNotificationCount > 0 ? `${totalNotificationCount} items` : "Nothing new"}
+              />
+              <div className="app-scroll max-h-80 overflow-auto p-2">
+                {notifications.length === 0 && reviewRuns.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    No notifications right now.
+                  </div>
+                ) : (
+                  <>
+                    {notifications.map((notification) => (
+                      <div
+                        key={`notification-${notification.id}`}
+                        className="mb-1 flex items-start rounded-md hover:bg-muted"
+                      >
+                        <button
+                          className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
+                          onClick={() => {
+                            setReviewOpen(false);
+                            if (notification.type === "remote_track" && notification.status === "failed") {
+                              if (canRunWorkflows) onOpenPath(`/activity?run=${notification.workflowRunId}`);
+                              return;
+                            }
+                            const trackedSource = notification.fileSourceId
+                              ? `&trackedSource=${notification.fileSourceId}`
+                              : "";
+                            onOpenPath(
+                              notification.type === "remote_track"
+                                ? `/${encodeURIComponent(notification.workCode)}?view=tracked${trackedSource}`
+                                : `/${encodeURIComponent(notification.workCode)}?view=local`,
+                            );
+                          }}
+                        >
+                          {notification.status === "succeeded" ? (
+                            notification.type === "remote_track" ? (
+                              <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                            ) : (
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                            )
+                          ) : (
+                            <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{notification.message}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              Workflow #{notification.workflowRunId} · {notification.status}
+                            </span>
+                          </span>
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="m-1 h-8 w-8 shrink-0"
+                          aria-label={`Dismiss notification for ${notification.workCode}`}
+                          title="Dismiss notification"
+                          onClick={() => void dismissFetchNotification(notification.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {reviewRuns.map((run) => (
+                      <button
+                        key={`review-${run.id}`}
+                        className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
+                        onClick={() => {
+                          setReviewOpen(false);
+                          onOpenPath(`/activity?view=review&run=${run.id}`);
+                        }}
+                      >
+                        <Workflow className="mt-0.5 h-4 w-4 text-primary" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{run.displayName}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {run.workflowCode} · review
+                          </span>
+                        </span>
+                        <Badge variant="warning">{workflowReviewCount(run)}</Badge>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+              <PopoverFooter>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setReviewOpen(false);
+                    onOpenPath("/activity");
+                  }}
+                >
+                  <Activity className="h-4 w-4" />
+                  Open Activity
+                </Button>
+              </PopoverFooter>
+            </div>
+          </HeaderPopover>
+        </div>
       )}
 
       <div className="hidden sm:block">
@@ -563,88 +673,88 @@ export function HeaderActions({
       </div>
 
       <div className="hidden sm:block">
-      {user ? (
-        <HeaderPopover
-          open={userOpen}
-          onOpenChange={setUserOpen}
-          trigger={
-            <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                {userInitial(user)}
-              </span>
-              <span className="hidden min-w-0 text-left sm:block">
-                <span className="block max-w-32 truncate text-xs font-medium leading-4">
-                  {user.displayName || user.username}
-                </span>
-                <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
-                  {user.role}
-                  {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
-                </span>
-              </span>
-              <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
-            </Button>
-          }
-          align="right"
-        >
-          <div className="w-72">
-            <div className="border-b p-3">
-              <div className="flex items-center gap-3">
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+        {user ? (
+          <HeaderPopover
+            open={userOpen}
+            onOpenChange={setUserOpen}
+            trigger={
+              <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {userInitial(user)}
                 </span>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
-                  <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
+                <span className="hidden min-w-0 text-left sm:block">
+                  <span className="block max-w-32 truncate text-xs font-medium leading-4">
+                    {user.displayName || user.username}
+                  </span>
+                  <span className="block max-w-32 truncate text-[10px] leading-3 text-muted-foreground">
+                    {user.role}
+                    {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
+                  </span>
+                </span>
+                <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
+              </Button>
+            }
+            align="right"
+          >
+            <div className="w-72">
+              <div className="border-b p-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                    {userInitial(user)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
+                    <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="outline">{user.role}</Badge>
+                  {user.devMode && <Badge variant="warning">dev mode</Badge>}
+                  {user.demoMode && <Badge variant="secondary">demo mode</Badge>}
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="outline">{user.role}</Badge>
-                {user.devMode && <Badge variant="warning">dev mode</Badge>}
-                {user.demoMode && <Badge variant="secondary">demo mode</Badge>}
-              </div>
+              <MenuList>
+                <ActionItem
+                  icon={<Settings className="h-4 w-4" />}
+                  label="Settings"
+                  onClick={() => {
+                    setUserOpen(false);
+                    onOpenPage("settings");
+                  }}
+                />
+                {canManageUsers && (
+                  <ActionItem
+                    icon={<Users className="h-4 w-4" />}
+                    label="Users"
+                    onClick={() => {
+                      setUserOpen(false);
+                      onOpenPath("/maintenance?tab=users");
+                    }}
+                  />
+                )}
+                {user.devMode || user.demoMode ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    {user.demoMode ? "Demo sessions are read-only." : "Dev mode session does not require sign out."}
+                  </div>
+                ) : (
+                  <ActionItem
+                    icon={<LogOut className="h-4 w-4" />}
+                    label="Sign out"
+                    onClick={() => {
+                      setUserOpen(false);
+                      onLogout();
+                    }}
+                  />
+                )}
+              </MenuList>
             </div>
-            <MenuList>
-              <ActionItem
-                icon={<Settings className="h-4 w-4" />}
-                label="Settings"
-                onClick={() => {
-                  setUserOpen(false);
-                  onOpenPage("settings");
-                }}
-              />
-              {canManageUsers && (
-                <ActionItem
-                  icon={<Users className="h-4 w-4" />}
-                  label="Users"
-                  onClick={() => {
-                    setUserOpen(false);
-                    onOpenPath("/maintenance?tab=users");
-                  }}
-                />
-              )}
-              {user.devMode || user.demoMode ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  {user.demoMode ? "Demo sessions are read-only." : "Dev mode session does not require sign out."}
-                </div>
-              ) : (
-                <ActionItem
-                  icon={<LogOut className="h-4 w-4" />}
-                  label="Sign out"
-                  onClick={() => {
-                    setUserOpen(false);
-                    onLogout();
-                  }}
-                />
-              )}
-            </MenuList>
-          </div>
-        </HeaderPopover>
-      ) : (
-        <Button variant="outline" className="h-10 gap-2 px-3" onClick={onOpenLogin}>
-          <LogIn className="h-4 w-4" />
-          <span className="hidden sm:inline">Sign in</span>
-        </Button>
-      )}
+          </HeaderPopover>
+        ) : (
+          <Button variant="outline" className="h-10 gap-2 px-3" onClick={onOpenLogin}>
+            <LogIn className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign in</span>
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -786,7 +896,10 @@ function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: 
             title={option.label}
             onClick={() => onChange(option.value)}
           >
-            <span className={`h-4 w-4 rounded-full border border-black/10 shadow-sm ${option.swatch}`} aria-hidden="true" />
+            <span
+              className={`h-4 w-4 rounded-full border border-black/10 shadow-sm ${option.swatch}`}
+              aria-hidden="true"
+            />
           </button>
         ))}
       </div>

@@ -57,19 +57,71 @@ async function mockCreatorLists(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "favorites:write", "tags:write"], devMode: true } } });
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: 1,
+            username: "listener",
+            displayName: "Listener",
+            role: "user",
+            permissions: ["library:read", "favorites:write", "tags:write"],
+            devMode: true,
+          },
+        },
+      });
       return;
     }
     if (url.pathname === latestWork.coverUrl) {
-      await route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") });
+      await route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
       return;
     }
     if (url.pathname === "/api/circles") {
-      await route.fulfill({ json: { circles: [circle, { ...circle, id: 2, externalId: "RG10000", displayName: "No Cover Circle", latestWork: { ...latestWork, primaryCode: "RJ09999003", coverUrl: "" } }], page: 1, pageSize: 24, total: 30, catalogWorks: 75, availableWorks: 45 } });
+      await route.fulfill({
+        json: {
+          circles: [
+            circle,
+            {
+              ...circle,
+              id: 2,
+              externalId: "RG10000",
+              displayName: "No Cover Circle",
+              latestWork: { ...latestWork, primaryCode: "RJ09999003", coverUrl: "" },
+            },
+          ],
+          page: 1,
+          pageSize: 24,
+          total: 30,
+          catalogWorks: 75,
+          availableWorks: 45,
+        },
+      });
       return;
     }
     if (url.pathname === "/api/voices") {
-      await route.fulfill({ json: { voices: [voice, { ...voice, personId: 8, displayName: "No Cover Voice", latestWork: { ...latestWork, primaryCode: "RJ09999004", coverUrl: "" } }], page: 1, pageSize: 24, total: 30, tagOptions: ["Soft"] } });
+      await route.fulfill({
+        json: {
+          voices: [
+            voice,
+            {
+              ...voice,
+              personId: 8,
+              displayName: "No Cover Voice",
+              latestWork: { ...latestWork, primaryCode: "RJ09999004", coverUrl: "" },
+            },
+          ],
+          page: 1,
+          pageSize: 24,
+          total: 30,
+          tagOptions: ["Soft"],
+        },
+      });
       return;
     }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
@@ -97,7 +149,19 @@ async function mockCreatorDetails(page: Page) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync"], devMode: true } } });
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: 1,
+            username: "listener",
+            displayName: "Listener",
+            role: "user",
+            permissions: ["library:read", "favorites:write", "tags:write", "metadata:sync"],
+            devMode: true,
+          },
+        },
+      });
       return;
     }
     if (url.pathname === "/api/voices/7") {
@@ -109,7 +173,23 @@ async function mockCreatorDetails(page: Page) {
       return;
     }
     if (url.pathname === "/api/voices/7/remote-matches") {
-      await route.fulfill({ json: { personId: 7, remoteMatches: [{ sourceId: 3, sourceCode: "example", displayName: "Example Remote", status: "ok", error: "", elapsedMs: 12, total: 0, works: [] }] } });
+      await route.fulfill({
+        json: {
+          personId: 7,
+          remoteMatches: [
+            {
+              sourceId: 3,
+              sourceCode: "example",
+              displayName: "Example Remote",
+              status: "ok",
+              error: "",
+              elapsedMs: 12,
+              total: 0,
+              works: [],
+            },
+          ],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/voices/7/merges") {
@@ -131,7 +211,9 @@ async function mockCreatorDetails(page: Page) {
 async function expectSingleStatRow(page: Page, columns: 4 | 5, marker: string) {
   const cards = page.locator(`div.grid.grid-cols-${columns}`).filter({ hasText: marker }).locator(":scope > *");
   await expect(cards).toHaveCount(columns);
-  const tops = await cards.evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().top)));
+  const tops = await cards.evaluateAll((elements) =>
+    elements.map((element) => Math.round(element.getBoundingClientRect().top)),
+  );
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
 }
 
@@ -157,7 +239,12 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await expect(page.getByRole("heading", { name: "Voice Actors" })).toBeVisible();
   await expect(page.getByText("Latest RJ09999002", { exact: true })).toBeVisible();
   await expect(page.getByText("Cache 1", { exact: true }).first()).toBeVisible();
-  await expect(page.locator("div.inline-flex").filter({ hasText: /^Soft$/ }).first()).toBeVisible();
+  await expect(
+    page
+      .locator("div.inline-flex")
+      .filter({ hasText: /^Soft$/ })
+      .first(),
+  ).toBeVisible();
   await expect(page.getByText("1-24 of 30 voice actors", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -165,11 +252,15 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
 
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {
   let releaseRequest = () => undefined;
-  const requestGate = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  const requestGate = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
   await mockCreatorLists(page);
   await page.route("**/api/circles?**", async (route) => {
     await requestGate;
-    await route.fulfill({ json: { circles: [circle], page: 1, pageSize: 24, total: 1, catalogWorks: 5, availableWorks: 3 } });
+    await route.fulfill({
+      json: { circles: [circle], page: 1, pageSize: 24, total: 1, catalogWorks: 5, availableWorks: 3 },
+    });
   });
 
   await page.goto("/circles?pageSize=24");
@@ -190,8 +281,12 @@ test("a one-circle result keeps the initial creator region height", async ({ pag
 test("voice detail renders one stable work-loading region for local and remote discovery", async ({ page }) => {
   let releaseWorks = () => undefined;
   let releaseRemote = () => undefined;
-  const worksGate = new Promise<void>((resolve) => { releaseWorks = resolve; });
-  const remoteGate = new Promise<void>((resolve) => { releaseRemote = resolve; });
+  const worksGate = new Promise<void>((resolve) => {
+    releaseWorks = resolve;
+  });
+  const remoteGate = new Promise<void>((resolve) => {
+    releaseRemote = resolve;
+  });
   await mockCreatorDetails(page);
   await page.route("**/api/voices/7/works", async (route) => {
     await worksGate;

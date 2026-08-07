@@ -234,7 +234,9 @@
     }
 
     html[data-player-mode="compact"] {
-      --app-content-bottom-clearance: calc(var(--compact-player-desktop-offset) + var(--compact-player-height) + 1.5rem);
+      --app-content-bottom-clearance: calc(
+        var(--compact-player-desktop-offset) + var(--compact-player-height) + 1.5rem
+      );
       --app-update-banner-bottom: calc(var(--compact-player-desktop-offset) + var(--compact-player-height) + 0.75rem);
     }
 

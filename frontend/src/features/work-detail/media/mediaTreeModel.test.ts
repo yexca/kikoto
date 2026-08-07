@@ -31,21 +31,23 @@ function localMediaItem(id: number, kind: "audio" | "text", path: string): Media
     fingerprint: `fixture-${id}`,
     progress: null,
     preferredLyricsMediaItemId: null,
-    locations: [{
-      id: id + 100,
-      fileSourceId: 1,
-      fileSourceCode: "local",
-      fileSourceName: "Local",
-      locationType: "local",
-      path,
-      streamUrl: kind === "audio" ? `/api/media/${id + 100}/stream` : "",
-      downloadUrl: "",
-      remoteHash: "",
-      sizeBytes: 1024,
-      durationSeconds: kind === "audio" ? 60 : null,
-      availability: "available",
-      lastCheckedAt: null,
-    }],
+    locations: [
+      {
+        id: id + 100,
+        fileSourceId: 1,
+        fileSourceCode: "local",
+        fileSourceName: "Local",
+        locationType: "local",
+        path,
+        streamUrl: kind === "audio" ? `/api/media/${id + 100}/stream` : "",
+        downloadUrl: "",
+        remoteHash: "",
+        sizeBytes: 1024,
+        durationSeconds: kind === "audio" ? 60 : null,
+        availability: "available",
+        lastCheckedAt: null,
+      },
+    ],
   };
 }
 
@@ -274,18 +276,20 @@ describe("mediaTreeModel", () => {
       fingerprint: "cover-fingerprint",
       durationSeconds: null,
       progress: null,
-      locations: [{
-        id: 24,
-        fileSourceId: 1,
-        fileSourceName: "Local",
-        locationType: "local",
-        path: "library/RJ09999995/cover.jpg",
-        streamUrl: "",
-        downloadUrl: "/api/media/24/download",
-        availability: "available",
-        sizeBytes: 2048,
-        durationSeconds: null,
-      }],
+      locations: [
+        {
+          id: 24,
+          fileSourceId: 1,
+          fileSourceName: "Local",
+          locationType: "local",
+          path: "library/RJ09999995/cover.jpg",
+          streamUrl: "",
+          downloadUrl: "/api/media/24/download",
+          availability: "available",
+          sizeBytes: 2048,
+          durationSeconds: null,
+        },
+      ],
     } as MediaItem;
 
     const tree = buildTree([item], 1, "RJ09999995");
@@ -326,24 +330,28 @@ describe("mediaTreeModel", () => {
   });
 
   it("builds remote preview paths without turning folders into playable tracks", () => {
-    const remoteTracks = [{
-      type: "folder",
-      title: "Disc 1",
-      children: [{
-        type: "audio",
-        title: "01.mp3",
-        streamUrl: "/remote/01",
-        downloadUrl: "/remote/01/download",
-        sizeBytes: 2048,
-        durationSeconds: 120,
-        cacheAvailable: false,
-        cacheLocationId: null,
-        cachePath: "",
-        localAvailable: false,
-        localLocationId: null,
-        localPath: "",
-      }],
-    }] as RemoteTrack[];
+    const remoteTracks = [
+      {
+        type: "folder",
+        title: "Disc 1",
+        children: [
+          {
+            type: "audio",
+            title: "01.mp3",
+            streamUrl: "/remote/01",
+            downloadUrl: "/remote/01/download",
+            sizeBytes: 2048,
+            durationSeconds: 120,
+            cacheAvailable: false,
+            cacheLocationId: null,
+            cachePath: "",
+            localAvailable: false,
+            localLocationId: null,
+            localPath: "",
+          },
+        ],
+      },
+    ] as RemoteTrack[];
 
     const tree = buildRemoteTree(remoteTracks);
 
@@ -401,26 +409,24 @@ describe("mediaTreeModel", () => {
       "2.mp3",
       "10.mp3",
     ]);
-    expect(folderPlaybackTracks(tree).map((track) => track.title)).toEqual([
-      "1.mp3",
-      "2.mp3",
-      "10.mp3",
-    ]);
+    expect(folderPlaybackTracks(tree).map((track) => track.title)).toEqual(["1.mp3", "2.mp3", "10.mp3"]);
   });
 
   it("uses source, work, and path for remote playback identity", () => {
-    const remoteTracks = [{
-      type: "audio",
-      title: "01.mp3",
-      streamUrl: "/remote/01",
-      downloadUrl: "/remote/01/download",
-      cacheAvailable: false,
-      cacheLocationId: null,
-      cachePath: "",
-      localAvailable: false,
-      localLocationId: null,
-      localPath: "",
-    }] as RemoteTrack[];
+    const remoteTracks = [
+      {
+        type: "audio",
+        title: "01.mp3",
+        streamUrl: "/remote/01",
+        downloadUrl: "/remote/01/download",
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+      },
+    ] as RemoteTrack[];
 
     const first = flattenTracks(buildRemoteTree(remoteTracks, { sourceId: 7, workCode: "TEST-WORK-001" }))[0];
     const second = flattenTracks(buildRemoteTree(remoteTracks, { sourceId: 8, workCode: "TEST-WORK-002" }))[0];
@@ -428,111 +434,126 @@ describe("mediaTreeModel", () => {
     expect(first.playbackKey).toBeTruthy();
     expect(second.playbackKey).toBeTruthy();
     expect(first.playbackKey).not.toBe(second.playbackKey);
-    expect(toRemotePreviewPlayerTrack(first, {
-      sourceId: 7,
-      sourceCode: "remote_a",
-      sourceName: "Remote A",
-      remoteId: "remote-1",
-      primaryCode: "TEST-WORK-001",
-      remoteCode: "TEST-WORK-001",
-      title: "Work",
-      coverUrl: "",
-      sourceUrl: "",
-      publicWorkUrl: "",
-      circle: "",
-      rating: null,
-      sales: null,
-      price: null,
-      ageRating: "",
-      releaseDate: "",
-      durationSeconds: null,
-      tags: [],
-      voiceActors: [],
-      importStatus: "remote_only",
-      workId: null,
-      tracks: remoteTracks,
-      languageEditions: [],
-    }).playbackKey).toBe(first.playbackKey);
+    expect(
+      toRemotePreviewPlayerTrack(first, {
+        sourceId: 7,
+        sourceCode: "remote_a",
+        sourceName: "Remote A",
+        remoteId: "remote-1",
+        primaryCode: "TEST-WORK-001",
+        remoteCode: "TEST-WORK-001",
+        title: "Work",
+        coverUrl: "",
+        sourceUrl: "",
+        publicWorkUrl: "",
+        circle: "",
+        rating: null,
+        sales: null,
+        price: null,
+        ageRating: "",
+        releaseDate: "",
+        durationSeconds: null,
+        tags: [],
+        voiceActors: [],
+        importStatus: "remote_only",
+        workId: null,
+        tracks: remoteTracks,
+        languageEditions: [],
+      }).playbackKey,
+    ).toBe(first.playbackKey);
   });
 
   it("matches remote sidecar lyrics and keeps the remote URL on the player track", () => {
-    const remoteTracks = [{
-      type: "audio",
-      title: "01.wma",
-      streamUrl: "https://media.invalid/01.wma",
-      downloadUrl: "",
-      cacheAvailable: false,
-      cacheLocationId: null,
-      cachePath: "",
-      localAvailable: false,
-      localLocationId: null,
-      localPath: "",
-    }, {
-      type: "text",
-      title: "01.lrc",
-      streamUrl: "https://media.invalid/01.lrc",
-      downloadUrl: "",
-      cacheAvailable: false,
-      cacheLocationId: null,
-      cachePath: "",
-      localAvailable: false,
-      localLocationId: null,
-      localPath: "",
-    }] as RemoteTrack[];
+    const remoteTracks = [
+      {
+        type: "audio",
+        title: "01.wma",
+        streamUrl: "https://media.invalid/01.wma",
+        downloadUrl: "",
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+      },
+      {
+        type: "text",
+        title: "01.lrc",
+        streamUrl: "https://media.invalid/01.lrc",
+        downloadUrl: "",
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+      },
+    ] as RemoteTrack[];
     const tree = buildRemoteTree(remoteTracks, { sourceId: 7, workCode: "RJ00000000" });
     const files = flattenTreeFiles(tree);
     const audio = flattenTracks(tree)[0];
-    const playerTrack = toRemotePreviewPlayerTrack(audio, {
-      sourceId: 7,
-      sourceCode: "remote_a",
-      sourceName: "Remote A",
-      remoteId: "remote-1",
-      primaryCode: "RJ00000000",
-      remoteCode: "RJ00000000",
-      title: "Work",
-      coverUrl: "",
-      sourceUrl: "",
-      publicWorkUrl: "",
-      circle: "",
-      rating: null,
-      sales: null,
-      price: null,
-      ageRating: "",
-      releaseDate: "",
-      durationSeconds: null,
-      tags: [],
-      voiceActors: [],
-      importStatus: "remote_only",
-      workId: null,
-      tracks: remoteTracks,
-      languageEditions: [],
-    }, files);
-    expect(playerTrack.lyricsChoices?.[0]).toMatchObject({ title: "01.lrc", url: "/api/remote-sources/7/works/RJ00000000/text?path=01.lrc" });
+    const playerTrack = toRemotePreviewPlayerTrack(
+      audio,
+      {
+        sourceId: 7,
+        sourceCode: "remote_a",
+        sourceName: "Remote A",
+        remoteId: "remote-1",
+        primaryCode: "RJ00000000",
+        remoteCode: "RJ00000000",
+        title: "Work",
+        coverUrl: "",
+        sourceUrl: "",
+        publicWorkUrl: "",
+        circle: "",
+        rating: null,
+        sales: null,
+        price: null,
+        ageRating: "",
+        releaseDate: "",
+        durationSeconds: null,
+        tags: [],
+        voiceActors: [],
+        importStatus: "remote_only",
+        workId: null,
+        tracks: remoteTracks,
+        languageEditions: [],
+      },
+      files,
+    );
+    expect(playerTrack.lyricsChoices?.[0]).toMatchObject({
+      title: "01.lrc",
+      url: "/api/remote-sources/7/works/RJ00000000/text?path=01.lrc",
+    });
     expect(playerTrack.lyricsLocationId).toBeLessThan(0);
   });
 
   it("includes video with audio in playback and excludes known silent video", () => {
-    const videoItem = (id: number, hasAudio: boolean) => ({
-      id,
-      title: `${id}.mp4`,
-      kind: "video",
-      hasAudio,
-      fingerprint: `video-${id}`,
-      durationSeconds: 45,
-      progress: null,
-      locations: [{
-        id: id + 100,
-        fileSourceId: 1,
-        fileSourceName: "Local",
-        locationType: "local",
-        path: `library/RJ09999995/${id}.mp4`,
-        streamUrl: `/api/media/${id + 100}/stream`,
-        downloadUrl: "",
-        availability: "available",
-        sizeBytes: 4096,
+    const videoItem = (id: number, hasAudio: boolean) =>
+      ({
+        id,
+        title: `${id}.mp4`,
+        kind: "video",
+        hasAudio,
+        fingerprint: `video-${id}`,
         durationSeconds: 45,
-      }],
-    } as MediaItem);
+        progress: null,
+        locations: [
+          {
+            id: id + 100,
+            fileSourceId: 1,
+            fileSourceName: "Local",
+            locationType: "local",
+            path: `library/RJ09999995/${id}.mp4`,
+            streamUrl: `/api/media/${id + 100}/stream`,
+            downloadUrl: "",
+            availability: "available",
+            sizeBytes: 4096,
+            durationSeconds: 45,
+          },
+        ],
+      }) as MediaItem;
     const tree = buildTree([videoItem(1, true), videoItem(2, false)], 1, "RJ09999995");
 
     expect(flattenTracks(tree).map((track) => track.mediaItemId)).toEqual([1]);
@@ -540,22 +561,24 @@ describe("mediaTreeModel", () => {
   });
 
   it("keeps remote video as video in the player queue", () => {
-    const tree = buildRemoteTree([{
-      type: "video",
-      title: "bonus.mp4",
-      hash: "video-hash",
-      streamUrl: "/remote/bonus",
-      downloadUrl: "",
-      sizeBytes: 2048,
-      durationSeconds: 30,
-      cacheAvailable: false,
-      cacheLocationId: null,
-      cachePath: "",
-      localAvailable: false,
-      localLocationId: null,
-      localPath: "",
-      children: [],
-    }] as RemoteTrack[]);
+    const tree = buildRemoteTree([
+      {
+        type: "video",
+        title: "bonus.mp4",
+        hash: "video-hash",
+        streamUrl: "/remote/bonus",
+        downloadUrl: "",
+        sizeBytes: 2048,
+        durationSeconds: 30,
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+        children: [],
+      },
+    ] as RemoteTrack[]);
 
     expect(flattenTracks(tree)).toMatchObject([{ kind: "video", hasAudio: null }]);
   });

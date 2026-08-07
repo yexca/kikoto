@@ -9,7 +9,10 @@ export type WorkCodesParseResult = {
 const workCodePattern = /^(RJ|BJ|VJ|CC)[0-9]{4,8}$/i;
 
 export function parseWorkCodes(value: string): WorkCodesParseResult {
-  const tokens = value.split(/[\s,;，；]+/u).map((token) => token.trim()).filter(Boolean);
+  const tokens = value
+    .split(/[\s,;，；]+/u)
+    .map((token) => token.trim())
+    .filter(Boolean);
   const codes: string[] = [];
   const duplicates: string[] = [];
   const invalid: string[] = [];
@@ -30,7 +33,15 @@ export function parseWorkCodes(value: string): WorkCodesParseResult {
   return { codes, duplicates, invalid };
 }
 
-export function WorkCodesField({ value, onChange, className = "" }: { value: string; onChange: (value: string) => void; className?: string }) {
+export function WorkCodesField({
+  value,
+  onChange,
+  className = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
   const parsed = parseWorkCodes(value);
   return (
     <div className={`space-y-2 ${className}`}>
@@ -43,12 +54,27 @@ export function WorkCodesField({ value, onChange, className = "" }: { value: str
         spellCheck={false}
       />
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-success" />{parsed.codes.length} valid</span>
-        <span className="inline-flex items-center gap-1"><Copy className="h-3.5 w-3.5" />{parsed.duplicates.length} duplicate</span>
-        <span className={`inline-flex items-center gap-1 ${parsed.invalid.length > 0 ? "text-error-foreground" : ""}`}><AlertCircle className="h-3.5 w-3.5" />{parsed.invalid.length} invalid</span>
+        <span className="inline-flex items-center gap-1">
+          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+          {parsed.codes.length} valid
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Copy className="h-3.5 w-3.5" />
+          {parsed.duplicates.length} duplicate
+        </span>
+        <span className={`inline-flex items-center gap-1 ${parsed.invalid.length > 0 ? "text-error-foreground" : ""}`}>
+          <AlertCircle className="h-3.5 w-3.5" />
+          {parsed.invalid.length} invalid
+        </span>
       </div>
-      {parsed.invalid.length > 0 && <div className="break-words text-xs text-error-foreground">Invalid: {parsed.invalid.join(", ")}</div>}
-      {parsed.codes.length > 0 && <div className="max-h-20 overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">{parsed.codes.join("\n")}</div>}
+      {parsed.invalid.length > 0 && (
+        <div className="break-words text-xs text-error-foreground">Invalid: {parsed.invalid.join(", ")}</div>
+      )}
+      {parsed.codes.length > 0 && (
+        <div className="max-h-20 overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+          {parsed.codes.join("\n")}
+        </div>
+      )}
     </div>
   );
 }

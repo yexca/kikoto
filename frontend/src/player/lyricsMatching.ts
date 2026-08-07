@@ -34,12 +34,38 @@ export function findLyricsMatches(audioPath: string, items: MediaItem[]): Lyrics
   const audioDirectory = directoryName(audioPath);
   const audioStem = stripLastExtension(audioName);
   const normalizedAudioStem = normalizeMediaName(audioStem);
-  const candidates = items.flatMap((item) => item.locations
-    .filter((location) => location.locationType === "local" && location.availability === "available" && isLyricsPath(location.path))
-    .map((location) => scoreCandidate(item.id, location.id, location.path, audioName, audioStem, normalizedAudioStem, audioDirectory)))
+  const candidates = items
+    .flatMap((item) =>
+      item.locations
+        .filter(
+          (location) =>
+            location.locationType === "local" && location.availability === "available" && isLyricsPath(location.path),
+        )
+        .map((location) =>
+          scoreCandidate(
+            item.id,
+            location.id,
+            location.path,
+            audioName,
+            audioStem,
+            normalizedAudioStem,
+            audioDirectory,
+          ),
+        ),
+    )
     .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
-    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }));
-  return candidates.map((candidate) => ({ mediaItemId: candidate.mediaItemId, locationId: candidate.locationId, title: fileName(candidate.path), path: candidate.path, reason: candidate.reason }));
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }),
+    );
+  return candidates.map((candidate) => ({
+    mediaItemId: candidate.mediaItemId,
+    locationId: candidate.locationId,
+    title: fileName(candidate.path),
+    path: candidate.path,
+    reason: candidate.reason,
+  }));
 }
 
 export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyricsCandidate[]): RemoteLyricsMatch[] {
@@ -61,7 +87,11 @@ export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyr
     return match ? [{ ...match, url: candidate.url }] : [];
   });
   return scored
-    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }))
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }),
+    )
     .map(({ mediaItemId, locationId, path, reason, url }) => ({
       mediaItemId,
       locationId,
@@ -78,16 +108,25 @@ export function isLyricsPath(path: string) {
 }
 
 export function lyricsChoiceDisplayLabel(choice: LyricsChoice, choices: LyricsChoice[]) {
-  const duplicateTitle = choices.some((candidate) =>
-    candidate.locationId !== choice.locationId
-      && candidate.title.localeCompare(choice.title, undefined, { sensitivity: "base" }) === 0
+  const duplicateTitle = choices.some(
+    (candidate) =>
+      candidate.locationId !== choice.locationId &&
+      candidate.title.localeCompare(choice.title, undefined, { sensitivity: "base" }) === 0,
   );
   if (!duplicateTitle) return choice.title;
   const displayPath = choice.displayPath?.trim() || compactLyricsPath(choice.path);
   return displayPath || choice.title;
 }
 
-function scoreCandidate(mediaItemId: number, locationId: number, path: string, audioName: string, audioStem: string, normalizedAudioStem: string, audioDirectory: string) {
+function scoreCandidate(
+  mediaItemId: number,
+  locationId: number,
+  path: string,
+  audioName: string,
+  audioStem: string,
+  normalizedAudioStem: string,
+  audioDirectory: string,
+) {
   const lyricName = fileName(path);
   const lyricDirectory = directoryName(path);
   const lyricBase = stripKnownExtension(lyricName, lyricExtensions);

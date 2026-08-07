@@ -62,7 +62,9 @@ export function WorkflowCanvas({
 }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [connectionNotice, setConnectionNotice] = useState("");
-  const [flowNodes, setFlowNodes] = useState<WorkflowCanvasNode[]>(() => reconcileFlowNodes([], document, nodeTypes, selectedNodeId));
+  const [flowNodes, setFlowNodes] = useState<WorkflowCanvasNode[]>(() =>
+    reconcileFlowNodes([], document, nodeTypes, selectedNodeId),
+  );
   const flowInstance = useRef<ReactFlowInstance<WorkflowCanvasNode, Edge> | null>(null);
   const previousNodeCount = useRef(document.nodes.length);
 
@@ -86,99 +88,150 @@ export function WorkflowCanvas({
     return () => window.clearTimeout(timeout);
   }, [connectionNotice]);
 
-  const flowEdges = useMemo<Edge[]>(() => document.edges.map((edge) => {
-    const sourceNode = document.nodes.find((node) => node.id === edge.source);
-    const sourcePort = sourceNode
-      ? workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === edge.sourceHandle)
-      : null;
-    const color = workflowDataTypeColor(sourcePort?.type);
-    return {
-      ...edge,
-      type: "bezier",
-      className: workflowEdgeClassName("idle"),
-      style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
-      selected: edge.id === selectedEdgeId,
-    };
-  }), [document, nodeTypes, selectedEdgeId]);
+  const flowEdges = useMemo<Edge[]>(
+    () =>
+      document.edges.map((edge) => {
+        const sourceNode = document.nodes.find((node) => node.id === edge.source);
+        const sourcePort = sourceNode
+          ? workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === edge.sourceHandle)
+          : null;
+        const color = workflowDataTypeColor(sourcePort?.type);
+        return {
+          ...edge,
+          type: "bezier",
+          className: workflowEdgeClassName("idle"),
+          style: { stroke: color, strokeWidth: 2, "--workflow-edge-color": color } as CSSProperties,
+          selected: edge.id === selectedEdgeId,
+        };
+      }),
+    [document, nodeTypes, selectedEdgeId],
+  );
 
-  const connectionIssue = useCallback((connection: Connection | Edge) => workflowConnectionIssue(document, nodeTypes, connection), [document, nodeTypes]);
-  const isValidConnection = useCallback((connection: Connection | Edge) => connectionIssue(connection) === "", [connectionIssue]);
+  const connectionIssue = useCallback(
+    (connection: Connection | Edge) => workflowConnectionIssue(document, nodeTypes, connection),
+    [document, nodeTypes],
+  );
+  const isValidConnection = useCallback(
+    (connection: Connection | Edge) => connectionIssue(connection) === "",
+    [connectionIssue],
+  );
 
-  const onConnect = useCallback((connection: Connection) => {
-    if (!isValidConnection(connection) || !connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return;
-    const edge = {
-      id: createWorkflowEdgeID(connection.source, connection.sourceHandle, connection.target, connection.targetHandle),
-      source: connection.source,
-      sourceHandle: connection.sourceHandle,
-      target: connection.target,
-      targetHandle: connection.targetHandle,
-    };
-    setConnectionNotice("");
-    onChange({ ...document, edges: [...document.edges.filter((candidate) => candidate.id !== edge.id), edge] });
-  }, [document, isValidConnection, onChange]);
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (
+        !isValidConnection(connection) ||
+        !connection.source ||
+        !connection.target ||
+        !connection.sourceHandle ||
+        !connection.targetHandle
+      )
+        return;
+      const edge = {
+        id: createWorkflowEdgeID(
+          connection.source,
+          connection.sourceHandle,
+          connection.target,
+          connection.targetHandle,
+        ),
+        source: connection.source,
+        sourceHandle: connection.sourceHandle,
+        target: connection.target,
+        targetHandle: connection.targetHandle,
+      };
+      setConnectionNotice("");
+      onChange({ ...document, edges: [...document.edges.filter((candidate) => candidate.id !== edge.id), edge] });
+    },
+    [document, isValidConnection, onChange],
+  );
 
-  const onNodesChange = useCallback((changes: NodeChange<WorkflowCanvasNode>[]) => {
-    setFlowNodes((current) => applyNodeChanges(changes, current));
-    const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
-    if (removed.size > 0) onSelectNode("");
-    const selected = changes.find((change) => change.type === "select" && change.selected);
-    if (selected?.type === "select") onSelectNode(selected.id);
-    if (removed.size > 0) {
-      onChange({
-        ...document,
-        nodes: document.nodes.filter((node) => !removed.has(node.id)),
-        edges: document.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+  const onNodesChange = useCallback(
+    (changes: NodeChange<WorkflowCanvasNode>[]) => {
+      setFlowNodes((current) => applyNodeChanges(changes, current));
+      const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
+      if (removed.size > 0) onSelectNode("");
+      const selected = changes.find((change) => change.type === "select" && change.selected);
+      if (selected?.type === "select") onSelectNode(selected.id);
+      if (removed.size > 0) {
+        onChange({
+          ...document,
+          nodes: document.nodes.filter((node) => !removed.has(node.id)),
+          edges: document.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+        });
+      }
+    },
+    [document, onChange, onSelectNode],
+  );
+
+  const commitNodePositions = useCallback<OnNodeDrag<WorkflowCanvasNode>>(
+    (_, draggedNode, draggedNodes) => {
+      if (readonly) return;
+      const positions = new Map([...draggedNodes, draggedNode].map((node) => [node.id, node.position]));
+      let changed = false;
+      const nodes = document.nodes.map((node) => {
+        const position = positions.get(node.id);
+        if (!position || samePosition(position, node.position)) return node;
+        changed = true;
+        return { ...node, position };
       });
-    }
-  }, [document, onChange, onSelectNode]);
+      if (changed) onChange({ ...document, nodes });
+    },
+    [document, onChange, readonly],
+  );
 
-  const commitNodePositions = useCallback<OnNodeDrag<WorkflowCanvasNode>>((_, draggedNode, draggedNodes) => {
-    if (readonly) return;
-    const positions = new Map([...draggedNodes, draggedNode].map((node) => [node.id, node.position]));
-    let changed = false;
-    const nodes = document.nodes.map((node) => {
-      const position = positions.get(node.id);
-      if (!position || samePosition(position, node.position)) return node;
-      changed = true;
-      return { ...node, position };
-    });
-    if (changed) onChange({ ...document, nodes });
-  }, [document, onChange, readonly]);
+  const onConnectEnd = useCallback(
+    (_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (state.isValid || !state.fromHandle || !state.toHandle) return;
+      setConnectionNotice(connectionIssue(connectionFromHandles(state.fromHandle, state.toHandle)));
+    },
+    [connectionIssue],
+  );
 
-  const onConnectEnd = useCallback((_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
-    if (state.isValid || !state.fromHandle || !state.toHandle) return;
-    setConnectionNotice(connectionIssue(connectionFromHandles(state.fromHandle, state.toHandle)));
-  }, [connectionIssue]);
-
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
-    const selected = changes.find((change) => change.type === "select" && change.selected);
-    if (selected?.type === "select") {
-      setSelectedEdgeId(selected.id);
-      onSelectNode("");
-    }
-    if (removed.size > 0) {
-      setSelectedEdgeId("");
-      onChange({ ...document, edges: document.edges.filter((edge) => !removed.has(edge.id)) });
-    }
-  }, [document, onChange, onSelectNode]);
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const removed = new Set(changes.filter((change) => change.type === "remove").map((change) => change.id));
+      const selected = changes.find((change) => change.type === "select" && change.selected);
+      if (selected?.type === "select") {
+        setSelectedEdgeId(selected.id);
+        onSelectNode("");
+      }
+      if (removed.size > 0) {
+        setSelectedEdgeId("");
+        onChange({ ...document, edges: document.edges.filter((edge) => !removed.has(edge.id)) });
+      }
+    },
+    [document, onChange, onSelectNode],
+  );
 
   return (
-    <div className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`} aria-label={readonly ? "Workflow DAG canvas" : "Workflow composer canvas"}>
+    <div
+      className={`workflow-canvas workflow-composer-canvas overflow-hidden ${compact ? "h-64 min-h-64 rounded-md border" : "h-full min-h-0 lg:min-h-[32rem]"}`}
+      aria-label={readonly ? "Workflow DAG canvas" : "Workflow composer canvas"}
+    >
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={workflowEditorNodeTypes}
-        onInit={(instance) => { flowInstance.current = instance; }}
+        onInit={(instance) => {
+          flowInstance.current = instance;
+        }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onConnectEnd={onConnectEnd}
         isValidConnection={isValidConnection}
         onNodeDragStop={commitNodePositions}
-        onNodeClick={(_, node) => { setSelectedEdgeId(""); onSelectNode(node.id); }}
-        onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); onSelectNode(""); }}
-        onPaneClick={() => { setSelectedEdgeId(""); onSelectNode(""); }}
+        onNodeClick={(_, node) => {
+          setSelectedEdgeId("");
+          onSelectNode(node.id);
+        }}
+        onEdgeClick={(_, edge) => {
+          setSelectedEdgeId(edge.id);
+          onSelectNode("");
+        }}
+        onPaneClick={() => {
+          setSelectedEdgeId("");
+          onSelectNode("");
+        }}
         connectionMode={ConnectionMode.Strict}
         connectionRadius={28}
         connectionDragThreshold={2}
@@ -199,7 +252,11 @@ export function WorkflowCanvas({
       >
         <Background gap={24} size={1} color="hsl(var(--workflow-grid))" />
         {connectionNotice && (
-          <Panel position="top-center" className="pointer-events-none rounded-md border border-error-border bg-error-surface/95 px-3 py-2 text-xs text-error-foreground shadow-sm" aria-live="polite">
+          <Panel
+            position="top-center"
+            className="pointer-events-none rounded-md border border-error-border bg-error-surface/95 px-3 py-2 text-xs text-error-foreground shadow-sm"
+            aria-live="polite"
+          >
             {connectionNotice}
           </Panel>
         )}
@@ -220,22 +277,34 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
       style={{ minHeight: 72 + rowCount * 28 }}
     >
       <div className="flex min-h-14 items-start gap-2 border-b px-3 py-2.5">
-        <span className="mt-0.5 rounded border bg-muted p-1 text-muted-foreground"><Icon className="h-3.5 w-3.5" /></span>
+        <span className="mt-0.5 rounded border bg-muted p-1 text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{node.displayName || metadata?.displayName || node.id}</span>
-          <span className="block truncate text-[11px] text-muted-foreground">{metadata?.composite ? "Composite" : metadata?.phase || "Input"} · {node.type}</span>
+          <span className="block truncate text-sm font-semibold">
+            {node.displayName || metadata?.displayName || node.id}
+          </span>
+          <span className="block truncate text-[11px] text-muted-foreground">
+            {metadata?.composite ? "Composite" : metadata?.phase || "Input"} · {node.type}
+          </span>
         </span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 px-2 py-2 text-[11px]">
         <div className="min-w-0 space-y-1">
           {data.inputs.map((port, index) => (
-            <div key={port.id} className="flex h-6 min-w-0 items-center gap-1.5 pl-2" title={`${port.label}: ${port.type}`}>
+            <div
+              key={port.id}
+              className="flex h-6 min-w-0 items-center gap-1.5 pl-2"
+              title={`${port.label}: ${port.type}`}
+            >
               <Handle
                 id={port.id}
                 type="target"
                 position={Position.Left}
                 className="workflow-port-handle"
-                style={{ top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties}
+                style={
+                  { top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties
+                }
                 aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} input`}
               />
               <span className="truncate text-muted-foreground">{port.label}</span>
@@ -244,14 +313,20 @@ const WorkflowEditorNode = memo(function WorkflowEditorNode({ data, selected }: 
         </div>
         <div className="min-w-0 space-y-1 text-right">
           {data.outputs.map((port, index) => (
-            <div key={port.id} className="flex h-6 min-w-0 items-center justify-end gap-1.5 pr-2" title={`${port.label}: ${port.type}`}>
+            <div
+              key={port.id}
+              className="flex h-6 min-w-0 items-center justify-end gap-1.5 pr-2"
+              title={`${port.label}: ${port.type}`}
+            >
               <span className="truncate text-muted-foreground">{port.label}</span>
               <Handle
                 id={port.id}
                 type="source"
                 position={Position.Right}
                 className="workflow-port-handle"
-                style={{ top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties}
+                style={
+                  { top: 70 + index * 28, "--workflow-port-color": workflowDataTypeColor(port.type) } as CSSProperties
+                }
                 aria-label={`${node.displayName || metadata?.displayName || node.id}: ${port.label} output`}
               />
             </div>
@@ -292,19 +367,35 @@ function reconcileFlowNodes(
   });
 }
 
-function workflowConnectionIssue(document: WorkflowDefinitionDocument, nodeTypes: WorkflowNodeType[], connection: Connection | Edge) {
-  if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle) return "Select an input and output port.";
+function workflowConnectionIssue(
+  document: WorkflowDefinitionDocument,
+  nodeTypes: WorkflowNodeType[],
+  connection: Connection | Edge,
+) {
+  if (!connection.source || !connection.target || !connection.sourceHandle || !connection.targetHandle)
+    return "Select an input and output port.";
   const sourceNode = document.nodes.find((node) => node.id === connection.source);
   const targetNode = document.nodes.find((node) => node.id === connection.target);
   if (!sourceNode || !targetNode) return "One of the connected nodes is no longer available.";
-  const sourcePort = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find((port) => port.id === connection.sourceHandle);
-  const targetPort = workflowNodePorts(document, targetNode, nodeTypes).inputs.find((port) => port.id === connection.targetHandle);
+  const sourcePort = workflowNodePorts(document, sourceNode, nodeTypes).outputs.find(
+    (port) => port.id === connection.sourceHandle,
+  );
+  const targetPort = workflowNodePorts(document, targetNode, nodeTypes).inputs.find(
+    (port) => port.id === connection.targetHandle,
+  );
   if (!sourcePort || !targetPort) return "Connect an output port to an input port.";
-  if (!canConnectWorkflowPorts(sourcePort, targetPort)) return `${sourcePort.label} (${sourcePort.type}) cannot connect to ${targetPort.label} (${targetPort.type}).`;
-  if (targetPort.multiple !== true && document.edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) {
+  if (!canConnectWorkflowPorts(sourcePort, targetPort))
+    return `${sourcePort.label} (${sourcePort.type}) cannot connect to ${targetPort.label} (${targetPort.type}).`;
+  if (
+    targetPort.multiple !== true &&
+    document.edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)
+  ) {
     return `${targetPort.label} already has a connection.`;
   }
-  if (wouldCreateWorkflowCycle(document.nodes, document.edges, { source: connection.source, target: connection.target })) return "This connection would create a cycle.";
+  if (
+    wouldCreateWorkflowCycle(document.nodes, document.edges, { source: connection.source, target: connection.target })
+  )
+    return "This connection would create a cycle.";
   return "";
 }
 

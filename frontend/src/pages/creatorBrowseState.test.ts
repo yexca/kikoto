@@ -12,6 +12,8 @@ describe("creator browse state", () => {
   });
 
   it("normalizes unsupported values", () => {
-    expect(creatorBrowseStateFromSearch("?filter=nope&page=-2&pageSize=25", fallback, filters, [24, 48, 96])).toEqual(fallback);
+    expect(creatorBrowseStateFromSearch("?filter=nope&page=-2&pageSize=25", fallback, filters, [24, 48, 96])).toEqual(
+      fallback,
+    );
   });
 });

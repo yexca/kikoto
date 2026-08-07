@@ -15,7 +15,10 @@ export function SourcesPage({ canManage }: { canManage: boolean }) {
   const [apiSources, setAPISources] = useState<FileSource[]>([]);
 
   useEffect(() => {
-    api.listFileSources().then(setAPISources).catch(() => setAPISources([]));
+    api
+      .listFileSources()
+      .then(setAPISources)
+      .catch(() => setAPISources([]));
   }, []);
 
   const visibleSources =

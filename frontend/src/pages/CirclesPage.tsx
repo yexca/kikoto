@@ -44,7 +44,17 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { RemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/RemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
-import { api, ApiError, assetURL, type CircleCatalogWork, type CircleDetail, type CircleSeries, type CircleSourceStat, type CircleSummary, type ListeningStatus } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  assetURL,
+  type CircleCatalogWork,
+  type CircleDetail,
+  type CircleSeries,
+  type CircleSourceStat,
+  type CircleSummary,
+  type ListeningStatus,
+} from "@/lib/api";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -72,7 +82,16 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Shelved" },
 ];
 type CircleFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "stale";
-const circleFilters: readonly CircleFilter[] = ["all", "favorite", "tagged", "available", "local", "remote", "missing", "stale"];
+const circleFilters: readonly CircleFilter[] = [
+  "all",
+  "favorite",
+  "tagged",
+  "available",
+  "local",
+  "remote",
+  "missing",
+  "stale",
+];
 type CircleRefreshScope = "all" | "catalog" | "work" | "source";
 type CircleRefreshResultScope = CircleRefreshScope | "metadata";
 type CircleRefreshMode = "incremental" | "full";
@@ -104,18 +123,26 @@ export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
 export function openCircleSeriesRoute(externalId: string, seriesCode?: string | null) {
   const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
   const returnTo = currentCircleReturnPath();
-  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/circles/${encodeURIComponent(externalId)}${suffix}`);
+  window.history.pushState(
+    historyStateWithReturn(returnTo, "Back"),
+    "",
+    `/circles/${encodeURIComponent(externalId)}${suffix}`,
+  );
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 function CircleListPage() {
   const toast = useToast();
-  const initialBrowseState = useMemo(() => creatorBrowseStateFromSearch(
-    window.location.search,
-    { query: "", filter: "all" as CircleFilter, tag: "", page: 1, pageSize: 24 },
-    circleFilters,
-    circlePageSizeOptions,
-  ), []);
+  const initialBrowseState = useMemo(
+    () =>
+      creatorBrowseStateFromSearch(
+        window.location.search,
+        { query: "", filter: "all" as CircleFilter, tag: "", page: 1, pageSize: 24 },
+        circleFilters,
+        circlePageSizeOptions,
+      ),
+    [],
+  );
   const [circles, setCircles] = useState<CircleSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -144,20 +171,24 @@ function CircleListPage() {
     const controller = new AbortController();
     setIsLoading(true);
     setLoadError("");
-    api.listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal }).then((result) => {
-      setCircles(result.circles);
-      setTotal(result.total);
-      setCatalogWorks(result.catalogWorks);
-      setAvailableWorks(result.availableWorks);
-      setHasLoaded(true);
-      if (result.page !== page) setPage(result.page);
-    }).catch((error) => {
-      if (controller.signal.aborted) return;
-      setLoadError("Circles could not be loaded.");
-      toast.notify(toastFromError(error, "Circle API is unavailable."));
-    }).finally(() => {
-      if (!controller.signal.aborted) setIsLoading(false);
-    });
+    api
+      .listCircles({ page, pageSize, query: requestQuery, filter, signal: controller.signal })
+      .then((result) => {
+        setCircles(result.circles);
+        setTotal(result.total);
+        setCatalogWorks(result.catalogWorks);
+        setAvailableWorks(result.availableWorks);
+        setHasLoaded(true);
+        if (result.page !== page) setPage(result.page);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setLoadError("Circles could not be loaded.");
+        toast.notify(toastFromError(error, "Circle API is unavailable."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
     return () => controller.abort();
   }, [filter, page, pageSize, reloadToken, requestQuery]);
 
@@ -178,13 +209,16 @@ function CircleListPage() {
   };
 
   const updateCircle = (next: CircleSummary) => {
-    setCircles((items) => items.map((item) => item.externalId === next.externalId ? { ...item, ...next } : item));
+    setCircles((items) => items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item)));
     if (filter !== "all" || requestQuery.trim()) setReloadToken((value) => value + 1);
   };
 
   const toggleFavorite = async (circle: CircleSummary) => {
     try {
-      updateCircle({ ...circle, ...await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite }) });
+      updateCircle({
+        ...circle,
+        ...(await api.updateCircleUserState(circle.externalId, { favorite: !circle.favorite })),
+      });
     } catch (error) {
       toast.notify(toastFromError(error, "Circle favorite update failed."));
     }
@@ -236,7 +270,9 @@ function CircleListPage() {
           <Badge variant="outline">{catalogWorks} catalog works</Badge>
           <Badge variant="outline">{availableWorks} available works</Badge>
           <span className="grid h-4 w-4 place-items-center">
-            {isLoading && hasLoaded && <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-label="Refreshing circles" />}
+            {isLoading && hasLoaded && (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-label="Refreshing circles" />
+            )}
           </span>
         </div>
 
@@ -246,36 +282,40 @@ function CircleListPage() {
           <Card className="min-h-56" role="alert">
             <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
               <span>{loadError}</span>
-              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Retry</Button>
+              <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
+                Retry
+              </Button>
             </CardContent>
           </Card>
         ) : (
-        <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
-          {circles.length > 0 ? (
-            circles.map((circle) => (
-              <CreatorCard
-                key={circle.externalId}
-                name={circle.displayName}
-                identityLabel={circle.externalId}
-                aliases={circle.aliases}
-                latestWork={circle.latestWork}
-                favorite={circle.favorite}
-                userTags={circle.userTags}
-                syncState={circle.syncState}
-                workCount={circle.catalogWorks}
-                unavailableCount={circle.missingWorks}
-                sources={circle.sourceSummaries}
-                onOpen={() => openCircleRoute(circle.externalId)}
-                onFavoriteToggle={() => void toggleFavorite(circle)}
-                onTagsSave={(tags) => saveTags(circle, tags)}
-              />
-            ))
-          ) : (
-            <Card className="min-h-56">
-              <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">No circles match this view.</CardContent>
-            </Card>
-          )}
-        </div>
+          <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+            {circles.length > 0 ? (
+              circles.map((circle) => (
+                <CreatorCard
+                  key={circle.externalId}
+                  name={circle.displayName}
+                  identityLabel={circle.externalId}
+                  aliases={circle.aliases}
+                  latestWork={circle.latestWork}
+                  favorite={circle.favorite}
+                  userTags={circle.userTags}
+                  syncState={circle.syncState}
+                  workCount={circle.catalogWorks}
+                  unavailableCount={circle.missingWorks}
+                  sources={circle.sourceSummaries}
+                  onOpen={() => openCircleRoute(circle.externalId)}
+                  onFavoriteToggle={() => void toggleFavorite(circle)}
+                  onTagsSave={(tags) => saveTags(circle, tags)}
+                />
+              ))
+            ) : (
+              <Card className="min-h-56">
+                <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+                  No circles match this view.
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
         <CollectionPagination {...paginationProps} placement="bottom" />
       </section>
@@ -289,7 +329,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } = useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
+    useWorkCollectionLayout();
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -299,45 +340,51 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
   });
   const [workQuery, setWorkQuery] = useState("");
-  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable" | "local" | "remote">("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<
+    "all" | "available" | "unavailable" | "local" | "remote"
+  >("all");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
 
-  const loadCircleDetail = useCallback(async (showLoading = false) => {
-    if (showLoading) {
-      setIsLoading(true);
-    }
-    try {
-      const next = await api.getCircle(externalId);
-      setDetail(next);
-      setNotFound(false);
-      return next;
-    } catch (error) {
-      setDetail(null);
-      if (error instanceof ApiError && error.status === 404) {
-        setNotFound(true);
-        return null;
-      }
-      toast.notify(toastFromError(error, "Circle detail is unavailable."));
-      return null;
-    } finally {
+  const loadCircleDetail = useCallback(
+    async (showLoading = false) => {
       if (showLoading) {
-        setIsLoading(false);
+        setIsLoading(true);
       }
-    }
-  }, [externalId]);
+      try {
+        const next = await api.getCircle(externalId);
+        setDetail(next);
+        setNotFound(false);
+        return next;
+      } catch (error) {
+        setDetail(null);
+        if (error instanceof ApiError && error.status === 404) {
+          setNotFound(true);
+          return null;
+        }
+        toast.notify(toastFromError(error, "Circle detail is unavailable."));
+        return null;
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [externalId],
+  );
 
   useEffect(() => {
     const refreshTrackedWork = (event: Event) => {
       const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
       if (
-        !terminal
-        || (terminal.status !== "succeeded" && terminal.status !== "partial")
-        || !detail?.works.some((work) => {
+        !terminal ||
+        (terminal.status !== "succeeded" && terminal.status !== "partial") ||
+        !detail?.works.some((work) => {
           const target = circleWorkRemoteTarget(work);
           return target && isMatchingRemoteTrack(terminal, target.sourceId, target.code, work.primaryCode);
         })
-      ) return;
+      )
+        return;
       void loadCircleDetail();
     };
     window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshTrackedWork);
@@ -352,7 +399,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     const pollAutoRefresh = async (attempt = 0) => {
       const next = await loadCircleDetail(attempt === 0);
       if (cancelled || !next) return;
-      const autoRefresh = attempt === 0 ? await api.autoRefreshCircle(externalId).catch(() => next.autoRefresh) : next.autoRefresh;
+      const autoRefresh =
+        attempt === 0 ? await api.autoRefreshCircle(externalId).catch(() => next.autoRefresh) : next.autoRefresh;
       if (cancelled) return;
       if (autoRefresh.status === "queued") {
         refreshStarted = true;
@@ -385,19 +433,23 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const filteredWorks = useMemo(() => {
     const needle = workQuery.trim().toLowerCase();
     return circle.works.filter((work) => {
-      const matchesQuery = !needle || [work.primaryCode, work.title, work.releaseDate ?? "", work.catalogStatus].some((value) => value.toLowerCase().includes(needle));
+      const matchesQuery =
+        !needle ||
+        [work.primaryCode, work.title, work.releaseDate ?? "", work.catalogStatus].some((value) =>
+          value.toLowerCase().includes(needle),
+        );
       if (!matchesQuery) return false;
       switch (availabilityFilter) {
-      case "available":
-        return work.local || work.remote;
-      case "unavailable":
-        return !work.local && !work.remote;
-      case "local":
-        return work.local;
-      case "remote":
-        return work.remote;
-      default:
-        return true;
+        case "available":
+          return work.local || work.remote;
+        case "unavailable":
+          return !work.local && !work.remote;
+        case "local":
+          return work.local;
+        case "remote":
+          return work.remote;
+        default:
+          return true;
       }
     });
   }, [availabilityFilter, circle.works, workQuery]);
@@ -415,36 +467,47 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   }, [availabilityFilter, externalId, workPageSize, workQuery]);
 
   useEffect(() => {
-    setSelectedWorkCodes((current) => new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))));
+    setSelectedWorkCodes(
+      (current) =>
+        new Set(Array.from(current).filter((code) => filteredWorks.some((work) => work.primaryCode === code))),
+    );
   }, [filteredWorks]);
   const selectedSeries = useMemo(() => {
     const code = seriesCode?.toUpperCase() ?? "";
-    return code ? circle.series.find((series) => series.titleId.toUpperCase() === code) ?? null : null;
+    return code ? (circle.series.find((series) => series.titleId.toUpperCase() === code) ?? null) : null;
   }, [circle.series, seriesCode]);
   const isSeriesView = seriesCode !== undefined;
   const seriesWorks = useMemo(() => {
     if (!isSeriesView) return [];
     const codes = new Set((selectedSeries?.workCodes ?? []).map((code) => code.toUpperCase()));
-    const base = selectedSeries ? circle.works.filter((work) => codes.has(work.primaryCode.toUpperCase())) : circle.works;
+    const base = selectedSeries
+      ? circle.works.filter((work) => codes.has(work.primaryCode.toUpperCase()))
+      : circle.works;
     const needle = workQuery.trim().toLowerCase();
     return base.filter((work) => {
-      const matchesQuery = !needle || [work.primaryCode, work.title, work.releaseDate ?? "", work.catalogStatus].some((value) => value.toLowerCase().includes(needle));
+      const matchesQuery =
+        !needle ||
+        [work.primaryCode, work.title, work.releaseDate ?? "", work.catalogStatus].some((value) =>
+          value.toLowerCase().includes(needle),
+        );
       if (!matchesQuery) return false;
       switch (availabilityFilter) {
-      case "available":
-        return work.local || work.remote;
-      case "unavailable":
-        return !work.local && !work.remote;
-      case "local":
-        return work.local;
-      case "remote":
-        return work.remote;
-      default:
-        return true;
+        case "available":
+          return work.local || work.remote;
+        case "unavailable":
+          return !work.local && !work.remote;
+        case "local":
+          return work.local;
+        case "remote":
+          return work.remote;
+        default:
+          return true;
       }
     });
   }, [availabilityFilter, circle.works, isSeriesView, selectedSeries, workQuery]);
-  const activeSeriesCount = selectedSeries ? selectedSeries.works : circle.series.reduce((total, series) => total + series.works, 0);
+  const activeSeriesCount = selectedSeries
+    ? selectedSeries.works
+    : circle.series.reduce((total, series) => total + series.works, 0);
 
   const refresh = async (scope: CircleRefreshScope, mode: CircleRefreshMode) => {
     setRefreshingScope(scope);
@@ -463,7 +526,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const toggleCircleFavorite = async () => {
     try {
       const next = await api.updateCircleUserState(externalId, { favorite: !circle.favorite });
-      setDetail((current) => current ? { ...current, ...next, works: current.works, series: current.series } : current);
+      setDetail((current) =>
+        current ? { ...current, ...next, works: current.works, series: current.series } : current,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, "Circle favorite update failed."));
     }
@@ -472,7 +537,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const saveCircleTags = async (tags: string[]) => {
     try {
       const result = await api.setCircleUserTags(externalId, tags);
-      setDetail((current) => current ? { ...current, userTags: result.userTags } : current);
+      setDetail((current) => (current ? { ...current, userTags: result.userTags } : current));
     } catch (error) {
       toast.notify(toastFromError(error, "Circle tags update failed."));
     }
@@ -482,7 +547,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     if (!deleteTarget) return;
     try {
       const result = await api.deleteCircleCatalogWork(externalId, deleteTarget.primaryCode);
-      toast.success(result.deleted > 0 ? `${deleteTarget.primaryCode} removed from this circle catalog.` : `${deleteTarget.primaryCode} was already removed.`);
+      toast.success(
+        result.deleted > 0
+          ? `${deleteTarget.primaryCode} removed from this circle catalog.`
+          : `${deleteTarget.primaryCode} was already removed.`,
+      );
       const next = await api.getCircle(externalId);
       setDetail(next);
       setDeleteTarget(null);
@@ -498,10 +567,16 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
     }
     try {
       const result = await api.updateWorkUserState(work.workId, { listeningStatus: status });
-      setDetail((current) => current ? {
-        ...current,
-        works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: result.listeningStatus } : item),
-      } : current);
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              works: current.works.map((item) =>
+                item.primaryCode === work.primaryCode ? { ...item, listeningMark: result.listeningStatus } : item,
+              ),
+            }
+          : current,
+      );
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
     }
@@ -518,7 +593,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       const next = await api.getCircle(externalId);
       setDetail({
         ...next,
-        works: next.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item),
+        works: next.works.map((item) =>
+          item.primaryCode === work.primaryCode ? { ...item, listeningMark: markResult.listeningStatus } : item,
+        ),
       });
     } catch (error) {
       toast.notify(toastFromError(error, "Mark update failed."));
@@ -583,7 +660,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       const message = `Bulk workflow ${runIds}: queued ${fetched} Fetch jobs, failed ${failed}.`;
-      if (failed > 0) toast.warning(message); else toast.success(message);
+      if (failed > 0) toast.warning(message);
+      else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
@@ -605,7 +683,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       const failed = results.reduce((total, result) => total + result.failed, 0);
       const runIds = results.map((result) => `#${result.runId}`).join(", ");
       const message = `Bulk workflow ${runIds}: tracked ${synced}, queued ${fetched} Fetch jobs, failed ${failed}.`;
-      if (failed > 0) toast.warning(message); else toast.success(message);
+      if (failed > 0) toast.warning(message);
+      else toast.success(message);
       const next = await api.getCircle(externalId);
       setDetail(next);
     } catch (error) {
@@ -645,7 +724,9 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       announceRemoteTrackCreated(target.sourceId, target.code, result);
       toast.notify({
         kind: "info",
-        message: result.deduplicated ? `Track workflow #${result.runId} is already queued.` : `Track workflow #${result.runId} queued.`,
+        message: result.deduplicated
+          ? `Track workflow #${result.runId} is already queued.`
+          : `Track workflow #${result.runId} queued.`,
       });
     } catch (error) {
       toast.notify(toastFromError(error, "Track failed."));
@@ -675,7 +756,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         Back to circles
       </Button>
 
-
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
           <CardContent className="space-y-4 p-5">
@@ -687,17 +767,27 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   {circle.favorite && <Badge variant="secondary">Favorite</Badge>}
                 </div>
                 <h2 className="mt-3 truncate text-2xl font-semibold lg:text-3xl">{circle.displayName}</h2>
-                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{circle.aliases.join(", ") || "No aliases"}</p>
+                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+                  {circle.aliases.join(", ") || "No aliases"}
+                </p>
                 {circle.aliases.length > 0 ? (
                   <details className="mt-2 text-sm sm:hidden">
-                    <summary className="cursor-pointer font-medium text-muted-foreground">Aliases · {circle.aliases.length}</summary>
+                    <summary className="cursor-pointer font-medium text-muted-foreground">
+                      Aliases · {circle.aliases.length}
+                    </summary>
                     <p className="mt-1 text-muted-foreground">{circle.aliases.join(", ")}</p>
                   </details>
-                ) : <p className="mt-1 text-sm text-muted-foreground sm:hidden">No aliases</p>}
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground sm:hidden">No aliases</p>
+                )}
                 <UserTagRow tags={circle.userTags} onSave={saveCircleTags} className="mt-3" />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant={circle.favorite ? "default" : "outline"} size="sm" onClick={() => void toggleCircleFavorite()}>
+                <Button
+                  variant={circle.favorite ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => void toggleCircleFavorite()}
+                >
                   <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
                   Favorite
                 </Button>
@@ -707,11 +797,20 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                     DLsite
                   </a>
                 </Button>
-                <Button variant="outline" size="sm" disabled={isLoading || refreshingScope !== null} onClick={() => void refresh("work", "full")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isLoading || refreshingScope !== null}
+                  onClick={() => void refresh("work", "full")}
+                >
                   <RefreshCw className="h-4 w-4" />
                   Retry metadata
                 </Button>
-                <Button size="sm" disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)} onClick={() => void refresh("all", "incremental")}>
+                <Button
+                  size="sm"
+                  disabled={isLoading || refreshingScope !== null || isTranslationCircle(circle.externalId)}
+                  onClick={() => void refresh("all", "incremental")}
+                >
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
@@ -724,7 +823,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <Stat label="Catalog only" value={String(catalogOnlyCount)} />
               <Stat label="Playable" value={String(playableCount)} />
             </div>
-
           </CardContent>
         </Card>
 
@@ -754,97 +852,121 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               active={refreshingScope === "source" || refreshingScope === "all"}
               onRun={(mode) => void refresh("source", mode)}
             />
-            {isTranslationCircle(circle.externalId) && <div className="text-xs text-muted-foreground">Catalog and source refresh are disabled for translation umbrella circles.</div>}
+            {isTranslationCircle(circle.externalId) && (
+              <div className="text-xs text-muted-foreground">
+                Catalog and source refresh are disabled for translation umbrella circles.
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
 
       <section className="space-y-3">
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex h-9 rounded-md border bg-background p-1 text-sm">
-              <button className={`rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => openCircleRoute(circle.externalId)}>
-                Works {circle.works.length}
-              </button>
-              <button className={`rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`} onClick={() => openCircleSeriesRoute(circle.externalId)}>
-                Series {circle.series.length}
-              </button>
-            </div>
-            <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
-              <Search className="h-4 w-4" />
-              <input
-                className="min-w-0 flex-1 bg-transparent outline-none"
-                value={workQuery}
-                onKeyDown={dismissKeyboardOnEnter}
-                onChange={(event) => setWorkQuery(event.target.value)}
-                placeholder="Search circle catalog works"
-              />
-            </div>
-            <div className="flex gap-2">
-              <WorkCollectionLayoutPicker
-                viewMode={viewMode}
-                mobileColumns={mobileColumns}
-                desktopColumns={desktopColumns}
-                onViewModeChange={setViewMode}
-                onMobileColumnsChange={setMobileColumns}
-                onDesktopColumnsChange={setDesktopColumns}
-              />
-              <select
-                className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={availabilityFilter}
-                onChange={(event) => setAvailabilityFilter(event.target.value as "all" | "available" | "unavailable" | "local" | "remote")}
-                aria-label="Catalog availability filter"
-              >
-                <option value="all">All works</option>
-                <option value="available">Available</option>
-                <option value="unavailable">Unavailable</option>
-                <option value="local">Local</option>
-                <option value="remote">Remote</option>
-              </select>
-              <Button variant="outline" size="sm" disabled>
-                <SlidersHorizontal className="h-4 w-4" />
-                More
-              </Button>
-              {!isSeriesView && (
-                <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={() => {
+          <div className="flex h-9 rounded-md border bg-background p-1 text-sm">
+            <button
+              className={`rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              onClick={() => openCircleRoute(circle.externalId)}
+            >
+              Works {circle.works.length}
+            </button>
+            <button
+              className={`rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              onClick={() => openCircleSeriesRoute(circle.externalId)}
+            >
+              Series {circle.series.length}
+            </button>
+          </div>
+          <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
+            <Search className="h-4 w-4" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none"
+              value={workQuery}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => setWorkQuery(event.target.value)}
+              placeholder="Search circle catalog works"
+            />
+          </div>
+          <div className="flex gap-2">
+            <WorkCollectionLayoutPicker
+              viewMode={viewMode}
+              mobileColumns={mobileColumns}
+              desktopColumns={desktopColumns}
+              onViewModeChange={setViewMode}
+              onMobileColumnsChange={setMobileColumns}
+              onDesktopColumnsChange={setDesktopColumns}
+            />
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={availabilityFilter}
+              onChange={(event) =>
+                setAvailabilityFilter(event.target.value as "all" | "available" | "unavailable" | "local" | "remote")
+              }
+              aria-label="Catalog availability filter"
+            >
+              <option value="all">All works</option>
+              <option value="available">Available</option>
+              <option value="unavailable">Unavailable</option>
+              <option value="local">Local</option>
+              <option value="remote">Remote</option>
+            </select>
+            <Button variant="outline" size="sm" disabled>
+              <SlidersHorizontal className="h-4 w-4" />
+              More
+            </Button>
+            {!isSeriesView && (
+              <Button
+                variant={selectionMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
                   setSelectionMode((value) => {
                     if (value) setSelectedWorkCodes(new Set());
                     return !value;
                   });
-                }}>
-                  Select
-                </Button>
-              )}
-            </div>
+                }}
+              >
+                Select
+              </Button>
+            )}
           </div>
+        </div>
 
-          {isSeriesView ? (
-            <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-              <CircleSeriesSidebar
-                externalId={circle.externalId}
-                series={circle.series}
-                selectedSeriesCode={selectedSeries?.titleId ?? null}
-                allCount={activeSeriesCount}
-              />
-              <div className="space-y-3">
-                <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-base font-semibold">{selectedSeries ? selectedSeries.name : "All series"}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedSeries ? `${selectedSeries.titleId} · ${selectedSeries.works} works` : `${circle.series.length} series · ${activeSeriesCount} listed works`}
-                    </p>
-                  </div>
-                  {selectedSeries?.url && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={selectedSeries.url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="h-4 w-4" />
-                        DLsite series
-                      </a>
-                    </Button>
-                  )}
+        {isSeriesView ? (
+          <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+            <CircleSeriesSidebar
+              externalId={circle.externalId}
+              series={circle.series}
+              selectedSeriesCode={selectedSeries?.titleId ?? null}
+              allCount={activeSeriesCount}
+            />
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-semibold">
+                    {selectedSeries ? selectedSeries.name : "All series"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedSeries
+                      ? `${selectedSeries.titleId} · ${selectedSeries.works} works`
+                      : `${circle.series.length} series · ${activeSeriesCount} listed works`}
+                  </p>
                 </div>
-                {selectedSeries ? (
-                  <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-                    {seriesWorks.length > 0 ? seriesWorks.map((work) => (
+                {selectedSeries?.url && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={selectedSeries.url} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                      DLsite series
+                    </a>
+                  </Button>
+                )}
+              </div>
+              {selectedSeries ? (
+                <div
+                  className={workCollectionClassName(viewMode)}
+                  style={workCollectionStyle(mobileColumns, desktopColumns)}
+                >
+                  {seriesWorks.length > 0 ? (
+                    seriesWorks.map((work) => (
                       <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
                         <CatalogWorkCard
                           work={work}
@@ -858,104 +980,169 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                           onDeleteMissing={() => setDeleteTarget(work)}
                           onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
                           onFavoriteSaved={(favorite) => {
-                            setDetail((current) => current ? {
-                              ...current,
-                              works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
-                            } : current);
+                            setDetail((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    works: current.works.map((item) =>
+                                      item.primaryCode === work.primaryCode ? { ...item, favorite } : item,
+                                    ),
+                                  }
+                                : current,
+                            );
                           }}
                           onEnsureWork={() => ensureCatalogWorkForList(work)}
-                          onSeriesOpen={(work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) ? () => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) : undefined}
+                          onSeriesOpen={
+                            work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)
+                              ? () =>
+                                  openCircleSeriesRoute(
+                                    circle.externalId,
+                                    work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode),
+                                  )
+                              : undefined
+                          }
                         />
                       </div>
-                    )) : (
-                      <Card>
-                        <CardContent className="p-5 text-sm text-muted-foreground">No works match this series view.</CardContent>
-                      </Card>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {circle.series.length > 0 ? circle.series.map((series) => (
+                    ))
+                  ) : (
+                    <Card>
+                      <CardContent className="p-5 text-sm text-muted-foreground">
+                        No works match this series view.
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {circle.series.length > 0 ? (
+                    circle.series.map((series) => (
                       <CircleSeriesSummaryCard key={series.titleId} externalId={circle.externalId} series={series} />
-                    )) : (
-                      <Card>
-                        <CardContent className="p-5 text-sm text-muted-foreground">No series found for this circle.</CardContent>
-                      </Card>
-                    )}
-                  </div>
-                )}
-              </div>
+                    ))
+                  ) : (
+                    <Card>
+                      <CardContent className="p-5 text-sm text-muted-foreground">
+                        No series found for this circle.
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-          <>
-          {selectionMode && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Checkbox
-                checked={selectablePagedWorks.length > 0 && selectablePagedWorks.every((work) => selectedWorkCodes.has(work.primaryCode))}
-                onCheckedChange={toggleVisibleSelection}
-                aria-label="Select visible works"
-              />
-              {selectedWorks.length} selected
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>Select all</Button>
-              <Button variant="outline" size="sm" onClick={() => {
-                setSelectedWorkCodes(new Set());
-                setSelectionMode(false);
-              }}>Cancel selection</Button>
-              <Button variant="outline" size="sm" disabled={isBulkSaving || selectedSyncableWorks.length === 0} onClick={() => void bulkSyncAndSaveSelected()}>
-                <GitBranchPlus className="h-4 w-4" />
-                Track + Fetch {selectedSyncableWorks.length}
-              </Button>
-              <Button variant="outline" size="sm" disabled={isBulkSaving || selectedWorks.length === 0} onClick={() => void bulkSaveSelected()}>
-                <HardDriveDownload className="h-4 w-4" />
-                Fetch {selectedWorks.length}
-              </Button>
-            </div>
-          </div>}
-
-          <div className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-            {filteredWorks.length > 0 ? pagedWorks.map((work) => (
-              <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
-              <CatalogWorkCard
-                work={work}
-                busy={isBulkSaving || fetchWorkspace.isBusy}
-                selected={selectedWorkCodes.has(work.primaryCode)}
-                selectable={isCircleBulkSaveSelectable(work)}
-                selectionActive={selectionMode}
-                onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
-                onSync={() => void syncSingleWork(work)}
-                onSave={() => void saveSingleWork(work)}
-                onDeleteMissing={() => setDeleteTarget(work)}
-                onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
-                onFavoriteSaved={(favorite) => {
-                  setDetail((current) => current ? {
-                    ...current,
-                    works: current.works.map((item) => item.primaryCode === work.primaryCode ? { ...item, favorite } : item),
-                  } : current);
-                }}
-                onEnsureWork={() => ensureCatalogWorkForList(work)}
-                onSeriesOpen={(work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) ? () => openCircleSeriesRoute(circle.externalId, work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)) : undefined}
-              />
-              </div>
-            )) : (
-              <Card>
-                <CardContent className="p-5 text-sm text-muted-foreground">No catalog works match this view.</CardContent>
-              </Card>
-            )}
           </div>
-          {totalWorkPages > 1 && (
-            <CatalogWorkPagination
-              page={currentWorkPage}
-              pageSize={workPageSize}
-              totalItems={filteredWorks.length}
-              totalPages={totalWorkPages}
-              onPageChange={setWorkPage}
-              onPageSizeChange={setWorkPageSize}
-            />
-          )}
+        ) : (
+          <>
+            {selectionMode && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Checkbox
+                    checked={
+                      selectablePagedWorks.length > 0 &&
+                      selectablePagedWorks.every((work) => selectedWorkCodes.has(work.primaryCode))
+                    }
+                    onCheckedChange={toggleVisibleSelection}
+                    aria-label="Select visible works"
+                  />
+                  {selectedWorks.length} selected
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => toggleVisibleSelection(true)}>
+                    Select all
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedWorkCodes(new Set());
+                      setSelectionMode(false);
+                    }}
+                  >
+                    Cancel selection
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkSaving || selectedSyncableWorks.length === 0}
+                    onClick={() => void bulkSyncAndSaveSelected()}
+                  >
+                    <GitBranchPlus className="h-4 w-4" />
+                    Track + Fetch {selectedSyncableWorks.length}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkSaving || selectedWorks.length === 0}
+                    onClick={() => void bulkSaveSelected()}
+                  >
+                    <HardDriveDownload className="h-4 w-4" />
+                    Fetch {selectedWorks.length}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={workCollectionClassName(viewMode)}
+              style={workCollectionStyle(mobileColumns, desktopColumns)}
+            >
+              {filteredWorks.length > 0 ? (
+                pagedWorks.map((work) => (
+                  <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
+                    <CatalogWorkCard
+                      work={work}
+                      busy={isBulkSaving || fetchWorkspace.isBusy}
+                      selected={selectedWorkCodes.has(work.primaryCode)}
+                      selectable={isCircleBulkSaveSelectable(work)}
+                      selectionActive={selectionMode}
+                      onSelectedChange={(checked) => toggleWorkSelection(work, checked)}
+                      onSync={() => void syncSingleWork(work)}
+                      onSave={() => void saveSingleWork(work)}
+                      onDeleteMissing={() => setDeleteTarget(work)}
+                      onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                      onFavoriteSaved={(favorite) => {
+                        setDetail((current) =>
+                          current
+                            ? {
+                                ...current,
+                                works: current.works.map((item) =>
+                                  item.primaryCode === work.primaryCode ? { ...item, favorite } : item,
+                                ),
+                              }
+                            : current,
+                        );
+                      }}
+                      onEnsureWork={() => ensureCatalogWorkForList(work)}
+                      onSeriesOpen={
+                        work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode)
+                          ? () =>
+                              openCircleSeriesRoute(
+                                circle.externalId,
+                                work.seriesTitleId || seriesCodeForWork(circle.series, work.primaryCode),
+                              )
+                          : undefined
+                      }
+                    />
+                  </div>
+                ))
+              ) : (
+                <Card>
+                  <CardContent className="p-5 text-sm text-muted-foreground">
+                    No catalog works match this view.
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+            {totalWorkPages > 1 && (
+              <CatalogWorkPagination
+                page={currentWorkPage}
+                pageSize={workPageSize}
+                totalItems={filteredWorks.length}
+                totalPages={totalWorkPages}
+                onPageChange={setWorkPage}
+                onPageSizeChange={setWorkPageSize}
+              />
+            )}
           </>
-          )}
+        )}
       </section>
       {deleteTarget && (
         <CatalogDeleteConfirmModal
@@ -965,7 +1152,11 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
         />
       )}
       {saveConfirm && (
-        <SaveConfirmModal count={saveConfirm.count} onClose={() => setSaveConfirm(null)} onConfirm={() => void saveConfirm.run()} />
+        <SaveConfirmModal
+          count={saveConfirm.count}
+          onClose={() => setSaveConfirm(null)}
+          onConfirm={() => void saveConfirm.run()}
+        />
       )}
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </div>
@@ -1012,82 +1203,136 @@ function CatalogWorkCard({
   return (
     <WorkCardShell
       work={view}
-      selection={selectionActive ? <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} /> : undefined}
+      selection={
+        selectionActive ? (
+          <WorkCardSelection checked={selected} disabled={!selectable} onChange={onSelectedChange} />
+        ) : undefined
+      }
       canOpen={Boolean(directoryTarget)}
       onOpen={openTarget}
       onCircleOpen={(externalId) => openCircleRoute(externalId)}
       onSeriesOpen={work.series ? onSeriesOpen : undefined}
-      footer={(
+      footer={
         <WorkCardFooter
           left={<WorkCardDLsiteAction href={work.dlsiteUrl || dlsiteWorkURL(work.primaryCode)} />}
-          right={(
+          right={
             <>
-            <WorkCardActionButton title="Track" disabled={busy || !circleWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onSync();
-            }}>
-              <GitBranchPlus className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardActionButton title="Fetch" disabled={busy || !circleWorkRemoteTarget(work)} onClick={(event) => {
-              event.stopPropagation();
-              onSave();
-            }}>
-              <HardDriveDownload className="h-4 w-4" />
-            </WorkCardActionButton>
-            <WorkCardListButton
-              workId={work.workId}
-              active={work.favorite}
-              disabled={!circleWorkRemoteTarget(work) && !work.workId}
-              ensureWorkId={onEnsureWork}
-              onSaved={onFavoriteSaved}
-            />
-            <WorkCardQuickMarkButton
-              value={normalizeListeningStatus(work.listeningMark)}
-              disabled={isUnavailable && !circleWorkRemoteTarget(work)}
-              onChange={onStatusChange}
-            />
-            {!work.dlsiteAvailable && (
-              <WorkCardActionButton title="Delete missing catalog item" onClick={(event) => {
-                event.stopPropagation();
-                onDeleteMissing();
-              }}>
-                <CircleAlert className="h-4 w-4" />
+              <WorkCardActionButton
+                title="Track"
+                disabled={busy || !circleWorkRemoteTarget(work)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSync();
+                }}
+              >
+                <GitBranchPlus className="h-4 w-4" />
               </WorkCardActionButton>
-            )}
+              <WorkCardActionButton
+                title="Fetch"
+                disabled={busy || !circleWorkRemoteTarget(work)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSave();
+                }}
+              >
+                <HardDriveDownload className="h-4 w-4" />
+              </WorkCardActionButton>
+              <WorkCardListButton
+                workId={work.workId}
+                active={work.favorite}
+                disabled={!circleWorkRemoteTarget(work) && !work.workId}
+                ensureWorkId={onEnsureWork}
+                onSaved={onFavoriteSaved}
+              />
+              <WorkCardQuickMarkButton
+                value={normalizeListeningStatus(work.listeningMark)}
+                disabled={isUnavailable && !circleWorkRemoteTarget(work)}
+                onChange={onStatusChange}
+              />
+              {!work.dlsiteAvailable && (
+                <WorkCardActionButton
+                  title="Delete missing catalog item"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteMissing();
+                  }}
+                >
+                  <CircleAlert className="h-4 w-4" />
+                </WorkCardActionButton>
+              )}
             </>
-          )}
+          }
         />
-      )}
+      }
     />
   );
 }
 
-function SaveConfirmModal({ count, onClose, onConfirm }: { count: number; onClose: () => void; onConfirm: () => void }) {
+function SaveConfirmModal({
+  count,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/50 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Fetch remote directory</h3>
-        <p className="mt-2 text-sm text-muted-foreground">This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This will download the full remote directory for {count} selected work{count === 1 ? "" : "s"}.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={onConfirm}>Fetch</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onConfirm}>
+            Fetch
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-function CatalogDeleteConfirmModal({ work, onClose, onConfirm }: { work: CircleCatalogWork; onClose: () => void; onConfirm: () => void }) {
+function CatalogDeleteConfirmModal({
+  work,
+  onClose,
+  onConfirm,
+}: {
+  work: CircleCatalogWork;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
-      <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <h3 className="text-base font-semibold">Remove catalog work</h3>
         <p className="mt-2 text-sm text-muted-foreground">
           DLsite did not return {work.primaryCode} in the latest full scan. Remove it from this circle catalog?
         </p>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" size="sm" onClick={onConfirm}>Delete</Button>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            size="sm"
+            onClick={onConfirm}
+          >
+            Delete
+          </Button>
         </div>
       </div>
     </div>
@@ -1097,7 +1342,9 @@ function CatalogDeleteConfirmModal({ work, onClose, onConfirm }: { work: CircleC
 function catalogWorkCardView(work: CircleCatalogWork): WorkCardViewModel {
   const sourceBadges = circleSourceBadges({ local: work.local, remote: work.remote, sourceTags: work.sourceTags });
   const statusBadges = [
-    ...(work.catalogStatus !== "imported" ? [{ key: `catalog:${work.catalogStatus}`, label: work.catalogStatus, variant: "outline" as const }] : []),
+    ...(work.catalogStatus !== "imported"
+      ? [{ key: `catalog:${work.catalogStatus}`, label: work.catalogStatus, variant: "outline" as const }]
+      : []),
     ...(!work.dlsiteAvailable ? [{ key: "dlsite:missing", label: "DLsite missing", variant: "warning" as const }] : []),
     ...sourceBadges,
   ];
@@ -1136,13 +1383,27 @@ function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWor
         <div className="h-full rounded-full bg-primary" style={{ width: `${workProgressPercent(progress)}%` }} />
       </div>
       <div className="truncate text-xs text-muted-foreground">
-        {progress.completed ? "Finished" : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
+        {progress.completed
+          ? "Finished"
+          : `Resume ${progress.title || "track"} at ${formatTime(progress.positionSeconds)}`}
       </div>
     </div>
   );
 }
 
-function RefreshActionRow({ title, description, disabled, active, onRun }: { title: string; description: string; disabled?: boolean; active?: boolean; onRun: (mode: CircleRefreshMode) => void }) {
+function RefreshActionRow({
+  title,
+  description,
+  disabled,
+  active,
+  onRun,
+}: {
+  title: string;
+  description: string;
+  disabled?: boolean;
+  active?: boolean;
+  onRun: (mode: CircleRefreshMode) => void;
+}) {
   return (
     <div className="rounded-md border bg-background px-3 py-2">
       <div className="mb-1.5 flex items-start justify-between gap-3">
@@ -1171,7 +1432,16 @@ function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "a
   return "available";
 }
 
-function refreshMessage(result: { runId: number; scope: CircleRefreshResultScope; pagesFetched: number; catalogWorks: number; productSynced: number; productSkipped?: number; productFailed?: number; sourceSynced: number }) {
+function refreshMessage(result: {
+  runId: number;
+  scope: CircleRefreshResultScope;
+  pagesFetched: number;
+  catalogWorks: number;
+  productSynced: number;
+  productSkipped?: number;
+  productFailed?: number;
+  sourceSynced: number;
+}) {
   const scopeLabel = result.scope === "all" ? "recommended" : result.scope === "metadata" ? "metadata" : result.scope;
   const failed = result.productFailed ? `, ${result.productFailed} failed` : "";
   const skipped = result.productSkipped ? `, ${result.productSkipped} skipped` : "";
@@ -1179,14 +1449,22 @@ function refreshMessage(result: { runId: number; scope: CircleRefreshResultScope
 }
 
 function circleCatalogNeedsMetadataRefresh(circle: CircleDetail) {
-  return circle.catalogWorks > 0 && circle.works.some((work) => work.workId === null || work.title === work.primaryCode);
+  return (
+    circle.catalogWorks > 0 && circle.works.some((work) => work.workId === null || work.title === work.primaryCode)
+  );
 }
 
 function SyncBadge({ state }: { state: string }) {
-  const label = state === "fresh" ? "Synced" : state === "stale" ? "Needs refresh" : state === "excluded" ? "Excluded" : "Never synced";
+  const label =
+    state === "fresh"
+      ? "Synced"
+      : state === "stale"
+        ? "Needs refresh"
+        : state === "excluded"
+          ? "Excluded"
+          : "Never synced";
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }
-
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -1242,25 +1520,37 @@ function CircleSeriesSidebar({
         onClick={() => openCircleSeriesRoute(externalId)}
       >
         <span className="min-w-0 truncate font-medium">All series</span>
-        <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>{allCount}</span>
+        <span className={selectedSeriesCode === null ? "text-primary-foreground/80" : "text-muted-foreground"}>
+          {allCount}
+        </span>
       </button>
       <div className="mt-2 space-y-1">
-        {series.length > 0 ? series.map((item) => {
-          const selected = selectedSeriesCode === item.titleId;
-          return (
-            <button
-              key={item.titleId}
-              className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selected ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
-              onClick={() => openCircleSeriesRoute(externalId, item.titleId)}
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{item.name}</span>
-                <span className={selected ? "block truncate text-xs text-primary-foreground/75" : "block truncate text-xs text-muted-foreground"}>{item.titleId}</span>
-              </span>
-              <span className={selected ? "text-primary-foreground/80" : "text-muted-foreground"}>{item.works}</span>
-            </button>
-          );
-        }) : (
+        {series.length > 0 ? (
+          series.map((item) => {
+            const selected = selectedSeriesCode === item.titleId;
+            return (
+              <button
+                key={item.titleId}
+                className={`grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-muted ${selected ? "bg-primary text-primary-foreground hover:bg-primary" : ""}`}
+                onClick={() => openCircleSeriesRoute(externalId, item.titleId)}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{item.name}</span>
+                  <span
+                    className={
+                      selected
+                        ? "block truncate text-xs text-primary-foreground/75"
+                        : "block truncate text-xs text-muted-foreground"
+                    }
+                  >
+                    {item.titleId}
+                  </span>
+                </span>
+                <span className={selected ? "text-primary-foreground/80" : "text-muted-foreground"}>{item.works}</span>
+              </button>
+            );
+          })
+        ) : (
           <div className="px-3 py-2 text-sm text-muted-foreground">No series</div>
         )}
       </div>
@@ -1301,7 +1591,9 @@ function CircleSeriesSummaryCard({ externalId, series }: { externalId: string; s
         </div>
         <div className="flex flex-wrap gap-1.5">
           {series.workCodes.slice(0, 12).map((code) => (
-            <Badge key={code} variant="outline">{code}</Badge>
+            <Badge key={code} variant="outline">
+              {code}
+            </Badge>
           ))}
           {series.workCodes.length > 12 && <Badge variant="secondary">+{series.workCodes.length - 12}</Badge>}
         </div>
@@ -1324,7 +1616,9 @@ function MarkMenu({ value, onChange }: { value: ListeningStatus; onChange: (stat
             onChange(option.value);
           }}
         >
-          <ListChecks className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"} />
+          <ListChecks
+            className={value === option.value && value !== "none" ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5"}
+          />
           {option.label}
         </button>
       ))}
@@ -1337,7 +1631,9 @@ function normalizeListeningStatus(status: string): ListeningStatus {
 }
 
 function listeningStatusLabel(status: string) {
-  return listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked";
+  return (
+    listeningStatusOptions.find((option) => option.value === normalizeListeningStatus(status))?.label ?? "Unmarked"
+  );
 }
 
 function availableSourceTags(sources: CircleSourceStat[] | null | undefined) {
@@ -1362,8 +1658,12 @@ function preferredDirectoryTarget(work: CircleCatalogWork) {
   if (remote?.sourceId) {
     const remoteCode = work.remoteCode || work.primaryCode;
     return work.workId !== null
-      ? { kind: "known", canonicalCode: work.primaryCode, source: { sourceId: remote.sourceId, remoteCode } } satisfies WorkDetailIntent
-      : { kind: "remote-only", sourceId: remote.sourceId, remoteCode } satisfies WorkDetailIntent;
+      ? ({
+          kind: "known",
+          canonicalCode: work.primaryCode,
+          source: { sourceId: remote.sourceId, remoteCode },
+        } satisfies WorkDetailIntent)
+      : ({ kind: "remote-only", sourceId: remote.sourceId, remoteCode } satisfies WorkDetailIntent);
   }
   if (work.workId !== null) {
     return { kind: "known", canonicalCode: work.primaryCode } satisfies WorkDetailIntent;
@@ -1376,9 +1676,15 @@ function isCircleBulkSaveSelectable(work: CircleCatalogWork) {
   return circleWorkRemoteTarget(work) !== null;
 }
 
-function circleWorkRemoteTarget(work: CircleCatalogWork): { sourceId: number; code: string; sourceDisplayName: string } | null {
-  const remote = availableSourceTags(work.sourceTags).find((tag) => tag.sourceId !== undefined && tag.sourceId !== null);
-  return remote?.sourceId ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode, sourceDisplayName: remote.displayName } : null;
+function circleWorkRemoteTarget(
+  work: CircleCatalogWork,
+): { sourceId: number; code: string; sourceDisplayName: string } | null {
+  const remote = availableSourceTags(work.sourceTags).find(
+    (tag) => tag.sourceId !== undefined && tag.sourceId !== null,
+  );
+  return remote?.sourceId
+    ? { sourceId: remote.sourceId, code: work.remoteCode || work.primaryCode, sourceDisplayName: remote.displayName }
+    : null;
 }
 
 function isTranslationCircle(externalId: string) {

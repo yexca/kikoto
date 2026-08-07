@@ -34,19 +34,11 @@ import { api, ApiError, assetURL, type MediaProgress } from "@/lib/api";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
-import {
-  addNativeMediaListeners,
-  stopNativeMedia,
-  supportsNativeMedia,
-  updateNativeMedia,
-} from "@/lib/nativeMedia";
+import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
-import {
-  shouldSaveRemoteProgress,
-  type ProgressSaveMarker,
-} from "@/player/playerProgress";
+import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "@/player/playerProgress";
 import { revalidatePersistedQueue } from "@/player/playerQueueRestore";
 import { normalizePlaybackStartPosition, shouldCheckpointPause } from "@/player/playbackStart";
 
@@ -253,7 +245,7 @@ function loadPersistedQueue(queueStorageKey: string): {
           .filter((track) => track && track.mediaItemId > 0 && track.streamUrl)
           .map((track) => ({
             ...track,
-            kind: track.kind === "video" ? "video" as const : "audio" as const,
+            kind: track.kind === "video" ? ("video" as const) : ("audio" as const),
             progress: null,
           }))
           .map(withQueueIdentity)
@@ -292,19 +284,14 @@ function withQueueIdentity(track: PlayerTrack): PlayerTrack {
 }
 
 export function lyricsPreferenceKey(target: LyricsPreferenceTarget) {
-  return target.mediaItemId > 0
-    ? `media:${target.mediaItemId}`
-    : `preview:${target.playbackKey ?? target.mediaItemId}`;
+  return target.mediaItemId > 0 ? `media:${target.mediaItemId}` : `preview:${target.playbackKey ?? target.mediaItemId}`;
 }
 
-export function preferredLyricsMediaItemID(
-  target: LyricsPreferenceTarget,
-  overrides: Record<string, number | null>,
-) {
+export function preferredLyricsMediaItemID(target: LyricsPreferenceTarget, overrides: Record<string, number | null>) {
   const key = lyricsPreferenceKey(target);
   return Object.prototype.hasOwnProperty.call(overrides, key)
     ? overrides[key]
-    : target.preferredLyricsMediaItemId ?? null;
+    : (target.preferredLyricsMediaItemId ?? null);
 }
 
 function applyLyricsChoiceToTrack(track: PlayerTrack, target: LyricsPreferenceTarget, choice: LyricsChoice | null) {
@@ -321,10 +308,7 @@ function applyLyricsChoiceToTrack(track: PlayerTrack, target: LyricsPreferenceTa
   };
 }
 
-function applyLyricsPreferenceOverride(
-  track: PlayerTrack,
-  overrides: Record<string, number | null>,
-) {
+function applyLyricsPreferenceOverride(track: PlayerTrack, overrides: Record<string, number | null>) {
   const preferenceKey = lyricsPreferenceKey(track);
   if (!Object.prototype.hasOwnProperty.call(overrides, preferenceKey)) return track;
   const preferredMediaItemID = overrides[preferenceKey];
@@ -401,9 +385,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
-  const currentPlaybackInstanceKey = currentTrack && currentPlaybackKey
-    ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}`
-    : null;
+  const currentPlaybackInstanceKey =
+    currentTrack && currentPlaybackKey
+      ? `${currentTrack.queueItemId ?? ""}:${currentPlaybackKey}:${currentTrack.locationId}`
+      : null;
   queueRef.current = queue;
   currentIndexRef.current = currentIndex;
 
@@ -415,14 +400,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const restored = restoredQueue.queue;
     if (restored.length === 0) return;
     let cancelled = false;
-    void revalidatePersistedQueue(restored, async (workID) => (await api.getWorkMedia(workID)).mediaItems).then((validated) => {
-      if (cancelled) return;
-      const current = queueRef.current;
-      if (current.length !== restored.length || current.some((track, index) => track.queueItemId !== restored[index]?.queueItemId)) return;
-      const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
-      setQueue(validated);
-      setCurrentIndex(Math.max(0, validated.findIndex((track) => track.queueItemId === currentQueueItemID)));
-    });
+    void revalidatePersistedQueue(restored, async (workID) => (await api.getWorkMedia(workID)).mediaItems).then(
+      (validated) => {
+        if (cancelled) return;
+        const current = queueRef.current;
+        if (
+          current.length !== restored.length ||
+          current.some((track, index) => track.queueItemId !== restored[index]?.queueItemId)
+        )
+          return;
+        const currentQueueItemID = current[currentIndexRef.current]?.queueItemId;
+        setQueue(validated);
+        setCurrentIndex(
+          Math.max(
+            0,
+            validated.findIndex((track) => track.queueItemId === currentQueueItemID),
+          ),
+        );
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -526,7 +522,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentTrack || !currentPlaybackInstanceKey || restoredMediaItemRef.current === currentPlaybackInstanceKey) return;
+    if (
+      !audio ||
+      !currentTrack ||
+      !currentPlaybackInstanceKey ||
+      restoredMediaItemRef.current === currentPlaybackInstanceKey
+    )
+      return;
     const pendingStart = pendingPlaybackStartRef.current;
     const pendingStartMatches = pendingStart !== null && pendingStart.queueItemId === currentTrack.queueItemId;
     const position = pendingStartMatches ? pendingStart.positionSeconds : 0;
@@ -564,7 +566,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (tracks.length === 0) return;
     progressSaveRef.current(false, true);
     const normalizedTracks = tracks.map((track) =>
-      withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current))
+      withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current)),
     );
     const nextIndex = Math.max(
       0,
@@ -737,9 +739,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playNext = useCallback(
     (track: PlayerTrack) => {
-      const nextTrack = withQueueIdentity(
-        applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current),
-      );
+      const nextTrack = withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current));
       setQueue((items) => {
         const next = [...items];
         next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
@@ -754,41 +754,47 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setQueue((items) => [
       ...items,
       ...tracks.map((track) =>
-        withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current))
+        withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current)),
       ),
     ]);
   }, []);
 
-  const changeLyricsChoice = useCallback(async (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => {
-    const preferenceKey = lyricsPreferenceKey(target);
-    setLyricsPreferenceOverrides((current) => {
-      const next = { ...current, [preferenceKey]: choice?.mediaItemId ?? null };
-      lyricsPreferenceOverridesRef.current = next;
-      return next;
-    });
-    setQueue((items) => items.map((item) =>
-      lyricsPreferenceKey(item) === preferenceKey ? applyLyricsChoiceToTrack(item, target, choice) : item
-    ));
-
-    const persistPreference = target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
-    if (!persistPreference || target.mediaItemId <= 0) return;
-    try {
-      if (choice && choice.mediaItemId > 0) {
-        await api.setMediaLyricsPreference(target.mediaItemId, choice.mediaItemId);
-      } else {
-        await api.clearMediaLyricsPreference(target.mediaItemId);
-      }
-    } catch (error) {
-      toast.notify({
-        kind: "warning",
-        message: error instanceof Error
-          ? error.message
-          : choice
-            ? "Lyrics preference could not be saved."
-            : "Lyrics preference could not be cleared.",
+  const changeLyricsChoice = useCallback(
+    async (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => {
+      const preferenceKey = lyricsPreferenceKey(target);
+      setLyricsPreferenceOverrides((current) => {
+        const next = { ...current, [preferenceKey]: choice?.mediaItemId ?? null };
+        lyricsPreferenceOverridesRef.current = next;
+        return next;
       });
-    }
-  }, [toast]);
+      setQueue((items) =>
+        items.map((item) =>
+          lyricsPreferenceKey(item) === preferenceKey ? applyLyricsChoiceToTrack(item, target, choice) : item,
+        ),
+      );
+
+      const persistPreference = target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
+      if (!persistPreference || target.mediaItemId <= 0) return;
+      try {
+        if (choice && choice.mediaItemId > 0) {
+          await api.setMediaLyricsPreference(target.mediaItemId, choice.mediaItemId);
+        } else {
+          await api.clearMediaLyricsPreference(target.mediaItemId);
+        }
+      } catch (error) {
+        toast.notify({
+          kind: "warning",
+          message:
+            error instanceof Error
+              ? error.message
+              : choice
+                ? "Lyrics preference could not be saved."
+                : "Lyrics preference could not be cleared.",
+        });
+      }
+    },
+    [toast],
+  );
 
   const moveQueueItem = (queueItemId: string, direction: -1 | 1) => {
     setQueue((items) => {
@@ -967,7 +973,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [currentTrack, currentIndex, queue.length, isPlaying, currentTime, duration, durationLocationId, playbackRate, mode]);
+  }, [
+    currentTrack,
+    currentIndex,
+    queue.length,
+    isPlaying,
+    currentTime,
+    duration,
+    durationLocationId,
+    playbackRate,
+    mode,
+  ]);
 
   useEffect(
     () => () => {
@@ -1137,7 +1153,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       lyricsPreferenceOverrides,
       changeLyricsChoice,
     }),
-    [currentPlaybackKey, currentTrack?.locationId, playQueue, playNext, appendQueue, lyricsPreferenceOverrides, changeLyricsChoice],
+    [
+      currentPlaybackKey,
+      currentTrack?.locationId,
+      playQueue,
+      playNext,
+      appendQueue,
+      lyricsPreferenceOverrides,
+      changeLyricsChoice,
+    ],
   );
 
   return (
@@ -1246,10 +1270,13 @@ export function PlayerDock() {
     [parsedLyrics.lines, player.currentTime],
   );
   const activeLyricsChoice = track?.lyricsChoices?.find((choice) => choice.locationId === activeLyricsLocationId);
-  const setPreferredDockMode = useCallback((mode: DockMode) => {
-    setDockMode(mode);
-    persistDockMode(isMobile, mode);
-  }, [isMobile]);
+  const setPreferredDockMode = useCallback(
+    (mode: DockMode) => {
+      setDockMode(mode);
+      persistDockMode(isMobile, mode);
+    },
+    [isMobile],
+  );
 
   useEffect(() => {
     if (dockLayoutRef.current === isMobile) return;
@@ -1260,7 +1287,7 @@ export function PlayerDock() {
   const cycleLyricsDisplayMode = () => {
     if (!activeLyricsLocationId) return;
     setPanel(null);
-    setLyricsDisplayMode((mode) => mode === "hidden" ? "preview" : mode === "preview" ? "full" : "hidden");
+    setLyricsDisplayMode((mode) => (mode === "hidden" ? "preview" : mode === "preview" ? "full" : "hidden"));
   };
 
   useEffect(() => {
@@ -1295,13 +1322,13 @@ export function PlayerDock() {
     const lyricsURL = activeLyricsChoice?.url;
     const request = lyricsURL
       ? fetch(assetURL(lyricsURL), { headers: { Accept: "text/plain,text/*" } }).then(async (response) => {
-        if (!response.ok) throw new Error(`Lyrics preview returned HTTP ${response.status}.`);
-        const length = Number(response.headers.get("content-length") ?? 0);
-        if (length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
-        const content = await response.text();
-        if (content.length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
-        return { content };
-      })
+          if (!response.ok) throw new Error(`Lyrics preview returned HTTP ${response.status}.`);
+          const length = Number(response.headers.get("content-length") ?? 0);
+          if (length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
+          const content = await response.text();
+          if (content.length > 512 * 1024) throw new Error("Lyrics file is too large to preview.");
+          return { content };
+        })
       : api.getMediaText(activeLyricsLocationId);
     request
       .then((result) => setLyricsText(result.content))
@@ -1464,7 +1491,17 @@ export function PlayerDock() {
     };
     window.addEventListener(ANDROID_BACK_EVENT, handleBack);
     return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
-  }, [dockMode, isCustomSleepOpen, isMobile, isSleepOpen, isSourceOpen, lyricsDisplayMode, miniActionsOpen, panel, setPreferredDockMode]);
+  }, [
+    dockMode,
+    isCustomSleepOpen,
+    isMobile,
+    isSleepOpen,
+    isSourceOpen,
+    lyricsDisplayMode,
+    miniActionsOpen,
+    panel,
+    setPreferredDockMode,
+  ]);
 
   useEffect(() => {
     if (dockMode !== "full" || panel || lyricsDisplayMode !== "preview") return;
@@ -1486,7 +1523,8 @@ export function PlayerDock() {
       // Account for the main panel padding, artwork-stack padding, and both flex gaps.
       const reservedGap = 44;
       const available = containerHeight - coverHeight - titleHeight - reservedGap;
-      const nextRows = available < LYRIC_PREVIEW_ROW_HEIGHT ? 0 : Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT));
+      const nextRows =
+        available < LYRIC_PREVIEW_ROW_HEIGHT ? 0 : Math.min(10, Math.floor(available / LYRIC_PREVIEW_ROW_HEIGHT));
       setLyricsPreviewRows((rows) => (rows === nextRows ? rows : nextRows));
     };
     const scheduleMeasure = () => {
@@ -1521,11 +1559,7 @@ export function PlayerDock() {
     if (!track.workCode) return;
     if (isMobile) setDockMode("compact");
     const returnTo = window.location.pathname + window.location.search;
-    window.history.pushState(
-      historyStateWithReturn(returnTo, "Back"),
-      "",
-      `/${encodeURIComponent(track.workCode)}`,
-    );
+    window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/${encodeURIComponent(track.workCode)}`);
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   const handleCoverClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -1573,7 +1607,10 @@ export function PlayerDock() {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
     const maximumDelta = Math.min(600, Math.max(20, player.duration * 0.2));
-    const previewTime = Math.max(0, Math.min(player.duration, state.originTime + (deltaX / state.width) * maximumDelta));
+    const previewTime = Math.max(
+      0,
+      Math.min(player.duration, state.originTime + (deltaX / state.width) * maximumDelta),
+    );
     const next = { ...state, previewTime, dragging: true };
     compactScrubRef.current = next;
     suppressCompactClickRef.current = true;
@@ -1582,7 +1619,8 @@ export function PlayerDock() {
   const finishCompactScrub = (event: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
     const state = compactScrubRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
     compactScrubRef.current = null;
     setCompactScrub(null);
     if (state.dragging) {
@@ -1601,7 +1639,10 @@ export function PlayerDock() {
         style={
           miniPosition
             ? { left: miniPosition.x, top: miniPosition.y }
-            : { bottom: isMobile ? "var(--compact-player-mobile-offset)" : "var(--compact-player-desktop-offset)", right: "12px" }
+            : {
+                bottom: isMobile ? "var(--compact-player-mobile-offset)" : "var(--compact-player-desktop-offset)",
+                right: "12px",
+              }
         }
         onPointerEnter={showDesktopMiniActions}
         onPointerLeave={hideDesktopMiniActionsLater}
@@ -1714,8 +1755,10 @@ export function PlayerDock() {
 
   if (dockMode === "compact") {
     const activeScrub = compactScrub?.dragging ? compactScrub : null;
-    const originProgress = activeScrub && player.duration > 0 ? (activeScrub.originTime / player.duration) * 100 : progress;
-    const previewProgress = activeScrub && player.duration > 0 ? (activeScrub.previewTime / player.duration) * 100 : progress;
+    const originProgress =
+      activeScrub && player.duration > 0 ? (activeScrub.originTime / player.duration) * 100 : progress;
+    const previewProgress =
+      activeScrub && player.duration > 0 ? (activeScrub.previewTime / player.duration) * 100 : progress;
     const stableProgress = activeScrub ? Math.min(originProgress, previewProgress) : progress;
     const changedLeft = Math.min(originProgress, previewProgress);
     const changedWidth = Math.abs(previewProgress - originProgress);
@@ -1730,7 +1773,10 @@ export function PlayerDock() {
               className="absolute top-0 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-lg"
               style={{ left: `${labelPosition}%` }}
             >
-              {formatScrubTime(activeScrub.originTime)} ({formatScrubTime(activeScrub.previewTime)}) <span className={scrubDelta >= 0 ? "text-primary" : "text-destructive"}>{formatSignedSeconds(scrubDelta)}</span>
+              {formatScrubTime(activeScrub.originTime)} ({formatScrubTime(activeScrub.previewTime)}){" "}
+              <span className={scrubDelta >= 0 ? "text-primary" : "text-destructive"}>
+                {formatSignedSeconds(scrubDelta)}
+              </span>
             </div>
           </div>
         )}
@@ -1746,9 +1792,14 @@ export function PlayerDock() {
             style={{ width: `${stableProgress}%` }}
           />
           {activeScrub && changedWidth > 0 && (
-            <div className="absolute inset-y-0 bg-primary/10" style={{ left: `${changedLeft}%`, width: `${changedWidth}%` }} />
+            <div
+              className="absolute inset-y-0 bg-primary/10"
+              style={{ left: `${changedLeft}%`, width: `${changedWidth}%` }}
+            />
           )}
-          {activeScrub && <div className="absolute inset-y-0 z-[1] w-px bg-primary/70" style={{ left: `${previewProgress}%` }} />}
+          {activeScrub && (
+            <div className="absolute inset-y-0 z-[1] w-px bg-primary/70" style={{ left: `${previewProgress}%` }} />
+          )}
           <div className="relative z-10 flex min-h-[72px] items-center gap-3 px-3">
             <button
               className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-white/30 dark:hover:bg-white/5 dark:active:bg-white/10"
@@ -1797,14 +1848,12 @@ export function PlayerDock() {
   return (
     <section
       className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
-      style={
-        {
-          ...(!isMobile ? { height: desktopFullHeight } : {}),
-          ...(isMobile && fullDragOffset > 0
-            ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
-            : {}),
-        }
-      }
+      style={{
+        ...(!isMobile ? { height: desktopFullHeight } : {}),
+        ...(isMobile && fullDragOffset > 0
+          ? { transform: `translateY(${fullDragOffset}px)`, opacity: Math.max(0.55, 1 - fullDragOffset / 500) }
+          : {}),
+      }}
     >
       <div className="pointer-events-none absolute inset-0 bg-background/82" aria-hidden="true" />
       <div
@@ -1866,7 +1915,10 @@ export function PlayerDock() {
           <span className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
         </button>
 
-        <div ref={fullMainRef} className={`min-h-0 flex-1 overflow-hidden px-4 pb-4 ${compactFullLayout ? "space-y-2" : "space-y-4"}`}>
+        <div
+          ref={fullMainRef}
+          className={`min-h-0 flex-1 overflow-hidden px-4 pb-4 ${compactFullLayout ? "space-y-2" : "space-y-4"}`}
+        >
           {hasPanel ? (
             <div className="animate-player-panel-enter flex h-full min-h-0 flex-col gap-3">
               <div
@@ -1876,7 +1928,9 @@ export function PlayerDock() {
                 <CoverImage track={track} className="h-14 w-[74px] rounded-xl shadow-sm" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{track.title}</div>
-                  <div className="truncate text-xs text-muted-foreground" title={track.circle || track.workTitle}>{track.circle || track.workTitle}</div>
+                  <div className="truncate text-xs text-muted-foreground" title={track.circle || track.workTitle}>
+                    {track.circle || track.workTitle}
+                  </div>
                   <div className="truncate text-xs text-muted-foreground">{track.workCode}</div>
                 </div>
               </div>
@@ -1940,23 +1994,33 @@ export function PlayerDock() {
                 title="Double-click to open work detail"
                 aria-label="Open work detail"
               >
-                <CoverImage
-                  track={track}
-                  className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-lg"
-                />
+                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-lg" />
               </button>
               <div data-player-title-block data-player-measure className="min-w-0 max-w-full space-y-0.5 text-center">
-                <div className={`truncate font-semibold ${compactFullLayout ? "text-sm" : "text-base"}`} title={track.title}>{track.title}</div>
-                <div className={`truncate text-muted-foreground ${compactFullLayout ? "text-xs" : "text-sm"}`} title={track.circle || track.workTitle}>{track.circle || track.workTitle}</div>
+                <div
+                  className={`truncate font-semibold ${compactFullLayout ? "text-sm" : "text-base"}`}
+                  title={track.title}
+                >
+                  {track.title}
+                </div>
+                <div
+                  className={`truncate text-muted-foreground ${compactFullLayout ? "text-xs" : "text-sm"}`}
+                  title={track.circle || track.workTitle}
+                >
+                  {track.circle || track.workTitle}
+                </div>
               </div>
-              {lyricsDisplayMode === "preview" && lyricsPreviewRows > 0 && parsedLyrics.timed && parsedLyrics.lines.length > 0 && (
-                <InlineLyricsPreview
-                  parsed={parsedLyrics}
-                  activeIndex={Math.max(0, activeLyricIndex)}
-                  rows={lyricsPreviewRows}
-                  onOpen={() => setLyricsDisplayMode("full")}
-                />
-              )}
+              {lyricsDisplayMode === "preview" &&
+                lyricsPreviewRows > 0 &&
+                parsedLyrics.timed &&
+                parsedLyrics.lines.length > 0 && (
+                  <InlineLyricsPreview
+                    parsed={parsedLyrics}
+                    activeIndex={Math.max(0, activeLyricIndex)}
+                    rows={lyricsPreviewRows}
+                    onOpen={() => setLyricsDisplayMode("full")}
+                  />
+                )}
             </div>
           )}
         </div>
@@ -2096,10 +2160,30 @@ export function PlayerDock() {
               size="sm"
               onClick={cycleLyricsDisplayMode}
               disabled={!activeLyricsLocationId}
-              aria-label={lyricsDisplayMode === "hidden" ? "Lyrics hidden. Show preview" : lyricsDisplayMode === "preview" ? "Lyrics preview. View lyrics" : "Viewing lyrics. Hide lyrics"}
-              title={!activeLyricsLocationId ? "No matched lyrics" : lyricsDisplayMode === "hidden" ? "Show lyrics preview" : lyricsDisplayMode === "preview" ? "View lyrics" : "Hide lyrics"}
+              aria-label={
+                lyricsDisplayMode === "hidden"
+                  ? "Lyrics hidden. Show preview"
+                  : lyricsDisplayMode === "preview"
+                    ? "Lyrics preview. View lyrics"
+                    : "Viewing lyrics. Hide lyrics"
+              }
+              title={
+                !activeLyricsLocationId
+                  ? "No matched lyrics"
+                  : lyricsDisplayMode === "hidden"
+                    ? "Show lyrics preview"
+                    : lyricsDisplayMode === "preview"
+                      ? "View lyrics"
+                      : "Hide lyrics"
+              }
             >
-              {lyricsDisplayMode === "hidden" ? <Captions className="h-4 w-4" /> : lyricsDisplayMode === "preview" ? <PanelBottom className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {lyricsDisplayMode === "hidden" ? (
+                <Captions className="h-4 w-4" />
+              ) : lyricsDisplayMode === "preview" ? (
+                <PanelBottom className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
             </Button>
             <Button
               data-compact-control
@@ -2525,7 +2609,10 @@ function InlineLyricsPreview({
 }) {
   const visibleRows = Math.max(1, rows);
   const activeOffset = Math.floor(visibleRows / 2);
-  const firstVisibleIndex = Math.max(0, Math.min(activeIndex - activeOffset, Math.max(0, parsed.lines.length - visibleRows)));
+  const firstVisibleIndex = Math.max(
+    0,
+    Math.min(activeIndex - activeOffset, Math.max(0, parsed.lines.length - visibleRows)),
+  );
   return (
     <button
       className="mx-auto w-full max-w-[min(86vw,340px)] shrink-0 overflow-hidden rounded-xl bg-background/45 px-4 text-center shadow-inner lg:max-w-[282px]"
@@ -2673,7 +2760,11 @@ function formatSignedSeconds(value: number) {
 
 function isPlayerShortcutTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest("input, textarea, select, button, a, [contenteditable='true'], [role='button'], [role='slider'], [role='dialog']"));
+  return Boolean(
+    target.closest(
+      "input, textarea, select, button, a, [contenteditable='true'], [role='button'], [role='slider'], [role='dialog']",
+    ),
+  );
 }
 
 function LyricsSourceSelector({

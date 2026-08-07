@@ -58,13 +58,17 @@ function knownWork(status?: string): VoiceKnownWork {
     local: false,
     remote: false,
     cache: false,
-    sourceTags: status ? [{
-      key: "source:7",
-      sourceId: 7,
-      displayName: "Observed source",
-      status,
-      count: 0,
-    }] : [],
+    sourceTags: status
+      ? [
+          {
+            key: "source:7",
+            sourceId: 7,
+            displayName: "Observed source",
+            status,
+            count: 0,
+          },
+        ]
+      : [],
     progress: {
       workId: null,
       mediaWorkId: null,

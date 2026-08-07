@@ -49,7 +49,9 @@ export function parseSearchClauses(query: string): SearchClause[] {
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index].trim();
     if (!part) continue;
-    const pendingPrefix = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):$/i);
+    const pendingPrefix = part.match(
+      /^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):$/i,
+    );
     if (pendingPrefix && index + 1 < parts.length) {
       const clause = searchClauseFromKeyValue(pendingPrefix[1], parts[index + 1]);
       if (clause) {
@@ -58,7 +60,9 @@ export function parseSearchClauses(query: string): SearchClause[] {
         continue;
       }
     }
-    const prefixed = part.match(/^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):(.+)$/i);
+    const prefixed = part.match(
+      /^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):(.+)$/i,
+    );
     if (prefixed) {
       const clause = searchClauseFromKeyValue(prefixed[1], prefixed[2]);
       if (clause) {
@@ -84,39 +88,41 @@ export function normalizeSearchClauseDraft(draft: SearchClauseDraft): SearchClau
 }
 
 export function compileLibrarySearchQuery(clauses: SearchClause[]) {
-  return clauses.map((clause) => {
-    switch (clause.kind) {
-      case "code":
-      case "text":
-        return clause.value;
-      case "circle":
-        return `$circle:${clause.value}$`;
-      case "voice_actor":
-        return `$va:${clause.value}$`;
-      case "tag":
-        return `$tag:${clause.value}$`;
-      case "exclude_tag":
-        return `$-tag:${clause.value}$`;
-      case "user_tag":
-        return `$mytag:${clause.value}$`;
-      case "exclude_user_tag":
-        return `$-mytag:${clause.value}$`;
-      case "rating_min":
-        return `rating:${clause.value}`;
-      case "sales_min":
-        return `sales:${clause.value}`;
-      case "duration_min":
-        return `$duration:${clause.value}$`;
-      case "duration_max":
-        return `$-duration:${clause.value}$`;
-      case "age":
-        return `$age:${clause.value}$`;
-      case "language":
-        return `$lang:${clause.value}$`;
-      case "shelf":
-        return `shelf:${clause.value}`;
-    }
-  }).join(" ");
+  return clauses
+    .map((clause) => {
+      switch (clause.kind) {
+        case "code":
+        case "text":
+          return clause.value;
+        case "circle":
+          return `$circle:${clause.value}$`;
+        case "voice_actor":
+          return `$va:${clause.value}$`;
+        case "tag":
+          return `$tag:${clause.value}$`;
+        case "exclude_tag":
+          return `$-tag:${clause.value}$`;
+        case "user_tag":
+          return `$mytag:${clause.value}$`;
+        case "exclude_user_tag":
+          return `$-mytag:${clause.value}$`;
+        case "rating_min":
+          return `rating:${clause.value}`;
+        case "sales_min":
+          return `sales:${clause.value}`;
+        case "duration_min":
+          return `$duration:${clause.value}$`;
+        case "duration_max":
+          return `$-duration:${clause.value}$`;
+        case "age":
+          return `$age:${clause.value}$`;
+        case "language":
+          return `$lang:${clause.value}$`;
+        case "shelf":
+          return `shelf:${clause.value}`;
+      }
+    })
+    .join(" ");
 }
 
 export function formatRemoteSearchQuery(clauses: SearchClause[]) {

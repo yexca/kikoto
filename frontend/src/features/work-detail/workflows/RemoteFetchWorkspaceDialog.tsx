@@ -292,7 +292,11 @@ function RemoteFetchSelectionPanel({
               {plan.summary.conflict} conflicts
             </Badge>
           )}
-          {plan && plan.summary.conflict === 0 && <Badge variant="outline">{plan.summary.promote} {readOnly ? "preview only" : "to fetch"}</Badge>}
+          {plan && plan.summary.conflict === 0 && (
+            <Badge variant="outline">
+              {plan.summary.promote} {readOnly ? "preview only" : "to fetch"}
+            </Badge>
+          )}
           {previewNeedsRefresh && (
             <Badge variant="outline">
               {disabled ? "Refreshing preview" : refreshScheduled ? "Preview scheduled" : "Preview required"}

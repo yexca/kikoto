@@ -13,10 +13,12 @@ describe("mergeVoiceWorks", () => {
 
     expect("workId" in merged && merged.workId).toBe(11);
     expect("remote" in merged && merged.remote).toBe(false);
-    expect("sourceTags" in merged ? merged.sourceTags : []).toContainEqual(expect.objectContaining({
-      sourceId: 7,
-      status: "available",
-    }));
+    expect("sourceTags" in merged ? merged.sourceTags : []).toContainEqual(
+      expect.objectContaining({
+        sourceId: 7,
+        status: "available",
+      }),
+    );
     expect(voiceWorkRemoteTarget(merged)).toEqual({ sourceId: 7, code: "SAMPLE-TRANSLATION" });
   });
 
@@ -28,36 +30,45 @@ describe("mergeVoiceWorks", () => {
   it("keeps the persisted exact source route when live source search fails", () => {
     const known: VoiceKnownWork = {
       ...knownWork(),
-      remoteObservations: [{
-        sourceId: 9,
-        sourceCode: "persisted-source",
-        sourceName: "Persisted Source",
-        remoteCode: "PERSISTED-REMOTE-EDITION",
-        status: "available",
-      }],
+      remoteObservations: [
+        {
+          sourceId: 9,
+          sourceCode: "persisted-source",
+          sourceName: "Persisted Source",
+          remoteCode: "PERSISTED-REMOTE-EDITION",
+          status: "available",
+        },
+      ],
     };
-    const [merged] = mergeVoiceWorks([known], [{ ...sourceSet(remoteWork()), sourceId: 9, status: "error", works: [] }]);
+    const [merged] = mergeVoiceWorks(
+      [known],
+      [{ ...sourceSet(remoteWork()), sourceId: 9, status: "error", works: [] }],
+    );
     const target = voiceWorkRemoteTarget(merged);
 
     expect(target).toEqual({ sourceId: 9, code: "PERSISTED-REMOTE-EDITION" });
-    expect(workDetailRoute({
-      kind: "known",
-      canonicalCode: merged.primaryCode,
-      source: target ? { sourceId: target.sourceId, remoteCode: target.code } : null,
-    })).toBe("/SAMPLE-ORIGIN?view=remote&source=9&remoteCode=PERSISTED-REMOTE-EDITION");
+    expect(
+      workDetailRoute({
+        kind: "known",
+        canonicalCode: merged.primaryCode,
+        source: target ? { sourceId: target.sourceId, remoteCode: target.code } : null,
+      }),
+    ).toBe("/SAMPLE-ORIGIN?view=remote&source=9&remoteCode=PERSISTED-REMOTE-EDITION");
   });
 
   it("prefers the persisted exact edition when live search also returns the canonical edition", () => {
     const persisted = remoteWork();
     const known: VoiceKnownWork = {
       ...knownWork(),
-      remoteObservations: [{
-        sourceId: persisted.sourceId,
-        sourceCode: persisted.sourceCode,
-        sourceName: persisted.sourceName,
-        remoteCode: persisted.remoteCode,
-        status: "available",
-      }],
+      remoteObservations: [
+        {
+          sourceId: persisted.sourceId,
+          sourceCode: persisted.sourceCode,
+          sourceName: persisted.sourceName,
+          remoteCode: persisted.remoteCode,
+          status: "available",
+        },
+      ],
     };
     const origin = { ...persisted, remoteCode: "SAMPLE-ORIGIN" };
     const [merged] = mergeVoiceWorks([known], [{ ...sourceSet(origin), works: [origin, persisted], total: 2 }]);

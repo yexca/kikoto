@@ -18,23 +18,27 @@ export function orderedTrackLocations(track: PlayerTrack | null) {
   if (!track) return [];
   const locations = track.locations?.length
     ? track.locations
-    : [{
-        locationId: track.locationId,
-        locationType: track.locationType,
-        streamUrl: track.streamUrl,
-        sourceId: track.remoteSourceId ?? 0,
-        sourceName: track.locationType,
-        availability: track.availability,
-      }];
+    : [
+        {
+          locationId: track.locationId,
+          locationType: track.locationType,
+          streamUrl: track.streamUrl,
+          sourceId: track.remoteSourceId ?? 0,
+          sourceName: track.locationType,
+          availability: track.availability,
+        },
+      ];
   return [...locations].sort(
     (left, right) => locationPriority(left.locationType) - locationPriority(right.locationType),
   );
 }
 
 export function preferredTrackLocation(track: PlayerTrack | null) {
-  return orderedTrackLocations(track).find((location) =>
-    location.availability === "available" || location.availability === "remote"
-  ) ?? null;
+  return (
+    orderedTrackLocations(track).find(
+      (location) => location.availability === "available" || location.availability === "remote",
+    ) ?? null
+  );
 }
 
 export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLocation): PlayerTrack {
@@ -44,8 +48,9 @@ export function applyTrackLocation(track: PlayerTrack, location: PlayerTrackLoca
     locationType: location.locationType,
     streamUrl: location.streamUrl,
     availability: location.availability,
-    playbackKey: track.remoteSourceId && track.remoteWorkCode && track.remotePath
-      ? track.playbackKey
-      : playbackKeyForLocation(location.locationId),
+    playbackKey:
+      track.remoteSourceId && track.remoteWorkCode && track.remotePath
+        ? track.playbackKey
+        : playbackKeyForLocation(location.locationId),
   };
 }

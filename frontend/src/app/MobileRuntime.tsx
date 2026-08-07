@@ -56,22 +56,24 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
   const applyHealth = useCallback((health: HealthStatus) => {
     const minimumClientVersion = health.minAndroidClientVersion || health.minClientVersion || "";
     const versionStatus = appVersionStatus(APP_CLIENT_VERSION, health.version, minimumClientVersion);
-    const targetVersion = versionStatus === "client-update-required"
-      ? minimumClientVersion
-      : versionStatus === "client-update-available"
-        ? health.version
-        : versionStatus === "server-update-available"
-          ? APP_CLIENT_VERSION
-          : "";
+    const targetVersion =
+      versionStatus === "client-update-required"
+        ? minimumClientVersion
+        : versionStatus === "client-update-available"
+          ? health.version
+          : versionStatus === "server-update-available"
+            ? APP_CLIENT_VERSION
+            : "";
     const next: MobileConnection = {
       kind: versionStatus === "compatible" ? "online" : versionStatus,
-      message: versionStatus === "client-update-required"
-        ? `Android client ${APP_CLIENT_VERSION} is no longer supported. Version ${minimumClientVersion} or newer is required.`
-        : versionStatus === "client-update-available"
-          ? `Android client ${APP_CLIENT_VERSION} is older than server ${health.version}.`
-          : versionStatus === "server-update-available"
-            ? `Server ${health.version} is older than Android client ${APP_CLIENT_VERSION}.`
-            : "Connected",
+      message:
+        versionStatus === "client-update-required"
+          ? `Android client ${APP_CLIENT_VERSION} is no longer supported. Version ${minimumClientVersion} or newer is required.`
+          : versionStatus === "client-update-available"
+            ? `Android client ${APP_CLIENT_VERSION} is older than server ${health.version}.`
+            : versionStatus === "server-update-available"
+              ? `Server ${health.version} is older than Android client ${APP_CLIENT_VERSION}.`
+              : "Connected",
       serverVersion: health.version,
       minimumClientVersion,
       releaseUrl: targetVersion ? githubReleaseURL(targetVersion) : "",
@@ -198,7 +200,10 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
     };
   }, [reconnect]);
 
-  const value = useMemo<MobileRuntimeContextValue>(() => ({ connection, keyboardOpen, reconnect }), [connection, keyboardOpen, reconnect]);
+  const value = useMemo<MobileRuntimeContextValue>(
+    () => ({ connection, keyboardOpen, reconnect }),
+    [connection, keyboardOpen, reconnect],
+  );
   return <MobileRuntimeContext.Provider value={value}>{children}</MobileRuntimeContext.Provider>;
 }
 

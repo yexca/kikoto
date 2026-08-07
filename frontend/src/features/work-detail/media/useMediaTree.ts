@@ -38,16 +38,17 @@ export function useMediaTree<TTree>({
     let cancelled = false;
     setIsDirectoryLoading(true);
     const timer = window.setTimeout(() => {
-      const nextTree = remoteSelected && !remoteDetail
-        ? emptyTree()
-        : trackedUnavailable
+      const nextTree =
+        remoteSelected && !remoteDetail
           ? emptyTree()
-          : remoteDetail
-            ? buildRemoteTree(remoteDetail.tracks, {
-              sourceId: remoteDetail.sourceId,
-              workCode: remoteDetail.remoteCode || remoteDetail.primaryCode || remoteDetail.remoteId,
-            })
-            : buildLocalTree(localItems, fileSourceId, localCode);
+          : trackedUnavailable
+            ? emptyTree()
+            : remoteDetail
+              ? buildRemoteTree(remoteDetail.tracks, {
+                  sourceId: remoteDetail.sourceId,
+                  workCode: remoteDetail.remoteCode || remoteDetail.primaryCode || remoteDetail.remoteId,
+                })
+              : buildLocalTree(localItems, fileSourceId, localCode);
       if (!cancelled) {
         setTree(nextTree);
         setIsDirectoryLoading(false);

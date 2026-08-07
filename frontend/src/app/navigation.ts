@@ -1,14 +1,4 @@
-import {
-  Activity,
-  Heart,
-  Info,
-  Library,
-  MicVocal,
-  Settings,
-  ShieldCheck,
-  Users,
-  Workflow,
-} from "lucide-react";
+import { Activity, Heart, Info, Library, MicVocal, Settings, ShieldCheck, Users, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -22,15 +12,87 @@ type NavItem = {
 };
 
 export const navItems = [
-  { id: "library", label: "Library", description: "Browse, filter, and play works from every configured source", path: "/", icon: Library, audience: "public", permission: undefined },
-  { id: "favorites", label: "Favorites", description: "Lists, quick marks, and progress across your library", path: "/favorites", icon: Heart, audience: "authenticated", permission: undefined },
-  { id: "circles", label: "Circles", description: "Browse circles and their known catalogs", path: "/circles", icon: Users, audience: "public", permission: undefined },
-  { id: "voice-actors", label: "Voice Actors", description: "Browse voices and their credited works", path: "/voices", icon: MicVocal, audience: "public", permission: undefined },
-  { id: "workflows", label: "Workflows", description: "Run built-in operations and manage custom automations", path: "/workflows", icon: Workflow, audience: "admin", permission: "workflows:run" },
-  { id: "activity", label: "Activity", description: "Inspect workflow runs, failures, and review items", path: "/activity", icon: Activity, audience: "admin", permission: "workflows:run" },
-  { id: "settings", label: "Settings", description: "Manage your account and appearance preferences", path: "/settings", icon: Settings, audience: "authenticated", permission: undefined },
-  { id: "maintenance", label: "Maintenance", description: "Configure sources, routing, caching, metadata, and users", path: "/maintenance", icon: ShieldCheck, audience: "admin", permission: "sources:write" },
-  { id: "about", label: "About", description: "Version, licensing, and application information", path: "/about", icon: Info, audience: "public", permission: undefined },
+  {
+    id: "library",
+    label: "Library",
+    description: "Browse, filter, and play works from every configured source",
+    path: "/",
+    icon: Library,
+    audience: "public",
+    permission: undefined,
+  },
+  {
+    id: "favorites",
+    label: "Favorites",
+    description: "Lists, quick marks, and progress across your library",
+    path: "/favorites",
+    icon: Heart,
+    audience: "authenticated",
+    permission: undefined,
+  },
+  {
+    id: "circles",
+    label: "Circles",
+    description: "Browse circles and their known catalogs",
+    path: "/circles",
+    icon: Users,
+    audience: "public",
+    permission: undefined,
+  },
+  {
+    id: "voice-actors",
+    label: "Voice Actors",
+    description: "Browse voices and their credited works",
+    path: "/voices",
+    icon: MicVocal,
+    audience: "public",
+    permission: undefined,
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    description: "Run built-in operations and manage custom automations",
+    path: "/workflows",
+    icon: Workflow,
+    audience: "admin",
+    permission: "workflows:run",
+  },
+  {
+    id: "activity",
+    label: "Activity",
+    description: "Inspect workflow runs, failures, and review items",
+    path: "/activity",
+    icon: Activity,
+    audience: "admin",
+    permission: "workflows:run",
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    description: "Manage your account and appearance preferences",
+    path: "/settings",
+    icon: Settings,
+    audience: "authenticated",
+    permission: undefined,
+  },
+  {
+    id: "maintenance",
+    label: "Maintenance",
+    description: "Configure sources, routing, caching, metadata, and users",
+    path: "/maintenance",
+    icon: ShieldCheck,
+    audience: "admin",
+    permission: "sources:write",
+  },
+  {
+    id: "about",
+    label: "About",
+    description: "Version, licensing, and application information",
+    path: "/about",
+    icon: Info,
+    audience: "public",
+    permission: undefined,
+  },
 ] as const satisfies readonly NavItem[];
 
 export type PageID = (typeof navItems)[number]["id"];
@@ -52,7 +114,11 @@ export function canAccessPage(page: PageID, state: AuthViewState, hasPermission:
   return item ? canAccessNavigationItem(item, state, hasPermission) : true;
 }
 
-function canAccessNavigationItem(item: NavigationItem, state: AuthViewState, hasPermission: (permission: string) => boolean) {
+function canAccessNavigationItem(
+  item: NavigationItem,
+  state: AuthViewState,
+  hasPermission: (permission: string) => boolean,
+) {
   if (item.audience === "authenticated" && state === "anonymous") return false;
   if (item.audience === "admin" && state === "anonymous") return false;
   if (item.permission && !hasPermission(item.permission)) return false;

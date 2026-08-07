@@ -1,5 +1,18 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Crown, Plus, RefreshCw, Save, Shield, Trash2, UserCog, UserRound, Users, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+  Plus,
+  RefreshCw,
+  Save,
+  Shield,
+  Trash2,
+  UserCog,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +24,17 @@ import { api, type ManagedUser } from "@/lib/api";
 const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
 const USER_PAGE_SIZE = 8;
 
-export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embedded = false }: { currentUserId: number; isSuperAdmin: boolean; readOnly?: boolean; embedded?: boolean }) {
+export function UsersPage({
+  currentUserId,
+  isSuperAdmin,
+  readOnly = false,
+  embedded = false,
+}: {
+  currentUserId: number;
+  isSuperAdmin: boolean;
+  readOnly?: boolean;
+  embedded?: boolean;
+}) {
   const toast = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -23,10 +46,7 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
   const [isSaving, setIsSaving] = useState(false);
   const requestSeq = useRef(0);
 
-  const selectedUser = useMemo(
-    () => users.find((user) => user.id === selectedUserId) ?? null,
-    [selectedUserId, users],
-  );
+  const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [selectedUserId, users]);
   const enabledCount = users.filter((user) => user.enabled).length;
   const adminCount = users.filter((user) => user.role === "admin" || user.role === "super_admin").length;
   const superAdminCount = users.filter((user) => user.role === "super_admin").length;
@@ -116,182 +136,229 @@ export function UsersPage({ currentUserId, isSuperAdmin, readOnly = false, embed
 
   return (
     <div className="space-y-5">
-      {!embedded && <section className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Administration</p>
-            <h2 className="mt-1 text-2xl font-semibold">Users</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Create accounts, assign roles, and keep access tidy.</p>
+      {!embedded && (
+        <section className="rounded-lg border bg-card p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Administration</p>
+              <h2 className="mt-1 text-2xl font-semibold">Users</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Create accounts, assign roles, and keep access tidy.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
+              {initialLoading ? (
+                <UserMetricSkeletons count={3} />
+              ) : (
+                <>
+                  <UserMetric icon={<Users className="h-4 w-4" />} label="Users" value={String(users.length)} />
+                  <UserMetric icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledCount)} />
+                  <UserMetric icon={<Crown className="h-4 w-4" />} label="Admins" value={String(adminCount)} />
+                </>
+              )}
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-sm sm:flex">
-            {initialLoading ? (
-              <UserMetricSkeletons count={3} />
-            ) : (
-              <>
-                <UserMetric icon={<Users className="h-4 w-4" />} label="Users" value={String(users.length)} />
-                <UserMetric icon={<Shield className="h-4 w-4" />} label="Enabled" value={String(enabledCount)} />
-                <UserMetric icon={<Crown className="h-4 w-4" />} label="Admins" value={String(adminCount)} />
-              </>
-            )}
-          </div>
-        </div>
-      </section>}
+        </section>
+      )}
 
       {loadError && (
-        <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2" role="alert">
-          <span className="text-sm text-destructive">{loadError}{hasLoaded ? " Existing user data is still shown." : ""}</span>
-          <Button size="sm" variant="outline" onClick={() => void refresh()}>Retry</Button>
+        <div
+          className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+          role="alert"
+        >
+          <span className="text-sm text-destructive">
+            {loadError}
+            {hasLoaded ? " Existing user data is still shown." : ""}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => void refresh()}>
+            Retry
+          </Button>
         </div>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="space-y-4">
-        <Card className="overflow-hidden">
-          <CardContent className="space-y-3 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">User directory</h2>
-                <p className="text-sm text-muted-foreground">
-                  Page {currentPage} of {totalPages} · {users.length} account{users.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={isLoading}>
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
-                <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
-                  <Plus className="h-4 w-4" />
-                  Add user
-                </Button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => setUserPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1} aria-label="Previous users">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-                {initialLoading ? (
-                  <UserBarSkeleton />
-                ) : visibleUsers.map((user) => (
-                  <Button
-                    key={user.id}
-                    type="button"
-                    variant="outline"
-                    className={`h-14 min-w-[160px] justify-start px-2 text-left ${
-                      selectedUserId === user.id ? "border-primary bg-primary/10 hover:bg-primary/10" : "bg-background"
-                    }`}
-                    onClick={() => setSelectedUserId(user.id)}
-                  >
-                    <UserAvatar user={user} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">{user.displayName || user.username}</span>
-                      <span className="block truncate text-xs text-muted-foreground">@{user.username}</span>
-                    </span>
+        <section className="space-y-4">
+          <Card className="overflow-hidden">
+            <CardContent className="space-y-3 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">User directory</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages} · {users.length} account{users.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={isLoading}>
+                    <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+                    Refresh
                   </Button>
-                ))}
-                {!initialLoading && visibleUsers.length === 0 && (
-                  <div className="grid min-h-14 flex-1 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
-                    No users on this page.
-                  </div>
-                )}
+                  <Button size="sm" onClick={() => setIsCreateModalOpen(true)} disabled={readOnly}>
+                    <Plus className="h-4 w-4" />
+                    Add user
+                  </Button>
+                </div>
               </div>
-              <Button variant="outline" size="icon" onClick={() => setUserPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages} aria-label="Next users">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">User management</h2>
-            <p className="text-sm text-muted-foreground">
-              {superAdminCount} super administrator{superAdminCount === 1 ? "" : "s"} can grant protected access.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          {initialLoading ? (
-            <RoleSummarySkeletons />
-          ) : (
-            <>
-              <RoleSummaryCard icon={<UserRound className="h-4 w-4" />} label="Standard users" value={String(users.filter((user) => user.role === "user").length)} />
-              <RoleSummaryCard icon={<Shield className="h-4 w-4" />} label="Administrators" value={String(users.filter((user) => user.role === "admin").length)} />
-              <RoleSummaryCard icon={<Crown className="h-4 w-4" />} label="Super admins" value={String(superAdminCount)} />
-            </>
-          )}
-        </div>
-
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="min-h-72 overflow-x-auto" aria-busy={isLoading}>
-              <table className="w-full min-w-[680px] border-collapse text-sm">
-                <thead className="border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">User</th>
-                    <th className="px-4 py-3 font-semibold">Role</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Updated</th>
-                    <th className="px-4 py-3 text-right font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleUsers.map((user) => (
-                    <tr
-                      key={user.id}
-                      className={`border-b last:border-0 ${selectedUserId === user.id ? "bg-primary/5" : "hover:bg-muted/40"}`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <UserAvatar user={user} />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{user.displayName || user.username}</div>
-                            <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <RoleBadge role={user.role} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={user.enabled ? "secondary" : "warning"}>{user.enabled ? "enabled" : "disabled"}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{user.updatedAt}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Button variant="outline" size="sm" onClick={() => setSelectedUserId(user.id)} disabled={readOnly}>
-                          <UserCog className="h-4 w-4" />
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!initialLoading && users.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
-                        No users found.
-                      </td>
-                    </tr>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setUserPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous users"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+                  {initialLoading ? (
+                    <UserBarSkeleton />
+                  ) : (
+                    visibleUsers.map((user) => (
+                      <Button
+                        key={user.id}
+                        type="button"
+                        variant="outline"
+                        className={`h-14 min-w-[160px] justify-start px-2 text-left ${
+                          selectedUserId === user.id
+                            ? "border-primary bg-primary/10 hover:bg-primary/10"
+                            : "bg-background"
+                        }`}
+                        onClick={() => setSelectedUserId(user.id)}
+                      >
+                        <UserAvatar user={user} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">
+                            {user.displayName || user.username}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">@{user.username}</span>
+                        </span>
+                      </Button>
+                    ))
                   )}
-                  {initialLoading && <UserTableSkeletonRows />}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+                  {!initialLoading && visibleUsers.length === 0 && (
+                    <div className="grid min-h-14 flex-1 place-items-center rounded-md border border-dashed text-sm text-muted-foreground">
+                      No users on this page.
+                    </div>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setUserPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Next users"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      <UserEditor
-        key={selectedUser ? selectedUser.id : "empty"}
-        user={selectedUser}
-        currentUserId={currentUserId}
-        isSuperAdmin={isSuperAdmin}
-        readOnly={readOnly}
-        isSaving={isSaving}
-        onSave={updateUser}
-        onDelete={deleteUser}
-      />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">User management</h2>
+              <p className="text-sm text-muted-foreground">
+                {superAdminCount} super administrator{superAdminCount === 1 ? "" : "s"} can grant protected access.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {initialLoading ? (
+              <RoleSummarySkeletons />
+            ) : (
+              <>
+                <RoleSummaryCard
+                  icon={<UserRound className="h-4 w-4" />}
+                  label="Standard users"
+                  value={String(users.filter((user) => user.role === "user").length)}
+                />
+                <RoleSummaryCard
+                  icon={<Shield className="h-4 w-4" />}
+                  label="Administrators"
+                  value={String(users.filter((user) => user.role === "admin").length)}
+                />
+                <RoleSummaryCard
+                  icon={<Crown className="h-4 w-4" />}
+                  label="Super admins"
+                  value={String(superAdminCount)}
+                />
+              </>
+            )}
+          </div>
+
+          <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              <div className="min-h-72 overflow-x-auto" aria-busy={isLoading}>
+                <table className="w-full min-w-[680px] border-collapse text-sm">
+                  <thead className="border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">User</th>
+                      <th className="px-4 py-3 font-semibold">Role</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Updated</th>
+                      <th className="px-4 py-3 text-right font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleUsers.map((user) => (
+                      <tr
+                        key={user.id}
+                        className={`border-b last:border-0 ${selectedUserId === user.id ? "bg-primary/5" : "hover:bg-muted/40"}`}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <UserAvatar user={user} />
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{user.displayName || user.username}</div>
+                              <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <RoleBadge role={user.role} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={user.enabled ? "secondary" : "warning"}>
+                            {user.enabled ? "enabled" : "disabled"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.updatedAt}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedUserId(user.id)}
+                            disabled={readOnly}
+                          >
+                            <UserCog className="h-4 w-4" />
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!initialLoading && users.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
+                          No users found.
+                        </td>
+                      </tr>
+                    )}
+                    {initialLoading && <UserTableSkeletonRows />}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <UserEditor
+          key={selectedUser ? selectedUser.id : "empty"}
+          user={selectedUser}
+          currentUserId={currentUserId}
+          isSuperAdmin={isSuperAdmin}
+          readOnly={readOnly}
+          isSaving={isSaving}
+          onSave={updateUser}
+          onDelete={deleteUser}
+        />
       </div>
       {isCreateModalOpen && (
         <UserCreateModal
@@ -452,7 +519,12 @@ function UserEditor({
               {isSaving ? "Saving" : "Save"}
             </Button>
             {user && (
-              <Button type="button" variant="outline" disabled={readOnly || isSaving || !canDelete} onClick={() => void onDelete(user)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={readOnly || isSaving || !canDelete}
+                onClick={() => void onDelete(user)}
+              >
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
@@ -472,7 +544,9 @@ function EmptyUserEditor() {
           <EmptyUserAvatar />
           <span>
             <span className="block">Select a user</span>
-            <span className="block text-xs font-normal text-muted-foreground">Use the user bar or table to edit an account.</span>
+            <span className="block text-xs font-normal text-muted-foreground">
+              Use the user bar or table to edit an account.
+            </span>
           </span>
         </CardTitle>
       </CardHeader>
@@ -546,11 +620,19 @@ function UserTableSkeletonRows() {
               </div>
             </div>
           </td>
-          <td className="px-4 py-3"><UserSkeletonLine className="h-5 w-20 rounded-full" /></td>
-          <td className="px-4 py-3"><UserSkeletonLine className="h-5 w-16 rounded-full" /></td>
-          <td className="px-4 py-3"><UserSkeletonLine className="h-4 w-36" /></td>
           <td className="px-4 py-3">
-            <div className="flex justify-end"><UserSkeletonLine className="h-8 w-20 rounded-md" /></div>
+            <UserSkeletonLine className="h-5 w-20 rounded-full" />
+          </td>
+          <td className="px-4 py-3">
+            <UserSkeletonLine className="h-5 w-16 rounded-full" />
+          </td>
+          <td className="px-4 py-3">
+            <UserSkeletonLine className="h-4 w-36" />
+          </td>
+          <td className="px-4 py-3">
+            <div className="flex justify-end">
+              <UserSkeletonLine className="h-8 w-20 rounded-md" />
+            </div>
           </td>
         </tr>
       ))}
@@ -581,7 +663,11 @@ function UserCreateModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
       <Card className="app-scroll max-h-[90vh] w-full max-w-xl overflow-auto">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
@@ -589,7 +675,9 @@ function UserCreateModal({
               <EmptyUserAvatar />
               <span className="min-w-0">
                 <span className="block truncate">Add user</span>
-                <span className="block truncate text-xs font-normal text-muted-foreground">Create a local Kikoto account</span>
+                <span className="block truncate text-xs font-normal text-muted-foreground">
+                  Create a local Kikoto account
+                </span>
               </span>
             </span>
             <Button type="button" variant="outline" size="icon" onClick={onClose} aria-label="Close add user dialog">
@@ -728,7 +816,9 @@ function UserAvatar({ user, size = "md" }: { user: ManagedUser; size?: "md" | "l
   const initials = userInitials(user);
   const sizeClass = size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
   return (
-    <div className={`grid ${sizeClass} shrink-0 place-items-center rounded-md bg-primary text-primary-foreground font-semibold`}>
+    <div
+      className={`grid ${sizeClass} shrink-0 place-items-center rounded-md bg-primary text-primary-foreground font-semibold`}
+    >
       {initials}
     </div>
   );

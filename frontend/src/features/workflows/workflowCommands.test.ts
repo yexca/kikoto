@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyWorkflowDefinition, type WorkflowInputDefinition } from "./definitionModel";
-import { parseWorkflowCommand, publishedWorkflowCommandsForUser, workflowCommandInputValues, workflowCommandUsage, workflowRunInputPayload } from "./workflowCommands";
+import {
+  parseWorkflowCommand,
+  publishedWorkflowCommandsForUser,
+  workflowCommandInputValues,
+  workflowCommandUsage,
+  workflowRunInputPayload,
+} from "./workflowCommands";
 import type { WorkflowDefinition } from "@/lib/api";
 
 const circleInput: WorkflowInputDefinition = {
@@ -15,7 +21,11 @@ describe("workflow Quick Action commands", () => {
   it("publishes aliases only from definitions owned by the current user", () => {
     const document = createEmptyWorkflowDefinition();
     document.command = { enabled: true, alias: "sharedAlias" };
-    const definition = (id: number, ownerUserId: number | null, scope: WorkflowDefinition["scope"] = "user"): WorkflowDefinition => ({
+    const definition = (
+      id: number,
+      ownerUserId: number | null,
+      scope: WorkflowDefinition["scope"] = "user",
+    ): WorkflowDefinition => ({
       id,
       code: `workflow_${id}`,
       displayName: `Workflow ${id}`,
@@ -29,12 +39,10 @@ describe("workflow Quick Action commands", () => {
       updatedAt: "2026-07-16T00:00:00Z",
     });
 
-    const commands = publishedWorkflowCommandsForUser([
-      definition(1, 7),
-      definition(2, 8),
-      definition(3, null),
-      definition(4, null, "system"),
-    ], 7);
+    const commands = publishedWorkflowCommandsForUser(
+      [definition(1, 7), definition(2, 8), definition(3, null), definition(4, null, "system")],
+      7,
+    );
 
     expect(commands.map((command) => command.definition.id)).toEqual([1]);
     expect(publishedWorkflowCommandsForUser([definition(1, 7)], null)).toEqual([]);
@@ -48,7 +56,10 @@ describe("workflow Quick Action commands", () => {
     ];
 
     expect(workflowRunInputPayload(inputs, { text: "literal", circle: "  ", work: "" })).toEqual({ text: "literal" });
-    expect(workflowRunInputPayload(inputs, { text: "literal", circle: "RG01234" })).toEqual({ text: "literal", circle: "RG01234" });
+    expect(workflowRunInputPayload(inputs, { text: "literal", circle: "RG01234" })).toEqual({
+      text: "literal",
+      circle: "RG01234",
+    });
   });
 
   it("distinguishes normal search text from slash commands", () => {
@@ -100,11 +111,11 @@ describe("workflow Quick Action commands", () => {
     expect(parseWorkflowCommand('/getCircle "RG01234').error).toBe("Close the quoted argument.");
 
     const optionalSource: WorkflowInputDefinition = { key: "source", label: "Source", type: "text", required: false };
-    const result = workflowCommandInputValues(["unknown=value", "circle=RG01234", "circle=RG09999"], [circleInput, optionalSource]);
-    expect(result.errors).toEqual([
-      "Unknown input: unknown.",
-      "Input circle was provided more than once.",
-    ]);
+    const result = workflowCommandInputValues(
+      ["unknown=value", "circle=RG01234", "circle=RG09999"],
+      [circleInput, optionalSource],
+    );
+    expect(result.errors).toEqual(["Unknown input: unknown.", "Input circle was provided more than once."]);
 
     expect(workflowCommandInputValues([], [circleInput]).errors).toEqual(["Circle is required."]);
   });

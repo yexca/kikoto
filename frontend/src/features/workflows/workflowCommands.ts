@@ -33,7 +33,13 @@ export function parseWorkflowCommand(query: string): ParsedWorkflowCommand {
   const trimmed = query.trim();
   if (!trimmed.startsWith("/")) return { isCommand: false, alias: "", arguments: [], error: "" };
   const tokenized = tokenize(trimmed.slice(1));
-  if (tokenized.error) return { isCommand: true, alias: tokenized.tokens[0] ?? "", arguments: tokenized.tokens.slice(1), error: tokenized.error };
+  if (tokenized.error)
+    return {
+      isCommand: true,
+      alias: tokenized.tokens[0] ?? "",
+      arguments: tokenized.tokens.slice(1),
+      error: tokenized.error,
+    };
   return {
     isCommand: true,
     alias: tokenized.tokens[0] ?? "",
@@ -42,7 +48,10 @@ export function parseWorkflowCommand(query: string): ParsedWorkflowCommand {
   };
 }
 
-export function workflowCommandInputValues(arguments_: string[], inputs: WorkflowInputDefinition[]): WorkflowCommandValues {
+export function workflowCommandInputValues(
+  arguments_: string[],
+  inputs: WorkflowInputDefinition[],
+): WorkflowCommandValues {
   const values: Record<string, string> = Object.create(null) as Record<string, string>;
   const errors: string[] = [];
   const inputMap = new Map(inputs.map((input) => [input.key.toLowerCase(), input]));
@@ -100,11 +109,17 @@ export function workflowCommandUsage(alias: string, inputs: WorkflowInputDefinit
 }
 
 export function workflowRunInputPayload(inputs: WorkflowInputDefinition[], values: Record<string, unknown>) {
-  return Object.fromEntries(inputs.flatMap((input) => {
-    const value = values[input.key];
-    if (!input.required && (value === null || value === undefined || (typeof value === "string" && value.trim() === ""))) return [];
-    return [[input.key, value]];
-  }));
+  return Object.fromEntries(
+    inputs.flatMap((input) => {
+      const value = values[input.key];
+      if (
+        !input.required &&
+        (value === null || value === undefined || (typeof value === "string" && value.trim() === ""))
+      )
+        return [];
+      return [[input.key, value]];
+    }),
+  );
 }
 
 function validateInputValue(type: WorkflowInputDefinition["type"], value: string) {
@@ -112,7 +127,8 @@ function validateInputValue(type: WorkflowInputDefinition["type"], value: string
   if (type === "work_code" && !/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(value)) return "use a supported work code.";
   if (type === "work_codes") {
     const codes = value.split(/[\s,]+/).filter(Boolean);
-    if (codes.length === 0 || codes.some((code) => !/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(code))) return "use supported work codes separated by commas.";
+    if (codes.length === 0 || codes.some((code) => !/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(code)))
+      return "use supported work codes separated by commas.";
   }
   return "";
 }

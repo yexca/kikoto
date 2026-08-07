@@ -15,7 +15,13 @@ const workflowDataTypeColors: Record<string, string> = {
 };
 
 export function workflowDataTypeColor(type: string | null | undefined) {
-  return workflowDataTypeColors[String(type ?? "").trim().toLowerCase()] ?? "#64748b";
+  return (
+    workflowDataTypeColors[
+      String(type ?? "")
+        .trim()
+        .toLowerCase()
+    ] ?? "#64748b"
+  );
 }
 
 export function workflowEdgeClassName(state: WorkflowEdgeVisualState) {

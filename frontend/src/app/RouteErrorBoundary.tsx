@@ -43,7 +43,11 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
 
     return (
       <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
-        <section className="mx-auto max-w-2xl rounded-lg border bg-card p-6" role="alert" aria-labelledby="route-error-title">
+        <section
+          className="mx-auto max-w-2xl rounded-lg border bg-card p-6"
+          role="alert"
+          aria-labelledby="route-error-title"
+        >
           <div className="grid h-10 w-10 place-items-center rounded-md bg-destructive/10 text-destructive">
             <AlertTriangle className="h-5 w-5" aria-hidden="true" />
           </div>

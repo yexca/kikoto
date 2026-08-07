@@ -48,7 +48,14 @@ async function mockCacheSettings(
     dlsiteMetadataLanguage: "ja-jp",
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
-      { id: "with_se", label: "With sound effects", weight: 30, aliases: ["with se"], negativeAliases: [], enabled: true },
+      {
+        id: "with_se",
+        label: "With sound effects",
+        weight: 30,
+        aliases: ["with se"],
+        negativeAliases: [],
+        enabled: true,
+      },
       { id: "mp3", label: "MP3", weight: 20, aliases: ["mp3"], negativeAliases: ["wav"], enabled: true },
     ],
     recommendationThreshold: 50,
@@ -65,7 +72,14 @@ async function mockCacheSettings(
         priority: 10,
         enabled: true,
         config: { scanDepth: 4 },
-        endpoint: { baseUrl: "", apiUrl: "", fallbackUrl: "", workUrlTemplate: "", restrictOutboundHosts: false, allowedHostPatterns: [] },
+        endpoint: {
+          baseUrl: "",
+          apiUrl: "",
+          fallbackUrl: "",
+          workUrlTemplate: "",
+          restrictOutboundHosts: false,
+          allowedHostPatterns: [],
+        },
         healthStatus: "healthy",
         lastCheckedAt: "2026-07-26T00:00:00Z",
       },
@@ -129,9 +143,15 @@ async function mockCacheSettings(
     }
     if (url.pathname === "/api/file-sources/8/health-check" && route.request().method() === "POST") {
       onHealthCheck();
-      const source = { ...currentSettings.fileSources[1], healthStatus: "healthy", lastCheckedAt: "2026-07-26T01:00:00Z" };
+      const source = {
+        ...currentSettings.fileSources[1],
+        healthStatus: "healthy",
+        lastCheckedAt: "2026-07-26T01:00:00Z",
+      };
       currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
-      await route.fulfill({ json: { healthy: true, healthStatus: source.healthStatus, lastCheckedAt: source.lastCheckedAt, elapsedMs: 24 } });
+      await route.fulfill({
+        json: { healthy: true, healthStatus: source.healthStatus, lastCheckedAt: source.lastCheckedAt, elapsedMs: 24 },
+      });
       return;
     }
     if (url.pathname === "/api/file-sources/8" && route.request().method() === "PATCH") {
@@ -150,7 +170,19 @@ async function mockCacheSettings(
       return;
     }
     if (url.pathname === "/api/users") {
-      await route.fulfill({ json: [{ id: 1, username: "admin", displayName: "Admin", role: "admin", enabled: true, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }] });
+      await route.fulfill({
+        json: [
+          {
+            id: 1,
+            username: "admin",
+            displayName: "Admin",
+            role: "admin",
+            enabled: true,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      });
       return;
     }
     if (url.pathname === "/api/cache/overview") {
@@ -202,15 +234,21 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await page.setViewportSize({ width: 1280, height: 800 });
   const cleanupRequests: unknown[] = [];
   const settingsPayloads: Record<string, unknown>[] = [];
-  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); }, (payload) => { settingsPayloads.push(payload); });
+  await mockCacheSettings(
+    page,
+    (payload) => {
+      cleanupRequests.push(payload);
+    },
+    (payload) => {
+      settingsPayloads.push(payload);
+    },
+  );
   await page.goto("/maintenance?tab=cache");
 
   await expect(page.getByText("Managed media cache", { exact: true })).toBeVisible();
   await expect(page.getByTestId("maintenance-content")).toHaveCSS("max-width", "896px");
   await expect(page.getByTestId("cache-configuration-card")).toHaveCSS("max-width", "none");
-  const cacheSections = await page
-    .getByText(/^(Configuration|Managed media cache)$/)
-    .allTextContents();
+  const cacheSections = await page.getByText(/^(Configuration|Managed media cache)$/).allTextContents();
   expect(cacheSections).toEqual(["Configuration", "Managed media cache"]);
   await expect(page.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
@@ -218,7 +256,9 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await page.getByRole("button", { name: "Save configuration" }).click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
-  expect(settingsPayloads[0]).toEqual(expect.objectContaining({ remoteDownloadLimitGb: 100, fetchStagingRetentionDays: 7 }));
+  expect(settingsPayloads[0]).toEqual(
+    expect.objectContaining({ remoteDownloadLimitGb: 100, fetchStagingRetentionDays: 7 }),
+  );
   await expect(page.getByText("150 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();
@@ -242,7 +282,9 @@ test("cache settings scan managed media and require cleanup confirmation", async
 
 test("cache settings can clear referenced cache for selected works", async ({ page }) => {
   const cleanupRequests: unknown[] = [];
-  await mockCacheSettings(page, (payload) => { cleanupRequests.push(payload); });
+  await mockCacheSettings(page, (payload) => {
+    cleanupRequests.push(payload);
+  });
   await page.goto("/maintenance?tab=cache");
   await page.getByRole("button", { name: "Work cache", exact: true }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
@@ -270,8 +312,12 @@ test("personal settings stay separate from administrator maintenance", async ({ 
 test("unlinked works mounts once and keeps its result region stable while settings load", async ({ page }) => {
   let releaseSettings = () => undefined;
   let releaseWorks = () => undefined;
-  const settingsGate = new Promise<void>((resolve) => { releaseSettings = resolve; });
-  const worksGate = new Promise<void>((resolve) => { releaseWorks = resolve; });
+  const settingsGate = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  const worksGate = new Promise<void>((resolve) => {
+    releaseWorks = resolve;
+  });
   await mockCacheSettings(page, () => undefined);
   await page.route("**/api/settings", async (route) => {
     if (route.request().method() !== "GET") {
@@ -310,8 +356,12 @@ test("unlinked works mounts once and keeps its result region stable while settin
 test("users mounts before settings and a one-user result does not collapse the page", async ({ page }) => {
   let releaseSettings = () => undefined;
   let releaseUsers = () => undefined;
-  const settingsGate = new Promise<void>((resolve) => { releaseSettings = resolve; });
-  const usersGate = new Promise<void>((resolve) => { releaseUsers = resolve; });
+  const settingsGate = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  const usersGate = new Promise<void>((resolve) => {
+    releaseUsers = resolve;
+  });
   await mockCacheSettings(page, () => undefined);
   await page.route("**/api/settings", async (route) => {
     if (route.request().method() !== "GET") {
@@ -347,7 +397,9 @@ test("maintenance combines library sources and exposes read-only paths with heal
     page,
     () => undefined,
     () => undefined,
-    () => { healthChecks += 1; },
+    () => {
+      healthChecks += 1;
+    },
     (payload) => sourceUpdates.push(payload),
   );
   await page.goto("/maintenance?tab=library");
@@ -374,7 +426,10 @@ test("maintenance combines library sources and exposes read-only paths with heal
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
   await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ01234567");
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
-  await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute("aria-checked", "false");
+  await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
   await expect(sourceDialog.getByLabel("Additional allowed hosts")).toHaveCount(0);
   await sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" }).click();
   await expect(sourceDialog.getByText("https://api.remote.example", { exact: true })).toBeVisible();
@@ -382,10 +437,12 @@ test("maintenance combines library sources and exposes read-only paths with heal
   await sourceDialog.getByLabel("Additional allowed hosts").fill("cdn.example.invalid\n*.media.example.invalid");
   await sourceDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => sourceUpdates.length).toBe(2);
-  expect(sourceUpdates[1]?.endpoint).toEqual(expect.objectContaining({
-    restrictOutboundHosts: true,
-    allowedHostPatterns: ["cdn.example.invalid", "*.media.example.invalid"],
-  }));
+  expect(sourceUpdates[1]?.endpoint).toEqual(
+    expect.objectContaining({
+      restrictOutboundHosts: true,
+      allowedHostPatterns: ["cdn.example.invalid", "*.media.example.invalid"],
+    }),
+  );
 
   await page.getByRole("button", { name: "Delete source", exact: true }).click();
   const deleteDialog = page.getByRole("dialog", { name: "Delete remote source" });
@@ -412,7 +469,11 @@ test("remote source deep links open the requested source configuration", async (
 
 test("routing drag order becomes the saved internal priority", async ({ page }) => {
   const settingsPayloads: Record<string, unknown>[] = [];
-  await mockCacheSettings(page, () => undefined, (payload) => settingsPayloads.push(payload));
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => settingsPayloads.push(payload),
+  );
   await page.goto("/maintenance?tab=routing");
 
   await expect(page.getByText("Weight", { exact: true })).toHaveCount(0);
@@ -430,7 +491,11 @@ test("routing drag order becomes the saved internal priority", async ({ page }) 
 
 test("recommendation keeps common controls visible and advanced scoring collapsed", async ({ page }) => {
   const settingsPayloads: Record<string, unknown>[] = [];
-  await mockCacheSettings(page, () => undefined, (payload) => settingsPayloads.push(payload));
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => settingsPayloads.push(payload),
+  );
   await page.goto("/maintenance?tab=recommendation");
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");

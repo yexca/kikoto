@@ -20,7 +20,12 @@ export function sourcePresenceBadges(
     const type = normalizePresenceType(item.type);
     const availabilityLabel = item.availability || "unknown";
     if (type === "local") {
-      add({ key: "source:local", label: "Local", variant: availabilityLabel === "available" ? "secondary" : "warning", title: "Local source" });
+      add({
+        key: "source:local",
+        label: "Local",
+        variant: availabilityLabel === "available" ? "secondary" : "warning",
+        title: "Local source",
+      });
       continue;
     }
     if (type === "tracked") {
@@ -127,7 +132,9 @@ function dedupeBadges(badges: WorkCardBadge[]) {
 }
 
 function sortSourceBadges(badges: WorkCardBadge[]) {
-  return [...badges].sort((left, right) => sourceBadgeRank(left) - sourceBadgeRank(right) || left.label.localeCompare(right.label));
+  return [...badges].sort(
+    (left, right) => sourceBadgeRank(left) - sourceBadgeRank(right) || left.label.localeCompare(right.label),
+  );
 }
 
 function sourceBadgeRank(badge: WorkCardBadge) {

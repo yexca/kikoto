@@ -46,8 +46,7 @@ export function AboutPage() {
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>This software is developed by yexca with assistance from Codex.</p>
             <p>
-              v0.1.0 was developed with GPT-5.5 assistance. From v0.1.1 onward, development assistance uses
-              GPT-5.6-sol.
+              v0.1.0 was developed with GPT-5.5 assistance. From v0.1.1 onward, development assistance uses GPT-5.6-sol.
             </p>
           </CardContent>
         </Card>
@@ -94,8 +93,8 @@ export function AboutPage() {
             </div>
             <div className="space-y-3 border-t pt-4">
               <p>
-                ComfyUI informed the workflow-canvas interaction design. Kikoto does not include or adapt ComfyUI
-                source code; its canvas is an independent React implementation built with @xyflow/react.
+                ComfyUI informed the workflow-canvas interaction design. Kikoto does not include or adapt ComfyUI source
+                code; its canvas is an independent React implementation built with @xyflow/react.
               </p>
               <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">

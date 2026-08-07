@@ -32,7 +32,8 @@ const systemDefinitions = [
     code: "dlsite_popular_collection",
     displayName: "Collect DLsite popular voice works",
     description: "Discover ranking works, sync metadata, and add a user tag.",
-    definitionJson: '{"nodes":[{"id":"configure","type":"select_ranking","displayName":"Configure ranking"},{"id":"discover","type":"discover_provider_ranking","displayName":"Discover ranking"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
+    definitionJson:
+      '{"nodes":[{"id":"configure","type":"select_ranking","displayName":"Configure ranking"},{"id":"discover","type":"discover_provider_ranking","displayName":"Discover ranking"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
     scope: "system",
     editable: false,
     ownerUserId: null,
@@ -44,8 +45,10 @@ const systemDefinitions = [
     id: 4,
     code: "remote_popular_collection",
     displayName: "Collect popular remote works",
-    description: "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
-    definitionJson: '{"nodes":[{"id":"configure","type":"select_remote_source","displayName":"Configure remote collection"},{"id":"discover","type":"discover_remote_collection","displayName":"Discover popular works"},{"id":"filter","type":"filter_candidates","displayName":"Filter collection candidates"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch accepted works"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
+    description:
+      "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
+    definitionJson:
+      '{"nodes":[{"id":"configure","type":"select_remote_source","displayName":"Configure remote collection"},{"id":"discover","type":"discover_remote_collection","displayName":"Discover popular works"},{"id":"filter","type":"filter_candidates","displayName":"Filter collection candidates"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch accepted works"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
     scope: "system",
     editable: false,
     ownerUserId: null,
@@ -58,7 +61,8 @@ const systemDefinitions = [
     code: "custom_draft",
     displayName: "Custom draft",
     description: "Test custom definition.",
-    definitionJson: '{"nodes":[{"id":"select","type":"select_works","displayName":"Select works"},{"id":"sync","type":"sync_metadata","displayName":"Sync metadata"}]}',
+    definitionJson:
+      '{"nodes":[{"id":"select","type":"select_works","displayName":"Select works"},{"id":"sync","type":"sync_metadata","displayName":"Sync metadata"}]}',
     scope: "user",
     editable: true,
     ownerUserId: 1,
@@ -84,7 +88,8 @@ const systemDefinitions = [
     code: "local_library_scan",
     displayName: "Scan local library",
     description: "Discover local works and synchronize missing metadata.",
-    definitionJson: '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"}]}',
+    definitionJson:
+      '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"}]}',
     scope: "system",
     editable: false,
     ownerUserId: null,
@@ -95,8 +100,38 @@ const systemDefinitions = [
 ];
 
 const workflowTriggers = [
-  { id: 71, workflowDefinitionId: 7, workflowCode: "local_library_scan", displayName: "Startup local library scan", triggerType: "startup", enabled: true, scheduleJson: '{"type":"startup"}', configJson: "{}", nextRunAt: null, lastRunAt: null, lastSuccessAt: null, lastErrorMessage: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
-  { id: 72, workflowDefinitionId: 7, workflowCode: "local_library_scan", displayName: "Watch data folders", triggerType: "filesystem_event", enabled: true, scheduleJson: '{"type":"filesystem_event"}', configJson: "{}", nextRunAt: null, lastRunAt: null, lastSuccessAt: null, lastErrorMessage: "", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
+  {
+    id: 71,
+    workflowDefinitionId: 7,
+    workflowCode: "local_library_scan",
+    displayName: "Startup local library scan",
+    triggerType: "startup",
+    enabled: true,
+    scheduleJson: '{"type":"startup"}',
+    configJson: "{}",
+    nextRunAt: null,
+    lastRunAt: null,
+    lastSuccessAt: null,
+    lastErrorMessage: "",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
+  {
+    id: 72,
+    workflowDefinitionId: 7,
+    workflowCode: "local_library_scan",
+    displayName: "Watch data folders",
+    triggerType: "filesystem_event",
+    enabled: true,
+    scheduleJson: '{"type":"filesystem_event"}',
+    configJson: "{}",
+    nextRunAt: null,
+    lastRunAt: null,
+    lastSuccessAt: null,
+    lastErrorMessage: "",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
 ];
 
 const sampleRun = {
@@ -132,23 +167,78 @@ const sampleRun = {
 };
 
 const sampleNodes = [
-  { id: 501, nodeId: "discover", nodeType: "discover_provider_ranking", displayName: "Discover ranking", position: 1, status: "succeeded", inputJson: "{}", outputJson: '{"count":2}', errorMessage: "", startedAt: "2026-07-14T00:00:00Z", finishedAt: "2026-07-14T00:00:05Z", createdAt: "2026-07-14T00:00:00Z" },
-  { id: 502, nodeId: "tag", nodeType: "assign_user_tags", displayName: "Add user tag", position: 2, status: "running", inputJson: "{}", outputJson: "{}", errorMessage: "", startedAt: "2026-07-14T00:00:05Z", finishedAt: "", createdAt: "2026-07-14T00:00:00Z" },
+  {
+    id: 501,
+    nodeId: "discover",
+    nodeType: "discover_provider_ranking",
+    displayName: "Discover ranking",
+    position: 1,
+    status: "succeeded",
+    inputJson: "{}",
+    outputJson: '{"count":2}',
+    errorMessage: "",
+    startedAt: "2026-07-14T00:00:00Z",
+    finishedAt: "2026-07-14T00:00:05Z",
+    createdAt: "2026-07-14T00:00:00Z",
+  },
+  {
+    id: 502,
+    nodeId: "tag",
+    nodeType: "assign_user_tags",
+    displayName: "Add user tag",
+    position: 2,
+    status: "running",
+    inputJson: "{}",
+    outputJson: "{}",
+    errorMessage: "",
+    startedAt: "2026-07-14T00:00:05Z",
+    finishedAt: "",
+    createdAt: "2026-07-14T00:00:00Z",
+  },
 ];
 
 const sampleRunGraph = JSON.stringify({
   schemaVersion: 1,
   nodes: [
-    { id: "discover", type: "discover_provider_ranking", displayName: "Discover ranking", position: { x: 0, y: 48 }, inputs: [], outputs: [{ id: "works", dataType: "work_candidates" }] },
-    { id: "tag", type: "assign_user_tags", displayName: "Add user tag", position: { x: 250, y: 48 }, inputs: [{ id: "works", dataType: "work_candidates" }], outputs: [] },
+    {
+      id: "discover",
+      type: "discover_provider_ranking",
+      displayName: "Discover ranking",
+      position: { x: 0, y: 48 },
+      inputs: [],
+      outputs: [{ id: "works", dataType: "work_candidates" }],
+    },
+    {
+      id: "tag",
+      type: "assign_user_tags",
+      displayName: "Add user tag",
+      position: { x: 250, y: 48 },
+      inputs: [{ id: "works", dataType: "work_candidates" }],
+      outputs: [],
+    },
   ],
-  edges: [{ id: "discover_to_tag", source: "discover", sourceHandle: "works", target: "tag", targetHandle: "works", dataType: "work_candidates" }],
+  edges: [
+    {
+      id: "discover_to_tag",
+      source: "discover",
+      sourceHandle: "works",
+      target: "tag",
+      targetHandle: "works",
+      dataType: "work_candidates",
+    },
+  ],
 });
 
 async function mockWorkflows(
   page: Page,
   onRemotePopular?: (payload: unknown) => void,
-  runsPage = { runs: [sampleRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 0, failed: 0, completed: 1 } },
+  runsPage = {
+    runs: [sampleRun],
+    page: 1,
+    pageSize: 10,
+    total: 1,
+    viewTotals: { running: 0, review: 0, failed: 0, completed: 1 },
+  },
   notificationPage = { notifications: [] as Array<Record<string, unknown>>, total: 0 },
   onAvailabilityWatch?: (payload: unknown) => void,
 ) {
@@ -187,19 +277,43 @@ async function mockWorkflows(
     if (url.pathname === "/api/availability-watch") {
       const payload = route.request().method() === "PUT" ? route.request().postDataJSON() : null;
       if (payload) onAvailabilityWatch?.(payload);
-      await route.fulfill({ json: {
-        id: 1,
-        enabled: payload ? (payload as { enabled: boolean }).enabled : true,
-        intervalMinutes: payload ? (payload as { intervalMinutes: number }).intervalMinutes : 60,
-        action: payload ? (payload as { action: string }).action : "monitor",
-        sourceId: payload ? (payload as { sourceId: number | null }).sourceId : null,
-        excludeExtensions: payload ? (payload as { excludeExtensions: string[] }).excludeExtensions : ["wav"],
-        revision: 2,
-        targets: [
-          { id: 1, workCode: "RJ09999991", state: "monitoring", nextCheckAt: "2026-07-27T01:00:00Z", lastCheckedAt: "", lastStatus: "", lastError: "", availableSourceId: null, trackRunId: null, fetchRunId: null },
-          { id: 2, workCode: "RJ09999992", state: "completed", nextCheckAt: "", lastCheckedAt: "2026-07-27T00:00:00Z", lastStatus: "available", lastError: "", availableSourceId: 8, trackRunId: null, fetchRunId: 88 },
-        ],
-      } });
+      await route.fulfill({
+        json: {
+          id: 1,
+          enabled: payload ? (payload as { enabled: boolean }).enabled : true,
+          intervalMinutes: payload ? (payload as { intervalMinutes: number }).intervalMinutes : 60,
+          action: payload ? (payload as { action: string }).action : "monitor",
+          sourceId: payload ? (payload as { sourceId: number | null }).sourceId : null,
+          excludeExtensions: payload ? (payload as { excludeExtensions: string[] }).excludeExtensions : ["wav"],
+          revision: 2,
+          targets: [
+            {
+              id: 1,
+              workCode: "RJ09999991",
+              state: "monitoring",
+              nextCheckAt: "2026-07-27T01:00:00Z",
+              lastCheckedAt: "",
+              lastStatus: "",
+              lastError: "",
+              availableSourceId: null,
+              trackRunId: null,
+              fetchRunId: null,
+            },
+            {
+              id: 2,
+              workCode: "RJ09999992",
+              state: "completed",
+              nextCheckAt: "",
+              lastCheckedAt: "2026-07-27T00:00:00Z",
+              lastStatus: "available",
+              lastError: "",
+              availableSourceId: 8,
+              trackRunId: null,
+              fetchRunId: 88,
+            },
+          ],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/workflow-node-types") {
@@ -212,9 +326,16 @@ async function mockWorkflows(
     }
     if (url.pathname === "/api/workflow-runs") {
       await route.fulfill({
-        json: url.searchParams.get("workflowCode") === "metadata_sync"
-          ? { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0, viewTotals: runsPage.viewTotals }
-          : { ...runsPage, pageSize: Number(url.searchParams.get("pageSize") ?? runsPage.pageSize) },
+        json:
+          url.searchParams.get("workflowCode") === "metadata_sync"
+            ? {
+                runs: [],
+                page: 1,
+                pageSize: Number(url.searchParams.get("pageSize") ?? 10),
+                total: 0,
+                viewTotals: runsPage.viewTotals,
+              }
+            : { ...runsPage, pageSize: Number(url.searchParams.get("pageSize") ?? runsPage.pageSize) },
       });
       return;
     }
@@ -223,7 +344,21 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-runs/51/events") {
-      await route.fulfill({ json: [{ id: 701, runId: 51, nodeRunId: 502, jobId: 1, level: "info", eventType: "node.progress", message: "Tagging works", detailJson: '{"current":1,"total":2}', createdAt: "2026-07-14T00:00:10Z" }] });
+      await route.fulfill({
+        json: [
+          {
+            id: 701,
+            runId: 51,
+            nodeRunId: 502,
+            jobId: 1,
+            level: "info",
+            eventType: "node.progress",
+            message: "Tagging works",
+            detailJson: '{"current":1,"total":2}',
+            createdAt: "2026-07-14T00:00:10Z",
+          },
+        ],
+      });
       return;
     }
     if (url.pathname === "/api/workflow-runs/51/candidates") {
@@ -231,20 +366,70 @@ async function mockWorkflows(
       return;
     }
     if (url.pathname === "/api/workflow-runs/dlsite-popular") {
-      const payload = route.request().postDataJSON() as { period: string; releaseWindow: string; year: number; tagNameTemplate: string };
-      await route.fulfill({ json: { runId: 31, status: "queued", ...payload, tagName: "resolved-dlsite-popular", discovered: 0, synced: 0, tagged: 0, failed: 0, failures: [] } });
+      const payload = route.request().postDataJSON() as {
+        period: string;
+        releaseWindow: string;
+        year: number;
+        tagNameTemplate: string;
+      };
+      await route.fulfill({
+        json: {
+          runId: 31,
+          status: "queued",
+          ...payload,
+          tagName: "resolved-dlsite-popular",
+          discovered: 0,
+          synced: 0,
+          tagged: 0,
+          failed: 0,
+          failures: [],
+        },
+      });
       return;
     }
     if (url.pathname === "/api/library-sources") {
       await route.fulfill({
-        json: [{ id: 8, code: "remote-test", displayName: "Remote Test", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true }],
+        json: [
+          {
+            id: 8,
+            code: "remote-test",
+            displayName: "Remote Test",
+            sourceType: "kikoeru_compatible",
+            enabled: true,
+            cacheEnabled: true,
+          },
+        ],
       });
       return;
     }
     if (url.pathname === "/api/workflow-runs/remote-popular") {
-      const payload = route.request().postDataJSON() as { sourceId: number; action: "track" | "fetch"; limit: number; tagNameTemplate: string };
+      const payload = route.request().postDataJSON() as {
+        sourceId: number;
+        action: "track" | "fetch";
+        limit: number;
+        tagNameTemplate: string;
+      };
       onRemotePopular?.(payload);
-      await route.fulfill({ json: { runId: 41, status: "queued", collectionKind: "popular", tagName: "resolved-remote-popular", discovered: 0, accepted: 0, skipped: 0, tracked: 0, fetched: 0, tagged: 0, failed: 0, childRuns: [], failures: [], expectedMaximum: payload.limit, returnedCount: 0, ...payload } });
+      await route.fulfill({
+        json: {
+          runId: 41,
+          status: "queued",
+          collectionKind: "popular",
+          tagName: "resolved-remote-popular",
+          discovered: 0,
+          accepted: 0,
+          skipped: 0,
+          tracked: 0,
+          fetched: 0,
+          tagged: 0,
+          failed: 0,
+          childRuns: [],
+          failures: [],
+          expectedMaximum: payload.limit,
+          returnedCount: 0,
+          ...payload,
+        },
+      });
       return;
     }
     if (url.pathname === "/api/runtime-settings") {
@@ -259,15 +444,35 @@ test("mobile notification center opens fetched works and dismisses individual re
   await mockWorkflows(page, undefined, undefined, {
     total: 2,
     notifications: [
-      { id: 2, workflowRunId: 72, type: "remote_fetch", status: "failed", workId: 12, workCode: "RJ09999996", message: "Fetch failed for RJ09999996.", createdAt: "2026-07-27T02:00:00Z" },
-      { id: 1, workflowRunId: 71, type: "remote_fetch", status: "succeeded", workId: 11, workCode: "RJ09999995", message: "Fetch completed for RJ09999995.", createdAt: "2026-07-27T01:00:00Z" },
+      {
+        id: 2,
+        workflowRunId: 72,
+        type: "remote_fetch",
+        status: "failed",
+        workId: 12,
+        workCode: "RJ09999996",
+        message: "Fetch failed for RJ09999996.",
+        createdAt: "2026-07-27T02:00:00Z",
+      },
+      {
+        id: 1,
+        workflowRunId: 71,
+        type: "remote_fetch",
+        status: "succeeded",
+        workId: 11,
+        workCode: "RJ09999995",
+        message: "Fetch completed for RJ09999995.",
+        createdAt: "2026-07-27T01:00:00Z",
+      },
     ],
   });
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
   await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toBeVisible();
-  const dismissRequest = page.waitForRequest((request) => request.method() === "DELETE" && request.url().endsWith("/api/notifications/1"));
+  const dismissRequest = page.waitForRequest(
+    (request) => request.method() === "DELETE" && request.url().endsWith("/api/notifications/1"),
+  );
   await page.getByRole("button", { name: "Dismiss notification for RJ09999995" }).click();
   await dismissRequest;
   await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toHaveCount(0);
@@ -298,9 +503,14 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   let configureDialog = page.getByRole("dialog", { name: "Configure DLsite popular collection" });
   await expect(configureDialog.getByText("Ranking period", { exact: true }).first()).toBeVisible();
-  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute("aria-checked", "true");
+  await expect(configureDialog.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   let dlsiteTagField = configureDialog.getByTestId("dlsite-popular-tag-template-field");
-  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
+  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue(
+    "{date}_DL_{period}_{release_window}_popular",
+  );
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_24h_r30d_popular/);
   await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
   await configureDialog.getByRole("button", { name: "Close", exact: true }).click();
@@ -312,8 +522,12 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(scheduleDialog).toBeVisible();
   await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
   await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("");
-  await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue("{date}_DL_{period}_{release_window}_popular");
-  await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(/Preview.*_DL_24h_all_popular/);
+  await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue(
+    "{date}_DL_{period}_{release_window}_popular",
+  );
+  await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(
+    /Preview.*_DL_24h_all_popular/,
+  );
   await scheduleDialog.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Configure", exact: true }).click();
@@ -326,7 +540,12 @@ test("definitions foreground runnable presets and configure DLsite popular colle
   await expect(dlsiteTagField).toContainText(/Preview.*_DL_year_2025_popular/);
   const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
   await page.getByRole("button", { name: "Run collection" }).click();
-  expect((await dlsiteRequest).postDataJSON()).toEqual({ period: "year", releaseWindow: "", year: 2025, tagNameTemplate: "{date}_DL_year_{year}_popular" });
+  expect((await dlsiteRequest).postDataJSON()).toEqual({
+    period: "year",
+    releaseWindow: "",
+    year: 2025,
+    tagNameTemplate: "{date}_DL_year_{year}_popular",
+  });
   await expect(page.getByText(/run #31 queued/)).toBeVisible();
 
   await page.goto("/about");
@@ -341,7 +560,10 @@ test("local scan exposes its fixed folder watcher without edit controls", async 
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: /Scan local library/ }).click();
-  await expect(page.getByRole("switch", { name: "Pause Watch data folders", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Pause Watch data folders", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await expect(page.getByText("When local library folders change", { exact: true })).toBeVisible();
   await expect(page.getByText("Watching for folder changes", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Watch data folders", exact: true })).toHaveCount(0);
@@ -355,7 +577,12 @@ test("legacy custom definitions remain read-only while showing their linear conn
   await page.getByRole("tab", { name: /Custom/ }).click();
   await page.getByRole("button", { name: /Custom draft/ }).click();
   await expect(page.getByRole("heading", { name: "Custom draft", exact: true })).toBeVisible();
-  await expect(page.getByText("Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Legacy upgrade is reserved for a future release. This definition remains read-only, and its original linear connections are shown below.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Upgrade workflow", exact: true })).toBeDisabled();
   const legacyCanvas = page.getByLabel("Workflow node canvas");
   await expect(legacyCanvas).toBeVisible();
@@ -408,7 +635,10 @@ test("activity presents overview, canvas, items, and node logs vertically", asyn
   await expect(executionCanvas.locator('.react-flow__node[data-id="tag"] .workflow-run-node--running')).toBeVisible();
   await expect(executionCanvas.locator(".react-flow__edge-path")).toHaveCSS("stroke", "rgb(139, 92, 246)");
   await expect(page.getByText("Node logs", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: /Add user tag.*1 events.*running/i })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect(page.getByText("Tagging works", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
@@ -443,7 +673,9 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
       await route.fulfill({ json: [] });
       return;
     }
-    await route.fulfill({ json: { ...(url.pathname.endsWith("/52") ? unknownRun : knownRun), nodeRuns: [], graphJson: "{}" } });
+    await route.fulfill({
+      json: { ...(url.pathname.endsWith("/52") ? unknownRun : knownRun), nodeRuns: [], graphJson: "{}" },
+    });
   });
 
   await page.goto("/activity?view=running&run=52");
@@ -474,40 +706,54 @@ test("blocked Fetch origins stay in Review with source recovery actions and boun
     candidateCount: 1,
     pendingCandidates: 1,
   };
-  const runsPage = { runs: [reviewRun], page: 1, pageSize: 10, total: 1, viewTotals: { running: 0, review: 1, failed: 0, completed: 0 } };
+  const runsPage = {
+    runs: [reviewRun],
+    page: 1,
+    pageSize: 10,
+    total: 1,
+    viewTotals: { running: 0, review: 1, failed: 0, completed: 0 },
+  };
   await mockWorkflows(page, undefined, runsPage);
   let retries = 0;
   await page.route("**/api/workflow-runs/51", async (route) => {
-    await route.fulfill({ json: {
-      ...reviewRun,
-      nodeRuns: [{
-        ...sampleNodes[0],
-        nodeId: "cache",
-        nodeType: "materialize_cache",
-        displayName: "Cache selected files",
-        status: "partial",
-        outputJson: JSON.stringify({ legacy_detail: longLegacyURL }),
-        errorMessage: `Remote download origin is not allowed by the source policy: ${blockedOrigin}`,
-      }],
-      graphJson: "{}",
-    } });
+    await route.fulfill({
+      json: {
+        ...reviewRun,
+        nodeRuns: [
+          {
+            ...sampleNodes[0],
+            nodeId: "cache",
+            nodeType: "materialize_cache",
+            displayName: "Cache selected files",
+            status: "partial",
+            outputJson: JSON.stringify({ legacy_detail: longLegacyURL }),
+            errorMessage: `Remote download origin is not allowed by the source policy: ${blockedOrigin}`,
+          },
+        ],
+        graphJson: "{}",
+      },
+    });
   });
   await page.route("**/api/workflow-runs/51/events", async (route) => {
     await route.fulfill({ json: [] });
   });
   await page.route("**/api/workflow-runs/51/candidates", async (route) => {
-    await route.fulfill({ json: [{
-      id: 801,
-      runId: 51,
-      nodeRunId: 501,
-      type: "remote_origin_blocked",
-      externalKey: blockedOrigin,
-      status: "pending",
-      payloadJson: JSON.stringify({ origin: blockedOrigin, source_id: 8, reason: "origin_not_allowed" }),
-      decisionJson: "{}",
-      createdAt: "2026-07-14T00:00:00Z",
-      updatedAt: "2026-07-14T00:00:00Z",
-    }] });
+    await route.fulfill({
+      json: [
+        {
+          id: 801,
+          runId: 51,
+          nodeRunId: 501,
+          type: "remote_origin_blocked",
+          externalKey: blockedOrigin,
+          status: "pending",
+          payloadJson: JSON.stringify({ origin: blockedOrigin, source_id: 8, reason: "origin_not_allowed" }),
+          decisionJson: "{}",
+          createdAt: "2026-07-14T00:00:00Z",
+          updatedAt: "2026-07-14T00:00:00Z",
+        },
+      ],
+    });
   });
   await page.route("**/api/workflow-runs/51/retry", async (route) => {
     retries += 1;
@@ -520,7 +766,9 @@ test("blocked Fetch origins stay in Review with source recovery actions and boun
   await expect(page.getByText(blockedOrigin, { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark resolved" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ignore" })).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
+    .toBe(true);
 
   await page.getByRole("button", { name: "Retry Fetch", exact: true }).click();
   await expect.poll(() => retries).toBe(1);
@@ -571,7 +819,11 @@ test("activity uses compact counted tabs and a single empty state", async ({ pag
   await expect(page.getByText("No workflows are running.", { exact: true })).toBeVisible();
   await expect(page.getByText("Page 1 / 1", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Select a run to inspect execution by node.", { exact: true })).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => (window as typeof window & { __activityLoadingSeen?: boolean }).__activityLoadingSeen)).toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as typeof window & { __activityLoadingSeen?: boolean }).__activityLoadingSeen),
+    )
+    .toBe(false);
 
   const tabs = page.getByRole("button", { name: "Running 0", exact: true }).locator("..");
   await expect.poll(() => tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -579,7 +831,9 @@ test("activity uses compact counted tabs and a single empty state", async ({ pag
 
 test("activity only animates loading when the run request is perceptibly slow", async ({ page }) => {
   let releaseRuns = () => undefined;
-  const runsGate = new Promise<void>((resolve) => { releaseRuns = resolve; });
+  const runsGate = new Promise<void>((resolve) => {
+    releaseRuns = resolve;
+  });
   await mockWorkflows(page, undefined, {
     runs: [],
     page: 1,
@@ -594,7 +848,15 @@ test("activity only animates loading when the run request is perceptibly slow", 
       return;
     }
     await runsGate;
-    await route.fulfill({ json: { runs: [], page: 1, pageSize: 10, total: 0, viewTotals: { running: 0, review: 0, failed: 0, completed: 0 } } });
+    await route.fulfill({
+      json: {
+        runs: [],
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        viewTotals: { running: 0, review: 0, failed: 0, completed: 0 },
+      },
+    });
   });
 
   await page.goto("/activity?view=running");
@@ -606,7 +868,9 @@ test("activity only animates loading when the run request is perceptibly slow", 
 
 test("workflow metadata loads as one snapshot without an interim empty panel", async ({ page }) => {
   let releaseDefinitions = () => undefined;
-  const definitionsGate = new Promise<void>((resolve) => { releaseDefinitions = resolve; });
+  const definitionsGate = new Promise<void>((resolve) => {
+    releaseDefinitions = resolve;
+  });
   await mockWorkflows(page);
   await page.route("**/api/workflow-definitions", async (route) => {
     await definitionsGate;
@@ -642,7 +906,12 @@ test("remote popular collection requires an explicit source and queues configure
   await configureDialog.getByRole("button", { name: "Run collection" }).click();
 
   await expect.poll(() => payloads).toHaveLength(1);
-  expect(payloads[0]).toEqual({ sourceId: 8, action: "fetch", limit: 50, tagNameTemplate: "weekly_{source_code}_{action}_popular" });
+  expect(payloads[0]).toEqual({
+    sourceId: 8,
+    action: "fetch",
+    limit: 50,
+    tagNameTemplate: "weekly_{source_code}_{action}_popular",
+  });
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 
@@ -704,21 +973,23 @@ test("settings persists display mode and accent color together", async ({ page }
 
 test("settings identifies an environment-managed root password", async ({ page }) => {
   await mockWorkflows(page);
-  await page.route("**/api/auth/me", (route) => route.fulfill({
-    json: {
-      authenticated: true,
-      user: {
-        id: 1,
-        username: "configured-root",
-        displayName: "Configured Root",
-        role: "super_admin",
-        permissions: ["system:admin"],
-        devMode: false,
-        demoMode: false,
-        passwordManagedBy: "environment",
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        user: {
+          id: 1,
+          username: "configured-root",
+          displayName: "Configured Root",
+          role: "super_admin",
+          permissions: ["system:admin"],
+          devMode: false,
+          demoMode: false,
+          passwordManagedBy: "environment",
+        },
       },
-    },
-  }));
+    }),
+  );
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toContainText("KIKOTO_ROOT_PASSWORD");
@@ -728,9 +999,11 @@ test("settings identifies an environment-managed root password", async ({ page }
 
 test("demo settings and scheduled workflows expose read-only controls", async ({ page }) => {
   await mockWorkflows(page);
-  await page.route("**/api/runtime-settings", (route) => route.fulfill({
-    json: { mode: "demo", demoMode: true, cacheEnabled: false, directoryRoutingRules: [] },
-  }));
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({
+      json: { mode: "demo", demoMode: true, cacheEnabled: false, directoryRoutingRules: [] },
+    }),
+  );
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Demo mode is read-only.");
@@ -739,7 +1012,11 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
   }
 
   await page.goto("/workflows");
-  await expect(page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Demo mode is read-only. Workflow definitions, schedules, runs, and reviews cannot be changed.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.getByRole("tab", { name: /Custom/ }).click();
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "New workflow", exact: true }).click();

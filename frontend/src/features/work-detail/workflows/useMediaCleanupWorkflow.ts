@@ -51,8 +51,13 @@ export function useMediaCleanupWorkflow({
     if (targets.length === 0) return;
     setIsSubmitting(true);
     try {
-      const orderedTargets = [...targets.filter((target) => target.kind !== "local_root"), ...targets.filter((target) => target.kind === "local_root")];
-      const result = await api.cleanupMediaLocations(orderedTargets.map(({ kind, locationId }) => ({ kind, locationId })));
+      const orderedTargets = [
+        ...targets.filter((target) => target.kind !== "local_root"),
+        ...targets.filter((target) => target.kind === "local_root"),
+      ];
+      const result = await api.cleanupMediaLocations(
+        orderedTargets.map(({ kind, locationId }) => ({ kind, locationId })),
+      );
       setActiveRunId(result.runId);
       onAccepted();
       toast.notify({

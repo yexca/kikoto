@@ -23,10 +23,7 @@ describe("workVersionModel", () => {
     });
 
     expect(groups).toHaveLength(2);
-    expect(groups[1].versions.map((item) => item.primaryCode)).toEqual([
-      "SAMPLE-EN-LOCAL",
-      "SAMPLE-EN-METADATA",
-    ]);
+    expect(groups[1].versions.map((item) => item.primaryCode)).toEqual(["SAMPLE-EN-LOCAL", "SAMPLE-EN-METADATA"]);
   });
 
   it("keeps aliases inside usable language groups while hiding metadata-only languages", () => {

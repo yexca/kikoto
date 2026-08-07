@@ -24,7 +24,14 @@ const baseWork = {
   availableLocations: 1,
   availability: ["local"],
   sourcePresence: [],
-  progress: { mediaItemId: null, title: "", positionSeconds: 0, durationSeconds: null, lastPlayedAt: null, completed: false },
+  progress: {
+    mediaItemId: null,
+    title: "",
+    positionSeconds: 0,
+    durationSeconds: null,
+    lastPlayedAt: null,
+    completed: false,
+  },
   listeningStatus: "listening",
   favorite: true,
   recommendScore: 0,
@@ -34,7 +41,14 @@ async function mockFavorites(
   page: Page,
   options: {
     delayedList?: { id: number; started: () => void; gate: Promise<void> };
-    sources?: Array<{ id: number; code: string; displayName: string; sourceType: string; enabled: boolean; cacheEnabled: boolean }>;
+    sources?: Array<{
+      id: number;
+      code: string;
+      displayName: string;
+      sourceType: string;
+      enabled: boolean;
+      cacheEnabled: boolean;
+    }>;
     onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
   } = {},
 ) {
@@ -50,11 +64,28 @@ async function mockFavorites(
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/auth/me") {
-      await route.fulfill({ json: { authenticated: true, user: { id: 1, username: "listener", displayName: "Listener", role: "user", permissions: ["library:read", "playback:use", "favorites:write", "tags:write"], devMode: true } } });
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: 1,
+            username: "listener",
+            displayName: "Listener",
+            role: "user",
+            permissions: ["library:read", "playback:use", "favorites:write", "tags:write"],
+            devMode: true,
+          },
+        },
+      });
       return;
     }
     if (url.pathname === "/api/favorite-lists") {
-      await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0 }, { id: 2, name: "Study", description: "", sortOrder: 1 }] });
+      await route.fulfill({
+        json: [
+          { id: 1, name: "Favorites", description: "", sortOrder: 0 },
+          { id: 2, name: "Study", description: "", sortOrder: 1 },
+        ],
+      });
       return;
     }
     if (url.pathname === "/api/favorite-works") {
@@ -63,11 +94,23 @@ async function mockFavorites(
         options.delayedList.started();
         await options.delayedList.gate;
       }
-      await route.fulfill({ json: { works, page: Number(url.searchParams.get("page") ?? 1), pageSize: 24, total: 48, shelfTotal: 48, listCounts: { "1": 24, "2": 24 }, statusCounts: { listening: 48 } } });
+      await route.fulfill({
+        json: {
+          works,
+          page: Number(url.searchParams.get("page") ?? 1),
+          pageSize: 24,
+          total: 48,
+          shelfTotal: 48,
+          listCounts: { "1": 24, "2": 24 },
+          statusCounts: { listening: 48 },
+        },
+      });
       return;
     }
     if (url.pathname === "/api/circles") {
-      await route.fulfill({ json: { circles: [], page: 1, pageSize: 100, total: 0, catalogWorks: 0, availableWorks: 0 } });
+      await route.fulfill({
+        json: { circles: [], page: 1, pageSize: 100, total: 0, catalogWorks: 0, availableWorks: 0 },
+      });
       return;
     }
     if (url.pathname === "/api/voices") {
@@ -90,7 +133,23 @@ async function mockFavorites(
     if (detailMatch) {
       const id = Number(detailMatch[1]);
       const work = works.find((item) => item.id === id) ?? works[0];
-      await route.fulfill({ json: { ...work, userTags: id === 18 ? savedTags : work.userTags, baseCode: "", metadataLanguage: "JPN", workType: "audio", titleKana: "", description: "", ageRating: "", durationSeconds: null, dlsiteFetchedAt: "", translations: [], manualOverrides: {}, mediaItems: [] } });
+      await route.fulfill({
+        json: {
+          ...work,
+          userTags: id === 18 ? savedTags : work.userTags,
+          baseCode: "",
+          metadataLanguage: "JPN",
+          workType: "audio",
+          titleKana: "",
+          description: "",
+          ageRating: "",
+          durationSeconds: null,
+          dlsiteFetchedAt: "",
+          translations: [],
+          manualOverrides: {},
+          mediaItems: [],
+        },
+      });
       return;
     }
     const tagsMatch = url.pathname.match(/^\/api\/works\/(\d+)\/tags$/);
@@ -105,7 +164,12 @@ async function mockFavorites(
       return;
     }
     if (/^\/api\/works\/\d+\/favorite-lists$/.test(url.pathname)) {
-      await route.fulfill({ json: [{ id: 1, name: "Favorites", description: "", sortOrder: 0, selected: true }, { id: 2, name: "Study", description: "", sortOrder: 1, selected: true }] });
+      await route.fulfill({
+        json: [
+          { id: 1, name: "Favorites", description: "", sortOrder: 0, selected: true },
+          { id: 2, name: "Study", description: "", sortOrder: 1, selected: true },
+        ],
+      });
       return;
     }
     if (/^\/api\/works\/[^/]+\/source-availability$/.test(url.pathname)) {
@@ -118,7 +182,9 @@ async function mockFavorites(
 
 test("favorites detail return restores browse state, selection, anchor, and work tags", async ({ page }) => {
   await mockFavorites(page);
-  await page.goto("/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159");
+  await page.goto(
+    "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
+  );
   await expect(page.getByRole("button", { name: /Study/ })).toHaveAttribute("class", /bg-primary/);
   await page.getByRole("button", { name: "More shelf options" }).click();
   await expect(page.getByRole("menuitem", { name: "Sort Sales" })).toBeVisible();
@@ -147,24 +213,30 @@ test("favorites detail return restores browse state, selection, anchor, and work
   const params = new URL(page.url()).searchParams;
   expect(params.size).toBe(0);
   const restoredState = await page.evaluate(() => window.history.state?.favoritesBrowseState);
-  expect(restoredState).toEqual(expect.objectContaining({
-    entity: "works",
-    status: "listening",
-    availability: "local",
-    list: 2,
-    page: 2,
-    pageSize: 24,
-    sort: "sales",
-    direction: "asc",
-    randomSeed: 314159,
-  }));
+  expect(restoredState).toEqual(
+    expect.objectContaining({
+      entity: "works",
+      status: "listening",
+      availability: "local",
+      list: 2,
+      page: 2,
+      pageSize: 24,
+      sort: "sales",
+      direction: "asc",
+      randomSeed: 314159,
+    }),
+  );
 });
 
 test("switching favorite lists keeps the entire playlist row stable while works load", async ({ page }) => {
   let releaseListRequest = () => undefined;
-  const listRequestGate = new Promise<void>((resolve) => { releaseListRequest = resolve; });
+  const listRequestGate = new Promise<void>((resolve) => {
+    releaseListRequest = resolve;
+  });
   let markListRequestStarted = () => undefined;
-  const listRequestStarted = new Promise<void>((resolve) => { markListRequestStarted = resolve; });
+  const listRequestStarted = new Promise<void>((resolve) => {
+    markListRequestStarted = resolve;
+  });
   await mockFavorites(page, { delayedList: { id: 2, started: markListRequestStarted, gate: listRequestGate } });
   await page.goto("/favorites");
 
@@ -199,12 +271,28 @@ test("switching favorite lists keeps the entire playlist row stable while works 
   await expect(page.getByText("Favorite work 1", { exact: true })).toBeVisible();
 });
 
-test("filters favorites by any selected file source and keeps the selection out of the canonical URL", async ({ page }) => {
+test("filters favorites by any selected file source and keeps the selection out of the canonical URL", async ({
+  page,
+}) => {
   const sourceRequests: number[][] = [];
   await mockFavorites(page, {
     sources: [
-      { id: 11, code: "example_remote_a", displayName: "Example Remote A", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
-      { id: 12, code: "example_remote_b", displayName: "Example Remote B", sourceType: "kikoeru_compatible", enabled: false, cacheEnabled: false },
+      {
+        id: 11,
+        code: "example_remote_a",
+        displayName: "Example Remote A",
+        sourceType: "kikoeru_compatible",
+        enabled: true,
+        cacheEnabled: true,
+      },
+      {
+        id: 12,
+        code: "example_remote_b",
+        displayName: "Example Remote B",
+        sourceType: "kikoeru_compatible",
+        enabled: false,
+        cacheEnabled: false,
+      },
     ],
     onFavoriteWorksRequest: (sourceIDs) => sourceRequests.push(sourceIDs),
   });

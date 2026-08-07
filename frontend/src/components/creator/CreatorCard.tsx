@@ -114,11 +114,16 @@ export function CreatorCard({
 
           <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
             {syncState && <SyncBadge state={syncState} />}
-            {availableSources.length > 0 ? availableSources.map((source) => (
-              <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
-                {source.displayName}{source.count > 0 ? ` ${source.count}` : ""}
-              </Badge>
-            )) : <Badge variant="warning">Unavailable</Badge>}
+            {availableSources.length > 0 ? (
+              availableSources.map((source) => (
+                <Badge key={source.key} variant={source.key === "local" ? "secondary" : "outline"}>
+                  {source.displayName}
+                  {source.count > 0 ? ` ${source.count}` : ""}
+                </Badge>
+              ))
+            ) : (
+              <Badge variant="warning">Unavailable</Badge>
+            )}
             {showUnavailableCount && <Badge variant="warning">{unavailableCount} unavailable</Badge>}
             <span className="ml-auto whitespace-nowrap tabular-nums">{workCount} works</span>
           </div>
@@ -146,12 +151,7 @@ export function CreatorCardSkeleton() {
 
 export function CreatorCollectionSkeleton({ label = "Loading creators" }: { label?: string }) {
   return (
-    <div
-      className={`${creatorCollectionClassName} min-h-56`}
-      role="status"
-      aria-label={label}
-      aria-busy="true"
-    >
+    <div className={`${creatorCollectionClassName} min-h-56`} role="status" aria-label={label} aria-busy="true">
       <CreatorCardSkeleton />
       <div className="hidden lg:block" aria-hidden="true">
         <CreatorCardSkeleton />
@@ -160,15 +160,25 @@ export function CreatorCollectionSkeleton({ label = "Loading creators" }: { labe
   );
 }
 
-export const creatorCollectionClassName = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]";
+export const creatorCollectionClassName =
+  "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]";
 
 function creatorSourceTags(sources: CreatorSourceSummary[]) {
   const available = sources.filter((source) => source.status === "available" || source.count > 0);
-  const hasSpecificRemote = available.some((source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache");
+  const hasSpecificRemote = available.some(
+    (source) => source.sourceId !== null && source.sourceId !== undefined && source.key !== "cache",
+  );
   return hasSpecificRemote ? available.filter((source) => source.key !== "remote") : available;
 }
 
 function SyncBadge({ state }: { state: string }) {
-  const label = state === "fresh" ? "Synced" : state === "stale" ? "Needs refresh" : state === "excluded" ? "Excluded" : "Never synced";
+  const label =
+    state === "fresh"
+      ? "Synced"
+      : state === "stale"
+        ? "Needs refresh"
+        : state === "excluded"
+          ? "Excluded"
+          : "Never synced";
   return <Badge variant={state === "fresh" || state === "excluded" ? "secondary" : "warning"}>{label}</Badge>;
 }

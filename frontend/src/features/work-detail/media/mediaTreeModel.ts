@@ -73,13 +73,23 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
   const root = emptyTree();
   const lyricsMatchPathsByLocationID = new Map<number, string>();
   for (const item of items) {
-    const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
-    const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl)
-      ?? sourceLocations.find((candidate) => candidate.availability === "available")
-      ?? sourceLocations.find((candidate) => candidate.availability === "remote" && (candidate.streamUrl || candidate.downloadUrl));
+    const sourceLocations =
+      fileSourceId === null
+        ? item.locations
+        : item.locations.filter((location) => location.fileSourceId === fileSourceId);
+    const location =
+      sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl) ??
+      sourceLocations.find((candidate) => candidate.availability === "available") ??
+      sourceLocations.find(
+        (candidate) => candidate.availability === "remote" && (candidate.streamUrl || candidate.downloadUrl),
+      );
     if (!location) continue;
-    const cacheLocation = sourceLocations.find((candidate) => candidate.locationType === "cache" && candidate.availability === "available");
-    const localLocation = sourceLocations.find((candidate) => candidate.locationType === "local" && candidate.availability === "available");
+    const cacheLocation = sourceLocations.find(
+      (candidate) => candidate.locationType === "cache" && candidate.availability === "available",
+    );
+    const localLocation = sourceLocations.find(
+      (candidate) => candidate.locationType === "local" && candidate.availability === "available",
+    );
     const parts = displayPathParts(location.path, location.locationType, workCode);
     const fileName = parts.pop() ?? item.title;
     let cursor = root;
@@ -101,7 +111,10 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       locationType: location.locationType,
       streamUrl: location.streamUrl,
       downloadUrl: location.downloadUrl,
-      assetUrl: location.locationType === "local" ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes) : location.downloadUrl,
+      assetUrl:
+        location.locationType === "local"
+          ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes)
+          : location.downloadUrl,
       textPreviewUrl: "",
       sizeBytes: location.sizeBytes,
       durationSeconds: location.durationSeconds ?? item.durationSeconds,
@@ -162,9 +175,10 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
         streamUrl: hasCache ? `/api/media/${node.cacheLocationId}/stream` : node.streamUrl,
         downloadUrl: node.downloadUrl,
         assetUrl: hasCache ? `/api/media/${node.cacheLocationId}/asset` : node.downloadUrl || node.streamUrl,
-        textPreviewUrl: identity && (node.type === "text" || mediaKindFromRemotePath(title) === "text")
-          ? `/api/remote-sources/${identity.sourceId}/works/${encodeURIComponent(identity.workCode)}/text?path=${encodeURIComponent(sourcePath)}`
-          : "",
+        textPreviewUrl:
+          identity && (node.type === "text" || mediaKindFromRemotePath(title) === "text")
+            ? `/api/remote-sources/${identity.sourceId}/works/${encodeURIComponent(identity.workCode)}/text?path=${encodeURIComponent(sourcePath)}`
+            : "",
         sizeBytes: node.sizeBytes,
         durationSeconds: node.durationSeconds,
         hasAudio: null,
@@ -172,7 +186,8 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
         cacheLocationId: node.cacheLocationId,
         cachePath: node.cachePath,
         cacheAvailable: node.cacheAvailable,
-        cacheStreamUrl: node.cacheAvailable && node.cacheLocationId !== null ? `/api/media/${node.cacheLocationId}/stream` : "",
+        cacheStreamUrl:
+          node.cacheAvailable && node.cacheLocationId !== null ? `/api/media/${node.cacheLocationId}/stream` : "",
         localLocationId: node.localLocationId,
         localPath: node.localPath,
         localAvailable: node.localAvailable,
@@ -181,15 +196,42 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
           ? remotePlaybackKey(identity.sourceId, identity.workCode, sourcePath)
           : `remote-path:${sourcePath}`,
         locations: [
-          ...(node.localAvailable && node.localLocationId ? [{
-            locationId: node.localLocationId, locationType: "local", streamUrl: `/api/media/${node.localLocationId}/stream`, sourceId: 0, sourceName: "Local", availability: "available",
-          }] : []),
-          ...(node.cacheAvailable && node.cacheLocationId ? [{
-            locationId: node.cacheLocationId, locationType: "cache", streamUrl: `/api/media/${node.cacheLocationId}/stream`, sourceId: 0, sourceName: "Cache", availability: "available",
-          }] : []),
-          ...(node.streamUrl ? [{
-            locationId: nextID, locationType: "remote_stream", streamUrl: node.streamUrl, sourceId: 0, sourceName: "Remote", availability: "remote",
-          }] : []),
+          ...(node.localAvailable && node.localLocationId
+            ? [
+                {
+                  locationId: node.localLocationId,
+                  locationType: "local",
+                  streamUrl: `/api/media/${node.localLocationId}/stream`,
+                  sourceId: 0,
+                  sourceName: "Local",
+                  availability: "available",
+                },
+              ]
+            : []),
+          ...(node.cacheAvailable && node.cacheLocationId
+            ? [
+                {
+                  locationId: node.cacheLocationId,
+                  locationType: "cache",
+                  streamUrl: `/api/media/${node.cacheLocationId}/stream`,
+                  sourceId: 0,
+                  sourceName: "Cache",
+                  availability: "available",
+                },
+              ]
+            : []),
+          ...(node.streamUrl
+            ? [
+                {
+                  locationId: nextID,
+                  locationType: "remote_stream",
+                  streamUrl: node.streamUrl,
+                  sourceId: 0,
+                  sourceName: "Remote",
+                  availability: "remote",
+                },
+              ]
+            : []),
         ],
       });
       nextID -= 1;
@@ -202,10 +244,11 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
 }
 
 export function playableFiles(files: TreeTrack[]) {
-  return files.filter((file) =>
-    (file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false))
-      && ["available", "remote"].includes(file.availability)
-      && file.streamUrl,
+  return files.filter(
+    (file) =>
+      (file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false)) &&
+      ["available", "remote"].includes(file.availability) &&
+      file.streamUrl,
   );
 }
 
@@ -292,7 +335,16 @@ export function remoteSelectablePaths(root: TreeNode) {
 }
 
 export function treeStats(node: TreeNode): TreeStats {
-  const stats: TreeStats = { files: 0, audio: 0, video: 0, playable: 0, sizeBytes: 0, knownSizeFiles: 0, durationSeconds: 0, knownDurationMedia: 0 };
+  const stats: TreeStats = {
+    files: 0,
+    audio: 0,
+    video: 0,
+    playable: 0,
+    sizeBytes: 0,
+    knownSizeFiles: 0,
+    durationSeconds: 0,
+    knownDurationMedia: 0,
+  };
   const visit = (cursor: TreeNode) => {
     for (const file of cursor.files) {
       stats.files += 1;
@@ -303,7 +355,11 @@ export function treeStats(node: TreeNode): TreeStats {
         stats.sizeBytes += file.sizeBytes;
         stats.knownSizeFiles += 1;
       }
-      if ((file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false)) && file.durationSeconds !== null && file.durationSeconds > 0) {
+      if (
+        (file.kind === "audio" || (file.kind === "video" && file.hasAudio !== false)) &&
+        file.durationSeconds !== null &&
+        file.durationSeconds > 0
+      ) {
         stats.durationSeconds += file.durationSeconds;
         stats.knownDurationMedia += 1;
       }
@@ -352,13 +408,13 @@ export function formatTrackDuration(value: number | null) {
 }
 
 export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
-  const lyricsChoices = track.lyricsChoices
-    ?? findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
+  const lyricsChoices = track.lyricsChoices ?? findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
   const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
   const automaticLyrics = lyricsChoices[0] ?? null;
-  const preferredLyricsMediaItemId = track.preferredLyricsMediaItemId !== undefined
-    ? track.preferredLyricsMediaItemId
-    : audioItem?.preferredLyricsMediaItemId ?? null;
+  const preferredLyricsMediaItemId =
+    track.preferredLyricsMediaItemId !== undefined
+      ? track.preferredLyricsMediaItemId
+      : (audioItem?.preferredLyricsMediaItemId ?? null);
   const lyrics = lyricsChoices.find((choice) => choice.mediaItemId === preferredLyricsMediaItemId) ?? automaticLyrics;
   return {
     ...track,
@@ -397,11 +453,11 @@ export function buildWorkResumeQueue(
   cursor: WorkProgressSummary | null,
 ): WorkResumeQueue | null {
   if (
-    !cursor?.mediaItemId
-    || cursor.completed
-    || !Number.isFinite(cursor.positionSeconds)
-    || cursor.positionSeconds <= 0
-    || (cursor.mediaWorkId !== null && cursor.mediaWorkId !== work.id)
+    !cursor?.mediaItemId ||
+    cursor.completed ||
+    !Number.isFinite(cursor.positionSeconds) ||
+    cursor.positionSeconds <= 0 ||
+    (cursor.mediaWorkId !== null && cursor.mediaWorkId !== work.id)
   ) {
     return null;
   }
@@ -410,15 +466,17 @@ export function buildWorkResumeQueue(
   if (startIndex < 0) return null;
 
   const startTrack = queue[startIndex];
-  const usableLocations = startTrack.locations?.filter((location) =>
-    Boolean(location.streamUrl) && ["available", "remote"].includes(location.availability)
-  ) ?? [];
-  const cursorLocation = usableLocations.find((location) => location.locationId === cursor.locationId)
-    ?? usableLocations.find((location) =>
-      location.sourceId === cursor.fileSourceId && location.locationType === cursor.locationType
-    )
-    ?? usableLocations.find((location) => location.sourceId === cursor.fileSourceId)
-    ?? preferredTrackLocation(startTrack);
+  const usableLocations =
+    startTrack.locations?.filter(
+      (location) => Boolean(location.streamUrl) && ["available", "remote"].includes(location.availability),
+    ) ?? [];
+  const cursorLocation =
+    usableLocations.find((location) => location.locationId === cursor.locationId) ??
+    usableLocations.find(
+      (location) => location.sourceId === cursor.fileSourceId && location.locationType === cursor.locationType,
+    ) ??
+    usableLocations.find((location) => location.sourceId === cursor.fileSourceId) ??
+    preferredTrackLocation(startTrack);
   if (!cursorLocation) return null;
 
   queue[startIndex] = applyTrackLocation(startTrack, cursorLocation);
@@ -429,12 +487,14 @@ export function buildWorkResumeQueue(
   };
 }
 
-export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail, files: TreeTrack[] = []): PlayerTrack {
+export function toRemotePreviewPlayerTrack(
+  track: TreeTrack,
+  detail: RemoteWorkDetail,
+  files: TreeTrack[] = [],
+): PlayerTrack {
   const remoteWorkCode = detail.remoteCode || detail.primaryCode || detail.remoteId;
-  const remoteLyrics = track.lyricsChoices ?? findRemoteLyricsMatches(
-    track.sourcePath || track.title,
-    files.map(remoteLyricsCandidate),
-  );
+  const remoteLyrics =
+    track.lyricsChoices ?? findRemoteLyricsMatches(track.sourcePath || track.title, files.map(remoteLyricsCandidate));
   const automaticLyrics = remoteLyrics[0] ?? null;
   return {
     ...track,
@@ -468,11 +528,13 @@ function attachLocalLyricsChoices(
   const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
   for (const file of files) {
     if (file.kind !== "audio" && file.kind !== "video") continue;
-    const choices = findLyricsMatches(lyricsMatchPathsByLocationID.get(file.locationId) || file.sourcePath || file.title, items)
-      .map((choice) => ({
-        ...choice,
-        displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
-      }));
+    const choices = findLyricsMatches(
+      lyricsMatchPathsByLocationID.get(file.locationId) || file.sourcePath || file.title,
+      items,
+    ).map((choice) => ({
+      ...choice,
+      displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
+    }));
     const item = itemsByID.get(file.mediaItemId);
     file.lyricsChoices = choices;
     file.autoLyricsLocationId = choices[0]?.locationId ?? null;
@@ -487,11 +549,10 @@ function attachRemoteLyricsChoices(root: TreeNode) {
   const candidates = files.map(remoteLyricsCandidate);
   for (const file of files) {
     if (file.kind !== "audio" && file.kind !== "video") continue;
-    const choices = findRemoteLyricsMatches(file.sourcePath || file.title, candidates)
-      .map((choice) => ({
-        ...choice,
-        displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
-      }));
+    const choices = findRemoteLyricsMatches(file.sourcePath || file.title, candidates).map((choice) => ({
+      ...choice,
+      displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
+    }));
     file.lyricsChoices = choices;
     file.autoLyricsLocationId = choices[0]?.locationId ?? null;
     file.preferredLyricsMediaItemId = null;
@@ -561,7 +622,21 @@ function baseNameWithoutExtension(name: string) {
 function mediaKindFromRemotePath(path: string) {
   const index = path.lastIndexOf(".");
   const extension = index >= 0 ? path.slice(index).toLowerCase() : "";
-  return [".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml"].includes(extension)
+  return [
+    ".txt",
+    ".md",
+    ".json",
+    ".lrc",
+    ".cue",
+    ".srt",
+    ".vtt",
+    ".ass",
+    ".csv",
+    ".log",
+    ".ini",
+    ".yaml",
+    ".yml",
+  ].includes(extension)
     ? "text"
     : "file";
 }

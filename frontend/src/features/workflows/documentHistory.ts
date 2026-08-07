@@ -9,8 +9,16 @@ export type WorkflowDocumentHistory = {
 };
 
 export type WorkflowDocumentHistoryAction =
-  | { type: "change"; update: WorkflowDefinitionDocument | ((current: WorkflowDefinitionDocument) => WorkflowDefinitionDocument); group?: string; changedAt?: number }
-  | { type: "replace"; update: WorkflowDefinitionDocument | ((current: WorkflowDefinitionDocument) => WorkflowDefinitionDocument) }
+  | {
+      type: "change";
+      update: WorkflowDefinitionDocument | ((current: WorkflowDefinitionDocument) => WorkflowDefinitionDocument);
+      group?: string;
+      changedAt?: number;
+    }
+  | {
+      type: "replace";
+      update: WorkflowDefinitionDocument | ((current: WorkflowDefinitionDocument) => WorkflowDefinitionDocument);
+    }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -20,16 +28,31 @@ export function createWorkflowDocumentHistory(document: WorkflowDefinitionDocume
   return { past: [], present: document, future: [], lastGroup: "", lastChangedAt: 0 };
 }
 
-export function workflowDocumentHistoryReducer(state: WorkflowDocumentHistory, action: WorkflowDocumentHistoryAction): WorkflowDocumentHistory {
+export function workflowDocumentHistoryReducer(
+  state: WorkflowDocumentHistory,
+  action: WorkflowDocumentHistoryAction,
+): WorkflowDocumentHistory {
   if (action.type === "undo") {
     const previous = state.past[state.past.length - 1];
     if (!previous) return state;
-    return { past: state.past.slice(0, -1), present: previous, future: [state.present, ...state.future], lastGroup: "", lastChangedAt: 0 };
+    return {
+      past: state.past.slice(0, -1),
+      present: previous,
+      future: [state.present, ...state.future],
+      lastGroup: "",
+      lastChangedAt: 0,
+    };
   }
   if (action.type === "redo") {
     const next = state.future[0];
     if (!next) return state;
-    return { past: [...state.past, state.present], present: next, future: state.future.slice(1), lastGroup: "", lastChangedAt: 0 };
+    return {
+      past: [...state.past, state.present],
+      present: next,
+      future: state.future.slice(1),
+      lastGroup: "",
+      lastChangedAt: 0,
+    };
   }
   const next = typeof action.update === "function" ? action.update(state.present) : action.update;
   if (next === state.present) return state;

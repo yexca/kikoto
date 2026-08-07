@@ -1,12 +1,13 @@
 export const KIKOTO_RELEASES_URL = "https://github.com/yexca/kikoto/releases";
 
 export type AppVersionStatus =
-  | "compatible"
-  | "client-update-available"
-  | "client-update-required"
-  | "server-update-available";
+  "compatible" | "client-update-available" | "client-update-required" | "server-update-available";
 
-export function appVersionStatus(clientVersion: string, serverVersion: string, minimumClientVersion = ""): AppVersionStatus {
+export function appVersionStatus(
+  clientVersion: string,
+  serverVersion: string,
+  minimumClientVersion = "",
+): AppVersionStatus {
   if (minimumClientVersion && compareVersions(clientVersion, minimumClientVersion) < 0) {
     return "client-update-required";
   }

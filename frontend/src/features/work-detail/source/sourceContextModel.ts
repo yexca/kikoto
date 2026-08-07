@@ -1,10 +1,4 @@
-import type {
-  LibrarySource,
-  MediaItem,
-  RemoteWorkDetail,
-  SourceAvailabilitySource,
-  WorkDetail,
-} from "@/lib/api";
+import type { LibrarySource, MediaItem, RemoteWorkDetail, SourceAvailabilitySource, WorkDetail } from "@/lib/api";
 
 export type DetailSourceIntent = "local" | "tracked" | `remote-source:${number}`;
 
@@ -84,35 +78,43 @@ export function buildSourceTabs(
       sourceName: "Local",
       fileSourceId: -1,
       kind: "local",
-      status: availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0 ? "degraded" : "unavailable",
-      statusLabel: availableRemotes.length > 0
-        ? `Fetch available from ${availableRemotes[0].source.displayName}`
-        : pendingRemotes.length > 0 || remoteSources.length === 0
-          ? "Remote sources need checking"
-          : "No local or remote files available",
+      status:
+        availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0
+          ? "degraded"
+          : "unavailable",
+      statusLabel:
+        availableRemotes.length > 0
+          ? `Fetch available from ${availableRemotes[0].source.displayName}`
+          : pendingRemotes.length > 0 || remoteSources.length === 0
+            ? "Remote sources need checking"
+            : "No local or remote files available",
     });
   }
   const baseTabs: SourceTabInfo[] = [...tabs];
   const trackedOptions = buildTrackedPresenceOptions(items, remoteSources, sourcePresence);
   const activeTracked = selectedTrackedOption ?? trackedOptions.find((option) => option.forked) ?? trackedOptions[0];
-  baseTabs.push(activeTracked ? {
-    key: "tracked",
-    label: "Tracked",
-    sourceName: activeTracked.label,
-    fileSourceId: null,
-    kind: "tracked",
-    presence: activeTracked.presence,
-    status: activeTracked.status,
-    statusLabel: activeTracked.statusLabel,
-  } : {
-    key: "tracked",
-    label: "Tracked",
-    sourceName: "Tracked",
-    fileSourceId: null,
-    kind: "tracked",
-    status: "degraded",
-    statusLabel: "No tracked source linked",
-  });
+  baseTabs.push(
+    activeTracked
+      ? {
+          key: "tracked",
+          label: "Tracked",
+          sourceName: activeTracked.label,
+          fileSourceId: null,
+          kind: "tracked",
+          presence: activeTracked.presence,
+          status: activeTracked.status,
+          statusLabel: activeTracked.statusLabel,
+        }
+      : {
+          key: "tracked",
+          label: "Tracked",
+          sourceName: "Tracked",
+          fileSourceId: null,
+          kind: "tracked",
+          status: "degraded",
+          statusLabel: "No tracked source linked",
+        },
+  );
   for (const remote of remoteSources) {
     const status = remoteSourceTabStatus(remote.summary);
     baseTabs.push({
@@ -156,7 +158,9 @@ export function buildTrackedPresenceOptions(
     });
 }
 
-export function remoteSourceTabStatus(summary: SourceAvailabilitySource): Pick<SourceTabInfo, "status" | "statusLabel"> {
+export function remoteSourceTabStatus(
+  summary: SourceAvailabilitySource,
+): Pick<SourceTabInfo, "status" | "statusLabel"> {
   if (summary.status === "available") return { status: "available", statusLabel: "Available" };
   if (summary.status === "unknown" || summary.status === "error") {
     return { status: "degraded", statusLabel: summary.status === "unknown" ? "Needs checking" : "Check failed" };
@@ -170,15 +174,21 @@ export function trackedPresenceSourceID(presence: NonNullable<WorkDetail["source
   return presence?.fileSourceId ?? null;
 }
 
-export function trackedPresenceForked(presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null, items: MediaItem[]) {
+export function trackedPresenceForked(
+  presence: NonNullable<WorkDetail["sourcePresence"]>[number] | null,
+  items: MediaItem[],
+) {
   if (typeof presence?.forked === "boolean") return presence.forked;
   const sourceID = trackedPresenceSourceID(presence);
   if (!sourceID) return false;
-  return items.some((item) => item.locations.some((location) =>
-    location.fileSourceId === sourceID
-    && location.locationType === "remote_stream"
-    && location.availability === "available",
-  ));
+  return items.some((item) =>
+    item.locations.some(
+      (location) =>
+        location.fileSourceId === sourceID &&
+        location.locationType === "remote_stream" &&
+        location.availability === "available",
+    ),
+  );
 }
 
 export function availableForkSources(remoteSources: RemoteSourceAvailability[]) {

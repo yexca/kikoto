@@ -28,7 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     Promise.all([
       refresh().catch(() => setAuth({ authenticated: false })),
-      api.getRuntimeSettings().then((settings) => setRuntimeMode(settings.mode)).catch(() => setRuntimeMode("production")),
+      api
+        .getRuntimeSettings()
+        .then((settings) => setRuntimeMode(settings.mode))
+        .catch(() => setRuntimeMode("production")),
     ]).finally(() => setIsLoading(false));
   }, [refresh]);
 

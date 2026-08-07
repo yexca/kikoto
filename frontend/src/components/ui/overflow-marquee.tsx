@@ -31,7 +31,7 @@ export function OverflowMarquee({
       if (!container || !content) return;
       const contentWidth = Math.ceil(content.scrollWidth);
       const nextDistance = contentWidth > container.clientWidth ? contentWidth + MARQUEE_GAP_PX : 0;
-      setMarqueeDistance((currentDistance) => currentDistance === nextDistance ? currentDistance : nextDistance);
+      setMarqueeDistance((currentDistance) => (currentDistance === nextDistance ? currentDistance : nextDistance));
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -45,10 +45,12 @@ export function OverflowMarquee({
   }, [text]);
 
   const overflowing = marqueeDistance > 0;
-  const style: MarqueeStyle | undefined = overflowing ? {
-    "--marquee-distance": `${marqueeDistance}px`,
-    "--marquee-duration": `${(marqueeDistance / MARQUEE_SPEED_PX_PER_SECOND).toFixed(2)}s`,
-  } : undefined;
+  const style: MarqueeStyle | undefined = overflowing
+    ? {
+        "--marquee-distance": `${marqueeDistance}px`,
+        "--marquee-duration": `${(marqueeDistance / MARQUEE_SPEED_PX_PER_SECOND).toFixed(2)}s`,
+      }
+    : undefined;
 
   return (
     <span
@@ -99,7 +101,7 @@ export function OverflowMarqueeGroup({
       if (!container || !content) return;
       const contentWidth = Math.ceil(content.scrollWidth);
       const nextDistance = contentWidth > container.clientWidth ? contentWidth + MARQUEE_GAP_PX : 0;
-      setMarqueeDistance((currentDistance) => currentDistance === nextDistance ? currentDistance : nextDistance);
+      setMarqueeDistance((currentDistance) => (currentDistance === nextDistance ? currentDistance : nextDistance));
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -124,15 +126,18 @@ export function OverflowMarqueeGroup({
       const travelDurationMs = (marqueeDistance / MARQUEE_SPEED_PX_PER_SECOND) * 1000;
       const totalDurationMs = MARQUEE_ORIGIN_PAUSE_MS + travelDurationMs;
       const pauseOffset = MARQUEE_ORIGIN_PAUSE_MS / totalDurationMs;
-      animation = track.animate([
-        { transform: "translateX(0)", offset: 0 },
-        { transform: "translateX(0)", offset: pauseOffset },
-        { transform: `translateX(-${marqueeDistance}px)`, offset: 1 },
-      ], {
-        duration: totalDurationMs,
-        easing: "linear",
-        iterations: Infinity,
-      });
+      animation = track.animate(
+        [
+          { transform: "translateX(0)", offset: 0 },
+          { transform: "translateX(0)", offset: pauseOffset },
+          { transform: `translateX(-${marqueeDistance}px)`, offset: 1 },
+        ],
+        {
+          duration: totalDurationMs,
+          easing: "linear",
+          iterations: Infinity,
+        },
+      );
     };
     syncAnimation();
     reducedMotion.addEventListener("change", syncAnimation);
@@ -151,7 +156,10 @@ export function OverflowMarqueeGroup({
     >
       <span
         ref={trackRef}
-        className={cn("overflow-marquee-group__track inline-flex min-w-max gap-[32px]", overflowing && "will-change-transform")}
+        className={cn(
+          "overflow-marquee-group__track inline-flex min-w-max gap-[32px]",
+          overflowing && "will-change-transform",
+        )}
         data-marquee-pause-ms={overflowing ? MARQUEE_ORIGIN_PAUSE_MS : undefined}
       >
         <span ref={contentRef} className="overflow-marquee-group__copy grid min-w-max">

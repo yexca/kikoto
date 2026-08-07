@@ -40,29 +40,33 @@ export function groupWorkVersions(
     groups.set(key, group);
   }
   for (const group of groups.values()) {
-    group.versions.sort((left, right) =>
-      versionRank(left, activeCode, options.remoteVersions) - versionRank(right, activeCode, options.remoteVersions)
-      || compareWorkCodes(left.primaryCode, right.primaryCode),
+    group.versions.sort(
+      (left, right) =>
+        versionRank(left, activeCode, options.remoteVersions) -
+          versionRank(right, activeCode, options.remoteVersions) ||
+        compareWorkCodes(left.primaryCode, right.primaryCode),
     );
   }
   const result = Array.from(groups.values());
   if (options.includeMetadataOnly) return result;
-  return result.filter((group) => group.versions.some((version) =>
-    normalizedCode(version.primaryCode) === activeCode
-    || workVersionMediaState(version) !== "metadata_only",
-  ));
+  return result.filter((group) =>
+    group.versions.some(
+      (version) =>
+        normalizedCode(version.primaryCode) === activeCode || workVersionMediaState(version) !== "metadata_only",
+    ),
+  );
 }
 
-export function preferredWorkVersion(
-  versions: WorkTranslation[],
-  activeCode: string,
-  remoteVersions = false,
-) {
+export function preferredWorkVersion(versions: WorkTranslation[], activeCode: string, remoteVersions = false) {
   const normalizedActiveCode = normalizedCode(activeCode);
-  return [...versions].sort((left, right) =>
-    versionRank(left, normalizedActiveCode, remoteVersions) - versionRank(right, normalizedActiveCode, remoteVersions)
-    || compareWorkCodes(left.primaryCode, right.primaryCode),
-  )[0] ?? null;
+  return (
+    [...versions].sort(
+      (left, right) =>
+        versionRank(left, normalizedActiveCode, remoteVersions) -
+          versionRank(right, normalizedActiveCode, remoteVersions) ||
+        compareWorkCodes(left.primaryCode, right.primaryCode),
+    )[0] ?? null
+  );
 }
 
 export function metadataOnlyVersionCount(translations: WorkTranslation[]) {
@@ -71,11 +75,16 @@ export function metadataOnlyVersionCount(translations: WorkTranslation[]) {
 
 export function workVersionKindLabel(version: WorkTranslation) {
   switch (version.translationKind) {
-    case "origin": return "Origin";
-    case "official": return "Official";
-    case "community": return "Community";
-    case "third_party": return "Third-party";
-    default: return workVersionMediaState(version) === "metadata_only" ? "Metadata" : "Edition";
+    case "origin":
+      return "Origin";
+    case "official":
+      return "Official";
+    case "community":
+      return "Community";
+    case "third_party":
+      return "Third-party";
+    default:
+      return workVersionMediaState(version) === "metadata_only" ? "Metadata" : "Edition";
   }
 }
 
@@ -83,10 +92,14 @@ function versionRank(version: WorkTranslation, activeCode: string, remoteVersion
   if (normalizedCode(version.primaryCode) === activeCode) return 0;
   if (remoteVersions) return 1;
   switch (workVersionMediaState(version)) {
-    case "indexed_available": return 1;
-    case "present_unindexed": return 2;
-    case "unavailable": return 3;
-    case "metadata_only": return 4;
+    case "indexed_available":
+      return 1;
+    case "present_unindexed":
+      return 2;
+    case "unavailable":
+      return 3;
+    case "metadata_only":
+      return 4;
   }
 }
 
@@ -111,17 +124,23 @@ function normalizedLanguage(value: string) {
   switch (language) {
     case "JA":
     case "JA_JP":
-    case "JPN": return "JPN";
+    case "JPN":
+      return "JPN";
     case "EN":
     case "EN_US":
-    case "ENG": return "ENG";
+    case "ENG":
+      return "ENG";
     case "KO":
-    case "KO_KR": return "KO_KR";
+    case "KO_KR":
+      return "KO_KR";
     case "ZH":
     case "ZH_CN":
-    case "CHI_HANS": return "CHI_HANS";
+    case "CHI_HANS":
+      return "CHI_HANS";
     case "ZH_TW":
-    case "CHI_HANT": return "CHI_HANT";
-    default: return language;
+    case "CHI_HANT":
+      return "CHI_HANT";
+    default:
+      return language;
   }
 }

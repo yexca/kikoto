@@ -78,33 +78,37 @@ describe("revalidatePersistedQueue", () => {
       completed: false,
       lastPlayedAt: "2026-07-21T01:00:30.000Z",
     };
-    const mediaItems = [{
-      id: 10,
-      parentId: null,
-      kind: "audio",
-      title: "Track",
-      discNo: null,
-      trackNo: null,
-      durationSeconds: 60,
-      sizeBytes: 1000,
-      fingerprint: "",
-      progress: { ...obsoletePersistedProgress, positionSeconds: 20, lastPlayedAt: "2026-07-21 01:00:00" },
-      locations: [{
-        id: 100,
-        fileSourceId: 1,
-        fileSourceCode: "local",
-        fileSourceName: "Local",
-        locationType: "local",
-        path: "track.mp3",
-        streamUrl: "/api/media/100/stream",
-        downloadUrl: "",
-        remoteHash: "",
-        sizeBytes: 1000,
+    const mediaItems = [
+      {
+        id: 10,
+        parentId: null,
+        kind: "audio",
+        title: "Track",
+        discNo: null,
+        trackNo: null,
         durationSeconds: 60,
-        availability: "available",
-        lastCheckedAt: null,
-      }],
-    }] satisfies MediaItem[];
+        sizeBytes: 1000,
+        fingerprint: "",
+        progress: { ...obsoletePersistedProgress, positionSeconds: 20, lastPlayedAt: "2026-07-21 01:00:00" },
+        locations: [
+          {
+            id: 100,
+            fileSourceId: 1,
+            fileSourceCode: "local",
+            fileSourceName: "Local",
+            locationType: "local",
+            path: "track.mp3",
+            streamUrl: "/api/media/100/stream",
+            downloadUrl: "",
+            remoteHash: "",
+            sizeBytes: 1000,
+            durationSeconds: 60,
+            availability: "available",
+            lastCheckedAt: null,
+          },
+        ],
+      },
+    ] satisfies MediaItem[];
 
     const result = await revalidatePersistedQueue(
       [{ ...persistedTrack, progress: obsoletePersistedProgress }],

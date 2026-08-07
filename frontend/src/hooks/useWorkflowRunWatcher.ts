@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  api,
-  type WorkflowCandidate,
-  type WorkflowEvent,
-  type WorkflowRunDetail,
-} from "@/lib/api";
+import { api, type WorkflowCandidate, type WorkflowEvent, type WorkflowRunDetail } from "@/lib/api";
 
 const activeStatuses = new Set(["queued", "running"]);
 const foregroundPollMs = 1500;
@@ -81,9 +76,7 @@ function refreshEntry(entry: WatcherEntry, replaceEvents = false) {
         api.listWorkflowRunEvents(entry.runId, afterId),
       ]);
       const shouldLoadCandidates = nextRun.candidateCount > 0 || entry.snapshot.candidates.length > 0;
-      const nextCandidates = shouldLoadCandidates
-        ? await api.listWorkflowRunCandidates(entry.runId)
-        : [];
+      const nextCandidates = shouldLoadCandidates ? await api.listWorkflowRunCandidates(entry.runId) : [];
       publish(entry, {
         run: nextRun,
         events: mergeEvents(entry, nextEvents, replaceEvents),
@@ -159,10 +152,13 @@ export function useWorkflowRunWatcher(runId: number | null, poll = true) {
     return subscribeToRun(runId, poll, setSnapshot);
   }, [poll, runId]);
 
-  const refresh = useCallback(async (replaceEvents = false) => {
-    if (!runId) return;
-    await refreshEntry(getEntry(runId), replaceEvents);
-  }, [runId]);
+  const refresh = useCallback(
+    async (replaceEvents = false) => {
+      if (!runId) return;
+      await refreshEntry(getEntry(runId), replaceEvents);
+    },
+    [runId],
+  );
 
   return { ...snapshot, refresh };
 }

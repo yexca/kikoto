@@ -1,13 +1,17 @@
-import type { CircleSourceStat, VoiceKnownWork, VoiceRemoteObservation, VoiceRemoteSourceSet, VoiceRemoteWork } from "@/lib/api";
+import type {
+  CircleSourceStat,
+  VoiceKnownWork,
+  VoiceRemoteObservation,
+  VoiceRemoteSourceSet,
+  VoiceRemoteWork,
+} from "@/lib/api";
 
 export type VoiceWorkView = (VoiceKnownWork | VoiceRemoteWork) & {
   remoteObservations?: VoiceRemoteObservation[];
 };
 
 export function mergeVoiceWorks(knownWorks: VoiceKnownWork[], sourceSets: VoiceRemoteSourceSet[]): VoiceWorkView[] {
-  const remoteWorks = sourceSets
-    .filter((source) => source.status === "ok")
-    .flatMap((source) => source.works);
+  const remoteWorks = sourceSets.filter((source) => source.status === "ok").flatMap((source) => source.works);
   const remoteByCanonicalCode = groupRemoteWorks(remoteWorks);
   const consumedCodes = new Set<string>();
 
@@ -17,7 +21,9 @@ export function mergeVoiceWorks(knownWorks: VoiceKnownWork[], sourceSets: VoiceR
     const persistedObservations = work.remoteObservations ?? [];
     const preferredCodes = [
       work.remoteCode,
-      ...persistedObservations.filter((observation) => normalizedAvailability(observation.status) === "available").map((observation) => observation.remoteCode),
+      ...persistedObservations
+        .filter((observation) => normalizedAvailability(observation.status) === "available")
+        .map((observation) => observation.remoteCode),
       work.primaryCode,
     ];
     const observations = mergeRemoteObservations(
@@ -56,7 +62,9 @@ export function voiceWorkRemoteTarget(work: VoiceWorkView): { sourceId: number; 
     return code ? { sourceId: work.sourceId, code } : null;
   }
   if (!("sourceTags" in work)) return null;
-  const source = work.sourceTags.find((tag) => validSourceID(tag.sourceId) && tag.key !== "cache" && tag.status === "available");
+  const source = work.sourceTags.find(
+    (tag) => validSourceID(tag.sourceId) && tag.key !== "cache" && tag.status === "available",
+  );
   const code = (work.remoteCode || work.primaryCode).trim();
   return source?.sourceId && code ? { sourceId: source.sourceId, code } : null;
 }
@@ -69,7 +77,10 @@ export function voiceWorkObservedSourceTags(work: VoiceWorkView) {
 export function voiceWorkHasRemoteAvailability(work: VoiceWorkView) {
   if (work.remoteObservations?.some((observation) => observation.status === "available")) return true;
   if ("sourceTags" in work) {
-    return work.remote || work.sourceTags.some((tag) => tag.key !== "cache" && validSourceID(tag.sourceId) && tag.status === "available");
+    return (
+      work.remote ||
+      work.sourceTags.some((tag) => tag.key !== "cache" && validSourceID(tag.sourceId) && tag.status === "available")
+    );
   }
   return work.hasRemote || work.remotePlayable;
 }
@@ -106,11 +117,19 @@ function liveRemoteObservations(works: VoiceRemoteWork[], preferredCodes: string
   const preferred = preferredCodes.map(normalizedCode).filter(Boolean);
   return observations
     .map((observation, index) => ({ observation, index }))
-    .sort((left, right) => preferredCodeRank(left.observation.remoteCode, preferred) - preferredCodeRank(right.observation.remoteCode, preferred) || left.index - right.index)
+    .sort(
+      (left, right) =>
+        preferredCodeRank(left.observation.remoteCode, preferred) -
+          preferredCodeRank(right.observation.remoteCode, preferred) || left.index - right.index,
+    )
     .map(({ observation }) => observation);
 }
 
-function mergeRemoteObservations(left: VoiceRemoteObservation[], right: VoiceRemoteObservation[], preferredCodes: string[]) {
+function mergeRemoteObservations(
+  left: VoiceRemoteObservation[],
+  right: VoiceRemoteObservation[],
+  preferredCodes: string[],
+) {
   const byKey = new Map<string, VoiceRemoteObservation>();
   for (const observation of [...left, ...right]) {
     const remoteCode = observation.remoteCode.trim();
@@ -129,7 +148,11 @@ function mergeRemoteObservations(left: VoiceRemoteObservation[], right: VoiceRem
   const preferred = preferredCodes.map(normalizedCode).filter(Boolean);
   return Array.from(byKey.values())
     .map((observation, index) => ({ observation, index }))
-    .sort((leftItem, rightItem) => preferredCodeRank(leftItem.observation.remoteCode, preferred) - preferredCodeRank(rightItem.observation.remoteCode, preferred) || leftItem.index - rightItem.index)
+    .sort(
+      (leftItem, rightItem) =>
+        preferredCodeRank(leftItem.observation.remoteCode, preferred) -
+          preferredCodeRank(rightItem.observation.remoteCode, preferred) || leftItem.index - rightItem.index,
+    )
     .map(({ observation }) => observation);
 }
 
@@ -188,12 +211,19 @@ function normalizedAvailability(value: string): VoiceRemoteObservation["status"]
 
 function availabilityPriority(status: string) {
   switch (status) {
-    case "available": return 6;
-    case "disabled": return 5;
-    case "error": return 4;
-    case "unavailable": return 3;
-    case "not_found": return 2;
-    case "unknown": return 1;
-    default: return 0;
+    case "available":
+      return 6;
+    case "disabled":
+      return 5;
+    case "error":
+      return 4;
+    case "unavailable":
+      return 3;
+    case "not_found":
+      return 2;
+    case "unknown":
+      return 1;
+    default:
+      return 0;
   }
 }

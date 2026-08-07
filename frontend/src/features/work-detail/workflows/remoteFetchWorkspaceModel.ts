@@ -109,46 +109,45 @@ export function createDemoRemoteFetchPlan({
   const tree = buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) });
   const filesByPath = new Map(flattenTreeFiles(tree).map((file) => [file.sourcePath, file]));
   const source = demoSourceAvailability(detail);
-  const items = Array.from(new Set(paths))
-    .map((path, index) => {
-      const file = filesByPath.get(path);
-      const normalizedPath = path.replace(/^[\\/]+/, "");
-      const targetPath = `${saveRoot}/${normalizedPath}`;
-      return {
-        itemKey: `demo:${detail.sourceId}:${canonicalCode}:${index + 1}`,
-        path,
-        kind: file?.kind || "file",
-        sizeBytes: file?.sizeBytes ?? null,
-        sourceKind: "remote",
-        action: "preview",
-        status: "preview only",
-        sourcePath: path,
-        localSourcePath: "",
-        cachePath: file?.cachePath || "",
-        targetPath,
-        mediaItemId: file?.mediaItemId ?? -(index + 1),
-        localPaths: [],
-        targetExists: false,
-        targetConflict: false,
-        targetConflictReason: "",
-        targetSizeBytes: null,
-        originalTargetPath: targetPath,
-        resolution: "auto" as const,
-        remoteSourceId: detail.sourceId,
-        remoteSourceCode: detail.sourceCode,
-        remoteSourceName: detail.sourceName,
-        remotePath: path,
-        sourceOptions: [
-          {
-            sourceId: source.sourceId,
-            sourceCode: source.sourceCode,
-            sourceName: source.displayName,
-            path,
-            sizeBytes: file?.sizeBytes ?? null,
-          },
-        ],
-      };
-    });
+  const items = Array.from(new Set(paths)).map((path, index) => {
+    const file = filesByPath.get(path);
+    const normalizedPath = path.replace(/^[\\/]+/, "");
+    const targetPath = `${saveRoot}/${normalizedPath}`;
+    return {
+      itemKey: `demo:${detail.sourceId}:${canonicalCode}:${index + 1}`,
+      path,
+      kind: file?.kind || "file",
+      sizeBytes: file?.sizeBytes ?? null,
+      sourceKind: "remote",
+      action: "preview",
+      status: "preview only",
+      sourcePath: path,
+      localSourcePath: "",
+      cachePath: file?.cachePath || "",
+      targetPath,
+      mediaItemId: file?.mediaItemId ?? -(index + 1),
+      localPaths: [],
+      targetExists: false,
+      targetConflict: false,
+      targetConflictReason: "",
+      targetSizeBytes: null,
+      originalTargetPath: targetPath,
+      resolution: "auto" as const,
+      remoteSourceId: detail.sourceId,
+      remoteSourceCode: detail.sourceCode,
+      remoteSourceName: detail.sourceName,
+      remotePath: path,
+      sourceOptions: [
+        {
+          sourceId: source.sourceId,
+          sourceCode: source.sourceCode,
+          sourceName: source.displayName,
+          path,
+          sizeBytes: file?.sizeBytes ?? null,
+        },
+      ],
+    };
+  });
   const preparation = createDemoFetchPreparation(detail, requestedCode, canonicalCode, source);
   return {
     sourceId: detail.sourceId,
@@ -187,16 +186,19 @@ function createDemoFetchPreparation(
   canonicalCode: string,
   source: SourceAvailabilitySource,
 ): RemoteFetchPreparation {
-  const languageEditions = detail.languageEditions.length > 0
-    ? detail.languageEditions
-    : [{
-        remoteCode: canonicalCode,
-        language: "",
-        label: "Origin edition",
-        displayOrder: 0,
-        current: true,
-        origin: true,
-      } satisfies RemoteLanguageEdition];
+  const languageEditions =
+    detail.languageEditions.length > 0
+      ? detail.languageEditions
+      : [
+          {
+            remoteCode: canonicalCode,
+            language: "",
+            label: "Origin edition",
+            displayOrder: 0,
+            current: true,
+            origin: true,
+          } satisfies RemoteLanguageEdition,
+        ];
   const editions: RemoteFetchEdition[] = languageEditions.map((edition) => ({
     workId: detail.workId ?? 0,
     primaryCode: edition.remoteCode || canonicalCode,

@@ -58,11 +58,7 @@ export async function abandonNativeAudioFocus() {
   await KikotoMedia.abandonAudioFocus().catch(() => {});
 }
 
-export async function addNativeMediaListeners({
-  onControl,
-}: {
-  onControl: (event: NativeMediaControl) => void;
-}) {
+export async function addNativeMediaListeners({ onControl }: { onControl: (event: NativeMediaControl) => void }) {
   if (!supportsNativeMedia()) return () => {};
   const control = await KikotoMedia.addListener("mediaControl", onControl);
   return () => {

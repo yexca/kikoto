@@ -4,7 +4,10 @@ export type CurrentPageSelection = {
   selectedCount: number;
 };
 
-export function currentPageSelection(pageWorkIds: number[], selectedWorkIds: ReadonlySet<number>): CurrentPageSelection {
+export function currentPageSelection(
+  pageWorkIds: number[],
+  selectedWorkIds: ReadonlySet<number>,
+): CurrentPageSelection {
   const selectedCount = pageWorkIds.reduce((count, workId) => count + (selectedWorkIds.has(workId) ? 1 : 0), 0);
   return {
     checked: pageWorkIds.length > 0 && selectedCount === pageWorkIds.length,

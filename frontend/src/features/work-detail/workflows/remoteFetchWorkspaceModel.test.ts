@@ -61,45 +61,51 @@ describe("remote fetch workspace model", () => {
   it("builds a local-only preview plan for demo Fetch", () => {
     const remoteDetail = detail("REMOTE-1");
     remoteDetail.primaryCode = "RJ09999991";
-    remoteDetail.languageEditions = [{
-      remoteCode: "RJ09999991",
-      language: "JPN",
-      label: "Japanese",
-      displayOrder: 0,
-      current: true,
-      origin: true,
-    }];
-    remoteDetail.tracks = [{
-      type: "folder",
-      title: "Disc",
-      hash: "",
-      streamUrl: "",
-      downloadUrl: "",
-      durationSeconds: null,
-      sizeBytes: null,
-      cacheLocationId: null,
-      cachePath: "",
-      cacheAvailable: false,
-      localLocationId: null,
-      localPath: "",
-      localAvailable: false,
-      children: [{
-        type: "audio",
-        title: "01.mp3",
-        hash: "track",
-        streamUrl: "https://demo.invalid/01.mp3",
-        downloadUrl: "https://demo.invalid/01.mp3",
-        durationSeconds: 60,
-        sizeBytes: 1024,
+    remoteDetail.languageEditions = [
+      {
+        remoteCode: "RJ09999991",
+        language: "JPN",
+        label: "Japanese",
+        displayOrder: 0,
+        current: true,
+        origin: true,
+      },
+    ];
+    remoteDetail.tracks = [
+      {
+        type: "folder",
+        title: "Disc",
+        hash: "",
+        streamUrl: "",
+        downloadUrl: "",
+        durationSeconds: null,
+        sizeBytes: null,
         cacheLocationId: null,
         cachePath: "",
         cacheAvailable: false,
         localLocationId: null,
         localPath: "",
         localAvailable: false,
-        children: [],
-      }],
-    }];
+        children: [
+          {
+            type: "audio",
+            title: "01.mp3",
+            hash: "track",
+            streamUrl: "https://demo.invalid/01.mp3",
+            downloadUrl: "https://demo.invalid/01.mp3",
+            durationSeconds: 60,
+            sizeBytes: 1024,
+            cacheLocationId: null,
+            cachePath: "",
+            cacheAvailable: false,
+            localLocationId: null,
+            localPath: "",
+            localAvailable: false,
+            children: [],
+          },
+        ],
+      },
+    ];
 
     const preview = createDemoRemoteFetchPlan({ detail: remoteDetail, paths: ["Disc/01.mp3"] });
 

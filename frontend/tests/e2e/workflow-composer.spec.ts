@@ -1,12 +1,71 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const nodeTypes = [
-  nodeType("workflow_input", "target", "Workflow input", [], [{ id: "value", label: "Value", type: "dynamic", required: false, multiple: true }]),
-  nodeType("circle_catalog", "discover", "Circle catalog", [{ id: "circle", label: "Circle", type: "circle_id", required: true, multiple: false }], [{ id: "works", label: "Works", type: "work_candidates", required: false, multiple: true }], true, ["mode", "maxWorks"]),
-  nodeType("filter_works", "filter", "Filter works", [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }], [{ id: "accepted", label: "Accepted", type: "work_candidates", required: false, multiple: true }, { id: "rejected", label: "Rejected", type: "work_candidates", required: false, multiple: true }], false, ["limit"]),
-  nodeType("check_source_availability", "match", "Check source availability", [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }], [{ id: "available", label: "Available", type: "work_candidates", required: false, multiple: true }, { id: "missing", label: "Missing", type: "work_candidates", required: false, multiple: true }, { id: "error", label: "Error", type: "work_candidates", required: false, multiple: true }], true, ["sourceId"]),
-  nodeType("fetch_works", "execute", "Fetch works", [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }], [{ id: "completed", label: "Completed", type: "work_refs", required: false, multiple: true }, { id: "failed", label: "Failed", type: "work_candidates", required: false, multiple: true }], true, ["excludeExtensions", "maxWorks", "maxFiles", "maxBytes", "allowUnknownSizes", "targetRoot"]),
-  nodeType("tag_works", "commit", "Tag works", [{ id: "works", label: "Works", type: "work_refs", required: true, multiple: false }, { id: "tag", label: "Tag", type: "text", required: false, multiple: false }], [{ id: "completed", label: "Completed", type: "work_refs", required: false, multiple: true }], true, ["tagName"]),
+  nodeType(
+    "workflow_input",
+    "target",
+    "Workflow input",
+    [],
+    [{ id: "value", label: "Value", type: "dynamic", required: false, multiple: true }],
+  ),
+  nodeType(
+    "circle_catalog",
+    "discover",
+    "Circle catalog",
+    [{ id: "circle", label: "Circle", type: "circle_id", required: true, multiple: false }],
+    [{ id: "works", label: "Works", type: "work_candidates", required: false, multiple: true }],
+    true,
+    ["mode", "maxWorks"],
+  ),
+  nodeType(
+    "filter_works",
+    "filter",
+    "Filter works",
+    [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }],
+    [
+      { id: "accepted", label: "Accepted", type: "work_candidates", required: false, multiple: true },
+      { id: "rejected", label: "Rejected", type: "work_candidates", required: false, multiple: true },
+    ],
+    false,
+    ["limit"],
+  ),
+  nodeType(
+    "check_source_availability",
+    "match",
+    "Check source availability",
+    [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }],
+    [
+      { id: "available", label: "Available", type: "work_candidates", required: false, multiple: true },
+      { id: "missing", label: "Missing", type: "work_candidates", required: false, multiple: true },
+      { id: "error", label: "Error", type: "work_candidates", required: false, multiple: true },
+    ],
+    true,
+    ["sourceId"],
+  ),
+  nodeType(
+    "fetch_works",
+    "execute",
+    "Fetch works",
+    [{ id: "works", label: "Works", type: "work_candidates", required: true, multiple: false }],
+    [
+      { id: "completed", label: "Completed", type: "work_refs", required: false, multiple: true },
+      { id: "failed", label: "Failed", type: "work_candidates", required: false, multiple: true },
+    ],
+    true,
+    ["excludeExtensions", "maxWorks", "maxFiles", "maxBytes", "allowUnknownSizes", "targetRoot"],
+  ),
+  nodeType(
+    "tag_works",
+    "commit",
+    "Tag works",
+    [
+      { id: "works", label: "Works", type: "work_refs", required: true, multiple: false },
+      { id: "tag", label: "Tag", type: "text", required: false, multiple: false },
+    ],
+    [{ id: "completed", label: "Completed", type: "work_refs", required: false, multiple: true }],
+    true,
+    ["tagName"],
+  ),
 ];
 
 const workflowDocument = {
@@ -15,11 +74,47 @@ const workflowDocument = {
   inputs: [{ key: "circle", label: "Circle", type: "circle_id", required: true }],
   policy: { requirePreview: true },
   nodes: [
-    { id: "circle_input", type: "workflow_input", displayName: "Circle", config: { inputKey: "circle" }, position: { x: 0, y: 120 } },
-    { id: "circle_catalog", type: "circle_catalog", displayName: "Circle catalog", config: { mode: "stored", maxWorks: 100 }, position: { x: 290, y: 120 } },
-    { id: "filter", type: "filter_works", displayName: "Filter works", config: { limit: 25 }, position: { x: 580, y: 120 } },
-    { id: "availability", type: "check_source_availability", displayName: "Check availability", config: { sourceId: 8 }, position: { x: 870, y: 120 } },
-    { id: "fetch", type: "fetch_works", displayName: "Fetch without WAV", config: { excludeExtensions: ["wav"], maxWorks: 25, maxFiles: 5000, maxBytes: 2147483648, allowUnknownSizes: false }, position: { x: 1160, y: 80 } },
+    {
+      id: "circle_input",
+      type: "workflow_input",
+      displayName: "Circle",
+      config: { inputKey: "circle" },
+      position: { x: 0, y: 120 },
+    },
+    {
+      id: "circle_catalog",
+      type: "circle_catalog",
+      displayName: "Circle catalog",
+      config: { mode: "stored", maxWorks: 100 },
+      position: { x: 290, y: 120 },
+    },
+    {
+      id: "filter",
+      type: "filter_works",
+      displayName: "Filter works",
+      config: { limit: 25 },
+      position: { x: 580, y: 120 },
+    },
+    {
+      id: "availability",
+      type: "check_source_availability",
+      displayName: "Check availability",
+      config: { sourceId: 8 },
+      position: { x: 870, y: 120 },
+    },
+    {
+      id: "fetch",
+      type: "fetch_works",
+      displayName: "Fetch without WAV",
+      config: {
+        excludeExtensions: ["wav"],
+        maxWorks: 25,
+        maxFiles: 5000,
+        maxBytes: 2147483648,
+        allowUnknownSizes: false,
+      },
+      position: { x: 1160, y: 80 },
+    },
   ],
   edges: [
     edge("circle_input", "value", "circle_catalog", "circle"),
@@ -85,7 +180,9 @@ test("composes a typed DAG and launches a slash command through preview", async 
   await expect(previewCanvas).toBeVisible();
   await expect.poll(() => previewCanvas.locator(".workflow-data-edge").count()).toBeGreaterThan(0);
   await expect(previewCanvas.locator(".react-flow__arrowhead")).toHaveCount(0);
-  const previewEdgeColors = await previewCanvas.locator(".react-flow__edge-path").evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
+  const previewEdgeColors = await previewCanvas
+    .locator(".react-flow__edge-path")
+    .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).stroke));
   expect(previewEdgeColors).toContain("rgb(139, 92, 246)");
   await expect(previewCanvas.locator(".react-flow__controls-button")).toHaveCount(4);
   await expect(previewCanvas.getByLabel("Workflow minimap")).toHaveCount(0);
@@ -109,7 +206,9 @@ test("composes a typed DAG and launches a slash command through preview", async 
 
   await composer.locator(".react-flow__node", { hasText: "Check availability" }).dispatchEvent("click");
   await expect(page.getByLabel("Delete selected node")).toBeVisible();
-  await expect.poll(async () => (await viewportControls.boundingBox())?.x).toBeLessThan(controlsBoundsBeforeInspector!.x - 300);
+  await expect
+    .poll(async () => (await viewportControls.boundingBox())?.x)
+    .toBeLessThan(controlsBoundsBeforeInspector!.x - 300);
   const canvasBoundsWithInspector = await composerCanvas.boundingBox();
   expect(canvasBoundsWithInspector?.width).toBe(canvasBoundsBeforePanels?.width);
   await expect(page.getByLabel("Remote source")).toHaveValue("8");
@@ -135,7 +234,9 @@ test("composes a typed DAG and launches a slash command through preview", async 
 
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
   await expect(page.getByText("New schedule", { exact: true })).toBeVisible();
-  await expect(page.getByText("Disable Require preview in the workflow before automating it.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Disable Require preview in the workflow before automating it.", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Provide required inputs: Circle.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -212,8 +313,12 @@ test("commits node positions after dragging and connects ports from either direc
   await composer.getByRole("button", { name: "Open node library" }).click();
   await composer.getByRole("button", { name: /^Tag works/ }).click();
   await composer.locator(".react-flow__controls-fitview").click();
-  const targetHandle = composer.locator('.react-flow__node[data-id="tag_works"] .react-flow__handle.target[data-handleid="works"]');
-  const sourceHandle = composer.locator('.react-flow__node[data-id="fetch"] .react-flow__handle.source[data-handleid="completed"]');
+  const targetHandle = composer.locator(
+    '.react-flow__node[data-id="tag_works"] .react-flow__handle.target[data-handleid="works"]',
+  );
+  const sourceHandle = composer.locator(
+    '.react-flow__node[data-id="fetch"] .react-flow__handle.source[data-handleid="completed"]',
+  );
   await expect(targetHandle).toBeInViewport();
   await expect(sourceHandle).toBeInViewport();
   const targetBounds = await targetHandle.boundingBox();
@@ -222,7 +327,9 @@ test("commits node positions after dragging and connects ports from either direc
   expect(sourceBounds).not.toBeNull();
   await page.mouse.move(targetBounds!.x + targetBounds!.width / 2, targetBounds!.y + targetBounds!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(sourceBounds!.x + sourceBounds!.width / 2, sourceBounds!.y + sourceBounds!.height / 2, { steps: 16 });
+  await page.mouse.move(sourceBounds!.x + sourceBounds!.width / 2, sourceBounds!.y + sourceBounds!.height / 2, {
+    steps: 16,
+  });
   await page.mouse.up();
   await expect(composer.getByText("5 connections", { exact: true })).toBeVisible();
 
@@ -235,7 +342,11 @@ test("commits node positions after dragging and connects ports from either direc
 
 test("deletes an editable custom workflow after confirmation", async ({ page }) => {
   let deleteRequests = 0;
-  await mockComposer(page, [], { onDefinitionDeleted: () => { deleteRequests += 1; } });
+  await mockComposer(page, [], {
+    onDefinitionDeleted: () => {
+      deleteRequests += 1;
+    },
+  });
   await page.goto("/workflows");
   await page.getByRole("button", { name: "Edit workflow" }).click();
 
@@ -252,9 +363,13 @@ test("deletes an editable custom workflow after confirmation", async ({ page }) 
 
 test("keeps a direct Quick Action open while confirmation is in flight", async ({ page }) => {
   let releaseConfirmation = () => {};
-  const confirmationGate = new Promise<void>((resolve) => { releaseConfirmation = resolve; });
+  const confirmationGate = new Promise<void>((resolve) => {
+    releaseConfirmation = resolve;
+  });
   let markConfirmationStarted = () => {};
-  const confirmationStarted = new Promise<void>((resolve) => { markConfirmationStarted = resolve; });
+  const confirmationStarted = new Promise<void>((resolve) => {
+    markConfirmationStarted = resolve;
+  });
   await mockComposer(page, [], {
     directLaunch: true,
     confirmationGate,
@@ -287,7 +402,10 @@ type MockComposerOptions = {
 
 async function mockComposer(page: Page, runRequests: unknown[], options: MockComposerOptions = {}) {
   await page.addInitScript(() => {
-    window.localStorage.setItem(`kikoto.workflows.definition-tab:v1:${encodeURIComponent(window.location.origin)}:user-1`, "custom");
+    window.localStorage.setItem(
+      `kikoto.workflows.definition-tab:v1:${encodeURIComponent(window.location.origin)}:user-1`,
+      "custom",
+    );
   });
   const activeDocument = options.directLaunch
     ? { ...workflowDocument, command: { enabled: true, alias: "runCircle" }, policy: { requirePreview: false } }
@@ -296,14 +414,45 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
   let definitionDeleted = false;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/auth/me") return route.fulfill({ json: { authenticated: true, user: { id: 1, username: "admin", displayName: "Admin", role: "super_admin", permissions: ["system:admin"], devMode: true } } });
-    if (url.pathname === "/api/workflow-definitions") return route.fulfill({ json: definitionDeleted ? [foreignDefinition] : [activeDefinition, foreignDefinition] });
+    if (url.pathname === "/api/auth/me")
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            id: 1,
+            username: "admin",
+            displayName: "Admin",
+            role: "super_admin",
+            permissions: ["system:admin"],
+            devMode: true,
+          },
+        },
+      });
+    if (url.pathname === "/api/workflow-definitions")
+      return route.fulfill({ json: definitionDeleted ? [foreignDefinition] : [activeDefinition, foreignDefinition] });
     if (url.pathname === "/api/workflow-node-types") return route.fulfill({ json: nodeTypes });
     if (url.pathname === "/api/workflow-triggers") return route.fulfill({ json: [] });
-    if (url.pathname === "/api/library-sources") return route.fulfill({ json: [
-      { id: 1, code: "local", displayName: "Local Library", sourceType: "local", enabled: true, cacheEnabled: false },
-      { id: 8, code: "remote-test", displayName: "Remote Test", sourceType: "kikoeru_compatible", enabled: true, cacheEnabled: true },
-    ] });
+    if (url.pathname === "/api/library-sources")
+      return route.fulfill({
+        json: [
+          {
+            id: 1,
+            code: "local",
+            displayName: "Local Library",
+            sourceType: "local",
+            enabled: true,
+            cacheEnabled: false,
+          },
+          {
+            id: 8,
+            code: "remote-test",
+            displayName: "Remote Test",
+            sourceType: "kikoeru_compatible",
+            enabled: true,
+            cacheEnabled: true,
+          },
+        ],
+      });
     if (url.pathname === "/api/workflow-definitions/42" && route.request().method() === "PATCH") {
       const payload = route.request().postDataJSON() as { definitionJson: string };
       options.onDefinitionSaved?.(payload);
@@ -314,23 +463,107 @@ async function mockComposer(page: Page, runRequests: unknown[], options: MockCom
       options.onDefinitionDeleted?.();
       return route.fulfill({ json: { ok: true } });
     }
-    if (url.pathname === "/api/workflow-runs") return route.fulfill({ json: { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0 } });
+    if (url.pathname === "/api/workflow-runs")
+      return route.fulfill({
+        json: { runs: [], page: 1, pageSize: Number(url.searchParams.get("pageSize") ?? 10), total: 0 },
+      });
     if (url.pathname === "/api/workflow-definitions/42/runs") {
       const payload = route.request().postDataJSON();
       runRequests.push(payload);
-      if ((payload as { mode: string }).mode === "preview") return route.fulfill({ json: { mode: "preview", definitionId: 42, workflowCode: definition.code, status: "preview", previewToken: "preview_42", requiredPermissions: ["workflows:run", "downloads:manage"], normalizedInputs: { circle: "RG01234" }, plan: { nodeCount: 5, edgeCount: 4, topologicalOrder: activeDocument.nodes.map((node) => node.id), actions: activeDocument.nodes.map((node) => ({ nodeId: node.id, nodeType: node.type, displayName: node.displayName, phase: node.type === "fetch_works" ? "execute" : "discover", requiresConfirmation: node.type === "fetch_works" })), estimates: null, limits: [{ key: "maxBytes", label: "Maximum bytes", value: 2147483648, unit: "bytes" }] }, warnings: ["Fetch remains inside the recoverable publication boundary."] } });
+      if ((payload as { mode: string }).mode === "preview")
+        return route.fulfill({
+          json: {
+            mode: "preview",
+            definitionId: 42,
+            workflowCode: definition.code,
+            status: "preview",
+            previewToken: "preview_42",
+            requiredPermissions: ["workflows:run", "downloads:manage"],
+            normalizedInputs: { circle: "RG01234" },
+            plan: {
+              nodeCount: 5,
+              edgeCount: 4,
+              topologicalOrder: activeDocument.nodes.map((node) => node.id),
+              actions: activeDocument.nodes.map((node) => ({
+                nodeId: node.id,
+                nodeType: node.type,
+                displayName: node.displayName,
+                phase: node.type === "fetch_works" ? "execute" : "discover",
+                requiresConfirmation: node.type === "fetch_works",
+              })),
+              estimates: null,
+              limits: [{ key: "maxBytes", label: "Maximum bytes", value: 2147483648, unit: "bytes" }],
+            },
+            warnings: ["Fetch remains inside the recoverable publication boundary."],
+          },
+        });
       options.onConfirmationStarted?.();
       await options.confirmationGate;
       return route.fulfill({ status: 202, json: { mode: "confirm", runId: 77, status: "queued" } });
     }
-    if (url.pathname === "/api/workflow-runs/77" ) return route.fulfill({ json: { id: 77, workflowCode: definition.code, displayName: definition.displayName, status: "queued", triggerType: "manual", triggerReason: "custom_definition", createdAt: "2026-07-16T00:00:00Z", startedAt: "", finishedAt: "", summaryJson: "{}", nodeRunCount: 0, completedNodeRuns: 0, failedNodeRuns: 0, skippedNodeRuns: 0, jobCount: 1, completedJobs: 0, failedJobs: 0, skippedJobs: 0, candidateCount: 0, pendingCandidates: 0, acceptedCandidates: 0, rejectedCandidates: 0, reviewedAt: "", reviewedByUserId: null, definitionId: 42, triggerId: null, nodeRuns: [] } });
+    if (url.pathname === "/api/workflow-runs/77")
+      return route.fulfill({
+        json: {
+          id: 77,
+          workflowCode: definition.code,
+          displayName: definition.displayName,
+          status: "queued",
+          triggerType: "manual",
+          triggerReason: "custom_definition",
+          createdAt: "2026-07-16T00:00:00Z",
+          startedAt: "",
+          finishedAt: "",
+          summaryJson: "{}",
+          nodeRunCount: 0,
+          completedNodeRuns: 0,
+          failedNodeRuns: 0,
+          skippedNodeRuns: 0,
+          jobCount: 1,
+          completedJobs: 0,
+          failedJobs: 0,
+          skippedJobs: 0,
+          candidateCount: 0,
+          pendingCandidates: 0,
+          acceptedCandidates: 0,
+          rejectedCandidates: 0,
+          reviewedAt: "",
+          reviewedByUserId: null,
+          definitionId: 42,
+          triggerId: null,
+          nodeRuns: [],
+        },
+      });
     if (url.pathname.startsWith("/api/workflow-runs/77/")) return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
   });
 }
 
-function nodeType(type: string, phase: string, displayName: string, inputPorts: unknown[], outputPorts: unknown[], composite = false, configKeys: string[] = []) {
-  return { type, phase, displayName, description: `${displayName} description`, userVisible: true, composite, requiredPermissions: [], configSchema: JSON.stringify({ type: "object", properties: Object.fromEntries(configKeys.map((key) => [key, { description: key }])) }), inputSchema: "{}", outputSchema: "{}", inputPorts, outputPorts };
+function nodeType(
+  type: string,
+  phase: string,
+  displayName: string,
+  inputPorts: unknown[],
+  outputPorts: unknown[],
+  composite = false,
+  configKeys: string[] = [],
+) {
+  return {
+    type,
+    phase,
+    displayName,
+    description: `${displayName} description`,
+    userVisible: true,
+    composite,
+    requiredPermissions: [],
+    configSchema: JSON.stringify({
+      type: "object",
+      properties: Object.fromEntries(configKeys.map((key) => [key, { description: key }])),
+    }),
+    inputSchema: "{}",
+    outputSchema: "{}",
+    inputPorts,
+    outputPorts,
+  };
 }
 
 function edge(source: string, sourceHandle: string, target: string, targetHandle: string) {

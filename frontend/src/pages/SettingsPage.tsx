@@ -179,47 +179,47 @@ export function SettingsPage({
               </div>
             ) : (
               <form className="space-y-3" onSubmit={changePassword}>
-              <PasswordField
-                id="current-password"
-                label="Current password"
-                value={passwordDraft.currentPassword}
-                autoComplete="current-password"
-                disabled={readOnly || isPasswordSaving}
-                onChange={(value) => updatePassword("currentPassword", value)}
-              />
-              <PasswordField
-                id="new-password"
-                label="New password"
-                value={passwordDraft.newPassword}
-                autoComplete="new-password"
-                disabled={readOnly || isPasswordSaving}
-                onChange={(value) => updatePassword("newPassword", value)}
-              />
-              <PasswordField
-                id="confirm-password"
-                label="Confirm new password"
-                value={passwordDraft.confirmPassword}
-                autoComplete="new-password"
-                disabled={readOnly || isPasswordSaving}
-                onChange={(value) => updatePassword("confirmPassword", value)}
-              />
-              <div
-                className="min-h-5 text-sm text-destructive"
-                id="password-error"
-                role={passwordError ? "alert" : undefined}
-              >
-                {passwordError}
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={readOnly || isPasswordSaving}>
-                  {isPasswordSaving ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <KeyRound className="h-4 w-4" />
-                  )}
-                  Change password
-                </Button>
-              </div>
+                <PasswordField
+                  id="current-password"
+                  label="Current password"
+                  value={passwordDraft.currentPassword}
+                  autoComplete="current-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("currentPassword", value)}
+                />
+                <PasswordField
+                  id="new-password"
+                  label="New password"
+                  value={passwordDraft.newPassword}
+                  autoComplete="new-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("newPassword", value)}
+                />
+                <PasswordField
+                  id="confirm-password"
+                  label="Confirm new password"
+                  value={passwordDraft.confirmPassword}
+                  autoComplete="new-password"
+                  disabled={readOnly || isPasswordSaving}
+                  onChange={(value) => updatePassword("confirmPassword", value)}
+                />
+                <div
+                  className="min-h-5 text-sm text-destructive"
+                  id="password-error"
+                  role={passwordError ? "alert" : undefined}
+                >
+                  {passwordError}
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={readOnly || isPasswordSaving}>
+                    {isPasswordSaving ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <KeyRound className="h-4 w-4" />
+                    )}
+                    Change password
+                  </Button>
+                </div>
               </form>
             )}
           </CardContent>

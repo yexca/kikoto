@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  REMOTE_PROGRESS_INTERVAL_MS,
-  shouldSaveRemoteProgress,
-  type ProgressSaveMarker,
-} from "./playerProgress";
+import { REMOTE_PROGRESS_INTERVAL_MS, shouldSaveRemoteProgress, type ProgressSaveMarker } from "./playerProgress";
 
 const previous: ProgressSaveMarker = {
   mediaItemId: 1,

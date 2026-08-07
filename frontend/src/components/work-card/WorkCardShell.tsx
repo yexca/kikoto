@@ -1,4 +1,19 @@
-import { BookmarkPlus, Check, CheckCircle2, Circle, ExternalLink, Headphones, Languages, ListMusic, MicVocal, PauseCircle, Repeat2, ShoppingBag, Star, X } from "lucide-react";
+import {
+  BookmarkPlus,
+  Check,
+  CheckCircle2,
+  Circle,
+  ExternalLink,
+  Headphones,
+  Languages,
+  ListMusic,
+  MicVocal,
+  PauseCircle,
+  Repeat2,
+  ShoppingBag,
+  Star,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +22,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, assetURL, type FavoriteList, type ListeningStatus, type UserTag, type VoiceCredit, type WorkEntityLink } from "@/lib/api";
+import {
+  api,
+  assetURL,
+  type FavoriteList,
+  type ListeningStatus,
+  type UserTag,
+  type VoiceCredit,
+  type WorkEntityLink,
+} from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { cn } from "@/lib/utils";
@@ -84,8 +107,13 @@ export function WorkCardShell({
     }
   };
   const circleOpen = work.circleExternalId
-    ? () => onCircleOpen ? onCircleOpen(work.circleExternalId as string) : openEntityRoute(`/circles/${encodeURIComponent(work.circleExternalId as string)}`)
-    : work.circle && work.circle !== "Unknown circle" ? () => void resolveEntity("circle", work.circle) : undefined;
+    ? () =>
+        onCircleOpen
+          ? onCircleOpen(work.circleExternalId as string)
+          : openEntityRoute(`/circles/${encodeURIComponent(work.circleExternalId as string)}`)
+    : work.circle && work.circle !== "Unknown circle"
+      ? () => void resolveEntity("circle", work.circle)
+      : undefined;
   const seriesOpen = onSeriesOpen ?? (work.series ? () => void resolveEntity("series", work.series ?? "") : undefined);
   const voiceOpen = (name: string) => {
     const nameKey = name.trim().toLocaleLowerCase();
@@ -113,7 +141,13 @@ export function WorkCardShell({
         recommendationScore={work.recommendationScore}
         onRecommendationOpen={onRecommendationOpen}
       />
-      <WorkCardBody work={work} onCircleOpen={circleOpen} onVoiceOpen={voiceOpen} onSeriesOpen={seriesOpen} onTagOpen={onTagOpen} />
+      <WorkCardBody
+        work={work}
+        onCircleOpen={circleOpen}
+        onVoiceOpen={voiceOpen}
+        onSeriesOpen={seriesOpen}
+        onTagOpen={onTagOpen}
+      />
     </>
   );
 
@@ -126,13 +160,17 @@ export function WorkCardShell({
             role={canOpen ? "button" : undefined}
             tabIndex={canOpen ? 0 : undefined}
             onClick={canOpen ? onOpen : undefined}
-            onKeyDown={canOpen ? (event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onOpen();
-              }
-            } : undefined}
+            onKeyDown={
+              canOpen
+                ? (event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onOpen();
+                    }
+                  }
+                : undefined
+            }
           >
             {content}
           </div>
@@ -171,13 +209,22 @@ export function WorkCardMedia({
     <div className="relative aspect-[4/3] overflow-hidden bg-muted">
       {selection}
       {coverUrl ? (
-        <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" loading="lazy" />
+        <img
+          src={assetURL(coverUrl)}
+          alt=""
+          className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]"
+          loading="lazy"
+        />
       ) : (
-        <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">{codeText.slice(0, 2)}</div>
+        <div className="grid h-full place-items-center bg-secondary text-2xl font-bold text-secondary-foreground">
+          {codeText.slice(0, 2)}
+        </div>
       )}
-      <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">{codeText}</div>
-      {recommended && (
-        onRecommendationOpen ? (
+      <div className="absolute left-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold">
+        {codeText}
+      </div>
+      {recommended &&
+        (onRecommendationOpen ? (
           <button
             type="button"
             className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
@@ -192,16 +239,23 @@ export function WorkCardMedia({
             {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
           </button>
         ) : (
-          <div className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm" title="Recommended for you" aria-label="Recommended for you">
+          <div
+            className="absolute right-3 top-3 inline-flex h-8 items-center gap-1 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground shadow-sm"
+            title="Recommended for you"
+            aria-label="Recommended for you"
+          >
             <Star className="h-4 w-4 fill-current" />
             {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
           </div>
-        )
-      )}
+        ))}
       {price !== null && (
         <div
           className="absolute bottom-3 left-3 rounded-md bg-background/90 px-2 py-1 text-xs font-semibold"
-          title={regularPrice !== null && regularPrice > price ? `Regular ${formatPrice(regularPrice, priceCurrency)}` : undefined}
+          title={
+            regularPrice !== null && regularPrice > price
+              ? `Regular ${formatPrice(regularPrice, priceCurrency)}`
+              : undefined
+          }
         >
           {price === 0 ? "Free" : formatPrice(price, priceCurrency)}
         </div>
@@ -266,14 +320,22 @@ function WorkCardBody({
             )}
           </div>
           {ageRating.known && (
-            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none", ageRating.badgeClassName)}>
+            <span
+              className={cn(
+                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none",
+                ageRating.badgeClassName,
+              )}
+            >
               {ageRating.label}
             </span>
           )}
         </div>
       </div>
       {work.voiceActors && work.voiceActors.length > 0 && (
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={work.voiceActors.join(", ")}>
+        <div
+          className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+          title={work.voiceActors.join(", ")}
+        >
           <MicVocal className="h-3.5 w-3.5 shrink-0" />
           <div className="min-w-0 truncate">
             {work.voiceActors.slice(0, 2).map((name, index) => (
@@ -289,7 +351,9 @@ function WorkCardBody({
                   >
                     {name}
                   </button>
-                ) : name}
+                ) : (
+                  name
+                )}
               </span>
             ))}
             {work.voiceActors.length > 2 && <VoiceOverflow names={work.voiceActors.slice(2)} onOpen={onVoiceOpen} />}
@@ -307,7 +371,11 @@ function WorkCardBody({
         <div className="flex min-h-6 flex-wrap gap-1.5">
           {work.userTags.map((tag) => {
             const badge = (
-              <Badge variant={tag.variant ?? "secondary"} title={tag.title} className="border-primary/30 bg-primary/10 text-primary">
+              <Badge
+                variant={tag.variant ?? "secondary"}
+                title={tag.title}
+                className="border-primary/30 bg-primary/10 text-primary"
+              >
                 {tag.label}
               </Badge>
             );
@@ -322,7 +390,9 @@ function WorkCardBody({
               >
                 {badge}
               </button>
-            ) : <span key={tag.key ?? tag.label}>{badge}</span>;
+            ) : (
+              <span key={tag.key ?? tag.label}>{badge}</span>
+            );
           })}
         </div>
       )}
@@ -346,26 +416,38 @@ function BadgeList({
 }) {
   return (
     <div className="flex min-h-6 flex-wrap gap-1.5">
-      {badges.length > 0 ? badges.map((badge) => (
-        badge.onClick || onBadgeClick ? (
-          <button
-            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
-            }}
-            className="rounded-full"
-          >
-            <Badge variant={badge.variant ?? "secondary"} title={badge.title} className="cursor-pointer hover:border-primary hover:text-primary">
+      {badges.length > 0 ? (
+        badges.map((badge) =>
+          badge.onClick || onBadgeClick ? (
+            <button
+              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                (badge.onClick ?? (() => onBadgeClick?.(badge.label)))();
+              }}
+              className="rounded-full"
+            >
+              <Badge
+                variant={badge.variant ?? "secondary"}
+                title={badge.title}
+                className="cursor-pointer hover:border-primary hover:text-primary"
+              >
+                {badge.label}
+              </Badge>
+            </button>
+          ) : (
+            <Badge
+              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+              variant={badge.variant ?? "secondary"}
+              title={badge.title}
+            >
               {badge.label}
             </Badge>
-          </button>
-        ) : (
-          <Badge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} variant={badge.variant ?? "secondary"} title={badge.title}>
-            {badge.label}
-          </Badge>
+          ),
         )
-      )) : <Badge variant={emptyVariant}>{emptyLabel}</Badge>}
+      ) : (
+        <Badge variant={emptyVariant}>{emptyLabel}</Badge>
+      )}
     </div>
   );
 }
@@ -389,10 +471,11 @@ function MeasuredBadgeList({
     const containerWidth = containerRef.current?.clientWidth ?? 0;
     const measurement = measurementRef.current;
     if (containerWidth <= 0 || !measurement) return;
-    const widths = Array.from(measurement.querySelectorAll<HTMLElement>("[data-measured-badge]"))
-      .map((element) => element.getBoundingClientRect().width);
-    const overflowWidth = measurement.querySelector<HTMLElement>("[data-measured-overflow]")
-      ?.getBoundingClientRect().width ?? 0;
+    const widths = Array.from(measurement.querySelectorAll<HTMLElement>("[data-measured-badge]")).map(
+      (element) => element.getBoundingClientRect().width,
+    );
+    const overflowWidth =
+      measurement.querySelector<HTMLElement>("[data-measured-overflow]")?.getBoundingClientRect().width ?? 0;
     setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
   }, [badges]);
 
@@ -418,7 +501,11 @@ function MeasuredBadgeList({
   }, [badges.length, visibleCount]);
 
   if (badges.length === 0) {
-    return <div className="flex min-h-6"><Badge variant="outline">{emptyLabel}</Badge></div>;
+    return (
+      <div className="flex min-h-6">
+        <Badge variant="outline">{emptyLabel}</Badge>
+      </div>
+    );
   }
 
   const safeVisibleCount = Math.min(visibleCount, badges.length);
@@ -428,7 +515,11 @@ function MeasuredBadgeList({
     <div ref={containerRef} className="relative min-h-6 min-w-0" data-testid="work-card-tags">
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {visibleBadges.map((badge) => (
-          <CardBadge key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`} badge={badge} onBadgeClick={onBadgeClick} />
+          <CardBadge
+            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+            badge={badge}
+            onBadgeClick={onBadgeClick}
+          />
         ))}
         {hiddenBadges.length > 0 && (
           <button
@@ -442,11 +533,17 @@ function MeasuredBadgeList({
               setOpen((current) => !current);
             }}
           >
-            <Badge variant="secondary" className="cursor-pointer hover:border-primary hover:text-primary">+{hiddenBadges.length}</Badge>
+            <Badge variant="secondary" className="cursor-pointer hover:border-primary hover:text-primary">
+              +{hiddenBadges.length}
+            </Badge>
           </button>
         )}
       </div>
-      <div ref={measurementRef} className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex flex-col items-start" aria-hidden="true">
+      <div
+        ref={measurementRef}
+        className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex flex-col items-start"
+        aria-hidden="true"
+      >
         {badges.map((badge) => (
           <Badge
             key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
@@ -457,7 +554,9 @@ function MeasuredBadgeList({
             {badge.label}
           </Badge>
         ))}
-        <Badge data-measured-overflow variant="secondary">+{badges.length}</Badge>
+        <Badge data-measured-overflow variant="secondary">
+          +{badges.length}
+        </Badge>
       </div>
       <AnchoredPopover
         open={open}
@@ -514,7 +613,9 @@ function CardBadge({
     >
       {badgeElement}
     </button>
-  ) : <span className="max-w-full">{badgeElement}</span>;
+  ) : (
+    <span className="max-w-full">{badgeElement}</span>
+  );
 }
 
 function WorkCardMetrics({
@@ -529,15 +630,16 @@ function WorkCardMetrics({
   hasAvailableNonOriginEdition: boolean;
 }) {
   const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
-  const normalizedRatingCount = ratingCount !== null && Number.isFinite(ratingCount) && ratingCount >= 0
-    ? Math.floor(ratingCount)
-    : null;
-  const ratingLabel = normalizedRating === null
-    ? "No rating"
-    : `Rate ${normalizedRating.toFixed(2)} out of 5${normalizedRatingCount === null ? "" : ` from ${normalizedRatingCount.toLocaleString()} ratings`}`;
-  const salesLabel = sales !== null && Number.isFinite(sales) && sales >= 0
-    ? `Sales: ${Math.floor(sales).toLocaleString()}`
-    : "Sales unavailable";
+  const normalizedRatingCount =
+    ratingCount !== null && Number.isFinite(ratingCount) && ratingCount >= 0 ? Math.floor(ratingCount) : null;
+  const ratingLabel =
+    normalizedRating === null
+      ? "No rating"
+      : `Rate ${normalizedRating.toFixed(2)} out of 5${normalizedRatingCount === null ? "" : ` from ${normalizedRatingCount.toLocaleString()} ratings`}`;
+  const salesLabel =
+    sales !== null && Number.isFinite(sales) && sales >= 0
+      ? `Sales: ${Math.floor(sales).toLocaleString()}`
+      : "Sales unavailable";
   return (
     <div className="grid min-h-10 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       <span className="inline-flex min-w-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
@@ -562,7 +664,9 @@ function WorkCardMetrics({
             );
           })}
         </span>
-        <span className="shrink-0 tabular-nums text-foreground">{normalizedRating === null ? "--" : normalizedRating.toFixed(2)}</span>
+        <span className="shrink-0 tabular-nums text-foreground">
+          {normalizedRating === null ? "--" : normalizedRating.toFixed(2)}
+        </span>
         {normalizedRatingCount !== null && (
           <span className="min-w-0 truncate tabular-nums">({formatCompactCount(normalizedRatingCount)})</span>
         )}
@@ -573,7 +677,11 @@ function WorkCardMetrics({
 
 function formatPrice(value: number, currency = "JPY") {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "JPY", maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "JPY",
+      maximumFractionDigits: 0,
+    }).format(value);
   } catch {
     return `${value.toLocaleString()} ${currency || "JPY"}`;
   }
@@ -617,7 +725,7 @@ export function WorkCardActionButton({
     <Button
       variant={showLabel ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
-      className={showLabel ? responsiveLabel ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8" : "h-8 w-8"}
+      className={showLabel ? (responsiveLabel ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8") : "h-8 w-8"}
       title={title}
       aria-label={title}
       disabled={disabled}
@@ -645,7 +753,7 @@ export function WorkCardQuickMarkButton({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const current = quickMarkMeta(value);
-	const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
+  const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
 
   return (
     <div className="relative" ref={ref}>
@@ -662,30 +770,36 @@ export function WorkCardQuickMarkButton({
       >
         <current.icon className={`h-4 w-4 ${current.active ? current.className : "text-muted-foreground"}`} />
       </WorkCardActionButton>
-	  <AnchoredPopover open={open} anchorRef={ref} onOpenChange={setOpen} bottomCollisionPadding={bottomCollisionPadding} className="w-40 p-1 text-sm">
-          {quickMarkOptions.map((option) => {
-            const meta = quickMarkMeta(option.value);
-            const selected = option.value === value;
-            return (
-              <button
-                key={option.value}
-                className={cn(
-                  "flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted",
-                  selected && "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15",
-                )}
-                aria-pressed={selected}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setOpen(false);
-                  onChange(option.value);
-                }}
-              >
-                <meta.icon className={`h-3.5 w-3.5 ${selected && meta.active ? meta.className : ""}`} />
-                <span className="min-w-0 flex-1">{option.label}</span>
-              </button>
-            );
-          })}
-	  </AnchoredPopover>
+      <AnchoredPopover
+        open={open}
+        anchorRef={ref}
+        onOpenChange={setOpen}
+        bottomCollisionPadding={bottomCollisionPadding}
+        className="w-40 p-1 text-sm"
+      >
+        {quickMarkOptions.map((option) => {
+          const meta = quickMarkMeta(option.value);
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted",
+                selected && "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15",
+              )}
+              aria-pressed={selected}
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                onChange(option.value);
+              }}
+            >
+              <meta.icon className={`h-3.5 w-3.5 ${selected && meta.active ? meta.className : ""}`} />
+              <span className="min-w-0 flex-1">{option.label}</span>
+            </button>
+          );
+        })}
+      </AnchoredPopover>
     </div>
   );
 }
@@ -718,7 +832,7 @@ export function WorkCardListButton({
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
-	const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
+  const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
 
   useEffect(() => {
     if (!open || !effectiveWorkId) return;
@@ -802,12 +916,21 @@ export function WorkCardListButton({
       >
         <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
       </WorkCardActionButton>
-	  <AnchoredPopover open={open} anchorRef={ref} onOpenChange={setOpen} bottomCollisionPadding={bottomCollisionPadding} className="w-56 p-2 text-left">
-          <div className="text-sm font-semibold">Favorite lists</div>
-          <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
-            {loading ? (
-              <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">Loading lists...</div>
-            ) : lists.length > 0 ? lists.map((list) => (
+      <AnchoredPopover
+        open={open}
+        anchorRef={ref}
+        onOpenChange={setOpen}
+        bottomCollisionPadding={bottomCollisionPadding}
+        className="w-56 p-2 text-left"
+      >
+        <div className="text-sm font-semibold">Favorite lists</div>
+        <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
+          {loading ? (
+            <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
+              Loading lists...
+            </div>
+          ) : lists.length > 0 ? (
+            lists.map((list) => (
               <div
                 key={list.id}
                 className={cn(
@@ -824,20 +947,39 @@ export function WorkCardListButton({
                 />
                 <span className="min-w-0 flex-1 truncate">{list.name}</span>
               </div>
-            )) : (
-              <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">No favorite lists yet.</div>
-            )}
-            {error && <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">{error}</div>}
-          </div>
-          <div className="mt-2 flex justify-end gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" title="Cancel" aria-label="Cancel" onClick={() => setOpen(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-            <Button size="icon" className="h-8 w-8" title={saving ? "Saving" : "Save"} aria-label={saving ? "Saving" : "Save"} disabled={loading || saving} onClick={() => void save()}>
-              <Check className="h-4 w-4" />
-            </Button>
-          </div>
-	  </AnchoredPopover>
+            ))
+          ) : (
+            <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
+              No favorite lists yet.
+            </div>
+          )}
+          {error && (
+            <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">{error}</div>
+          )}
+        </div>
+        <div className="mt-2 flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Cancel"
+            aria-label="Cancel"
+            onClick={() => setOpen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            className="h-8 w-8"
+            title={saving ? "Saving" : "Save"}
+            aria-label={saving ? "Saving" : "Save"}
+            disabled={loading || saving}
+            onClick={() => void save()}
+          >
+            <Check className="h-4 w-4" />
+          </Button>
+        </div>
+      </AnchoredPopover>
     </div>
   );
 }
@@ -845,7 +987,13 @@ export function WorkCardListButton({
 export function WorkCardDLsiteAction({ href }: { href: string }) {
   return (
     <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Open DLsite">
-      <a href={href} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} aria-label="Open DLsite">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        aria-label="Open DLsite"
+      >
         <ExternalLink className="h-4 w-4" />
       </a>
     </Button>
@@ -942,19 +1090,25 @@ function VoiceOverflow({ names, onOpen }: { names: string[]; onOpen?: (name: str
       </button>
       <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-56 p-2">
         <div className="flex flex-col gap-1">
-          {names.map((name) => onOpen ? (
-            <button
-              key={name}
-              className="rounded px-2 py-1.5 text-left text-sm hover:bg-muted hover:text-primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen(false);
-                onOpen(name);
-              }}
-            >
-              {name}
-            </button>
-          ) : <div key={name} className="px-2 py-1.5 text-sm">{name}</div>)}
+          {names.map((name) =>
+            onOpen ? (
+              <button
+                key={name}
+                className="rounded px-2 py-1.5 text-left text-sm hover:bg-muted hover:text-primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen(false);
+                  onOpen(name);
+                }}
+              >
+                {name}
+              </button>
+            ) : (
+              <div key={name} className="px-2 py-1.5 text-sm">
+                {name}
+              </div>
+            ),
+          )}
         </div>
       </AnchoredPopover>
     </>
@@ -969,5 +1123,5 @@ function openEntityRoute(route: string) {
 }
 
 function isMobileViewport() {
-	return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }

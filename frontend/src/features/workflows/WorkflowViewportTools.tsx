@@ -5,13 +5,7 @@ import { useState } from "react";
 const VIEWPORT_EDGE_GAP = 12;
 const CONTROL_COLUMN_WIDTH_WITH_GAP = 48;
 
-export function WorkflowViewportTools({
-  compact = false,
-  rightInset = 0,
-}: {
-  compact?: boolean;
-  rightInset?: number;
-}) {
+export function WorkflowViewportTools({ compact = false, rightInset = 0 }: { compact?: boolean; rightInset?: number }) {
   const [miniMapVisible, setMiniMapVisible] = useState(false);
   const controlsRight = rightInset + VIEWPORT_EDGE_GAP;
 

@@ -20,18 +20,21 @@ export function PWAServiceWorker() {
       window.location.reload();
     };
     navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
-    navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((nextRegistration) => {
-      registration = nextRegistration;
-      showWaitingWorker(nextRegistration.waiting);
-      nextRegistration.addEventListener("updatefound", () => {
-        const installing = nextRegistration.installing;
-        installing?.addEventListener("statechange", () => {
-          if (installing.state === "installed") showWaitingWorker(nextRegistration.waiting ?? installing);
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((nextRegistration) => {
+        registration = nextRegistration;
+        showWaitingWorker(nextRegistration.waiting);
+        nextRegistration.addEventListener("updatefound", () => {
+          const installing = nextRegistration.installing;
+          installing?.addEventListener("statechange", () => {
+            if (installing.state === "installed") showWaitingWorker(nextRegistration.waiting ?? installing);
+          });
         });
+      })
+      .catch(() => {
+        // The application remains usable when service workers are unavailable.
       });
-    }).catch(() => {
-      // The application remains usable when service workers are unavailable.
-    });
 
     const checkForUpdate = () => {
       if (document.visibilityState === "visible") void registration?.update();
@@ -53,13 +56,20 @@ export function PWAServiceWorker() {
         <div className="text-sm font-semibold">Kikoto update ready</div>
         <div className="text-xs text-muted-foreground">Reload to use the latest version.</div>
       </div>
-      <Button size="sm" onClick={() => {
-        reloadRequestedRef.current = true;
-        waitingWorker.postMessage({ type: "SKIP_WAITING" });
-      }}>
+      <Button
+        size="sm"
+        onClick={() => {
+          reloadRequestedRef.current = true;
+          waitingWorker.postMessage({ type: "SKIP_WAITING" });
+        }}
+      >
         Reload
       </Button>
-      <button className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted" onClick={() => setWaitingWorker(null)} aria-label="Dismiss update">
+      <button
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+        onClick={() => setWaitingWorker(null)}
+        aria-label="Dismiss update"
+      >
         <X className="h-4 w-4" />
       </button>
     </div>
