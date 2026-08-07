@@ -26,10 +26,12 @@ import {
   Handle,
   Position,
   ReactFlow,
+  useNodesInitialized,
+  useReactFlow,
+  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
-  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -3148,6 +3150,27 @@ type WorkflowCanvasData = WorkflowCanvasItem &
   };
 type WorkflowCanvasNode = Node<WorkflowCanvasData, "workflow">;
 
+function WorkflowCanvasRuntimeSync({ nodeIDs, layoutKey }: { nodeIDs: string[]; layoutKey: string }) {
+  const nodesInitialized = useNodesInitialized();
+  const reactFlow = useReactFlow<WorkflowCanvasNode, Edge>();
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  useEffect(() => {
+    if (nodeIDs.length === 0) return;
+    updateNodeInternals(nodeIDs);
+  }, [layoutKey, nodeIDs, updateNodeInternals]);
+
+  useEffect(() => {
+    if (!layoutKey || !nodesInitialized || !reactFlow.viewportInitialized) return;
+    const frame = window.requestAnimationFrame(() => {
+      void reactFlow.fitView({ padding: 0.22, maxZoom: 1, duration: 160 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [layoutKey, nodesInitialized, reactFlow]);
+
+  return null;
+}
+
 function WorkflowCanvasNodeView({ data }: NodeProps<WorkflowCanvasNode>) {
   const status = normalizedWorkflowNodeStatus(data.status);
   return (
@@ -3241,7 +3264,6 @@ function WorkflowNodeCanvas({
   compact?: boolean;
   responsiveLinear?: boolean;
 }) {
-  const flowInstance = useRef<ReactFlowInstance<WorkflowCanvasNode, Edge> | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
   useEffect(() => {
@@ -3297,9 +3319,16 @@ function WorkflowNodeCanvas({
   );
   const nodeByID = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const layoutKey = useMemo(
-    () => flowNodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join("|"),
+    () =>
+      flowNodes
+        .map(
+          (node) =>
+            `${node.id}:${node.position.x}:${node.position.y}:${node.data.hasIncoming ? node.data.incomingPosition : "none"}:${node.data.hasOutgoing ? node.data.outgoingPosition : "none"}`,
+        )
+        .join("|"),
     [flowNodes],
   );
+  const nodeIDs = useMemo(() => flowNodes.map((node) => node.id), [flowNodes]);
   const edges = useMemo<Edge[]>(
     () =>
       resolvedConnections.map((connection) => {
@@ -3322,14 +3351,6 @@ function WorkflowNodeCanvas({
     [nodeByID, resolvedConnections],
   );
 
-  useEffect(() => {
-    if (!layoutKey || !flowInstance.current) return;
-    const frame = window.requestAnimationFrame(() => {
-      void flowInstance.current?.fitView({ padding: 0.22, maxZoom: 1, duration: 160 });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [layoutKey]);
-
   return (
     <div
       ref={canvasRef}
@@ -3341,9 +3362,6 @@ function WorkflowNodeCanvas({
         nodes={flowNodes}
         edges={edges}
         nodeTypes={workflowCanvasNodeTypes}
-        onInit={(instance) => {
-          flowInstance.current = instance;
-        }}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable
@@ -3351,12 +3369,11 @@ function WorkflowNodeCanvas({
         zoomOnDoubleClick={false}
         minZoom={responsiveLinear ? 0.7 : 0.45}
         maxZoom={1.5}
-        fitView
-        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
         onNodeClick={(_, node) => onNodeClick?.(node.id)}
         onNodeDoubleClick={(_, node) => onNodeDoubleClick?.(node.id)}
         proOptions={{ hideAttribution: true }}
       >
+        <WorkflowCanvasRuntimeSync nodeIDs={nodeIDs} layoutKey={layoutKey} />
         <Background gap={20} size={1} color="hsl(var(--workflow-grid))" />
         <WorkflowViewportTools compact={compact} />
       </ReactFlow>

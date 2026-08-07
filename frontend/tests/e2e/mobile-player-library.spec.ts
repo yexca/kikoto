@@ -2633,12 +2633,19 @@ test("desktop compact player reserves the final directory action area", async ({
   await page.getByRole("button", { name: "Collapse player" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
   await expect(page.getByTestId("directory-file-row")).toHaveCount(mediaItems.length);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
   const compact = page
     .getByText("Test track", { exact: true })
     .locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
   const lastRow = page.getByTestId("directory-file-row").last();
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => window.scrollTo(0, document.scrollingElement?.scrollHeight ?? 0));
+      const [compactBox, rowBox] = await Promise.all([compact.boundingBox(), lastRow.boundingBox()]);
+      return Boolean(compactBox && rowBox && rowBox.y + rowBox.height < compactBox.y);
+    })
+    .toBe(true);
+
   const [compactBox, rowBox, contentPadding, sidebarBox] = await Promise.all([
     compact.boundingBox(),
     lastRow.boundingBox(),
