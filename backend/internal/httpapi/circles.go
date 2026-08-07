@@ -544,9 +544,18 @@ func (s *Server) deleteCircleCatalogWork(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
 }
 
+type dlsitePartySnapshotProjection struct {
+	WorkID     int64
+	ProviderID int64
+	Code       string
+	Title      string
+	Release    sql.NullString
+	Raw        string
+}
+
 func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT work.id, work.primary_code, work.title, work.release_date, snapshot.snapshot_json
+		SELECT work.id, snapshot.provider_id, work.primary_code, work.title, work.release_date, snapshot.snapshot_json
 		FROM work
 		INNER JOIN metadata_snapshot AS snapshot ON snapshot.work_id = work.id
 		INNER JOIN metadata_provider AS provider ON provider.id = snapshot.provider_id
@@ -556,18 +565,11 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	type snapshotWork struct {
-		WorkID  int64
-		Code    string
-		Title   string
-		Release sql.NullString
-		Raw     string
-	}
-	snapshots := []snapshotWork{}
+	snapshots := []dlsitePartySnapshotProjection{}
 	seenWork := map[int64]bool{}
 	for rows.Next() {
-		var snapshot snapshotWork
-		if err := rows.Scan(&snapshot.WorkID, &snapshot.Code, &snapshot.Title, &snapshot.Release, &snapshot.Raw); err != nil {
+		var snapshot dlsitePartySnapshotProjection
+		if err := rows.Scan(&snapshot.WorkID, &snapshot.ProviderID, &snapshot.Code, &snapshot.Title, &snapshot.Release, &snapshot.Raw); err != nil {
 			return err
 		}
 		if seenWork[snapshot.WorkID] {
@@ -587,6 +589,13 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 		if !dlsiteMakerIDPattern.MatchString(party.ExternalID) || party.DisplayName == "" {
 			continue
 		}
+		current, err := s.dlsitePartyProjectionCurrent(ctx, snapshot, party)
+		if err != nil {
+			return err
+		}
+		if current {
+			continue
+		}
 		partyID, err := s.upsertDLsiteParty(ctx, party.ExternalID, party.DisplayName, snapshot.Raw)
 		if err != nil {
 			return err
@@ -599,6 +608,89 @@ func (s *Server) syncPartiesFromDLsiteSnapshots(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Server) dlsitePartyProjectionCurrent(
+	ctx context.Context,
+	snapshot dlsitePartySnapshotProjection,
+	party parsedParty,
+) (bool, error) {
+	var partyID int64
+	var partyMatches, snapshotMatches, catalogMatches int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			party.id,
+			CASE WHEN party.display_name = ? AND party.sort_name = ? THEN 1 ELSE 0 END,
+			EXISTS (
+				SELECT 1
+				FROM party_metadata_snapshot AS party_snapshot
+				WHERE party_snapshot.party_id = party.id
+					AND party_snapshot.provider_id = external.provider_id
+					AND party_snapshot.external_id = external.external_id
+					AND party_snapshot.snapshot_json = ?
+			),
+			EXISTS (
+				SELECT 1
+				FROM party_catalog_item AS catalog
+				WHERE catalog.party_id = party.id
+					AND catalog.provider_id = external.provider_id
+					AND catalog.primary_code = ?
+					AND catalog.title = ?
+					AND catalog.release_date IS ?
+					AND catalog.url = ?
+					AND catalog.catalog_status = 'imported'
+					AND catalog.dlsite_available = 1
+					AND catalog.raw_json = ?
+			)
+		FROM party_external_id AS external
+		INNER JOIN party ON party.id = external.party_id
+		WHERE external.provider_id = ?
+			AND external.id_type = 'maker_id'
+			AND external.external_id = ?
+	`, party.DisplayName, strings.ToLower(party.DisplayName), snapshot.Raw,
+		strings.ToUpper(strings.TrimSpace(snapshot.Code)), snapshot.Title, nullableStringValue(snapshot.Release),
+		dlsiteURL(snapshot.Code), snapshot.Raw, snapshot.ProviderID, party.ExternalID,
+	).Scan(&partyID, &partyMatches, &snapshotMatches, &catalogMatches)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if partyMatches == 0 || snapshotMatches == 0 || catalogMatches == 0 {
+		return false, nil
+	}
+
+	role, err := s.authoritativeWorkPartyRole(ctx, snapshot.WorkID)
+	if err != nil {
+		return false, err
+	}
+	var relationMatches int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM work_party AS relation
+				WHERE relation.work_id = ?
+					AND relation.party_id = ?
+					AND relation.role = ?
+					AND (
+						relation.source = 'manual_override'
+						OR (relation.provider_id = ? AND relation.source = 'dlsite_snapshot')
+					)
+			)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM work_party AS relation
+				WHERE relation.work_id = ?
+					AND relation.role IN ('circle', 'translator_circle', 'official_translation_brand')
+					AND relation.source IN ('dlsite_snapshot', 'dlsite_product', 'dlsite_edition', 'remote_source', 'circle_refresh', 'remote_source_catalog')
+					AND (relation.party_id <> ? OR relation.role <> ?)
+			)
+	`, snapshot.WorkID, partyID, role, snapshot.ProviderID, snapshot.WorkID, partyID, role).Scan(&relationMatches); err != nil {
+		return false, err
+	}
+	return relationMatches != 0, nil
 }
 
 type parsedParty struct {

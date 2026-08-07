@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
@@ -15,6 +16,82 @@ func TestDLsitePartyProjectionPrefersProductMakerIdentity(t *testing.T) {
 	metadata := parseDLsiteSnapshot(raw)
 	if party.ExternalID != "RG900001" || metadata.CircleExternalID != "RG900001" {
 		t.Fatalf("party identity = %q, detail identity = %q", party.ExternalID, metadata.CircleExternalID)
+	}
+}
+
+func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ctx := context.Background()
+	var providerID int64
+	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"product":{"workno":"RJ00000000","maker_id":"RG000000","maker_name":"Example Circle"}}`
+	if _, err := db.Exec(`
+		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
+		VALUES (1, ?, 'RJ00000000', ?)
+	`, providerID, raw); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{db: db}
+	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	const sentinel = "2001-02-03 04:05:06"
+	if _, err := db.Exec(`
+		UPDATE party SET updated_at = ? WHERE display_name = 'Example Circle';
+		UPDATE party_catalog_item SET last_seen_at = ? WHERE primary_code = 'RJ00000000';
+		UPDATE work_party SET updated_at = ? WHERE work_id = 1;
+	`, sentinel, sentinel, sentinel); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var partyUpdatedAt, catalogLastSeenAt, relationUpdatedAt string
+	if err := db.QueryRow(`
+		SELECT party.updated_at, catalog.last_seen_at, relation.updated_at
+		FROM party_catalog_item AS catalog
+		INNER JOIN party ON party.id = catalog.party_id
+		INNER JOIN work_party AS relation ON relation.party_id = party.id AND relation.work_id = 1
+		WHERE catalog.primary_code = 'RJ00000000'
+	`).Scan(&partyUpdatedAt, &catalogLastSeenAt, &relationUpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if partyUpdatedAt != sentinel || catalogLastSeenAt != sentinel || relationUpdatedAt != sentinel {
+		t.Fatalf("unchanged projection timestamps = %q/%q/%q, want sentinel", partyUpdatedAt, catalogLastSeenAt, relationUpdatedAt)
+	}
+	blocker, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readCtx, cancelRead := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancelRead()
+	if err := server.syncPartiesFromDLsiteSnapshots(readCtx); err != nil {
+		_ = blocker.Rollback()
+		t.Fatalf("unchanged projection waited for the active writer: %v", err)
+	}
+	if err := blocker.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`UPDATE party_catalog_item SET title = 'Stale title' WHERE primary_code = 'RJ00000000'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.syncPartiesFromDLsiteSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := db.QueryRow(`SELECT title FROM party_catalog_item WHERE primary_code = 'RJ00000000'`).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Example Work" {
+		t.Fatalf("repaired catalog title = %q, want Example Work", title)
 	}
 }
 
