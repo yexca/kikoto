@@ -51,6 +51,11 @@ playback actions for one work.
   actions while Mark, List, DLsite, Metadata, and Source collapse to icons.
 - Uses one two-line row for every directory file type on mobile and desktop,
   placing the complete name above type, precise audio duration, and size.
+- Folds matched same-folder lyrics sidecars out of the default Browse and Tree
+  rows while keeping unmatched text visible. Audio rows expose lyrics choice,
+  preview, and reveal actions, and a directory control can show all folded
+  lyrics. File management and Fetch selection continue to show the complete
+  unfiltered tree.
 - Lists naturally sorted folders before naturally sorted files in Tree and
   Browse. Folder playback follows that same visible order.
 - Keeps available non-playable files such as images and text in Directory while

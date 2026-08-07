@@ -41,6 +41,7 @@ import {
   updateNativeMedia,
 } from "@/lib/nativeMedia";
 import { playbackKeyForLocation, remotePlaybackKey } from "@/player/playbackIdentity";
+import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { applyTrackLocation, orderedTrackLocations } from "@/player/trackLocations";
 import {
   shouldSaveRemoteProgress,
@@ -93,7 +94,7 @@ export type PlayerTrack = {
   progressRecordable: boolean;
   lyricsLocationId: number | null;
   lyricsTitle: string;
-  lyricsChoices?: { mediaItemId: number; locationId: number; title: string; path: string; reason: string; url?: string }[];
+  lyricsChoices?: LyricsChoice[];
   autoLyricsLocationId?: number | null;
   preferredLyricsMediaItemId?: number | null;
   remoteSourceId?: number;
@@ -101,6 +102,16 @@ export type PlayerTrack = {
   remotePath?: string;
   playbackKey?: string;
   locations?: PlayerTrackLocation[];
+};
+
+export type LyricsPreferenceTarget = {
+  mediaItemId: number;
+  playbackKey?: string;
+  lyricsChoices?: LyricsChoice[];
+  autoLyricsLocationId?: number | null;
+  preferredLyricsMediaItemId?: number | null;
+  lyricsPreferencePersistable?: boolean;
+  progressRecordable?: boolean;
 };
 
 export type PlayerTrackLocation = {
@@ -150,6 +161,8 @@ type PlayerContextValue = {
   clearSleepTimer: () => void;
   cycleMode: () => void;
   setMode: (mode: PlayMode) => void;
+  lyricsPreferenceOverrides: Record<string, number | null>;
+  changeLyricsChoice: (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => Promise<void>;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -159,6 +172,8 @@ type LibraryPlayerContextValue = {
   playQueue: (tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => void;
   playNext: (track: PlayerTrack) => void;
   appendQueue: (tracks: PlayerTrack[]) => void;
+  lyricsPreferenceOverrides: Record<string, number | null>;
+  changeLyricsChoice: (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => Promise<void>;
 };
 
 const LibraryPlayerContext = createContext<LibraryPlayerContextValue | null>(null);
@@ -276,6 +291,50 @@ function withQueueIdentity(track: PlayerTrack): PlayerTrack {
   return { ...track, queueItemId: randomID };
 }
 
+export function lyricsPreferenceKey(target: LyricsPreferenceTarget) {
+  return target.mediaItemId > 0
+    ? `media:${target.mediaItemId}`
+    : `preview:${target.playbackKey ?? target.mediaItemId}`;
+}
+
+export function preferredLyricsMediaItemID(
+  target: LyricsPreferenceTarget,
+  overrides: Record<string, number | null>,
+) {
+  const key = lyricsPreferenceKey(target);
+  return Object.prototype.hasOwnProperty.call(overrides, key)
+    ? overrides[key]
+    : target.preferredLyricsMediaItemId ?? null;
+}
+
+function applyLyricsChoiceToTrack(track: PlayerTrack, target: LyricsPreferenceTarget, choice: LyricsChoice | null) {
+  const choices = target.lyricsChoices ?? track.lyricsChoices ?? [];
+  const autoLocationID = target.autoLyricsLocationId ?? track.autoLyricsLocationId ?? null;
+  const activeChoice = choice ?? choices.find((candidate) => candidate.locationId === autoLocationID) ?? null;
+  return {
+    ...track,
+    lyricsChoices: choices,
+    autoLyricsLocationId: autoLocationID,
+    preferredLyricsMediaItemId: choice?.mediaItemId ?? null,
+    lyricsLocationId: activeChoice?.locationId ?? null,
+    lyricsTitle: activeChoice?.title ?? "",
+  };
+}
+
+function applyLyricsPreferenceOverride(
+  track: PlayerTrack,
+  overrides: Record<string, number | null>,
+) {
+  const preferenceKey = lyricsPreferenceKey(track);
+  if (!Object.prototype.hasOwnProperty.call(overrides, preferenceKey)) return track;
+  const preferredMediaItemID = overrides[preferenceKey];
+  if (preferredMediaItemID === null) return applyLyricsChoiceToTrack(track, track, null);
+  const choice = track.lyricsChoices?.find((candidate) => candidate.mediaItemId === preferredMediaItemID);
+  return choice
+    ? applyLyricsChoiceToTrack(track, track, choice)
+    : { ...track, preferredLyricsMediaItemId: preferredMediaItemID };
+}
+
 async function saveProgressWithBusyRetry(mediaItemId: number, payload: ProgressSavePayload) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -307,6 +366,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const restoredQueue = restoredQueueRef.current;
   const [queue, setQueue] = useState<PlayerTrack[]>(restoredQueue.queue);
   const [currentIndex, setCurrentIndex] = useState(restoredQueue.currentIndex);
+  const [lyricsPreferenceOverrides, setLyricsPreferenceOverrides] = useState<Record<string, number | null>>({});
+  const lyricsPreferenceOverridesRef = useRef(lyricsPreferenceOverrides);
+  lyricsPreferenceOverridesRef.current = lyricsPreferenceOverrides;
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -501,7 +563,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const playQueue = useCallback((tracks: PlayerTrack[], locationId: number, startPositionSeconds?: number) => {
     if (tracks.length === 0) return;
     progressSaveRef.current(false, true);
-    const normalizedTracks = tracks.map(withQueueIdentity);
+    const normalizedTracks = tracks.map((track) =>
+      withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current))
+    );
     const nextIndex = Math.max(
       0,
       normalizedTracks.findIndex((track) => track.locationId === locationId),
@@ -673,7 +737,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const playNext = useCallback(
     (track: PlayerTrack) => {
-      const nextTrack = withQueueIdentity(track);
+      const nextTrack = withQueueIdentity(
+        applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current),
+      );
       setQueue((items) => {
         const next = [...items];
         next.splice(Math.min(items.length, currentIndex + 1), 0, nextTrack);
@@ -685,8 +751,44 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const appendQueue = useCallback((tracks: PlayerTrack[]) => {
     if (tracks.length === 0) return;
-    setQueue((items) => [...items, ...tracks.map(withQueueIdentity)]);
+    setQueue((items) => [
+      ...items,
+      ...tracks.map((track) =>
+        withQueueIdentity(applyLyricsPreferenceOverride(track, lyricsPreferenceOverridesRef.current))
+      ),
+    ]);
   }, []);
+
+  const changeLyricsChoice = useCallback(async (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => {
+    const preferenceKey = lyricsPreferenceKey(target);
+    setLyricsPreferenceOverrides((current) => {
+      const next = { ...current, [preferenceKey]: choice?.mediaItemId ?? null };
+      lyricsPreferenceOverridesRef.current = next;
+      return next;
+    });
+    setQueue((items) => items.map((item) =>
+      lyricsPreferenceKey(item) === preferenceKey ? applyLyricsChoiceToTrack(item, target, choice) : item
+    ));
+
+    const persistPreference = target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
+    if (!persistPreference || target.mediaItemId <= 0) return;
+    try {
+      if (choice && choice.mediaItemId > 0) {
+        await api.setMediaLyricsPreference(target.mediaItemId, choice.mediaItemId);
+      } else {
+        await api.clearMediaLyricsPreference(target.mediaItemId);
+      }
+    } catch (error) {
+      toast.notify({
+        kind: "warning",
+        message: error instanceof Error
+          ? error.message
+          : choice
+            ? "Lyrics preference could not be saved."
+            : "Lyrics preference could not be cleared.",
+      });
+    }
+  }, [toast]);
 
   const moveQueueItem = (queueItemId: string, direction: -1 | 1) => {
     setQueue((items) => {
@@ -1007,6 +1109,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       clearSleepTimer: () => setSleepTimer(null),
       cycleMode: () => setMode((value) => (value === "order" ? "loop" : value === "loop" ? "single" : "order")),
       setMode,
+      lyricsPreferenceOverrides,
+      changeLyricsChoice,
     }),
     [
       queue,
@@ -1019,6 +1123,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       sleepTimer,
       sleepRemainingSeconds,
       mode,
+      lyricsPreferenceOverrides,
+      changeLyricsChoice,
     ],
   );
   const libraryValue = useMemo<LibraryPlayerContextValue>(
@@ -1028,8 +1134,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       playQueue,
       playNext,
       appendQueue,
+      lyricsPreferenceOverrides,
+      changeLyricsChoice,
     }),
-    [currentPlaybackKey, currentTrack?.locationId, playQueue, playNext, appendQueue],
+    [currentPlaybackKey, currentTrack?.locationId, playQueue, playNext, appendQueue, lyricsPreferenceOverrides, changeLyricsChoice],
   );
 
   return (
@@ -1112,7 +1220,6 @@ export function PlayerDock() {
   const [lyricsError, setLyricsError] = useState("");
   const [activeLyricsLocationId, setActiveLyricsLocationId] = useState<number | null>(null);
   const [usingAutomaticLyrics, setUsingAutomaticLyrics] = useState(true);
-  const [lyricsPreferenceOverrides, setLyricsPreferenceOverrides] = useState<Record<number, number | null>>({});
   const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(() => restoreMiniPosition());
   const [miniActionsOpen, setMiniActionsOpen] = useState(false);
   const [isSleepOpen, setIsSleepOpen] = useState(false);
@@ -1162,48 +1269,23 @@ export function PlayerDock() {
       setUsingAutomaticLyrics(true);
       return;
     }
-    const hasOverride = Object.prototype.hasOwnProperty.call(lyricsPreferenceOverrides, track.mediaItemId);
-    const preferredMediaItemId = hasOverride
-      ? lyricsPreferenceOverrides[track.mediaItemId]
-      : track.preferredLyricsMediaItemId;
+    const preferredMediaItemId = preferredLyricsMediaItemID(track, player.lyricsPreferenceOverrides);
     const preferredChoice = track.lyricsChoices?.find((choice) => choice.mediaItemId === preferredMediaItemId);
     setActiveLyricsLocationId(
       preferredChoice?.locationId ?? track.autoLyricsLocationId ?? track.lyricsLocationId ?? null,
     );
     setUsingAutomaticLyrics(!preferredMediaItemId);
-  }, [lyricsPreferenceOverrides, track]);
+  }, [player.lyricsPreferenceOverrides, track]);
 
-  const changeLyricsChoice = async (locationId: number | null) => {
+  const changeLyricsChoice = (locationId: number | null) => {
     if (!track) return;
     if (locationId === null) {
-      setLyricsPreferenceOverrides((current) => ({ ...current, [track.mediaItemId]: null }));
-      setUsingAutomaticLyrics(true);
-      setActiveLyricsLocationId(track.autoLyricsLocationId ?? null);
-      try {
-      if (track.progressRecordable) await api.clearMediaLyricsPreference(track.mediaItemId);
-      } catch (error) {
-        toast.notify({
-          kind: "warning",
-          message: error instanceof Error ? error.message : "Lyrics preference could not be cleared.",
-        });
-      }
+      void player.changeLyricsChoice(track, null);
       return;
     }
     const choice = track.lyricsChoices?.find((item) => item.locationId === locationId);
     if (!choice) return;
-    setLyricsPreferenceOverrides((current) => ({ ...current, [track.mediaItemId]: choice.mediaItemId }));
-    setUsingAutomaticLyrics(false);
-    setActiveLyricsLocationId(locationId);
-    try {
-      if (track.progressRecordable && choice.mediaItemId > 0) {
-        await api.setMediaLyricsPreference(track.mediaItemId, choice.mediaItemId);
-      }
-    } catch (error) {
-      toast.notify({
-        kind: "warning",
-        message: error instanceof Error ? error.message : "Lyrics preference could not be saved.",
-      });
-    }
+    void player.changeLyricsChoice(track, choice);
   };
 
   useEffect(() => {
@@ -2494,7 +2576,7 @@ function LyricsPanel({
   text: string;
   parsed: ParsedLyrics;
   activeIndex: number;
-  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string; url?: string }[];
+  choices: LyricsChoice[];
   activeLocationId: number;
   automatic: boolean;
   onChoiceChange: (locationId: number | null) => void;
@@ -2602,7 +2684,7 @@ function LyricsSourceSelector({
   onChoiceChange,
 }: {
   title: string;
-  choices: { mediaItemId: number; locationId: number; title: string; path: string; reason: string }[];
+  choices: LyricsChoice[];
   activeLocationId: number;
   automatic: boolean;
   onChoiceChange: (locationId: number | null) => void;
@@ -2620,7 +2702,7 @@ function LyricsSourceSelector({
         <option value="auto">Auto</option>
         {choices.map((choice) => (
           <option key={choice.locationId} value={choice.locationId}>
-            {choice.title}
+            {lyricsChoiceDisplayLabel(choice, choices)}
           </option>
         ))}
       </select>

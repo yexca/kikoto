@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MediaItem } from "../lib/api";
-import { findLyricsMatch } from "./lyricsMatching";
+import { findLyricsMatch, lyricsChoiceDisplayLabel, type LyricsChoice } from "./lyricsMatching";
 
 function lyric(path: string, id: number): MediaItem {
   return {
@@ -36,5 +36,26 @@ describe("findLyricsMatch", () => {
 
   it("chooses deterministically between equal candidates", () => {
     expect(findLyricsMatch("work/01_abc.wav", [lyric("work/01_abc.srt", 2), lyric("work/01_abc.vtt", 1)])?.locationId).toBe(1);
+  });
+
+  it("uses relative paths to distinguish duplicate lyric file names", () => {
+    const choices = [{
+      mediaItemId: 1,
+      locationId: 1,
+      title: "lyrics.lrc",
+      path: "library/RJ00000000/Disc 1/lyrics.lrc",
+      displayPath: "Disc 1/lyrics.lrc",
+      reason: "same_stem",
+    }, {
+      mediaItemId: 2,
+      locationId: 2,
+      title: "lyrics.lrc",
+      path: "library/RJ00000000/Disc 2/lyrics.lrc",
+      displayPath: "Disc 2/lyrics.lrc",
+      reason: "same_stem",
+    }] satisfies LyricsChoice[];
+
+    expect(lyricsChoiceDisplayLabel(choices[0], choices)).toBe("Disc 1/lyrics.lrc");
+    expect(lyricsChoiceDisplayLabel(choices[1], choices)).toBe("Disc 2/lyrics.lrc");
   });
 });

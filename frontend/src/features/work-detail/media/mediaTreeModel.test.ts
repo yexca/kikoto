@@ -5,6 +5,7 @@ import {
   buildWorkResumeQueue,
   buildRemoteTree,
   buildTree,
+  directoryLyricsAttachments,
   flattenTracks,
   flattenTreeFiles,
   folderPlaybackTracks,
@@ -15,6 +16,38 @@ import {
   toRemotePreviewPlayerTrack,
   treeStats,
 } from "./mediaTreeModel";
+
+function localMediaItem(id: number, kind: "audio" | "text", path: string): MediaItem {
+  const pathParts = path.split("/");
+  return {
+    id,
+    parentId: null,
+    kind,
+    title: pathParts[pathParts.length - 1] ?? path,
+    discNo: null,
+    trackNo: kind === "audio" ? id : null,
+    durationSeconds: kind === "audio" ? 60 : null,
+    sizeBytes: 1024,
+    fingerprint: `fixture-${id}`,
+    progress: null,
+    preferredLyricsMediaItemId: null,
+    locations: [{
+      id: id + 100,
+      fileSourceId: 1,
+      fileSourceCode: "local",
+      fileSourceName: "Local",
+      locationType: "local",
+      path,
+      streamUrl: kind === "audio" ? `/api/media/${id + 100}/stream` : "",
+      downloadUrl: "",
+      remoteHash: "",
+      sizeBytes: 1024,
+      durationSeconds: kind === "audio" ? 60 : null,
+      availability: "available",
+      lastCheckedAt: null,
+    }],
+  };
+}
 
 describe("mediaTreeModel", () => {
   it("formats aggregate durations without showing zero minutes", () => {
@@ -260,6 +293,36 @@ describe("mediaTreeModel", () => {
     expect(treeStats(tree)).toMatchObject({ files: 1, playable: 0, sizeBytes: 2048 });
     expect(tree.files[0]).toMatchObject({ kind: "image", locationId: 24, title: "cover.jpg" });
     expect(flattenTracks(tree)).toHaveLength(0);
+  });
+
+  it("marks only same-folder matched lyrics as collapsible directory attachments", () => {
+    const audio = localMediaItem(1, "audio", "library/RJ00000000/Main/01.mp3");
+    const sidecar = localMediaItem(2, "text", "library/RJ00000000/Main/01.lrc");
+    const notes = localMediaItem(3, "text", "library/RJ00000000/Main/notes.txt");
+    const otherFolder = localMediaItem(4, "text", "library/RJ00000000/Bonus/01.vtt");
+    const tree = buildTree([audio, sidecar, notes, otherFolder], 1, "RJ00000000");
+    const track = flattenTracks(tree)[0];
+    const attachments = directoryLyricsAttachments(tree);
+
+    expect(track).not.toHaveProperty("lyricsMatchPath");
+    expect(track.lyricsChoices).toMatchObject([
+      { locationId: 102, reason: "same_stem", displayPath: "Main/01.lrc" },
+      { locationId: 104, reason: "same_stem", displayPath: "Bonus/01.vtt" },
+    ]);
+    expect(attachments.hiddenLocationIds).toEqual(new Set([102]));
+    expect(attachments.sharedLocationIds.size).toBe(0);
+  });
+
+  it("collapses one generic folder lyric without duplicating its attachment row per audio", () => {
+    const first = localMediaItem(1, "audio", "library/RJ00000000/Main/01.mp3");
+    const second = localMediaItem(2, "audio", "library/RJ00000000/Main/02.mp3");
+    const shared = localMediaItem(3, "text", "library/RJ00000000/Main/lyrics.lrc");
+    const tree = buildTree([first, second, shared], 1, "RJ00000000");
+    const attachments = directoryLyricsAttachments(tree);
+
+    expect(flattenTracks(tree).every((track) => track.lyricsChoices?.[0]?.locationId === 103)).toBe(true);
+    expect(attachments.hiddenLocationIds).toEqual(new Set([103]));
+    expect(attachments.sharedLocationIds).toEqual(new Set([103]));
   });
 
   it("builds remote preview paths without turning folders into playable tracks", () => {

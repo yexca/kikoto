@@ -1,6 +1,11 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/PlayerProvider";
-import { findLyricsMatches, findRemoteLyricsMatches } from "../../../player/lyricsMatching";
+import {
+  findLyricsMatches,
+  findRemoteLyricsMatches,
+  isLyricsPath,
+  type LyricsChoice,
+} from "../../../player/lyricsMatching";
 import { playbackKeyForLocation, remotePlaybackKey } from "../../../player/playbackIdentity";
 import { applyTrackLocation, preferredTrackLocation } from "../../../player/trackLocations";
 
@@ -38,6 +43,10 @@ export type TreeTrack = {
   progress: MediaItem["progress"];
   locations: PlayerTrackLocation[];
   playbackKey?: string;
+  lyricsChoices?: LyricsChoice[];
+  autoLyricsLocationId?: number | null;
+  preferredLyricsMediaItemId?: number | null;
+  lyricsPreferencePersistable?: boolean;
 };
 
 export type RemoteTreeIdentity = {
@@ -62,6 +71,7 @@ export function emptyTree(): TreeNode {
 
 export function buildTree(items: MediaItem[], fileSourceId: number | null, workCode: string): TreeNode {
   const root = emptyTree();
+  const lyricsMatchPathsByLocationID = new Map<number, string>();
   for (const item of items) {
     const sourceLocations = fileSourceId === null ? item.locations : item.locations.filter((location) => location.fileSourceId === fileSourceId);
     const location = sourceLocations.find((candidate) => candidate.availability === "available" && candidate.streamUrl)
@@ -117,8 +127,11 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
           availability: candidate.availability,
         })),
     });
+    lyricsMatchPathsByLocationID.set(location.id, location.path);
   }
-  return normalizeDisplayTree(root);
+  const displayRoot = normalizeDisplayTree(root);
+  attachLocalLyricsChoices(displayRoot, items, lyricsMatchPathsByLocationID);
+  return displayRoot;
 }
 
 export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIdentity): TreeNode {
@@ -183,7 +196,9 @@ export function buildRemoteTree(tracks: RemoteTrack[], identity?: RemoteTreeIden
     });
   };
   walk(tracks, root);
-  return normalizeDisplayTree(root);
+  const displayRoot = normalizeDisplayTree(root);
+  attachRemoteLyricsChoices(displayRoot);
+  return displayRoot;
 }
 
 export function playableFiles(files: TreeTrack[]) {
@@ -228,6 +243,36 @@ export function flattenTreeFiles(root: TreeNode) {
   };
   visit(root);
   return files;
+}
+
+export type DirectoryLyricsAttachments = {
+  hiddenLocationIds: Set<number>;
+  sharedLocationIds: Set<number>;
+};
+
+export function directoryLyricsAttachments(root: TreeNode): DirectoryLyricsAttachments {
+  const files = flattenTreeFiles(root);
+  const filesByLocationID = new Map(files.map((file) => [file.locationId, file]));
+  const links = new Map<number, { audioLocationIds: Set<number>; shared: boolean }>();
+  for (const audio of files) {
+    if (audio.kind !== "audio") continue;
+    for (const choice of audio.lyricsChoices ?? []) {
+      const attachment = filesByLocationID.get(choice.locationId);
+      if (!attachment || attachment.folderPath !== audio.folderPath) continue;
+      if (!isLyricsPath(attachment.sourcePath || attachment.title)) continue;
+      const link = links.get(choice.locationId) ?? { audioLocationIds: new Set<number>(), shared: false };
+      link.audioLocationIds.add(audio.locationId);
+      link.shared ||= choice.reason === "shared_folder";
+      links.set(choice.locationId, link);
+    }
+  }
+  const hiddenLocationIds = new Set<number>();
+  const sharedLocationIds = new Set<number>();
+  for (const [locationID, link] of links) {
+    hiddenLocationIds.add(locationID);
+    if (link.shared || link.audioLocationIds.size > 1) sharedLocationIds.add(locationID);
+  }
+  return { hiddenLocationIds, sharedLocationIds };
 }
 
 export function countTreeFiles(root: TreeNode) {
@@ -307,10 +352,14 @@ export function formatTrackDuration(value: number | null) {
 }
 
 export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
-  const lyricsChoices = findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
+  const lyricsChoices = track.lyricsChoices
+    ?? findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
   const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
   const automaticLyrics = lyricsChoices[0] ?? null;
-  const lyrics = lyricsChoices.find((choice) => choice.mediaItemId === audioItem?.preferredLyricsMediaItemId) ?? automaticLyrics;
+  const preferredLyricsMediaItemId = track.preferredLyricsMediaItemId !== undefined
+    ? track.preferredLyricsMediaItemId
+    : audioItem?.preferredLyricsMediaItemId ?? null;
+  const lyrics = lyricsChoices.find((choice) => choice.mediaItemId === preferredLyricsMediaItemId) ?? automaticLyrics;
   return {
     ...track,
     kind: track.kind === "video" ? "video" : "audio",
@@ -325,7 +374,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail): PlayerTrack {
     lyricsTitle: lyrics?.title ?? "",
     lyricsChoices,
     autoLyricsLocationId: automaticLyrics?.locationId ?? null,
-    preferredLyricsMediaItemId: audioItem?.preferredLyricsMediaItemId ?? null,
+    preferredLyricsMediaItemId,
     playbackKey: track.playbackKey ?? playbackKeyForLocation(track.locationId),
   };
 }
@@ -382,15 +431,9 @@ export function buildWorkResumeQueue(
 
 export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkDetail, files: TreeTrack[] = []): PlayerTrack {
   const remoteWorkCode = detail.remoteCode || detail.primaryCode || detail.remoteId;
-  const remoteLyrics = findRemoteLyricsMatches(
+  const remoteLyrics = track.lyricsChoices ?? findRemoteLyricsMatches(
     track.sourcePath || track.title,
-    files.map((file) => ({
-      mediaItemId: file.mediaItemId,
-      locationId: file.locationId,
-      title: file.title,
-      path: file.sourcePath,
-      url: file.textPreviewUrl || file.streamUrl || file.downloadUrl,
-    })),
+    files.map(remoteLyricsCandidate),
   );
   const automaticLyrics = remoteLyrics[0] ?? null;
   return {
@@ -412,6 +455,57 @@ export function toRemotePreviewPlayerTrack(track: TreeTrack, detail: RemoteWorkD
     remoteWorkCode,
     remotePath: track.sourcePath,
     playbackKey: track.playbackKey ?? remotePlaybackKey(detail.sourceId, remoteWorkCode, track.sourcePath),
+  };
+}
+
+function attachLocalLyricsChoices(
+  root: TreeNode,
+  items: MediaItem[],
+  lyricsMatchPathsByLocationID: ReadonlyMap<number, string>,
+) {
+  const files = flattenTreeFiles(root);
+  const itemsByID = new Map(items.map((item) => [item.id, item]));
+  const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
+  for (const file of files) {
+    if (file.kind !== "audio" && file.kind !== "video") continue;
+    const choices = findLyricsMatches(lyricsMatchPathsByLocationID.get(file.locationId) || file.sourcePath || file.title, items)
+      .map((choice) => ({
+        ...choice,
+        displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
+      }));
+    const item = itemsByID.get(file.mediaItemId);
+    file.lyricsChoices = choices;
+    file.autoLyricsLocationId = choices[0]?.locationId ?? null;
+    file.preferredLyricsMediaItemId = item?.preferredLyricsMediaItemId ?? null;
+    file.lyricsPreferencePersistable = true;
+  }
+}
+
+function attachRemoteLyricsChoices(root: TreeNode) {
+  const files = flattenTreeFiles(root);
+  const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
+  const candidates = files.map(remoteLyricsCandidate);
+  for (const file of files) {
+    if (file.kind !== "audio" && file.kind !== "video") continue;
+    const choices = findRemoteLyricsMatches(file.sourcePath || file.title, candidates)
+      .map((choice) => ({
+        ...choice,
+        displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
+      }));
+    file.lyricsChoices = choices;
+    file.autoLyricsLocationId = choices[0]?.locationId ?? null;
+    file.preferredLyricsMediaItemId = null;
+    file.lyricsPreferencePersistable = false;
+  }
+}
+
+function remoteLyricsCandidate(file: TreeTrack) {
+  return {
+    mediaItemId: file.mediaItemId,
+    locationId: file.locationId,
+    title: file.title,
+    path: file.sourcePath,
+    url: file.textPreviewUrl || file.streamUrl || file.downloadUrl,
   };
 }
 

@@ -9,8 +9,11 @@ export type LyricsMatch = {
   locationId: number;
   title: string;
   path: string;
+  displayPath?: string;
   reason: "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
 };
+
+export type LyricsChoice = LyricsMatch & { url?: string };
 
 export type RemoteLyricsCandidate = {
   mediaItemId: number;
@@ -72,6 +75,16 @@ export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyr
 export function isLyricsPath(path: string) {
   const lower = path.toLowerCase();
   return lyricExtensions.some((extension) => lower.endsWith(extension));
+}
+
+export function lyricsChoiceDisplayLabel(choice: LyricsChoice, choices: LyricsChoice[]) {
+  const duplicateTitle = choices.some((candidate) =>
+    candidate.locationId !== choice.locationId
+      && candidate.title.localeCompare(choice.title, undefined, { sensitivity: "base" }) === 0
+  );
+  if (!duplicateTitle) return choice.title;
+  const displayPath = choice.displayPath?.trim() || compactLyricsPath(choice.path);
+  return displayPath || choice.title;
 }
 
 function scoreCandidate(mediaItemId: number, locationId: number, path: string, audioName: string, audioStem: string, normalizedAudioStem: string, audioDirectory: string) {
@@ -140,4 +153,9 @@ function directoryName(path: string) {
   const normalized = path.replace(/\\/g, "/");
   const index = normalized.lastIndexOf("/");
   return index >= 0 ? normalized.slice(0, index) : "";
+}
+
+function compactLyricsPath(path: string) {
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.slice(-2).join("/");
 }

@@ -73,6 +73,7 @@ type MockApplicationFixture = {
   onMediaRequest?: () => void;
   mediaBusy?: boolean;
   authenticated?: boolean;
+  onLyricsPreference?: (method: "PUT" | "DELETE", audioMediaItemId: number, lyricsMediaItemId: number | null) => void;
   beforeWorksResponse?: () => Promise<void>;
 };
 
@@ -322,8 +323,22 @@ async function mockApplication(
       await route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav() });
       return;
     }
-    if (url.pathname === "/api/media/9/text") {
-      await route.fulfill({ json: { path: "lyrics.lrc", content: "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line" } });
+    const lyricsPreferenceMatch = url.pathname.match(/^\/api\/media\/(\d+)\/lyrics-preference$/);
+    if (lyricsPreferenceMatch && (route.request().method() === "PUT" || route.request().method() === "DELETE")) {
+      const audioMediaItemId = Number(lyricsPreferenceMatch[1]);
+      const lyricsMediaItemId = route.request().method() === "PUT"
+        ? Number((route.request().postDataJSON() as { lyricsMediaItemId?: number }).lyricsMediaItemId ?? 0)
+        : null;
+      fixture.onLyricsPreference?.(route.request().method() as "PUT" | "DELETE", audioMediaItemId, lyricsMediaItemId);
+      await route.fulfill({ json: { audioMediaItemId, lyricsMediaItemId } });
+      return;
+    }
+    const textPreviewMatch = url.pathname.match(/^\/api\/media\/(\d+)\/text$/);
+    if (textPreviewMatch) {
+      const locationID = Number(textPreviewMatch[1]);
+      await route.fulfill({ json: locationID === 9
+        ? { path: "lyrics.lrc", content: "[00:00.00]First line\n[00:05.00]Second line\n[00:10.00]Third line\n[00:15.00]Fourth line\n[00:20.00]Fifth line\n[00:25.00]Sixth line\n[00:30.00]Seventh line\n[00:35.00]Eighth line" }
+        : { path: "notes.txt", content: "Synthetic notes" } });
       return;
     }
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
@@ -1373,6 +1388,61 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   expect(audioMetaBox!.y).toBeGreaterThan(audioTitleBox!.y);
 });
 
+test("directory folds matched lyrics into the audio row while preserving text preview", async ({ page }) => {
+  const lyricsWork = { ...work, primaryCode: "RJ00000000", title: "Lyrics attachment work" };
+  const mediaItems = [
+    mediaFixture(1, "01.mp3", "library/RJ00000000/Main/01.mp3", "audio"),
+    mediaFixture(9, "01.lrc", "library/RJ00000000/Main/01.lrc", "text"),
+    mediaFixture(10, "notes.txt", "library/RJ00000000/Main/notes.txt", "text"),
+  ];
+  let preferenceRequest: { method: "PUT" | "DELETE"; audioMediaItemId: number; lyricsMediaItemId: number | null } | null = null;
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
+    work: lyricsWork,
+    authenticated: true,
+    onLyricsPreference: (method, audioMediaItemId, lyricsMediaItemId) => {
+      preferenceRequest = { method, audioMediaItemId, lyricsMediaItemId };
+    },
+  });
+  await page.goto("/");
+  await page.getByText(lyricsWork.title, { exact: true }).click();
+
+  await expect(page.getByText("01.lrc", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("notes.txt", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show attached lyrics (1)" })).toBeVisible();
+
+  const audioRow = page.getByTestId("directory-file-row").filter({ hasText: "01.mp3" });
+  await audioRow.getByRole("button", { name: "Lyrics for 01.mp3" }).click();
+  const lyricsDialog = page.getByRole("dialog", { name: "Lyrics for 01.mp3" });
+  await expect(lyricsDialog.getByRole("radio", { name: /Auto.*Matches 01\.lrc/ })).toBeChecked();
+  await lyricsDialog.getByRole("radio", { name: /01\.lrc.*Matching file name/ }).click();
+  await expect.poll(() => preferenceRequest).toEqual({ method: "PUT", audioMediaItemId: 1, lyricsMediaItemId: 9 });
+
+  await lyricsDialog.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByText("First line", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Close preview" }).click();
+
+  await audioRow.click();
+  await expect.poll(async () => {
+    const state = await readScopedPlayerState(page, playerQueueStorageBaseKey, 1);
+    return state?.queue?.[0]?.preferredLyricsMediaItemId;
+  }).toBe(9);
+
+  await audioRow.getByRole("button", { name: "Lyrics for 01.mp3" }).click();
+  preferenceRequest = null;
+  const queuedLyricsDialog = page.getByRole("dialog", { name: "Lyrics for 01.mp3" });
+  await queuedLyricsDialog.getByRole("radio", { name: /Auto.*Matches 01\.lrc/ }).click();
+  await expect.poll(() => preferenceRequest).toEqual({ method: "DELETE", audioMediaItemId: 1, lyricsMediaItemId: null });
+  await expect.poll(async () => {
+    const state = await readScopedPlayerState(page, playerQueueStorageBaseKey, 1);
+    return state?.queue?.[0]?.preferredLyricsMediaItemId;
+  }).toBeNull();
+  await queuedLyricsDialog.getByRole("button", { name: "Show in directory" }).click();
+  await expect(page.getByText("01.lrc", { exact: true })).toBeVisible();
+
+  await page.getByText("notes.txt", { exact: true }).click();
+  await expect(page.getByText("Synthetic notes", { exact: true })).toBeVisible();
+});
+
 test("mobile directory breadcrumbs collapse long ancestors without losing navigation", async ({ page }) => {
   const first = "First folder with a deliberately long descriptive name";
   const second = "Second folder with another deliberately long descriptive name";
@@ -1835,7 +1905,7 @@ test("PWA metadata exposes install icons and the worker excludes API and range r
   expect(worker).toContain('request.headers.has("range")');
 });
 
-function mediaFixture(id: number, title: string, path: string, kind: "audio" | "file") {
+function mediaFixture(id: number, title: string, path: string, kind: "audio" | "file" | "text") {
   return {
     id,
     parentId: null,

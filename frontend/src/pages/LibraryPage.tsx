@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   BookmarkPlus,
+  Captions,
   Circle,
   CircleUserRound,
   Clock3,
@@ -140,7 +141,12 @@ import {
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { useLibraryPlayer, usePlayer } from "@/player/PlayerProvider";
+import {
+  preferredLyricsMediaItemID,
+  useLibraryPlayer,
+  usePlayer,
+} from "@/player/PlayerProvider";
+import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { getCachedWorkMedia, invalidateCachedWorkMedia, setCachedWorkMedia } from "@/pages/workMediaCache";
 import {
   availableForkSources,
@@ -172,6 +178,7 @@ import {
   buildTree,
   buildWorkResumeQueue,
   countTreeFiles,
+  directoryLyricsAttachments,
   emptyTree,
   flattenTracks,
   flattenTreeFiles,
@@ -5656,6 +5663,64 @@ type FilePreviewState =
   | { kind: "video"; title: string; url: string; locationId: number }
   | { kind: "text"; title: string; locationId: number; url?: string };
 
+function useDirectoryLyricsAttachmentVisibility(root: TreeNode) {
+  const attachments = useMemo(() => directoryLyricsAttachments(root), [root]);
+  const [showingAll, setShowingAll] = useState(false);
+  const [revealedLocationIDs, setRevealedLocationIDs] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    setShowingAll(false);
+    setRevealedLocationIDs(new Set());
+  }, [root]);
+  const contains = useCallback(
+    (locationID: number) => attachments.hiddenLocationIds.has(locationID),
+    [attachments],
+  );
+  const isHidden = useCallback(
+    (locationID: number) => contains(locationID) && !showingAll && !revealedLocationIDs.has(locationID),
+    [contains, revealedLocationIDs, showingAll],
+  );
+  const reveal = useCallback((locationID: number) => {
+    if (!attachments.hiddenLocationIds.has(locationID)) return;
+    setRevealedLocationIDs((current) => new Set(current).add(locationID));
+  }, [attachments]);
+  const toggleAll = useCallback(() => {
+    if (showingAll) setRevealedLocationIDs(new Set());
+    setShowingAll(!showingAll);
+  }, [showingAll]);
+  return {
+    contains,
+    isHidden,
+    reveal,
+    showingAll,
+    toggleAll,
+    total: attachments.hiddenLocationIds.size,
+  };
+}
+
+function LyricsAttachmentsToggle({
+  count,
+  showingAll,
+  onToggle,
+}: {
+  count: number;
+  showingAll: boolean;
+  onToggle: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-11 w-full justify-center text-xs sm:h-8 sm:w-auto"
+      onClick={onToggle}
+      aria-pressed={showingAll}
+    >
+      <Captions className="h-4 w-4" />
+      {showingAll ? "Hide attached lyrics" : `Show attached lyrics (${count})`}
+    </Button>
+  );
+}
+
 function DirectoryTree({
   root,
   directoryRoutingRules,
@@ -5681,6 +5746,7 @@ function DirectoryTree({
 }) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => initialExpandedTreePaths(root, directoryRoutingRules));
   const [visibleLimit, setVisibleLimit] = useState(160);
+  const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   useEffect(() => {
     setExpandedPaths(initialExpandedTreePaths(root, directoryRoutingRules));
     setVisibleLimit(160);
@@ -5698,7 +5764,12 @@ function DirectoryTree({
       return next;
     });
   }, [focusPath, root]);
-  const rows = useMemo(() => flattenVisibleTreeRows(root, expandedPaths), [root, expandedPaths]);
+  const rows = useMemo(
+    () => flattenVisibleTreeRows(root, expandedPaths).filter((row) =>
+      row.type === "folder" || !lyricsAttachments.isHidden(row.file.locationId)
+    ),
+    [root, expandedPaths, lyricsAttachments.isHidden],
+  );
   const visibleRows = rows.slice(0, visibleLimit);
   const toggleFolder = (path: string) => {
     setExpandedPaths((current) => {
@@ -5713,6 +5784,11 @@ function DirectoryTree({
   }
   return (
     <div className="space-y-2">
+      <LyricsAttachmentsToggle
+        count={lyricsAttachments.total}
+        showingAll={lyricsAttachments.showingAll}
+        onToggle={lyricsAttachments.toggleAll}
+      />
       <div className="space-y-1">
         {visibleRows.map((row) => row.type === "folder" ? (
           <TreeFolderRow
@@ -5733,6 +5809,8 @@ function DirectoryTree({
             onPlayNext={onPlayNext}
             onAppendQueue={onAppendQueue}
             onPreview={onPreview}
+            isLyricsAttachmentHidden={lyricsAttachments.isHidden}
+            onRevealLyricsAttachment={lyricsAttachments.reveal}
           />
         ))}
       </div>
@@ -5883,9 +5961,12 @@ function DirectoryBrowser({
   emptyLabel?: string;
 }) {
   const [path, setPath] = useState<string[]>(() => recommendedDirectoryPath(root, directoryRoutingRules));
+  const lyricsAttachments = useDirectoryLyricsAttachmentVisibility(root);
   const current = useMemo(() => nodeAtPath(root, path) ?? root, [root, path]);
   const folders = sortedFolders(current);
-  const files = sortedFiles(current);
+  const allFiles = sortedFiles(current);
+  const files = allFiles.filter((file) => !lyricsAttachments.isHidden(file.locationId));
+  const currentLyricsAttachmentCount = allFiles.filter((file) => lyricsAttachments.contains(file.locationId)).length;
   useEffect(() => {
     if (!nodeAtPath(root, path)) {
       setPath(recommendedDirectoryPath(root, directoryRoutingRules));
@@ -5906,6 +5987,11 @@ function DirectoryBrowser({
   return (
     <div className="space-y-3">
       <DirectoryBreadcrumb path={path} onChange={setPath} />
+      <LyricsAttachmentsToggle
+        count={currentLyricsAttachmentCount}
+        showingAll={lyricsAttachments.showingAll}
+        onToggle={lyricsAttachments.toggleAll}
+      />
       <div className="space-y-1">
         {path.length > 0 && (
           <button
@@ -5938,6 +6024,8 @@ function DirectoryBrowser({
             onPlayNext={onPlayNext}
             onAppendQueue={onAppendQueue}
             onPreview={onPreview}
+            isLyricsAttachmentHidden={lyricsAttachments.isHidden}
+            onRevealLyricsAttachment={lyricsAttachments.reveal}
           />
         ))}
       </div>
@@ -6088,6 +6176,8 @@ function TreeFile({
   onPlayNext,
   onAppendQueue,
   onPreview,
+  isLyricsAttachmentHidden,
+  onRevealLyricsAttachment,
 }: {
   file: TreeTrack;
   files: TreeTrack[];
@@ -6097,15 +6187,28 @@ function TreeFile({
   onPlayNext?: (track: TreeTrack) => void;
   onAppendQueue?: (track: TreeTrack) => void;
   onPreview?: (preview: FilePreviewState) => void;
+  isLyricsAttachmentHidden?: (locationId: number) => boolean;
+  onRevealLyricsAttachment?: (locationId: number) => void;
 }) {
+  const player = useLibraryPlayer();
   const [queueMenuOpen, setQueueMenuOpen] = useState(false);
+  const [lyricsMenuOpen, setLyricsMenuOpen] = useState(false);
   const queueMenuRef = useRef<HTMLDivElement | null>(null);
+  const lyricsMenuRef = useRef<HTMLDivElement | null>(null);
   useDismissiblePopover(queueMenuOpen, queueMenuRef, () => setQueueMenuOpen(false));
+  useDismissiblePopover(lyricsMenuOpen, lyricsMenuRef, () => setLyricsMenuOpen(false));
   const canPlay = Boolean(playableFiles([file]).length > 0 && onPlayFolder);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
   const canDownload = Boolean(file.locationId > 0 && ["available"].includes(file.availability) && (file.locationType === "local" || file.locationType === "cache"));
   const canOpen = canPlay || canPreview || canDownload;
+  const lyricsChoices = file.kind === "audio" ? file.lyricsChoices ?? [] : [];
+  const preferredLyricsMediaItemId = preferredLyricsMediaItemID(file, player.lyricsPreferenceOverrides);
+  const automaticLyrics = preferredLyricsMediaItemId === null;
+  const selectedLyricsChoice = lyricsChoices.find((choice) => choice.mediaItemId === preferredLyricsMediaItemId)
+    ?? lyricsChoices.find((choice) => choice.locationId === file.autoLyricsLocationId)
+    ?? lyricsChoices[0]
+    ?? null;
   const fileMeta = [
     fileKindLabel(file.kind),
     file.kind === "audio" || file.kind === "video" ? formatTrackDuration(file.durationSeconds) : "",
@@ -6158,11 +6261,112 @@ function TreeFile({
       </span>
       <span className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
         {file.kind === "file" && canDownload && <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />}
+        {lyricsChoices.length > 0 && (
+          <div ref={lyricsMenuRef} onClick={(event) => event.stopPropagation()}>
+            <button
+              className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
+              onClick={() => {
+                setQueueMenuOpen(false);
+                setLyricsMenuOpen((value) => !value);
+              }}
+              aria-label={`Lyrics for ${file.title}`}
+              aria-haspopup="dialog"
+              aria-expanded={lyricsMenuOpen}
+              title="Lyrics"
+            >
+              <Captions className="h-4 w-4" />
+            </button>
+            <AnchoredPopover
+              open={lyricsMenuOpen}
+              anchorRef={lyricsMenuRef}
+              onOpenChange={setLyricsMenuOpen}
+              className="w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-2 text-card-foreground shadow-xl"
+              bottomCollisionPadding={96}
+            >
+              <div role="dialog" aria-label={`Lyrics for ${file.title}`} className="space-y-2">
+                <div className="px-1 py-0.5">
+                  <div className="text-sm font-semibold">Lyrics</div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground" title={file.title}>{file.title}</div>
+                </div>
+                <div role="radiogroup" aria-label="Lyrics source" className="space-y-1">
+                  <button
+                    role="radio"
+                    aria-checked={automaticLyrics}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${automaticLyrics ? "bg-secondary text-secondary-foreground" : "hover:bg-muted"}`}
+                    onClick={() => void player.changeLyricsChoice(file, null)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium">Auto</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {selectedLyricsChoice ? `Matches ${lyricsChoiceDisplayLabel(selectedLyricsChoice, lyricsChoices)}` : "No available match"}
+                      </span>
+                    </span>
+                    {automaticLyrics && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                  </button>
+                  {lyricsChoices.map((choice) => {
+                    const selected = !automaticLyrics && choice.mediaItemId === preferredLyricsMediaItemId;
+                    return (
+                      <button
+                        key={choice.locationId}
+                        role="radio"
+                        aria-checked={selected}
+                        className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${selected ? "bg-secondary text-secondary-foreground" : "hover:bg-muted"}`}
+                        onClick={() => void player.changeLyricsChoice(file, choice)}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium" title={choice.displayPath || choice.title}>
+                            {lyricsChoiceDisplayLabel(choice, lyricsChoices)}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">{lyricsMatchReasonLabel(choice.reason)}</span>
+                        </span>
+                        {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-2 gap-1 border-t pt-2">
+                  <button
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm hover:bg-muted sm:min-h-9"
+                    disabled={!selectedLyricsChoice || !onPreview}
+                    onClick={() => {
+                      if (!selectedLyricsChoice) return;
+                      onPreview?.(lyricsChoicePreview(selectedLyricsChoice));
+                      setLyricsMenuOpen(false);
+                    }}
+                  >
+                    <FileText className="h-4 w-4" />
+                    Preview
+                  </button>
+                  {selectedLyricsChoice && isLyricsAttachmentHidden?.(selectedLyricsChoice.locationId) && (
+                    <button
+                      className="flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm hover:bg-muted sm:min-h-9"
+                      onClick={() => {
+                        onRevealLyricsAttachment?.(selectedLyricsChoice.locationId);
+                        setLyricsMenuOpen(false);
+                      }}
+                    >
+                      <Folder className="h-4 w-4" />
+                      Show in directory
+                    </button>
+                  )}
+                </div>
+                {file.lyricsPreferencePersistable === false && (
+                  <div className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                    This remote preview selection is temporary.
+                  </div>
+                )}
+              </div>
+            </AnchoredPopover>
+          </div>
+        )}
         {canPlay && (file.kind === "video" || onPlayNext || onAppendQueue) && (
           <div ref={queueMenuRef} onClick={(event) => event.stopPropagation()}>
             <button
               className="grid h-11 w-11 place-items-center rounded-md hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
-              onClick={() => setQueueMenuOpen((value) => !value)}
+              onClick={() => {
+                setLyricsMenuOpen(false);
+                setQueueMenuOpen((value) => !value);
+              }}
               aria-label={`Queue actions for ${file.title}`}
               aria-expanded={queueMenuOpen}
             >
@@ -6200,6 +6404,22 @@ function TreeFile({
       </span>
     </div>
   );
+}
+
+function lyricsMatchReasonLabel(reason: LyricsChoice["reason"]) {
+  if (reason === "exact_sidecar") return "Exact sidecar";
+  if (reason === "same_stem") return "Matching file name";
+  if (reason === "normalized_name") return "Normalized file name";
+  return "Shared in this folder";
+}
+
+function lyricsChoicePreview(choice: LyricsChoice): FilePreviewState {
+  return {
+    kind: "text",
+    title: choice.title,
+    locationId: choice.locationId,
+    url: choice.url,
+  };
 }
 
 function DirectoryManagerModal({

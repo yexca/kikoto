@@ -50,6 +50,10 @@ Playback is handled by a global browser audio player.
 - If several lyrics files match, the lyrics panel exposes an explicit choice
   instead of depending on database row order. Clearly generic same-directory
   names such as `lyrics` or `subtitle` may be shared by tracks in that folder.
+- Work-detail audio rows expose the same Auto and explicit lyrics choices
+  without requiring playback first. Selecting a persisted work updates any
+  matching queued track immediately; remote-only preview choices remain
+  temporary. Duplicate file names include their relative directory path.
 - The expanded-player lyrics control cycles through hidden, timed-line preview,
   and full lyrics modes. Hidden is the default and gives the cover more room.
   Tracks without matched lyrics keep the control disabled and do not render an
