@@ -30,7 +30,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import {
+  CreatorCard,
+  CreatorCollectionSkeleton,
+  creatorCardMinHeightClassName,
+  creatorCollectionClassName,
+} from "@/components/creator/CreatorCard";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -298,8 +303,10 @@ function VoiceListPage() {
         {isLoading && !hasLoaded ? (
           <CreatorCollectionSkeleton label="Loading voice actors" />
         ) : !hasLoaded && loadError ? (
-          <Card className="min-h-56" role="alert">
-            <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
+          <Card className={creatorCardMinHeightClassName} role="alert">
+            <CardContent
+              className={`grid ${creatorCardMinHeightClassName} place-items-center gap-3 p-5 text-center text-sm text-destructive`}
+            >
               <span>{loadError}</span>
               <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
                 Retry
@@ -307,7 +314,12 @@ function VoiceListPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+          <div
+            className={creatorCollectionClassName}
+            role="region"
+            aria-label="Voice actor results"
+            aria-busy={isLoading}
+          >
             {voices.length > 0 ? (
               voices.map((voice) => (
                 <CreatorCard
@@ -327,8 +339,10 @@ function VoiceListPage() {
                 />
               ))
             ) : (
-              <Card className="min-h-56">
-                <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+              <Card className={creatorCardMinHeightClassName}>
+                <CardContent
+                  className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
+                >
                   No voice actors match this view.
                 </CardContent>
               </Card>

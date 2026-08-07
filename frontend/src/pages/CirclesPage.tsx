@@ -21,7 +21,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import {
+  CreatorCard,
+  CreatorCollectionSkeleton,
+  creatorCardMinHeightClassName,
+  creatorCollectionClassName,
+} from "@/components/creator/CreatorCard";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -279,8 +284,10 @@ function CircleListPage() {
         {isLoading && !hasLoaded ? (
           <CreatorCollectionSkeleton label="Loading circles" />
         ) : !hasLoaded && loadError ? (
-          <Card className="min-h-56" role="alert">
-            <CardContent className="grid min-h-56 place-items-center gap-3 p-5 text-center text-sm text-destructive">
+          <Card className={creatorCardMinHeightClassName} role="alert">
+            <CardContent
+              className={`grid ${creatorCardMinHeightClassName} place-items-center gap-3 p-5 text-center text-sm text-destructive`}
+            >
               <span>{loadError}</span>
               <Button size="sm" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
                 Retry
@@ -288,7 +295,7 @@ function CircleListPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+          <div className={creatorCollectionClassName} role="region" aria-label="Circle results" aria-busy={isLoading}>
             {circles.length > 0 ? (
               circles.map((circle) => (
                 <CreatorCard
@@ -309,8 +316,10 @@ function CircleListPage() {
                 />
               ))
             ) : (
-              <Card className="min-h-56">
-                <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+              <Card className={creatorCardMinHeightClassName}>
+                <CardContent
+                  className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
+                >
                   No circles match this view.
                 </CardContent>
               </Card>

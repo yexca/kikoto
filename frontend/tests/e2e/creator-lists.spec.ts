@@ -271,11 +271,12 @@ test("a one-circle result keeps the initial creator region height", async ({ pag
   releaseRequest();
   const openCircle = page.getByRole("button", { name: "Open Example Circle" });
   await expect(openCircle).toBeVisible();
-  const resultCardBox = await openCircle.locator("xpath=../..").boundingBox();
+  const results = page.getByRole("region", { name: "Circle results" });
+  const resultsBox = await results.boundingBox();
 
   expect(loadingBox).not.toBeNull();
-  expect(resultCardBox).not.toBeNull();
-  expect(Math.abs(resultCardBox!.height - loadingBox!.height)).toBeLessThanOrEqual(1);
+  expect(resultsBox).not.toBeNull();
+  expect(Math.abs(resultsBox!.height - loadingBox!.height)).toBeLessThanOrEqual(1);
 });
 
 test("voice detail renders one stable work-loading region for local and remote discovery", async ({ page }) => {

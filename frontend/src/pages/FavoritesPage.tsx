@@ -64,7 +64,12 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
-import { CreatorCard, CreatorCollectionSkeleton, creatorCollectionClassName } from "@/components/creator/CreatorCard";
+import {
+  CreatorCard,
+  CreatorCollectionSkeleton,
+  creatorCardMinHeightClassName,
+  creatorCollectionClassName,
+} from "@/components/creator/CreatorCard";
 import {
   api,
   assetURL,
@@ -1240,15 +1245,22 @@ function FavoriteEntitySection({
   }
   if (items.length === 0) {
     return (
-      <Card className="min-h-56" aria-busy={isLoading}>
-        <CardContent className="grid min-h-56 place-items-center p-5 text-sm text-muted-foreground">
+      <Card className={creatorCardMinHeightClassName} aria-busy={isLoading}>
+        <CardContent
+          className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
+        >
           No favorite {kind === "circles" ? "circles" : "voice actors"} match this view.
         </CardContent>
       </Card>
     );
   }
   return (
-    <div className={`${creatorCollectionClassName} min-h-56`} aria-busy={isLoading}>
+    <div
+      className={creatorCollectionClassName}
+      role="region"
+      aria-label={`Favorite ${kind === "circles" ? "circle" : "voice actor"} results`}
+      aria-busy={isLoading}
+    >
       {kind === "circles"
         ? filteredCircles.map((circle) => (
             <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />
