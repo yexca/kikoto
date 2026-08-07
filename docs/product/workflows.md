@@ -10,9 +10,10 @@ Workflows make backend actions inspectable.
 
 ## Current Behavior
 
-- Local scan records folder discovery, local source presence, and missing
-  metadata sync in one run. Source availability, remote sync, cache, fetch,
-  cleanup, circle refresh, and bulk remote actions also record workflow runs.
+- Local scan records folder discovery and local source presence without waiting
+  for a metadata provider. Metadata sync, source availability, remote sync,
+  cache, fetch, cleanup, circle refresh, and bulk remote actions record separate
+  workflow runs.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
 - Review contains terminal runs with unresolved candidates that need a user
@@ -26,7 +27,10 @@ Workflows make backend actions inspectable.
   Manual as the fallback when no automatic trigger is enabled.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable Startup and interval triggers. Local scan ships
-  with the default Startup trigger and does not check remote availability.
+  with the default Startup trigger and does not check remote availability or
+  synchronize metadata. Manual, Startup, and interval scans expose a
+  disabled-by-default `Follow-up run`; enabling it queues an independent
+  metadata run after the scan finishes.
 - Local scan also ships with one fixed, enabled folder watcher. It can be paused
   or resumed, but not created, edited, duplicated, converted, or deleted. The
   watcher registers directories under `/data` once, listens for native
@@ -44,8 +48,9 @@ Workflows make backend actions inspectable.
 - The two configurable popular collectors keep their detail surfaces compact.
   `Configure` in the selected workflow header opens a modal containing the run
   inputs, tag preview, and final run action in one vertical column at every
-  viewport width. Built-in workflows without run parameters continue to expose
-  a direct run action.
+  viewport width. Local scan uses the same compact configuration surface for
+  its follow-up option. Built-in workflows without run parameters continue to
+  expose a direct run action.
 - Editable version-2 custom workflows with one simple declared input show that
   input directly in the selected definition for repeated Quick Run previews.
   Multi-input and work-code-list definitions still use Configure. The shortcut

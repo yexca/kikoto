@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -3810,13 +3811,24 @@ func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	result, err := s.enqueueLocalScan(r.Context(), "manual", "manual")
+	var request localScanRunRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid local scan request"})
+		return
+	}
+	result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "manual", 0, request.FollowUpRun)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+type localScanRunRequest struct {
+	FollowUpRun bool `json:"followUpRun"`
 }
 
 func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
@@ -4196,12 +4208,8 @@ type localScanResult struct {
 	ScannedFiles     int      `json:"scannedFiles"`
 	UpdatedLocations int      `json:"updatedLocations"`
 	SkippedLocations int      `json:"skippedLocations"`
+	FollowUpRun      bool     `json:"followUpRun"`
 	NewWorkCodes     []string `json:"newWorkCodes"`
-	TargetWorks      int      `json:"targetWorks"`
-	SyncedWorks      int      `json:"syncedWorks"`
-	SkippedWorks     int      `json:"skippedWorks"`
-	FailedWorks      int      `json:"failedWorks"`
-	UnavailableWorks int      `json:"unavailableWorks"`
 	Failures         []string `json:"failures"`
 }
 

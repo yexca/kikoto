@@ -426,7 +426,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'local_library_scan'").Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{}"}`, definitionID)
+	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{\"followUpRun\":true}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
 	response := httptest.NewRecorder()
@@ -440,6 +440,40 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	}
 	if triggerCount != 3 || startupCount != 1 || scheduleCount != 1 {
 		t.Fatalf("system triggers = total %d startup %d schedule %d", triggerCount, startupCount, scheduleCount)
+	}
+	var scheduleTriggerID int64
+	var scheduleConfigJSON string
+	if err := db.QueryRow("SELECT id, config_json FROM workflow_trigger WHERE workflow_definition_id = ? AND trigger_type = 'schedule'", definitionID).Scan(&scheduleTriggerID, &scheduleConfigJSON); err != nil {
+		t.Fatal(err)
+	}
+	var scheduleConfig localScanTriggerConfig
+	if err := json.Unmarshal([]byte(scheduleConfigJSON), &scheduleConfig); err != nil {
+		t.Fatal(err)
+	}
+	if !scheduleConfig.FollowUpRun {
+		t.Fatalf("local scan schedule config = %s", scheduleConfigJSON)
+	}
+	trigger, err := server.loadWorkflowTrigger(context.Background(), scheduleTriggerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.executeSystemWorkflowTrigger(context.Background(), definition, trigger, "schedule", "scheduled_interval"); err != nil {
+		t.Fatal(err)
+	}
+	var runInputJSON string
+	if err := db.QueryRow("SELECT input_json FROM workflow_run WHERE trigger_id = ? ORDER BY id DESC LIMIT 1", scheduleTriggerID).Scan(&runInputJSON); err != nil {
+		t.Fatal(err)
+	}
+	var runInput localScanJobPayload
+	if err := json.Unmarshal([]byte(runInputJSON), &runInput); err != nil {
+		t.Fatal(err)
+	}
+	if !runInput.FollowUpRun {
+		t.Fatalf("triggered local scan input = %s", runInputJSON)
 	}
 }
 

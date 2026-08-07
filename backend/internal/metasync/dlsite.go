@@ -162,7 +162,7 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 }
 
 // SyncAllWithoutWorkflow applies the same metadata synchronization without
-// creating a standalone run, for callers that record it inside a parent run.
+// creating another run. The queued metadata worker owns the persisted run.
 func (s *DLsiteSyncer) SyncAllWithoutWorkflow(ctx context.Context) (DLsiteSyncResult, error) {
 	targets, err := s.loadTargets(ctx)
 	if err != nil {

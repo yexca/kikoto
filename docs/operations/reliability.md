@@ -50,6 +50,9 @@
   changes for five seconds, ignores Fetch transaction directories, and retains
   only one pending follow-up while its automatic scan is active. The default
   Startup scan covers changes made while the service is stopped.
+- Local scan completion is independent of metadata-provider latency or failure.
+  Its optional, disabled-by-default metadata follow-up creates a separate run
+  after scan completion, with its own retry and review state.
 
 ## Current Limits
 

@@ -33,9 +33,9 @@ as a self-hosted web application with a responsive player and an Android client.
 
 - **One library, multiple locations.** Local, cached, tracked, and remote files
   remain availability states of one work instead of separate library entries.
-- **Local library discovery.** Scan supported work-code folders, synchronize
-  missing metadata, and keep directory changes visible through startup and
-  filesystem-triggered workflows.
+- **Local library discovery.** Scan supported work-code folders and keep local
+  presence current through startup and filesystem-triggered workflows. Run
+  metadata synchronization independently when enrichment is needed.
 - **Remote source workflows.** Browse compatible sources, Track their directory
   trees, Cache selected media, or Fetch reviewed files into the local library.
 - **Listening continuity.** Use a persistent player with queue, lyrics,
@@ -134,8 +134,10 @@ with their corresponding media kind when recognized.
 The default Startup workflow scans the library after service startup. A native
 directory watcher queues the same scan while Kikoto is running, and a manual
 scan remains available from Workflows. The scan records folder presence and
-synchronizes missing metadata; detailed local media trees are indexed when
-needed.
+does not wait for metadata synchronization, so the local library becomes usable
+sooner. Manual, Startup, and interval scans can opt into a disabled-by-default
+`Follow-up run` that queues an independent metadata sync after the scan has
+finished. Detailed local media trees are indexed when needed.
 
 ## Remote Sources
 

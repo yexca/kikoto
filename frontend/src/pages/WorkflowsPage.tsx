@@ -199,6 +199,10 @@ const workflowTemplates: WorkflowTemplate[] = [
 
 type SystemRunKind = "local_scan" | "metadata_sync" | "remote_popular" | "dlsite_popular";
 
+type SystemRunOptions = {
+  followUpRun?: boolean;
+};
+
 type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 
 type DLsitePopularRunOptions = {
@@ -232,6 +236,7 @@ const TAG_NAME_MAX_LENGTH = 40;
 const REMOTE_POPULAR_TAG_TEMPLATE = "{date}_{remote_name}_popular";
 
 type SystemWorkflowTriggerConfig = {
+  followUpRun: boolean;
   sourceId: number;
   action: "track" | "fetch";
   limit: number;
@@ -526,10 +531,10 @@ export function WorkflowsPage({
     window.history.replaceState(window.history.state, "", `/activity?${search}`);
   }, [activityRun.run, surface]);
 
-  const runLocalScan = async () => {
+  const runLocalScan = async (followUpRun = false) => {
     setIsRunningScan(true);
     try {
-      const result = await api.runLocalScan();
+      const result = await api.runLocalScan({ followUpRun });
       toast.success(`Local scan run #${result.runId} created.`);
       void refreshRecentRuns("local_library_scan");
     } catch (error) {
@@ -582,8 +587,8 @@ export function WorkflowsPage({
     }
   };
 
-  const runSystemAction = async (kind: SystemRunKind) => {
-    if (kind === "local_scan") return runLocalScan();
+  const runSystemAction = async (kind: SystemRunKind, options: SystemRunOptions = {}) => {
+    if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
     if (kind === "metadata_sync") return runMetadataSync();
     if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
@@ -1635,7 +1640,7 @@ function WorkflowDetail({
   systemRunKinds?: SystemRunKind[];
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
-  onRunSystemAction?: (kind: SystemRunKind) => Promise<void>;
+  onRunSystemAction?: (kind: SystemRunKind, options?: SystemRunOptions) => Promise<void>;
   onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
   canFetchRemotePopular?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
@@ -1649,7 +1654,9 @@ function WorkflowDetail({
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
   onEditNode: (index: number) => void;
 }) {
-  const [configuredSystemRun, setConfiguredSystemRun] = useState<"dlsite_popular" | "remote_popular" | null>(null);
+  const [configuredSystemRun, setConfiguredSystemRun] = useState<
+    "local_scan" | "dlsite_popular" | "remote_popular" | null
+  >(null);
   const [quickRunValues, setQuickRunValues] = useState<Record<string, string>>({});
   const definitionID = definition?.id ?? null;
   const definitionJson = definition?.definitionJson ?? "";
@@ -1722,7 +1729,7 @@ function WorkflowDetail({
               systemRunKinds &&
               onRunSystemAction &&
               systemRunKinds
-                .filter((kind) => kind !== "dlsite_popular" && kind !== "remote_popular")
+                .filter((kind) => kind === "metadata_sync")
                 .map((kind) => {
                   const running = isSystemActionRunning?.(kind) ?? false;
                   const allowed = canRunSystemAction?.(kind) ?? false;
@@ -1741,8 +1748,8 @@ function WorkflowDetail({
             {definition.scope === "system" &&
               systemRunKinds
                 ?.filter(
-                  (kind): kind is "dlsite_popular" | "remote_popular" =>
-                    kind === "dlsite_popular" || kind === "remote_popular",
+                  (kind): kind is "local_scan" | "dlsite_popular" | "remote_popular" =>
+                    kind === "local_scan" || kind === "dlsite_popular" || kind === "remote_popular",
                 )
                 .map((kind) => {
                   const running = isSystemActionRunning?.(kind) ?? false;
@@ -1812,6 +1819,15 @@ function WorkflowDetail({
         {onOpenRun && <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />}
         {parsedDefinition.kind === "legacy" && <WorkflowHints nodes={nodes} nodeTypes={nodeTypes} compact />}
       </CardContent>
+      {configuredSystemRun === "local_scan" && onRunSystemAction && (
+        <Modal title="Configure local library scan" onClose={() => setConfiguredSystemRun(null)}>
+          <LocalScanRunPanel
+            running={isSystemActionRunning?.("local_scan") ?? false}
+            allowed={canRunSystemAction?.("local_scan") ?? false}
+            onRun={(followUpRun) => onRunSystemAction("local_scan", { followUpRun })}
+          />
+        </Modal>
+      )}
       {configuredSystemRun === "dlsite_popular" && onRunDLsitePopular && (
         <Modal title="Configure DLsite popular collection" onClose={() => setConfiguredSystemRun(null)}>
           <DLsitePopularRunPanel
@@ -1832,6 +1848,40 @@ function WorkflowDetail({
         </Modal>
       )}
     </Card>
+  );
+}
+
+function LocalScanRunPanel({
+  running,
+  allowed,
+  onRun,
+}: {
+  running: boolean;
+  allowed: boolean;
+  onRun: (followUpRun: boolean) => Promise<void>;
+}) {
+  const [followUpRun, setFollowUpRun] = useState(false);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-3">
+        <div>
+          <div className="text-sm font-medium">Follow-up run</div>
+          <div className="text-xs text-muted-foreground">
+            Queue an independent metadata sync after this local scan completes.
+          </div>
+        </div>
+        <Switch
+          checked={followUpRun}
+          onCheckedChange={setFollowUpRun}
+          aria-label="Follow-up run"
+          disabled={running || !allowed}
+        />
+      </div>
+      <Button className="w-full" disabled={running || !allowed} onClick={() => void onRun(followUpRun)}>
+        <Play className="h-4 w-4" />
+        {running ? "Creating" : "Run scan"}
+      </Button>
+    </div>
   );
 }
 
@@ -3977,6 +4027,7 @@ function workflowSystemTriggerConfig(
       ? dlsitePopularDefaultTagTemplate(period)
       : REMOTE_POPULAR_TAG_TEMPLATE;
   return {
+    followUpRun: record.followUpRun === true,
     sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
     action: record.action === "fetch" ? "fetch" : "track",
     limit: typeof record.limit === "number" ? record.limit : 25,
@@ -3991,6 +4042,9 @@ function workflowSystemTriggerConfig(
 }
 
 function workflowSystemTriggerConfigPayload(definitionCode: string, value: SystemWorkflowTriggerConfig) {
+  if (definitionCode === "local_library_scan") {
+    return { followUpRun: value.followUpRun };
+  }
   if (definitionCode === "remote_popular_collection") {
     return {
       sourceId: value.sourceId,
@@ -4085,6 +4139,24 @@ function SystemWorkflowTriggerFields({
       active = false;
     };
   }, [definitionCode]);
+
+  if (definitionCode === "local_library_scan") {
+    return (
+      <div className="flex items-center justify-between gap-4 border-t pt-3">
+        <div>
+          <div className="text-sm font-medium">Follow-up run</div>
+          <div className="text-xs text-muted-foreground">
+            Queue an independent metadata sync after each scan completes.
+          </div>
+        </div>
+        <Switch
+          checked={value.followUpRun}
+          onCheckedChange={(followUpRun) => onChange({ ...value, followUpRun })}
+          aria-label="Follow-up run"
+        />
+      </div>
+    );
+  }
 
   if (definitionCode === "remote_popular_collection") {
     const selectedSource = compatibleSources.find((source) => source.id === value.sourceId);

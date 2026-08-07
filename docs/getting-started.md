@@ -62,8 +62,10 @@ installing its APK remains an explicit user-confirmed Android system flow.
 2. Start the Docker stack.
 3. Open the frontend.
 4. Run the local library scan from Workflows; it discovers local works and
-   synchronizes missing metadata in the same run.
-5. Optionally run DLsite metadata sync to enrich detected works.
+   updates local source presence without waiting for provider metadata.
+5. Optionally run metadata sync as its own workflow to enrich detected works,
+   or enable the scan's disabled-by-default `Follow-up run` option to queue it
+   after the scan completes.
 
 ## Validate The Build
 

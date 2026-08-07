@@ -12,7 +12,8 @@ that migration without rebuilding or replacing user data.
 stores per-user audio-to-lyrics media preferences. Released migrations remain
 immutable; subsequent schema changes must use the next numbered file.
 
-The current sequence continues through `023_fetch_transfer_operations.sql`.
+The current sequence continues through
+`025_decouple_local_scan_metadata.sql`.
 Migrations `008` through `013` add normalized work aliases and commercial
 metadata, terminal provider state, recommendation telemetry, and explicit video
 audio-presence data with a legacy backfill. Migration `014` adds durable
@@ -26,6 +27,10 @@ playback cursor per user and canonical work family, then seeds it from the
 newest legacy media-progress row in that family.
 Migration `023` adds byte-level workflow-job progress and the Fetch staging
 cleanup timestamp used by retention reconciliation.
+Migration `024` adds the per-source outbound-host restriction and allowlist
+fields. Migration `025` removes metadata synchronization from the local-scan
+definition and initializes every existing local-scan trigger with its metadata
+follow-up disabled.
 
 ## Guidelines
 

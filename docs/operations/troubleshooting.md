@@ -17,7 +17,7 @@
 
 - Confirm files are under the configured data root.
 - Check local scan depth.
-- Run a local library scan to refresh local presence and missing metadata.
+- Run a local library scan to refresh local presence.
 - Confirm folders contain supported product codes.
 
 ## Remote Sources Fail
@@ -30,7 +30,8 @@
 ## Metadata Is Missing
 
 - Confirm local scan detected the work code.
-- Run DLsite metadata sync.
+- Run the independent metadata sync workflow, or explicitly enable
+  `Follow-up run` when starting or scheduling a local scan.
 - Check Activity for `metadata_sync` failures.
 - Some provider products may be removed or unavailable; those should appear as
   reviewable workflow candidates rather than fatal scan failures.

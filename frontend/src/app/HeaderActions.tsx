@@ -181,7 +181,7 @@ export function HeaderActions({
   const runSystemAction = async (action: SystemAction) => {
     setRunningAction(action);
     try {
-      if (action === "local_scan") await api.runLocalScan();
+      if (action === "local_scan") await api.runLocalScan({ followUpRun: false });
       if (action === "dlsite_sync") await api.runDLsiteSync();
       if (action === "recover_stale") await api.recoverStaleWorkflowRuns();
       onOpenPage("activity");
@@ -969,9 +969,9 @@ export function commandActions({
           {
             id: "action:local_scan",
             label: "Scan local library",
-            description: "Scan local works and sync missing metadata",
+            description: "Scan local works and refresh local presence",
             icon: <ScanLine className="h-4 w-4" />,
-            run: () => void api.runLocalScan().then(() => onOpenPath("/activity")),
+            run: () => void api.runLocalScan({ followUpRun: false }).then(() => onOpenPath("/activity")),
           },
         ]
       : []),

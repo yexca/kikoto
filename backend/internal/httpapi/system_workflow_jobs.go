@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -16,15 +18,22 @@ type localScanJobPayload struct {
 	ScanDepth           int    `json:"scan_depth"`
 	DirectoryEventAt    string `json:"directory_event_at,omitempty"`
 	ObservedDirectories int    `json:"observed_directories,omitempty"`
+	FollowUpRun         bool   `json:"follow_up_run,omitempty"`
+}
+
+type metadataSyncRunInput struct {
+	SourceRunID int64 `json:"source_run_id,omitempty"`
 }
 
 func (s *Server) enqueueLocalScan(ctx context.Context, triggerType string, triggerReason string) (localScanResult, error) {
-	return s.enqueueLocalScanWithTrigger(ctx, triggerType, triggerReason, 0)
+	return s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, 0, false)
 }
 
-func (s *Server) enqueueLocalScanWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (localScanResult, error) {
+func (s *Server) enqueueLocalScanWithOptions(ctx context.Context, triggerType string, triggerReason string, triggerID int64, followUpRun bool) (localScanResult, error) {
 	scanDepth := s.configuredLocalScanDepth(ctx)
-	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{Root: s.cfg.DataRoot, ScanDepth: scanDepth})
+	return s.enqueueLocalScanWithPayload(ctx, triggerType, triggerReason, triggerID, localScanJobPayload{
+		Root: s.cfg.DataRoot, ScanDepth: scanDepth, FollowUpRun: followUpRun,
+	})
 }
 
 func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType string, triggerReason string, triggerID int64, payload localScanJobPayload) (localScanResult, error) {
@@ -40,13 +49,12 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local works, sync local source presence, and synchronize missing metadata.", map[string]any{
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "local_library_scan", "Scan local library", "Discover local works and synchronize local source presence.", map[string]any{
 		"nodes": []map[string]string{
 			{"id": "select", "type": "select_local_source", "displayName": "Select local source"},
 			{"id": "discover", "type": "discover_local_files", "displayName": "Discover files"},
 			{"id": "match", "type": "match_works", "displayName": "Match works"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync locations"},
-			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
 		},
 	})
 	if err != nil {
@@ -76,7 +84,6 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 	for _, node := range []workflow.NodeRunSpec{
 		{NodeID: "match", NodeType: "match_works", DisplayName: "Match works", Position: 3, Status: "queued"},
 		{NodeID: "sync", NodeType: "sync_file_locations", DisplayName: "Sync file locations", Position: 4, Status: "queued"},
-		{NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Sync metadata", Position: 5, Status: "queued"},
 	} {
 		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
 			return localScanResult{}, err
@@ -84,7 +91,7 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: discoverNodeID, WorkerType: "local_library_scan", Status: "queued",
-		Priority: workflowJobPriorityForTrigger(triggerType), ResourceKey: "metadata:provider", Payload: payload,
+		Priority: workflowJobPriorityForTrigger(triggerType), ResourceKey: "local:scan", Payload: payload,
 		Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 3,
 	})
 	if err != nil {
@@ -93,7 +100,10 @@ func (s *Server) enqueueLocalScanWithPayload(ctx context.Context, triggerType st
 	if err := tx.Commit(); err != nil {
 		return localScanResult{}, err
 	}
-	return localScanResult{RunID: runID, JobID: jobID, Status: "queued", NewWorkCodes: []string{}, Failures: []string{}}, nil
+	return localScanResult{
+		RunID: runID, JobID: jobID, Status: "queued", FollowUpRun: payload.FollowUpRun,
+		NewWorkCodes: []string{}, Failures: []string{},
+	}, nil
 }
 
 func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord) error {
@@ -168,15 +178,16 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		return rollbackAndFail(err)
 	}
 	runSummary := map[string]any{
-		"candidate_folders": scanSummary.CandidateFolders,
-		"detected_works":    scanSummary.DetectedWorks,
-		"scanned_files":     scanSummary.ScannedFiles,
-		"ambiguous_folders": scanSummary.AmbiguousFolders,
-		"duplicate_groups":  localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
-		"updated_locations": updatedLocations,
-		"skipped_locations": skippedLocations,
-		"missing_locations": missingLocations,
-		"new_work_codes":    newWorkCodes,
+		"candidate_folders":   scanSummary.CandidateFolders,
+		"detected_works":      scanSummary.DetectedWorks,
+		"scanned_files":       scanSummary.ScannedFiles,
+		"ambiguous_folders":   scanSummary.AmbiguousFolders,
+		"duplicate_groups":    localDuplicateGroupSummaries(scanSummary.DuplicateGroups),
+		"updated_locations":   updatedLocations,
+		"skipped_locations":   skippedLocations,
+		"missing_locations":   missingLocations,
+		"new_work_codes":      newWorkCodes,
+		"follow_up_requested": payload.FollowUpRun,
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, error_message = '', finished_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -205,11 +216,6 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 	}), nodeIDs["sync"]); err != nil {
 		return rollbackAndFail(err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?
-	`, nodeIDs["metadata"]); err != nil {
-		return rollbackAndFail(err)
-	}
 	if _, err := tx.ExecContext(ctx, "UPDATE workflow_run SET summary_json = ? WHERE id = ?", mustJSON(runSummary), job.RunID); err != nil {
 		return rollbackAndFail(err)
 	}
@@ -221,32 +227,17 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
 		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,
 		UpdatedLocations: updatedLocations, SkippedLocations: skippedLocations,
-		NewWorkCodes: newWorkCodes, Failures: []string{},
+		FollowUpRun: payload.FollowUpRun, NewWorkCodes: newWorkCodes, Failures: []string{},
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "metadata", map[string]any{"detected_works": result.DetectedWorks}, result.ScannedFiles, result.ScannedFiles)
-	metadataResult, metadataErr := s.newDLsiteMetadataSyncer(ctx).SyncAllWithoutWorkflow(ctx)
-	if metadataErr == nil {
-		metadataErr = s.syncPartiesFromDLsiteSnapshots(ctx)
-	}
-	result.TargetWorks = metadataResult.TargetWorks
-	result.SyncedWorks = metadataResult.SyncedWorks
-	result.SkippedWorks = metadataResult.SkippedWorks
-	result.FailedWorks = metadataResult.FailedWorks
-	result.UnavailableWorks = metadataResult.UnavailableWorks
-	result.Failures = append(result.Failures, metadataResult.Failures...)
-	result.Status = metadataResult.Status
-	if result.Status == "" {
-		result.Status = "succeeded"
-	}
-	if metadataErr != nil {
-		result.Status = "failed"
-		result.Failures = append(result.Failures, metadataErr.Error())
-	}
-	if err := s.finishQueuedLocalScanJob(ctx, job, nodeIDs["metadata"], result, runSummary, metadataResult); err != nil {
+	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{"detected_works": result.DetectedWorks}, result.ScannedFiles, result.ScannedFiles)
+	if err := s.finishQueuedLocalScanJob(ctx, job, nodeIDs["sync"], result, runSummary); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	return metadataErr
+	if payload.FollowUpRun {
+		s.queueLocalScanMetadataFollowUp(ctx, job.RunID)
+	}
+	return nil
 }
 
 func workIDForCodeInTx(ctx context.Context, tx *sql.Tx, code string) (int64, bool, error) {
@@ -261,46 +252,27 @@ func workIDForCodeInTx(ctx context.Context, tx *sql.Tx, code string) (int64, boo
 	return 0, false, err
 }
 
-func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRecord, metadataNodeID int64, result localScanResult, runSummary map[string]any, metadataResult metasync.DLsiteSyncResult) error {
+func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRecord, completedNodeID int64, result localScanResult, runSummary map[string]any) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	errorMessage := strings.Join(result.Failures, "\n")
-	metadataOutput := map[string]any{
-		"target_works": result.TargetWorks, "synced_works": result.SyncedWorks,
-		"skipped_works": result.SkippedWorks, "failed_works": result.FailedWorks,
-		"unavailable_works": result.UnavailableWorks, "review_works": len(metadataResult.ReviewCandidates),
-		"review_candidates": metadataResult.ReviewCandidates, "failures": result.Failures,
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, result.Status, mustJSON(metadataOutput), errorMessage, metadataNodeID); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job SET status = ?, progress_current = ?, progress_total = ?, error_message = ?,
 			locked_by = '', locked_at = NULL, heartbeat_at = NULL, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, result.Status, result.SyncedWorks, result.TargetWorks, errorMessage,
-		mustJSON(map[string]any{"phase": "completed", "detail": metadataOutput, "progressCurrent": result.SyncedWorks, "progressTotal": result.TargetWorks}), job.ID); err != nil {
+	`, result.Status, result.ScannedFiles, result.ScannedFiles, errorMessage,
+		mustJSON(map[string]any{"phase": "completed", "detail": runSummary, "progressCurrent": result.ScannedFiles, "progressTotal": result.ScannedFiles}), job.ID); err != nil {
 		return err
 	}
-	if err := insertDLsiteReviewCandidates(ctx, tx, job.RunID, metadataNodeID, metadataResult.ReviewCandidates); err != nil {
-		return err
-	}
-	runSummary["target_works"] = result.TargetWorks
-	runSummary["synced_works"] = result.SyncedWorks
-	runSummary["skipped_works"] = result.SkippedWorks
-	runSummary["failed_works"] = result.FailedWorks
-	runSummary["unavailable_works"] = result.UnavailableWorks
 	runSummary["failures"] = result.Failures
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(runSummary), job.RunID); err != nil {
 		return err
 	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: metadataNodeID, JobID: job.ID, Level: eventLevelForWorkflowStatus(result.Status),
+		NodeRunID: completedNodeID, JobID: job.ID, Level: eventLevelForWorkflowStatus(result.Status),
 		Type: "local_library_scan.completed", Message: "Local library scan " + result.Status, Detail: runSummary,
 	}); err != nil {
 		return err
@@ -311,11 +283,56 @@ func (s *Server) finishQueuedLocalScanJob(ctx context.Context, job workflowJobRe
 	return tx.Commit()
 }
 
+func (s *Server) queueLocalScanMetadataFollowUp(ctx context.Context, sourceRunID int64) {
+	result, coalesced, err := s.enqueueDLsiteMetadataSyncFollowUp(ctx, sourceRunID)
+	if err != nil {
+		slog.Error("queue local scan metadata follow-up", "source_run_id", sourceRunID, "error", err)
+		_ = s.recordWorkflowRunEvent(ctx, sourceRunID, "warning", "local_library_scan.follow_up_failed", "Metadata sync follow-up could not be queued.", map[string]any{
+			"follow_up_requested": true,
+		})
+		return
+	}
+	_ = s.recordWorkflowRunEvent(ctx, sourceRunID, "info", "local_library_scan.follow_up_queued", "Metadata sync follow-up queued.", map[string]any{
+		"metadata_run_id": result.RunID,
+		"coalesced":       coalesced,
+	})
+}
+
 func (s *Server) enqueueDLsiteMetadataSync(ctx context.Context, triggerType string, triggerReason string) (metasync.DLsiteSyncResult, error) {
 	return s.enqueueDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, 0)
 }
 
 func (s *Server) enqueueDLsiteMetadataSyncWithTrigger(ctx context.Context, triggerType string, triggerReason string, triggerID int64) (metasync.DLsiteSyncResult, error) {
+	return s.enqueueDLsiteMetadataSyncWithInput(ctx, triggerType, triggerReason, triggerID, metadataSyncRunInput{})
+}
+
+func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRunID int64) (metasync.DLsiteSyncResult, bool, error) {
+	var result metasync.DLsiteSyncResult
+	err := s.db.QueryRowContext(ctx, `
+		SELECT run.id, job.id
+		FROM workflow_run AS run
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
+		WHERE run.workflow_code = 'metadata_sync'
+			AND run.status = 'queued'
+			AND job.worker_type = 'metadata_sync'
+			AND job.status = 'queued'
+		ORDER BY run.id ASC
+		LIMIT 1
+	`).Scan(&result.RunID, &result.JobID)
+	if err == nil {
+		result.Status = "queued"
+		result.ReviewCandidates = []metasync.DLsiteReviewCandidate{}
+		result.Failures = []string{}
+		return result, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return metasync.DLsiteSyncResult{}, false, err
+	}
+	result, err = s.enqueueDLsiteMetadataSyncWithInput(ctx, "follow_up", "local_scan_follow_up", 0, metadataSyncRunInput{SourceRunID: sourceRunID})
+	return result, false, err
+}
+
+func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, triggerType string, triggerReason string, triggerID int64, input metadataSyncRunInput) (metasync.DLsiteSyncResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err
@@ -330,7 +347,7 @@ func (s *Server) enqueueDLsiteMetadataSyncWithTrigger(ctx context.Context, trigg
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err
 	}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", "queued", triggerType, triggerReason, map[string]any{}, map[string]any{})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_sync", "Sync work metadata", "queued", triggerType, triggerReason, input, map[string]any{})
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err
 	}
@@ -353,7 +370,7 @@ func (s *Server) enqueueDLsiteMetadataSyncWithTrigger(ctx context.Context, trigg
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: selectNodeID, WorkerType: "metadata_sync", Status: "queued",
 		Priority: workflowJobPriorityForTrigger(triggerType), ResourceKey: "metadata:provider",
-		Payload: map[string]any{}, Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 3,
+		Payload: input, Checkpoint: map[string]any{"phase": "queued"}, Recoverable: true, MaxRetries: 3,
 	})
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err

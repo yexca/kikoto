@@ -1081,11 +1081,9 @@ export type LocalScanResult = {
   detectedWorks: number;
   scannedFiles: number;
   updatedLocations: number;
-  targetWorks: number;
-  syncedWorks: number;
-  skippedWorks: number;
-  failedWorks: number;
-  unavailableWorks: number;
+  skippedLocations: number;
+  followUpRun: boolean;
+  newWorkCodes: string[];
   failures: string[];
 };
 
@@ -2089,7 +2087,8 @@ export const api = {
   retryWorkflowRun: (id: number) => postJSON<WorkflowRunActionResult>(`/api/workflow-runs/${id}/retry`),
   reviewWorkflowRun: (id: number) => postJSON<WorkflowRun>(`/api/workflow-runs/${id}/review`),
   recoverStaleWorkflowRuns: () => postJSON<WorkflowRunActionResult>("/api/workflow-runs/recover-stale"),
-  runLocalScan: () => postJSON<LocalScanResult>("/api/workflow-runs/local-scan"),
+  runLocalScan: (payload: { followUpRun: boolean } = { followUpRun: false }) =>
+    postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
   runRemotePopularCollection: (payload: {
     action: "track" | "fetch";
     sourceId: number;

@@ -56,6 +56,9 @@ func TestFilesystemTriggerQueuesDebouncedDirectoryEvent(t *testing.T) {
 	if triggerType != "filesystem_event" || triggerReason != "data_directories_changed" || !strings.Contains(inputJSON, `"directory_event_at"`) || !strings.Contains(inputJSON, `"observed_directories":7`) {
 		t.Fatalf("filesystem run = type %q reason %q input %s", triggerType, triggerReason, inputJSON)
 	}
+	if strings.Contains(inputJSON, `"follow_up_run":true`) {
+		t.Fatalf("filesystem run unexpectedly enabled metadata follow-up: %s", inputJSON)
+	}
 }
 
 func TestFilesystemTriggerCoalescesChangeDuringActiveRun(t *testing.T) {

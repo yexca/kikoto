@@ -396,7 +396,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		}
 		migrations = append(migrations, filename)
 	}
-	if len(migrations) != 24 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" || migrations[18] != "019_local_scan_filesystem_trigger.sql" || migrations[19] != "020_filesystem_event_watcher.sql" || migrations[20] != "021_reconcile_work_party_provenance.sql" || migrations[21] != "022_user_work_playback_cursor.sql" || migrations[22] != "023_fetch_transfer_operations.sql" || migrations[23] != "024_remote_source_outbound_policy.sql" {
+	if len(migrations) != 25 || migrations[0] != "001_initial.sql" || migrations[1] != "002_v0_1_1.sql" || migrations[2] != "003_user_media_lyrics_preference.sql" || migrations[3] != "004_person_external_identity.sql" || migrations[4] != "005_workflow_event_cursor.sql" || migrations[5] != "006_file_source_work_url_template.sql" || migrations[6] != "007_fix_legacy_number178_source_type.sql" || migrations[7] != "008_work_code_alias.sql" || migrations[8] != "009_work_commercial_metadata.sql" || migrations[9] != "010_work_metadata_provider_state.sql" || migrations[10] != "011_recommendation_telemetry.sql" || migrations[11] != "012_media_video.sql" || migrations[12] != "013_media_video_backfill.sql" || migrations[13] != "014_workflow_job_priority.sql" || migrations[14] != "015_workflow_notification.sql" || migrations[15] != "016_workflow_job_resource.sql" || migrations[16] != "017_availability_watch.sql" || migrations[17] != "018_merge_startup_library_refresh.sql" || migrations[18] != "019_local_scan_filesystem_trigger.sql" || migrations[19] != "020_filesystem_event_watcher.sql" || migrations[20] != "021_reconcile_work_party_provenance.sql" || migrations[21] != "022_user_work_playback_cursor.sql" || migrations[22] != "023_fetch_transfer_operations.sql" || migrations[23] != "024_remote_source_outbound_policy.sql" || migrations[24] != "025_decouple_local_scan_metadata.sql" {
 		t.Fatalf("migrations = %v", migrations)
 	}
 	var localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount int
@@ -424,6 +424,27 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	}
 	if localScanDefinitionCount != 1 || startupRefreshDefinitionCount != 0 || localScanStartupCount != 1 || localScanFilesystemCount != 1 {
 		t.Fatalf("merged local scan definitions/triggers = %d/%d/%d/%d", localScanDefinitionCount, startupRefreshDefinitionCount, localScanStartupCount, localScanFilesystemCount)
+	}
+	var localScanNodeCount, localScanMetadataNodeCount, disabledFollowUpConfigCount int
+	if err := db.QueryRow(`
+		SELECT json_array_length(definition_json, '$.nodes'),
+			(SELECT COUNT(*) FROM json_each(definition_json, '$.nodes') WHERE json_extract(value, '$.id') = 'metadata')
+		FROM workflow_definition
+		WHERE code = 'local_library_scan'
+	`).Scan(&localScanNodeCount, &localScanMetadataNodeCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code = 'local_library_scan'
+			AND json_extract(trigger.config_json, '$.followUpRun') = 0
+	`).Scan(&disabledFollowUpConfigCount); err != nil {
+		t.Fatal(err)
+	}
+	if localScanNodeCount != 4 || localScanMetadataNodeCount != 0 || disabledFollowUpConfigCount != 2 {
+		t.Fatalf("decoupled local scan = nodes %d metadata nodes %d disabled follow-up configs %d", localScanNodeCount, localScanMetadataNodeCount, disabledFollowUpConfigCount)
 	}
 	var filesystemStateTableCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'filesystem_trigger_state'").Scan(&filesystemStateTableCount); err != nil {

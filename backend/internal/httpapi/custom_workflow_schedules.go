@@ -48,6 +48,10 @@ type systemWorkflowTriggerConfig struct {
 	TagNameTemplate string `json:"tagNameTemplate,omitempty"`
 }
 
+type localScanTriggerConfig struct {
+	FollowUpRun bool `json:"followUpRun"`
+}
+
 var workflowTagTemplateTokenPattern = regexp.MustCompile(`\{[a-z_]+\}`)
 
 func (s *Server) prepareWorkflowTrigger(ctx context.Context, actor currentUser, definition workflowDefinitionRecord, payload workflowTriggerPayload, now time.Time, existing *workflowTriggerRecord) (preparedWorkflowTrigger, error) {
@@ -114,7 +118,17 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 
 	requiredPermissions := []string{"workflows:run"}
 	switch definition.Code {
-	case "local_library_scan", "metadata_sync":
+	case "local_library_scan":
+		config, err := normalizeLocalScanTriggerConfig(payload.ConfigJSON)
+		if err != nil {
+			return preparedWorkflowTrigger{}, err
+		}
+		if payload.TriggerType == "filesystem_event" {
+			config.FollowUpRun = false
+		}
+		prepared.ConfigJSON = mustJSON(config)
+		requiredPermissions = append(requiredPermissions, "metadata:sync")
+	case "metadata_sync":
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
 	case "remote_popular_collection":
 		config, err := s.normalizeRemotePopularTriggerConfig(ctx, actor, payload.ConfigJSON, existing, now)
@@ -135,6 +149,17 @@ func (s *Server) prepareSystemWorkflowTrigger(ctx context.Context, actor current
 		return preparedWorkflowTrigger{}, fmt.Errorf("automated workflow requires permission %s", missing)
 	}
 	return prepared, nil
+}
+
+func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error) {
+	config := localScanTriggerConfig{}
+	if strings.TrimSpace(raw) == "" {
+		raw = "{}"
+	}
+	if err := decodeStrictJSON(raw, &config); err != nil {
+		return config, fmt.Errorf("local scan trigger config is invalid")
+	}
+	return config, nil
 }
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
@@ -503,7 +528,12 @@ func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition wo
 	var runErr error
 	switch definition.Code {
 	case "local_library_scan":
-		result, err := s.enqueueLocalScanWithTrigger(ctx, triggerType, triggerReason, trigger.ID)
+		config, err := normalizeLocalScanTriggerConfig(trigger.ConfigJSON)
+		if err != nil {
+			runErr = err
+			break
+		}
+		result, err := s.enqueueLocalScanWithOptions(ctx, triggerType, triggerReason, trigger.ID, config.FollowUpRun)
 		status, failures, runErr = result.Status, result.Failures, err
 	case "metadata_sync":
 		result, err := s.enqueueDLsiteMetadataSyncWithTrigger(ctx, triggerType, triggerReason, trigger.ID)

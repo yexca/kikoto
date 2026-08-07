@@ -87,9 +87,9 @@ const systemDefinitions = [
     id: 7,
     code: "local_library_scan",
     displayName: "Scan local library",
-    description: "Discover local works and synchronize missing metadata.",
+    description: "Discover local works and synchronize local source presence.",
     definitionJson:
-      '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"}]}',
+      '{"nodes":[{"id":"select","type":"select_local_source","displayName":"Select local source"},{"id":"discover","type":"discover_local_files","displayName":"Discover files"},{"id":"match","type":"match_works","displayName":"Match works"},{"id":"sync","type":"sync_file_locations","displayName":"Sync locations"}]}',
     scope: "system",
     editable: false,
     ownerUserId: null,
@@ -108,7 +108,7 @@ const workflowTriggers = [
     triggerType: "startup",
     enabled: true,
     scheduleJson: '{"type":"startup"}',
-    configJson: "{}",
+    configJson: '{"followUpRun":false}',
     nextRunAt: null,
     lastRunAt: null,
     lastSuccessAt: null,
@@ -124,7 +124,7 @@ const workflowTriggers = [
     triggerType: "filesystem_event",
     enabled: true,
     scheduleJson: '{"type":"filesystem_event"}',
-    configJson: "{}",
+    configJson: '{"followUpRun":false}',
     nextRunAt: null,
     lastRunAt: null,
     lastSuccessAt: null,
@@ -568,6 +568,61 @@ test("local scan exposes its fixed folder watcher without edit controls", async 
   await expect(page.getByText("Watching for folder changes", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Watch data folders", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add filesystem trigger", exact: true })).toHaveCount(0);
+});
+
+test("local scan follow-up is explicit and defaults off for manual and automatic runs", async ({ page }) => {
+  const manualPayloads: unknown[] = [];
+  const triggerPayloads: Array<Record<string, unknown>> = [];
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-runs/local-scan", async (route) => {
+    manualPayloads.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 202,
+      json: {
+        runId: 61,
+        jobId: 71,
+        fileSourceId: 0,
+        status: "queued",
+        detectedWorks: 0,
+        scannedFiles: 0,
+        updatedLocations: 0,
+        skippedLocations: 0,
+        followUpRun: (manualPayloads.at(-1) as { followUpRun: boolean }).followUpRun,
+        newWorkCodes: [],
+        failures: [],
+      },
+    });
+  });
+  await page.route("**/api/workflow-triggers/71", async (route) => {
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    triggerPayloads.push(payload);
+    await route.fulfill({
+      json: {
+        ...workflowTriggers[0],
+        configJson: payload.configJson,
+      },
+    });
+  });
+
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: /Scan local library/ }).click();
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const runDialog = page.getByRole("dialog", { name: "Configure local library scan" });
+  const manualFollowUp = runDialog.getByRole("switch", { name: "Follow-up run" });
+  await expect(manualFollowUp).toHaveAttribute("aria-checked", "false");
+  await manualFollowUp.click();
+  await runDialog.getByRole("button", { name: "Run scan" }).click();
+  await expect.poll(() => manualPayloads).toEqual([{ followUpRun: true }]);
+  await runDialog.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.getByRole("button", { name: "Edit Startup local library scan" }).click();
+  const triggerDialog = page.getByRole("dialog", { name: "Edit trigger" });
+  const triggerFollowUp = triggerDialog.getByRole("switch", { name: "Follow-up run" });
+  await expect(triggerFollowUp).toHaveAttribute("aria-checked", "false");
+  await triggerFollowUp.click();
+  await triggerDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => triggerPayloads).toHaveLength(1);
+  expect(JSON.parse(String(triggerPayloads[0].configJson))).toEqual({ followUpRun: true });
 });
 
 test("legacy custom definitions remain read-only while showing their linear connections", async ({ page }) => {

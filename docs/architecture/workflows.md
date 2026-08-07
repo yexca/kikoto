@@ -16,7 +16,7 @@ workflow_definition
 
 ## Current Built-In Workflows
 
-- Local library scan and missing metadata sync.
+- Local library scan.
 - Metadata sync.
 - Remote source sync.
 - Source availability check.
@@ -66,6 +66,15 @@ already queued or running, later changes remain pending and are coalesced into
 at most one follow-up run. Events while the trigger is paused are discarded.
 Changes made while Kikoto is stopped are covered by the default Startup scan;
 they cannot be recovered by the native event stream alone.
+
+Local scan and metadata sync have separate definitions, jobs, resource lanes,
+statuses, failures, review candidates, and retry histories. A local scan never
+calls a metadata provider as part of its own run. Manual, Startup, and interval
+scan configuration exposes `Follow-up run`; it defaults off and, when enabled,
+queues a separate `metadata_sync` run only after the scan reaches a terminal
+state. The fixed filesystem trigger keeps this option off. Queued automatic
+metadata follow-ups are coalesced so a burst of scans does not create redundant
+provider work.
 
 ## Queue Ordering
 

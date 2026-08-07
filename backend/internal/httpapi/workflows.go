@@ -217,13 +217,12 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
-		Description: "Discover local works, sync local source presence, and synchronize missing metadata.",
+		Description: "Discover local works and synchronize local source presence.",
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_local_source", "displayName": "Select local source"},
 			{"id": "discover", "type": "discover_local_files", "displayName": "Discover files"},
 			{"id": "match", "type": "match_works", "displayName": "Match works"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync locations"},
-			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
 		},
 	},
 	{
@@ -1564,7 +1563,17 @@ func (s *Server) retryWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 			return
 		}
-		result, err := s.enqueueLocalScan(r.Context(), "manual", "retry_run")
+		var payload localScanJobPayload
+		var inputJSON string
+		if err := s.db.QueryRowContext(r.Context(), "SELECT input_json FROM workflow_run WHERE id = ?", id).Scan(&inputJSON); err != nil {
+			writeError(w, err)
+			return
+		}
+		if err := json.Unmarshal([]byte(inputJSON), &payload); err != nil {
+			writeError(w, err)
+			return
+		}
+		result, err := s.enqueueLocalScanWithOptions(r.Context(), "manual", "retry_run", 0, payload.FollowUpRun)
 		if err != nil {
 			writeError(w, err)
 			return
