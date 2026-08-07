@@ -252,6 +252,8 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "title", label: "Title" },
 ];
 
+const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v3";
+
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
   return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random" ? value : "recent";
 }
@@ -441,7 +443,7 @@ export function LibraryPage() {
 			workId: work.id,
 			eventType,
 			contextId: context.id,
-			algorithmVersion: "heuristic-v2",
+			algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
 			seed: context.seed,
 			rank,
 			score: work.recommendScore,
@@ -501,7 +503,7 @@ export function LibraryPage() {
 				workId: work.id,
 				eventType: "impression",
 				contextId: context.id,
-				algorithmVersion: "heuristic-v2",
+				algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION,
 				seed: randomSeed,
 				rank: (page.page - 1) * page.pageSize + index + 1,
 				score: work.recommendScore,
@@ -847,7 +849,7 @@ export function LibraryPage() {
       );
       setSelectedWork((item) => (item?.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item));
 	  const work = worksRef.current.find((item) => item.id === workID);
-	  if (work && ["finished", "relisten", "paused"].includes(status)) {
+	  if (work && ["relisten", "paused"].includes(status)) {
 		recordWorkRecommendationEvent(work, status === "paused" ? "paused_mark" : "positive_mark");
 	  }
     } catch (error) {
@@ -1123,7 +1125,7 @@ export function LibraryPage() {
 	const reshuffle = () => {
 		const context = recommendationContextRef.current;
 		if (librarySort === "recommend" && context) {
-			recordRecommendationEvents([{ eventType: "reshuffle", contextId: context.id, algorithmVersion: "heuristic-v2", seed: context.seed }]);
+			recordRecommendationEvents([{ eventType: "reshuffle", contextId: context.id, algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION, seed: context.seed }]);
 		}
 		queueResultsScroll();
 		if (activeTab.kind === "source") updateRemoteSourceState(activeTab.source.id, { page: 1 });
@@ -2068,7 +2070,7 @@ function RecommendationExplanationModal({ state, onClose }: {
 	window.addEventListener("keydown", handleKeyDown);
 	return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-  const components = state.breakdown?.components.filter((component) => component.key === "state" || component.matchCount > 0 || component.contribution !== 0) ?? [];
+  const components = state.breakdown?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
   return (
 	<div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" onMouseDown={onClose}>
 	  <div className="w-full max-w-md overflow-hidden rounded-lg border bg-background shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -2083,7 +2085,11 @@ function RecommendationExplanationModal({ state, onClose }: {
 			<div className="text-sm text-destructive">{state.error}</div>
 		  ) : state.breakdown ? (
 			<>
-			  <div className="flex items-end justify-between gap-4 border-b pb-3"><div><div className="text-xs text-muted-foreground">Recommendation score</div><div className="text-3xl font-semibold">{state.breakdown.score}</div></div><Badge variant="outline">{state.breakdown.algorithmVersion}</Badge></div>
+			  <div className="flex items-end justify-between gap-4 border-b pb-3">
+				<div><div className="text-xs text-muted-foreground">Affinity score</div><div className="text-3xl font-semibold">{state.breakdown.score}</div></div>
+				<div className="flex flex-col items-end gap-1"><Badge variant="secondary">{recommendationLaneLabel(state.breakdown.lane)}</Badge><Badge variant="outline">{state.breakdown.algorithmVersion}</Badge></div>
+			  </div>
+			  <p className="text-xs text-muted-foreground">Listening state controls placement in the recommendation mix; affinity signals order works within that state.</p>
 			  <div className="space-y-2">
 				{components.map((component) => (
 				  <div key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm">
@@ -2099,6 +2105,23 @@ function RecommendationExplanationModal({ state, onClose }: {
 	  </div>
 	</div>
   );
+}
+
+function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {
+  switch (lane) {
+    case "listening":
+      return "Listening priority";
+    case "want":
+      return "Want priority";
+    case "relisten":
+      return "Relisten mix";
+    case "finished":
+      return "Finished mix";
+    case "shelved":
+      return "Shelved fallback";
+    default:
+      return "Unmarked discovery";
+  }
 }
 
 function libraryWorkCardView(work: Work, onUserTagOpen?: (tag: string) => void, showRecommendationScore = false): WorkCardViewModel {

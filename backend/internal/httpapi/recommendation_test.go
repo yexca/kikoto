@@ -87,9 +87,9 @@ func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
 		linkRecommendationTag(t, db, workID, tagID)
 		setRecommendationState(t, db, userID, workID, "paused", false)
 	}
-	likedID := insertRecommendationWork(t, db, "RJ09999207", "Finished")
+	likedID := insertRecommendationWork(t, db, "RJ00000014", "Relisten")
 	linkRecommendationTag(t, db, likedID, tagID)
-	setRecommendationState(t, db, userID, likedID, "finished", false)
+	setRecommendationState(t, db, userID, likedID, "relisten", false)
 
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
@@ -97,6 +97,23 @@ func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
 	}
 	if breakdown.Score != 40 || breakdown.Signals.PositiveTagMatches != 1 || breakdown.Signals.NegativeTagMatches != 0 {
 		t.Fatalf("positive override breakdown = %+v", breakdown)
+	}
+}
+
+func TestFinishedHistoryIsNeutralAffinityEvidence(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
+	finishedID := insertRecommendationWork(t, db, "RJ00000013", "Finished")
+	linkRecommendationTag(t, db, finishedID, tagID)
+	setRecommendationState(t, db, userID, finishedID, "finished", false)
+
+	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if breakdown.Score != 35 || breakdown.Signals.PositiveTagMatches != 0 || breakdown.Lane != "unmarked" {
+		t.Fatalf("finished history breakdown = %+v", breakdown)
 	}
 }
 
@@ -198,6 +215,13 @@ func TestRecommendationTelemetryRejectsArbitraryFieldsAndAggregates(t *testing.T
 	server.recordRecommendationEvents(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("record status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var algorithmVersion string
+	if err := db.QueryRow("SELECT algorithm_version FROM recommendation_event ORDER BY id DESC LIMIT 1").Scan(&algorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	if algorithmVersion != library.RecommendationAlgorithmVersion {
+		t.Fatalf("recorded algorithm version = %q, want %q", algorithmVersion, library.RecommendationAlgorithmVersion)
 	}
 
 	invalid := httptest.NewRequest(http.MethodPost, "/api/recommendation-events", strings.NewReader(`{"events":[{"workId":`+jsonInt(workID)+`,"eventType":"search","contextId":"private query"}]}`))

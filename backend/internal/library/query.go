@@ -682,7 +682,7 @@ func listSelectSQL(where string, sortKey string, direction string, randomSeed in
 	normalizedSort, _ := normalizeSort(sortKey, direction)
 	orderBy := listOrderBy(sortKey, direction, randomSeed, config)
 	if normalizedSort == "recommend" {
-		return `SELECT id, primary_code, title, age_rating, rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free, created_at, track_count, available_locations, available_location_types, source_presence, snapshot_json, party_link, listening_status, favorite, recommend_score FROM (` + listBaseSelectSQLWithConfig(where, true, config) + `) AS library_rows ORDER BY ` + orderBy
+		return recommendationListSelectSQL(listBaseSelectSQLWithConfig(where, true, config), direction, randomSeed, config)
 	}
 	return listBaseSelectSQLWithConfig(where, includeRecommendation, config) + " ORDER BY " + orderBy
 }

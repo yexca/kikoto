@@ -38,10 +38,15 @@ The Library is the main browsing surface for works.
 - Defaults new Library views to personalized recommendation ordering while
   preserving history/session-restored browse choices. Canonical URLs retain
   only the query and non-default listening status; legacy explicit browse
-  parameters remain readable. Recommendation
-  scores use bounded personal listening, favorite, tag, voice, and circle
-  signals without treating the candidate itself as taste history. Equal-score
-  works use the same stable browse seed for pagination-safe variety, and the
+  parameters remain readable. Recommendation placement separates listening
+  intent from affinity: Listening and Want receive leading slots, Unmarked
+  remains the primary discovery pool, Relisten and Finished receive bounded
+  insertions, and Shelved waits until scheduled states are exhausted. Explicit
+  status filters still return every matching work. Within each state, a bounded
+  affinity score uses favorite, tag, voice, and circle signals without treating
+  the candidate itself as taste history. Relisten and favorite history are
+  positive evidence; Finished alone is neutral. The same stable browse seed
+  keeps both state mixing and within-state variety pagination-safe, and the
   toolbar refresh action creates a new recommendation seed.
 - Shows a compact, horizontally scrollable recently-played strip above the
   Library controls. It is ordered per user from the one cursor owned by each

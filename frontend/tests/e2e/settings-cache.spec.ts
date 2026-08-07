@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const recommendationDefaults = {
-  nonePrior: 35,
-  wantPrior: 20,
-  listeningPrior: 12,
-  finishedPrior: 0,
-  relistenPrior: 10,
-  pausedPrior: -50,
+  affinityBase: 35,
+  unmarkedSlots: 12,
+  wantSlots: 4,
+  listeningSlots: 4,
+  finishedSlots: 2,
+  relistenSlots: 2,
+  shelvedSlots: 0,
   tagWeight: 5,
   tagCap: 25,
   voiceWeight: 10,
@@ -439,6 +440,8 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await expect(page.getByLabel("Result variation")).toHaveValue("8");
   await page.getByText("Advanced scoring", { exact: true }).click();
+  await expect(page.getByLabel("Unmarked")).toHaveValue("16");
+  await expect(page.getByRole("spinbutton", { name: "Shelved", exact: true })).toHaveValue("0");
   await expect(page.getByLabel("Positive tag weight")).toBeVisible();
   await page.getByRole("button", { name: "Save recommendation settings" }).click();
   await expect.poll(() => settingsPayloads.length).toBe(1);

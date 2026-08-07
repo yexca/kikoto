@@ -1020,13 +1020,13 @@ function MetadataSettings({
 
 type RecommendationConfigKey = keyof RecommendationConfig;
 
-const recommendationStateFields: Array<{ key: RecommendationConfigKey; label: string }> = [
-  { key: "nonePrior", label: "Unmarked" },
-  { key: "wantPrior", label: "Want" },
-  { key: "listeningPrior", label: "Listening" },
-  { key: "finishedPrior", label: "Finished" },
-  { key: "relistenPrior", label: "Relisten" },
-  { key: "pausedPrior", label: "Shelved" },
+const recommendationLaneFields: Array<{ key: RecommendationConfigKey; label: string; min: number }> = [
+  { key: "unmarkedSlots", label: "Unmarked", min: 1 },
+  { key: "listeningSlots", label: "Listening", min: 0 },
+  { key: "wantSlots", label: "Want", min: 0 },
+  { key: "relistenSlots", label: "Relisten", min: 0 },
+  { key: "finishedSlots", label: "Finished", min: 0 },
+  { key: "shelvedSlots", label: "Shelved", min: 0 },
 ];
 
 const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
@@ -1087,7 +1087,7 @@ function RecommendationSettings({
     ? recommendationPresetOptions.find((preset) => recommendationConfigsEqual(config, recommendationPresetConfig(defaults, preset.key)))?.key ?? "custom"
     : "custom";
   const exampleScore = Math.max(0, Math.min(100,
-    config.nonePrior
+    config.affinityBase
     + Math.min(config.tagCap, config.tagWeight)
     + Math.min(config.voiceCap, config.voiceWeight)
     + Math.min(config.circleCap, config.circleWeight),
@@ -1152,13 +1152,17 @@ function RecommendationSettings({
           <details className="rounded-md border bg-background">
             <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Advanced scoring</summary>
             <div className="space-y-5 border-t p-4">
-              <RecommendationFieldGroup title="Listening state base score">
-                {recommendationStateFields.map((field) => (
-                  <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={-100} max={100} onChange={(value) => updateField(field.key, value)} />
+              <RecommendationFieldGroup title="Recommended mix slots">
+                {recommendationLaneFields.map((field) => (
+                  <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={field.min} max={100} onChange={(value) => updateField(field.key, value)} />
                 ))}
+                <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
+                  Listening and Want receive the leading slots, Unmarked remains the discovery pool, and zero-slot states wait until scheduled states are exhausted. Explicit status filters still show every matching work.
+                </p>
               </RecommendationFieldGroup>
 
               <RecommendationFieldGroup title="Positive affinity per match and cap">
+                <RecommendationNumberField label="Affinity baseline" value={config.affinityBase} defaultValue={defaults?.affinityBase} min={0} max={100} onChange={(value) => updateField("affinityBase", value)} />
                 {recommendationPositiveFields.map((field) => (
                   <RecommendationNumberField key={field.key} label={field.label} value={config[field.key]} defaultValue={defaults?.[field.key]} min={0} max={field.max} onChange={(value) => updateField(field.key, value)} />
                 ))}
@@ -1199,7 +1203,7 @@ function RecommendationSettings({
           </div>
           <div>
             <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-              <span className="font-medium">Impression scores</span>
+              <span className="font-medium">Impression affinity scores</span>
               <span className="text-muted-foreground">{telemetry ? `${telemetry.windowDays} days` : "Unavailable"}</span>
             </div>
             <div className="space-y-2">
@@ -1283,9 +1287,9 @@ function recommendationPresetConfig(defaults: RecommendationConfig, preset: Reco
   case "familiar":
     return { ...defaults, tagWeight: 7, tagCap: 35, voiceWeight: 13, voiceCap: 30, circleWeight: 20, circleCap: 25, jitterAmplitude: 1 };
   case "exploratory":
-    return { ...defaults, nonePrior: 45, tagWeight: 3, tagCap: 15, voiceWeight: 6, voiceCap: 15, circleWeight: 8, circleCap: 10, jitterAmplitude: 8 };
+    return { ...defaults, unmarkedSlots: 16, listeningSlots: 3, wantSlots: 3, relistenSlots: 1, finishedSlots: 1, tagWeight: 3, tagCap: 15, voiceWeight: 6, voiceCap: 15, circleWeight: 8, circleCap: 10, jitterAmplitude: 8 };
   case "avoid_shelved":
-    return { ...defaults, pausedPrior: -70, negativeTagWeight: 4, negativeTagCap: 10, negativeVoiceWeight: 5, negativeVoiceCap: 10, negativeCircleWeight: 8, negativeCircleCap: 10, negativeTotalCap: 25 };
+    return { ...defaults, shelvedSlots: 0, negativeTagWeight: 4, negativeTagCap: 10, negativeVoiceWeight: 5, negativeVoiceCap: 10, negativeCircleWeight: 8, negativeCircleCap: 10, negativeTotalCap: 25 };
   default:
     return { ...defaults };
   }

@@ -35,12 +35,13 @@ export type Work = {
 };
 
 export type RecommendationConfig = {
-  nonePrior: number;
-  wantPrior: number;
-  listeningPrior: number;
-  finishedPrior: number;
-  relistenPrior: number;
-  pausedPrior: number;
+  affinityBase: number;
+  unmarkedSlots: number;
+  wantSlots: number;
+  listeningSlots: number;
+  finishedSlots: number;
+  relistenSlots: number;
+  shelvedSlots: number;
   tagWeight: number;
   tagCap: number;
   voiceWeight: number;
@@ -61,6 +62,7 @@ export type RecommendationConfig = {
 
 export type RecommendationBreakdown = {
   algorithmVersion: string;
+  lane: "unmarked" | "want" | "listening" | "finished" | "relisten" | "shelved";
   score: number;
   rawScore: number;
   signals: {

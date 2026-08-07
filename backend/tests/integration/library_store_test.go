@@ -335,8 +335,22 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candidateScore != 40 || likedScore != 10 {
-		t.Fatalf("recommend scores = candidate %d liked %d, want 40 and 10", candidateScore, likedScore)
+	if candidateScore != 40 || likedScore != 35 {
+		t.Fatalf("recommend scores = candidate %d liked %d, want affinity 40 and 35", candidateScore, likedScore)
+	}
+}
+
+func TestRecommendationConfigLoadsV3LaneDefaultsAndLegacyAffinity(t *testing.T) {
+	db := openMigratedTestDB(t, "recommend-config-upgrade.db")
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', '{"nonePrior":45,"wantPrior":20,"tagWeight":7,"jitterAmplitude":8}')`); err != nil {
+		t.Fatal(err)
+	}
+	config := library.NewStore(db).LoadRecommendationConfig(context.Background())
+	if config.UnmarkedSlots != 12 || config.ListeningSlots != 4 || config.WantSlots != 4 || config.RelistenSlots != 2 || config.FinishedSlots != 2 || config.ShelvedSlots != 0 {
+		t.Fatalf("upgraded recommendation slots = %+v", config)
+	}
+	if config.AffinityBase != 45 || config.TagWeight != 7 || config.JitterAmplitude != 8 {
+		t.Fatalf("upgraded recommendation affinity = %+v", config)
 	}
 }
 
@@ -424,8 +438,92 @@ func TestRecommendationScoreDoesNotUseCandidateAsItsOwnTasteHistory(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if score != 20 {
-		t.Fatalf("self-only recommendation score = %d, want relisten 10 + favorite 10", score)
+	if score != 45 {
+		t.Fatalf("self-only recommendation score = %d, want baseline 35 + favorite 10", score)
+	}
+}
+
+func TestStoreListPageRecommendSortMixesLifecycleLanes(t *testing.T) {
+	db := openMigratedTestDB(t, "recommend-lanes.db")
+	userResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('lane-user', 'Lane User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, _ := userResult.LastInsertId()
+	fixtures := []struct {
+		status string
+		count  int
+	}{
+		{status: "none", count: 12},
+		{status: "listening", count: 4},
+		{status: "want_to_listen", count: 4},
+		{status: "relisten", count: 2},
+		{status: "finished", count: 2},
+		{status: "paused", count: 3},
+	}
+	workNumber := 0
+	for _, fixture := range fixtures {
+		for range fixture.count {
+			code := fmt.Sprintf("RJ%08d", workNumber)
+			result, insertErr := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", code, "Synthetic recommendation work")
+			if insertErr != nil {
+				t.Fatal(insertErr)
+			}
+			workID, _ := result.LastInsertId()
+			if fixture.status != "none" {
+				if _, insertErr := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, ?)", userID, workID, fixture.status); insertErr != nil {
+					t.Fatal(insertErr)
+				}
+			}
+			workNumber++
+		}
+	}
+
+	store := library.NewStore(db)
+	page, err := store.ListPage(context.Background(), library.ListOptions{
+		UserID: userID, Page: 1, PageSize: 24, Sort: "recommend", Direction: "desc", RandomSeed: 17,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Works) != 24 {
+		t.Fatalf("first recommendation page has %d works, want 24", len(page.Works))
+	}
+	if page.Works[0].ListeningStatus != "listening" || page.Works[1].ListeningStatus != "want_to_listen" {
+		t.Fatalf("leading recommendation lanes = %q, %q; want listening, want_to_listen", page.Works[0].ListeningStatus, page.Works[1].ListeningStatus)
+	}
+	counts := map[string]int{}
+	for _, work := range page.Works {
+		counts[work.ListeningStatus]++
+	}
+	wantCounts := map[string]int{"none": 12, "listening": 4, "want_to_listen": 4, "relisten": 2, "finished": 2}
+	if fmt.Sprint(counts) != fmt.Sprint(wantCounts) {
+		t.Fatalf("first recommendation page lane counts = %v, want %v", counts, wantCounts)
+	}
+
+	fallback, err := store.ListPage(context.Background(), library.ListOptions{
+		UserID: userID, Page: 2, PageSize: 24, Sort: "recommend", Direction: "desc", RandomSeed: 17,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fallback.Works) != 3 {
+		t.Fatalf("fallback page has %d works, want 3 shelved works", len(fallback.Works))
+	}
+	for _, work := range fallback.Works {
+		if work.ListeningStatus != "paused" {
+			t.Fatalf("fallback recommendation status = %q, want paused", work.ListeningStatus)
+		}
+	}
+
+	filtered, err := store.ListPage(context.Background(), library.ListOptions{
+		UserID: userID, Page: 1, PageSize: 24, Status: "paused", Sort: "recommend", Direction: "desc", RandomSeed: 17,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Total != 3 || len(filtered.Works) != 3 {
+		t.Fatalf("explicit shelved filter returned total %d and %d works, want 3 and 3", filtered.Total, len(filtered.Works))
 	}
 }
 
