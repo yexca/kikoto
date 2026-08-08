@@ -44,44 +44,44 @@
 
 @layer base {
   :root {
-    --background: 42 24% 96%;
-    --foreground: 222 24% 12%;
+    --background: 220 18% 97%;
+    --foreground: 222 20% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 222 24% 12%;
+    --card-foreground: 222 20% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 24% 12%;
-    --primary: 342 62% 46%;
-    --primary-foreground: 350 42% 98%;
-    --secondary: 344 42% 93%;
-    --secondary-foreground: 340 32% 25%;
-    --muted: 36 18% 91%;
-    --muted-foreground: 222 9% 45%;
-    --accent: 352 78% 88%;
-    --accent-foreground: 342 42% 24%;
+    --popover-foreground: 222 20% 13%;
+    --primary: 223 67% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 92%;
+    --secondary-foreground: 222 18% 24%;
+    --muted: 220 15% 94%;
+    --muted-foreground: 220 9% 43%;
+    --accent: 220 16% 90%;
+    --accent-foreground: 222 18% 20%;
     --destructive: 0 65% 47%;
     --destructive-foreground: 0 0% 100%;
-    --success: 151 55% 34%;
-    --success-foreground: 151 57% 22%;
-    --success-surface: 148 44% 94%;
-    --success-border: 150 35% 69%;
-    --warning: 35 88% 38%;
-    --warning-foreground: 31 72% 24%;
-    --warning-surface: 42 78% 93%;
-    --warning-border: 38 57% 67%;
-    --info: 213 72% 44%;
-    --info-foreground: 216 62% 29%;
-    --info-surface: 211 70% 95%;
-    --info-border: 213 50% 73%;
-    --error: 0 68% 46%;
-    --error-foreground: 0 64% 34%;
-    --error-surface: 0 75% 96%;
-    --error-border: 0 50% 75%;
-    --border: 220 14% 86%;
-    --input: 220 14% 86%;
-    --ring: 342 62% 58%;
-    --workflow-shell: 220 20% 94%;
-    --workflow-canvas: 216 18% 89%;
-    --workflow-grid: 220 10% 68%;
+    --success: 145 58% 34%;
+    --success-foreground: 145 62% 24%;
+    --success-surface: 142 48% 94%;
+    --success-border: 144 38% 72%;
+    --warning: 38 92% 38%;
+    --warning-foreground: 32 74% 25%;
+    --warning-surface: 43 82% 93%;
+    --warning-border: 39 58% 67%;
+    --info: 194 78% 38%;
+    --info-foreground: 195 75% 25%;
+    --info-surface: 192 70% 94%;
+    --info-border: 193 47% 69%;
+    --error: 3 72% 46%;
+    --error-foreground: 2 67% 33%;
+    --error-surface: 3 75% 96%;
+    --error-border: 3 53% 74%;
+    --border: 220 13% 85%;
+    --input: 220 13% 82%;
+    --ring: 223 74% 57%;
+    --workflow-shell: 220 20% 95%;
+    --workflow-canvas: 220 17% 90%;
+    --workflow-grid: 220 10% 65%;
     --radius: 0.5rem;
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
@@ -97,84 +97,68 @@
   }
 
   .dark {
-    --background: 225 20% 8%;
-    --foreground: 38 22% 91%;
-    --card: 225 18% 11%;
-    --card-foreground: 38 22% 91%;
-    --popover: 225 18% 13%;
-    --popover-foreground: 38 22% 91%;
-    --primary: 342 84% 72%;
-    --primary-foreground: 338 34% 10%;
-    --secondary: 338 22% 19%;
-    --secondary-foreground: 344 42% 88%;
-    --muted: 224 13% 16%;
-    --muted-foreground: 220 8% 62%;
-    --accent: 326 58% 62%;
-    --accent-foreground: 330 30% 9%;
+    --background: 220 17% 7%;
+    --foreground: 220 14% 92%;
+    --card: 220 16% 11%;
+    --card-foreground: 220 14% 92%;
+    --popover: 220 16% 13%;
+    --popover-foreground: 220 14% 92%;
+    --primary: 223 100% 75%;
+    --primary-foreground: 223 45% 12%;
+    --secondary: 220 14% 18%;
+    --secondary-foreground: 220 14% 88%;
+    --muted: 220 13% 16%;
+    --muted-foreground: 220 9% 64%;
+    --accent: 220 13% 22%;
+    --accent-foreground: 220 14% 92%;
     --destructive: 0 62% 52%;
     --destructive-foreground: 0 0% 100%;
-    --success: 151 55% 62%;
-    --success-foreground: 148 58% 82%;
-    --success-surface: 151 35% 15%;
-    --success-border: 151 38% 36%;
-    --warning: 42 90% 65%;
-    --warning-foreground: 43 87% 82%;
-    --warning-surface: 36 42% 15%;
-    --warning-border: 39 54% 38%;
-    --info: 211 85% 70%;
-    --info-foreground: 210 84% 84%;
-    --info-surface: 216 40% 16%;
-    --info-border: 213 48% 39%;
-    --error: 0 75% 68%;
-    --error-foreground: 0 80% 85%;
-    --error-surface: 0 40% 16%;
-    --error-border: 0 50% 41%;
-    --border: 224 12% 24%;
-    --input: 224 12% 24%;
-    --ring: 342 84% 72%;
-    --workflow-shell: 225 15% 14%;
-    --workflow-canvas: 222 13% 18%;
+    --success: 145 64% 62%;
+    --success-foreground: 144 66% 82%;
+    --success-surface: 145 36% 15%;
+    --success-border: 145 40% 38%;
+    --warning: 42 92% 65%;
+    --warning-foreground: 43 88% 82%;
+    --warning-surface: 39 41% 15%;
+    --warning-border: 40 58% 38%;
+    --info: 191 80% 65%;
+    --info-foreground: 191 79% 84%;
+    --info-surface: 195 40% 16%;
+    --info-border: 193 48% 39%;
+    --error: 3 80% 68%;
+    --error-foreground: 3 85% 86%;
+    --error-surface: 3 42% 16%;
+    --error-border: 3 53% 42%;
+    --border: 220 12% 25%;
+    --input: 220 12% 25%;
+    --ring: 223 100% 75%;
+    --workflow-shell: 220 16% 13%;
+    --workflow-canvas: 220 14% 17%;
     --workflow-grid: 220 9% 36%;
   }
 
-  :root[data-theme-accent="blue"] {
-    --primary: 213 72% 45%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 214 55% 92%;
-    --secondary-foreground: 216 42% 25%;
-    --accent: 207 78% 87%;
-    --accent-foreground: 214 48% 23%;
-    --ring: 213 72% 55%;
+  :root[data-theme-accent="pink"] {
+    --primary: 326 58% 45%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 326 63% 55%;
   }
 
-  .dark[data-theme-accent="blue"] {
-    --primary: 211 86% 70%;
-    --primary-foreground: 218 40% 10%;
-    --secondary: 214 32% 20%;
-    --secondary-foreground: 212 54% 90%;
-    --accent: 209 65% 62%;
-    --accent-foreground: 216 40% 9%;
-    --ring: 211 86% 70%;
+  .dark[data-theme-accent="pink"] {
+    --primary: 326 77% 74%;
+    --primary-foreground: 326 45% 11%;
+    --ring: 326 77% 74%;
   }
 
   :root[data-theme-accent="green"] {
-    --primary: 151 54% 35%;
-    --primary-foreground: 150 40% 98%;
-    --secondary: 148 38% 91%;
-    --secondary-foreground: 151 38% 22%;
-    --accent: 142 52% 85%;
-    --accent-foreground: 151 46% 20%;
-    --ring: 151 54% 45%;
+    --primary: 164 62% 31%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 164 62% 41%;
   }
 
   .dark[data-theme-accent="green"] {
-    --primary: 151 52% 62%;
-    --primary-foreground: 155 42% 9%;
-    --secondary: 151 25% 18%;
-    --secondary-foreground: 150 40% 88%;
-    --accent: 138 46% 52%;
-    --accent-foreground: 150 35% 8%;
-    --ring: 151 52% 62%;
+    --primary: 164 58% 63%;
+    --primary-foreground: 164 44% 10%;
+    --ring: 164 58% 63%;
   }
 
   * {

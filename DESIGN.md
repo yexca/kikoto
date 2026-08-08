@@ -23,8 +23,8 @@ convergence; they do not claim that every legacy surface already complies.
 
 Current implemented direction:
 
-- Warm neutral background.
-- Pink accent by default, with user-selectable blue and green alternatives.
+- Neutral graphite surfaces in both light and dark modes.
+- Cobalt blue accent by default, with user-selectable pink and green alternatives.
 - Clear borders.
 - Minimal shadows.
 - 8px radius.
@@ -58,6 +58,11 @@ Status color communicates state, not source identity. Configured source names
 remain low emphasis; green, amber, and red describe available, degraded, and
 unavailable states consistently across sources. New shared roles must be added
 to the token contract before pages use them.
+
+Accent preferences change primary actions, selected states, and focus rings.
+Secondary, muted, and general hover surfaces remain neutral. Semantic feedback
+does not follow the accent preference: cyan is info, green is success, amber is
+warning, and red is error or destructive intent.
 
 Interactive controls use one state language across management and listening
 surfaces: visible hover on fine pointers, pressed feedback on every input type,

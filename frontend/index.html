@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#b32d57" />
+    <meta name="theme-color" content="#f5f6f8" />
     <meta name="application-name" content="Kikoto" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -14,17 +14,13 @@
       (() => {
         const mode = localStorage.getItem("kikoto:theme") || "system";
         const storedAccent = localStorage.getItem("kikoto:theme-accent");
-        const accent = storedAccent === "blue" || storedAccent === "green" ? storedAccent : "pink";
+        const accent =
+          storedAccent === "pink" || storedAccent === "blue" || storedAccent === "green" ? storedAccent : "blue";
         const dark =
           mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.dataset.themeAccent = accent;
-        const themeColors = {
-          pink: { light: "#b32d57", dark: "#f47ca0" },
-          blue: { light: "#2069c8", dark: "#6da9f7" },
-          green: { light: "#29905b", dark: "#62da94" },
-        };
-        document.querySelector('meta[name="theme-color"]').content = themeColors[accent][dark ? "dark" : "light"];
+        document.querySelector('meta[name="theme-color"]').content = dark ? "#0f1115" : "#f5f6f8";
       })();
     </script>
     <title>Kikoto</title>

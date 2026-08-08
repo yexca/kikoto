@@ -8,6 +8,7 @@ import {
   getStoredThemeMode,
   storeThemeAccent,
   storeThemeMode,
+  THEME_ACCENT_OPTIONS,
   THEME_ACCENT_CHANGE_EVENT,
   THEME_CHANGE_EVENT,
   type ThemeAccent,
@@ -269,16 +270,10 @@ export function SettingsPage({
   );
 }
 
-const accentOptions: Array<{ value: ThemeAccent; label: string; swatch: string }> = [
-  { value: "pink", label: "Pink", swatch: "bg-[#d94f7b]" },
-  { value: "blue", label: "Blue", swatch: "bg-[#347fd8]" },
-  { value: "green", label: "Green", swatch: "bg-[#349866]" },
-];
-
 function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: (accent: ThemeAccent) => void }) {
   return (
     <div className="flex flex-wrap gap-2" aria-label="Accent color">
-      {accentOptions.map((option) => (
+      {THEME_ACCENT_OPTIONS.map((option) => (
         <button
           key={option.value}
           type="button"
@@ -287,7 +282,8 @@ function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: 
           onClick={() => onChange(option.value)}
         >
           <span
-            className={`h-4 w-4 rounded-full border border-black/10 shadow-sm ${option.swatch}`}
+            className="h-4 w-4 rounded-full border border-black/10 shadow-sm"
+            style={{ backgroundColor: option.swatch }}
             aria-hidden="true"
           />
           {option.label}

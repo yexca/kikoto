@@ -41,6 +41,7 @@ import {
   resolvedThemeMode,
   storeThemeAccent,
   storeThemeMode,
+  THEME_ACCENT_OPTIONS,
   THEME_ACCENT_CHANGE_EVENT,
   THEME_CHANGE_EVENT,
   type ThemeAccent,
@@ -873,12 +874,6 @@ function ThemeItem({
   );
 }
 
-const headerAccentOptions: Array<{ value: ThemeAccent; label: string; swatch: string }> = [
-  { value: "pink", label: "Pink", swatch: "bg-[#d94f7b]" },
-  { value: "blue", label: "Blue", swatch: "bg-[#347fd8]" },
-  { value: "green", label: "Green", swatch: "bg-[#349866]" },
-];
-
 function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: (accent: ThemeAccent) => void }) {
   return (
     <div>
@@ -887,7 +882,7 @@ function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: 
         Accent
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {headerAccentOptions.map((option) => (
+        {THEME_ACCENT_OPTIONS.map((option) => (
           <button
             key={option.value}
             className={`grid h-9 place-items-center rounded-md border transition-[background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95 motion-reduce:active:scale-100 ${value === option.value ? "border-primary bg-primary/10 ring-1 ring-primary/20" : "bg-background"}`}
@@ -897,7 +892,8 @@ function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: 
             onClick={() => onChange(option.value)}
           >
             <span
-              className={`h-4 w-4 rounded-full border border-black/10 shadow-sm ${option.swatch}`}
+              className="h-4 w-4 rounded-full border border-black/10 shadow-sm"
+              style={{ backgroundColor: option.swatch }}
               aria-hidden="true"
             />
           </button>
