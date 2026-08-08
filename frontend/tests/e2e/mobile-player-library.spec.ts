@@ -462,6 +462,7 @@ async function mockRemoteSource(
   onRemoteRequest: (url: URL) => void,
   options: {
     conflict?: boolean;
+    fetchRootConflict?: boolean;
     persisted?: boolean;
     authenticated?: boolean;
     onFetchPlan?: (body: Record<string, unknown>) => void;
@@ -909,12 +910,22 @@ async function mockRemoteSource(
       options.onFetchPlan?.(requestBody as Record<string, unknown>);
       const decision = requestBody.decisions?.[0];
       const unresolvedConflict = Boolean(options.conflict && (!decision?.resolution || decision.resolution === "auto"));
+      const fetchRootConflict = Boolean(options.fetchRootConflict);
       const keepBoth = decision?.resolution === "keep_both";
       await route.fulfill({
         json: {
           sourceId: 1,
           primaryCode: "RJ09999991",
           saveRoot: "example_remote/RJ/015/RJ09999991",
+          fetchRoot: fetchRootConflict
+            ? {
+                rootPath: "example_remote",
+                status: "conflict",
+                conflict: true,
+                message:
+                  "This Fetch folder already exists and is not managed by Kikoto. Do not use it for manually managed works.",
+              }
+            : { rootPath: "example_remote", status: "ready", conflict: false, message: "" },
           localFiles: [{ mediaItemId: 2, path: "Existing/RJ09999991/local.txt", sizeBytes: 4, available: true }],
           items: [
             {
@@ -961,7 +972,7 @@ async function mockRemoteSource(
             cacheHit: 0,
             cacheDownload: unresolvedConflict ? 0 : 1,
             promote: unresolvedConflict ? 0 : 1,
-            conflict: unresolvedConflict ? 1 : 0,
+            conflict: (unresolvedConflict ? 1 : 0) + (fetchRootConflict ? 1 : 0),
           },
           preparation: {
             requestedCode: "RJ09999991",
@@ -1261,6 +1272,19 @@ test("mobile Fetch resolves conflicts and selects a source per file before publi
     .toBe(true);
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await expect(page.getByText("track (mirror).mp3", { exact: true })).toBeVisible();
+});
+
+test("mobile Fetch reviews an unclaimed destination folder before publishing", async ({ page }) => {
+  await mockRemoteSource(page, () => undefined, { fetchRootConflict: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await page.getByTitle("Fetch").click();
+
+  const warning = page.getByRole("alert");
+  await expect(warning).toContainText("Fetch folder requires review");
+  await expect(warning).toContainText("example_remote");
+  await expect(warning).toContainText("Do not use it for manually managed works");
+  await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeDisabled();
 });
 
 test("local Delete builds a refreshed preview and requires two confirmations", async ({ page }) => {

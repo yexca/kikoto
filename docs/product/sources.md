@@ -16,6 +16,11 @@ Sources describe where files come from.
 - Remote sync imports metadata and source file trees into the unified database.
 - Remote cache materializes selected remote files under the cache root.
 - Remote fetch promotes selected remote files into the local data tree.
+- A compatible source using a source-separated save template claims its Fetch
+  root with a machine marker and a multilingual `README.md`. Its file changes
+  do not trigger the local folder watcher because Fetch registers publication
+  directly. A pre-existing non-empty root without a matching marker is shown as
+  a blocking Fetch review conflict and is never adopted automatically.
 - Cache and local deletion target concrete file locations, not the unified work.
   Mixed selections are submitted as one recoverable workflow; local deletion
   preserves work progress and listening marks.

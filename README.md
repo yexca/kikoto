@@ -127,6 +127,15 @@ non-overlapping candidate. Duplicate codes are retained for Activity review.
 Fetch transaction directories named `.kikoto-staging`, `.kikoto-backup`, and
 `.kikoto-trash` are excluded from discovery.
 
+For compatible remote sources using a source-separated save template, Kikoto
+claims a Fetch-managed root under `/data`. Fetch registers published files
+directly, so changes below a claimed Fetch root do not trigger the native folder
+watcher. Startup and manual scans still inspect the complete data tree. Kikoto
+writes a machine ownership marker and a multilingual `README.md` in each
+claimed root; store manually managed works elsewhere in the data directory. A
+non-empty, unclaimed directory at the same path blocks the first Fetch and
+appears in the Fetch review instead of being silently adopted.
+
 Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
 AAC. Video, image, text, and other files remain visible in the directory tree
 with their corresponding media kind when recognized.

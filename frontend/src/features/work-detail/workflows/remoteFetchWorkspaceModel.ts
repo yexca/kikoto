@@ -153,6 +153,7 @@ export function createDemoRemoteFetchPlan({
     sourceId: detail.sourceId,
     primaryCode: canonicalCode,
     saveRoot,
+    fetchRoot: { rootPath: "", status: "not_applicable", conflict: false, message: "" },
     localFiles: [],
     items,
     summary: {

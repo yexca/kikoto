@@ -153,6 +153,7 @@ function plan(code: string): RemoteWorkSavePlan {
     sourceId: 7,
     primaryCode: code,
     saveRoot: `/data/${code}`,
+    fetchRoot: { rootPath: "", status: "not_applicable", conflict: false, message: "" },
     localFiles: [],
     items: [],
     summary: { total: 0, skipExisting: 0, cacheHit: 0, cacheDownload: 0, promote: 0, conflict: 0 },

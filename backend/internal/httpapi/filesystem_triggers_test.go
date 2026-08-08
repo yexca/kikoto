@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -127,14 +129,58 @@ func TestFilesystemWatcherSessionRequestsReconfigureAfterScanDepthChange(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errC := make(chan error, 1)
+	watchConfig, err := server.loadFilesystemWatcherConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	go func() {
-		errC <- server.runFilesystemWatcherSession(ctx, watcher, 2, 20*time.Millisecond, 20*time.Millisecond)
+		errC <- server.runFilesystemWatcherSession(ctx, watcher, watchConfig, 20*time.Millisecond, 20*time.Millisecond)
 	}()
 	waitForFilesystemCondition(t, func() bool {
 		var count int
 		return db.QueryRow("SELECT watched_directory_count FROM filesystem_trigger_state LIMIT 1").Scan(&count) == nil && count == watcher.count
 	}, "watcher session did not become ready")
 	if _, err := db.Exec("INSERT INTO app_setting (key, value_json) VALUES ('local_scan_depth', '3') ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json"); err != nil {
+		t.Fatal(err)
+	}
+	server.notifyFilesystemTriggerConfigChanged()
+	select {
+	case err := <-errC:
+		if !errors.Is(err, errFilesystemWatcherReconfigure) {
+			t.Fatalf("watcher session error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("watcher session did not request reconfiguration")
+	}
+}
+
+func TestFilesystemWatcherSessionRequestsReconfigureAfterFetchRootClaim(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	if _, err := db.Exec(`INSERT INTO file_source (code, display_name, source_type, config_json) VALUES ('example_remote_a', 'Example Remote A', 'kikoeru_compatible', '{}')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	watcher := newFakeFilesystemWatcher(2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	watchConfig, err := server.loadFilesystemWatcherConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errC := make(chan error, 1)
+	go func() {
+		errC <- server.runFilesystemWatcherSession(ctx, watcher, watchConfig, 20*time.Millisecond, 20*time.Millisecond)
+	}()
+	waitForFilesystemCondition(t, func() bool {
+		var count int
+		return db.QueryRow("SELECT watched_directory_count FROM filesystem_trigger_state LIMIT 1").Scan(&count) == nil && count == watcher.count
+	}, "watcher session did not become ready")
+	root := filepath.Join(dataRoot, "example_remote_a")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := createRemoteFetchRootMarker(root, "example_remote_a"); err != nil {
 		t.Fatal(err)
 	}
 	server.notifyFilesystemTriggerConfigChanged()
@@ -244,8 +290,12 @@ func startFilesystemWatcherSession(t *testing.T, server *Server, watcher *fakeFi
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	errC := make(chan error, 1)
+	watchConfig, err := server.loadFilesystemWatcherConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	go func() {
-		errC <- server.runFilesystemWatcherSession(ctx, watcher, server.configuredLocalScanDepth(ctx), settleDelay, retryDelay)
+		errC <- server.runFilesystemWatcherSession(ctx, watcher, watchConfig, settleDelay, retryDelay)
 	}()
 	waitForFilesystemCondition(t, func() bool {
 		var count int

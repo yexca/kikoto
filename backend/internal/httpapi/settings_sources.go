@@ -458,6 +458,7 @@ type remoteWorkSavePlan struct {
 	SourceID    int64                     `json:"sourceId"`
 	PrimaryCode string                    `json:"primaryCode"`
 	SaveRoot    string                    `json:"saveRoot"`
+	FetchRoot   remoteFetchRootReview     `json:"fetchRoot"`
 	LocalFiles  []remoteWorkSaveLocalFile `json:"localFiles"`
 	Items       []remoteWorkSavePlanItem  `json:"items"`
 	Summary     remoteWorkSaveSummary     `json:"summary"`
@@ -640,7 +641,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if payload.RemoteSaveTemplate != nil {
 		value := strings.TrimSpace(*payload.RemoteSaveTemplate)
 		if value == "" {
-			value = "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"
+			value = defaultRemoteSaveRootTemplate
 		}
 		if err := upsertSetting(r, tx, "remote_save_root_template", value); err != nil {
 			writeError(w, err)
@@ -749,7 +750,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if payload.LocalScanDepth != nil {
+	if payload.LocalScanDepth != nil || payload.RemoteSaveTemplate != nil {
 		s.notifyFilesystemTriggerConfigChanged()
 	}
 	settings, err := s.loadAppSettings(r)
@@ -831,6 +832,7 @@ func (s *Server) createFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.notifyFilesystemTriggerConfigChanged()
 	source, err := s.loadFileSource(r, sourceID)
 	if err != nil {
 		writeError(w, err)
@@ -920,6 +922,7 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.notifyFilesystemTriggerConfigChanged()
 	s.invalidateRemoteWorkCache(id)
 	source, err := s.loadFileSource(r, id)
 	if err != nil {
@@ -951,6 +954,7 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
 		return
 	}
+	s.notifyFilesystemTriggerConfigChanged()
 	s.invalidateRemoteWorkCache(id)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -3629,6 +3633,9 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	}
 	validateResolvedFetchTargets(plan.Items)
 	plan.Summary = summarizeRemoteSavePlan(items)
+	if err := s.attachRemoteFetchRootReview(ctx, source, &plan); err != nil {
+		return remoteWorkSavePlan{}, err
+	}
 	return plan, nil
 }
 
@@ -3670,6 +3677,21 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
+	claimedRoot, err := s.ensureRemoteFetchRootClaim(ctx, source, plan.SaveRoot)
+	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if claimedRoot.Conflict {
+		if !plan.FetchRoot.Conflict {
+			plan.Summary.Conflict++
+		}
+		plan.FetchRoot = claimedRoot
+		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
+	}
+	if plan.FetchRoot.Status == "ready" {
+		s.notifyFilesystemTriggerConfigChanged()
+	}
+	plan.FetchRoot = claimedRoot
 	rawWork, _ := json.Marshal(remoteWork)
 	rawTracks, _ := json.Marshal(tracks)
 	localScanDepth := s.configuredLocalScanDepth(ctx)
@@ -4931,10 +4953,10 @@ func (s *Server) resolveKikoeruWork(ctx context.Context, client *kikoeru.Client,
 func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) string {
 	template := strings.TrimSpace(source.Config.SaveRootTemplate)
 	if template == "" {
-		template = s.settingStringContext(context.Background(), "remote_save_root_template", "/data/<source_name>/<code_prefix>/<code_group>/<work_code>")
+		template = s.settingStringContext(context.Background(), "remote_save_root_template", defaultRemoteSaveRootTemplate)
 	}
 	if template == "" {
-		template = "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"
+		template = defaultRemoteSaveRootTemplate
 	}
 	prefix, group := workCodeShard(workCode)
 	value := strings.ReplaceAll(template, "<source_name>", source.Code)
@@ -6430,7 +6452,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CacheLimitGB:              s.settingInt(r, "remote_cache_limit_gb", 20),
 		RemoteDownloadLimitGB:     int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
 		FetchStagingRetentionDays: s.configuredFetchStagingRetentionDays(r.Context()),
-		RemoteSaveTemplate:        s.settingString(r, "remote_save_root_template", "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"),
+		RemoteSaveTemplate:        s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),
 		RemoteDelayBase:           s.settingFloat(r, "remote_request_delay_base_seconds", 0.5),
 		RemoteDelayRandom:         s.settingFloat(r, "remote_request_delay_random_seconds", 1.5),
 		RemoteBackoff:             s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),

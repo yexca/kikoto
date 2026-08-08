@@ -25,6 +25,11 @@ type filesystemTriggerRecord struct {
 	LastErrorMessage string
 }
 
+type filesystemWatcherConfig struct {
+	ScanDepth     int
+	ExcludedRoots []string
+}
+
 type filesystemWatcher interface {
 	Changes() <-chan struct{}
 	Invalidated() <-chan struct{}
@@ -34,8 +39,7 @@ type filesystemWatcher interface {
 
 func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 	for {
-		scanDepth := s.configuredLocalScanDepth(ctx)
-		watcher, err := localfs.NewDirectoryWatcher(s.cfg.DataRoot, scanDepth)
+		watchConfig, err := s.loadFilesystemWatcherConfig(ctx)
 		if err != nil {
 			_ = s.recordFilesystemWatcherError(ctx, err)
 			if !waitForFilesystemTrigger(ctx, filesystemTriggerRetryDelay) {
@@ -43,7 +47,15 @@ func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 			}
 			continue
 		}
-		err = s.runFilesystemWatcherSession(ctx, watcher, scanDepth, filesystemTriggerSettleDelay, filesystemTriggerRetryDelay)
+		watcher, err := localfs.NewDirectoryWatcher(s.cfg.DataRoot, watchConfig.ScanDepth, watchConfig.ExcludedRoots...)
+		if err != nil {
+			_ = s.recordFilesystemWatcherError(ctx, err)
+			if !waitForFilesystemTrigger(ctx, filesystemTriggerRetryDelay) {
+				return
+			}
+			continue
+		}
+		err = s.runFilesystemWatcherSession(ctx, watcher, watchConfig, filesystemTriggerSettleDelay, filesystemTriggerRetryDelay)
 		_ = watcher.Close()
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
@@ -60,7 +72,7 @@ func (s *Server) runFilesystemTriggerCoordinator(ctx context.Context) {
 	}
 }
 
-func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesystemWatcher, scanDepth int, settleDelay, retryDelay time.Duration) error {
+func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesystemWatcher, watchConfig filesystemWatcherConfig, settleDelay, retryDelay time.Duration) error {
 	if err := s.recordFilesystemWatcherReady(ctx, watcher.WatchedDirectoryCount()); err != nil && !isDatabaseBusyError(err) {
 		return err
 	}
@@ -124,7 +136,11 @@ func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesy
 			lastEventAt = time.Now().UTC()
 			schedule(settleDelay)
 		case <-s.filesystemTriggerConfigChanged:
-			if s.configuredLocalScanDepth(ctx) != scanDepth {
+			nextConfig, err := s.loadFilesystemWatcherConfig(ctx)
+			if err != nil {
+				return err
+			}
+			if !sameFilesystemWatcherConfig(watchConfig, nextConfig) {
 				return errFilesystemWatcherReconfigure
 			}
 			trigger, ok, err := s.loadFixedFilesystemTrigger(ctx)
@@ -165,6 +181,26 @@ func (s *Server) runFilesystemWatcherSession(ctx context.Context, watcher filesy
 			}
 		}
 	}
+}
+
+func (s *Server) loadFilesystemWatcherConfig(ctx context.Context) (filesystemWatcherConfig, error) {
+	roots, err := s.configuredRemoteFetchWatchRoots(ctx)
+	if err != nil {
+		return filesystemWatcherConfig{}, err
+	}
+	return filesystemWatcherConfig{ScanDepth: s.configuredLocalScanDepth(ctx), ExcludedRoots: roots}, nil
+}
+
+func sameFilesystemWatcherConfig(left filesystemWatcherConfig, right filesystemWatcherConfig) bool {
+	if left.ScanDepth != right.ScanDepth || len(left.ExcludedRoots) != len(right.ExcludedRoots) {
+		return false
+	}
+	for index := range left.ExcludedRoots {
+		if !strings.EqualFold(left.ExcludedRoots[index], right.ExcludedRoots[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) dispatchFilesystemTriggeredLocalScan(ctx context.Context, watchedDirectories int, eventAt time.Time) (bool, bool, error) {

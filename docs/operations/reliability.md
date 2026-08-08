@@ -47,9 +47,10 @@
 - Workflow runs preserve structured status and error context.
 - The local folder watcher performs one bounded registration walk, then relies
   on native filesystem events instead of recurring disk traversal. It debounces
-  changes for five seconds, ignores Fetch transaction directories, and retains
-  only one pending follow-up while its automatic scan is active. The default
-  Startup scan covers changes made while the service is stopped.
+  changes for five seconds, ignores Fetch transaction directories and claimed
+  per-source Fetch roots, and retains only one pending follow-up while its
+  automatic scan is active. Fetch registers publication directly, while the
+  default Startup and manual scans continue to inspect the complete data tree.
 - Local scan completion is independent of metadata-provider latency or failure.
   Its optional, disabled-by-default metadata follow-up creates a separate run
   after scan completion, with its own retry and review state.

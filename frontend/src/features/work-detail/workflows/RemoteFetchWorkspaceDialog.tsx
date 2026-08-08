@@ -1,4 +1,4 @@
-import { HardDriveDownload, Languages, X } from "lucide-react";
+import { AlertTriangle, HardDriveDownload, Languages, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -287,11 +287,7 @@ function RemoteFetchSelectionPanel({
             {selectedPaths.size} remote / {allPaths.length}
           </Badge>
           {plan && plan.localFiles.length > 0 && <Badge variant="secondary">{selectedLocalPaths.size} local</Badge>}
-          {plan && plan.summary.conflict > 0 && (
-            <Badge variant="outline" className="border-destructive/40 text-destructive">
-              {plan.summary.conflict} conflicts
-            </Badge>
-          )}
+          {plan && plan.summary.conflict > 0 && <Badge variant="error">{plan.summary.conflict} conflicts</Badge>}
           {plan && plan.summary.conflict === 0 && (
             <Badge variant="outline">
               {plan.summary.promote} {readOnly ? "preview only" : "to fetch"}
@@ -329,6 +325,21 @@ function RemoteFetchSelectionPanel({
             </Button>
           </div>
         </div>
+        {plan?.fetchRoot.conflict && (
+          <div
+            role="alert"
+            className="flex shrink-0 gap-2 border-b border-warning-border bg-warning-surface px-4 py-3 text-sm text-warning-foreground"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div className="min-w-0">
+              <div className="font-medium">Fetch folder requires review</div>
+              {plan.fetchRoot.rootPath && (
+                <div className="mt-0.5 break-all font-mono text-xs">{plan.fetchRoot.rootPath}</div>
+              )}
+              <div className="mt-1 text-xs text-warning-foreground/80">{plan.fetchRoot.message}</div>
+            </div>
+          </div>
+        )}
         <div className={`grid ${hasLocalFiles ? "grid-cols-3" : "grid-cols-2"} border-b bg-background p-1 md:hidden`}>
           {(hasLocalFiles ? (["local", "remote", "result"] as const) : (["remote", "result"] as const)).map((pane) => (
             <Button
@@ -425,7 +436,7 @@ function RemoteFetchSelectionPanel({
         </div>
         <div
           aria-live="polite"
-          className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${messageIsConflict ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}
+          className={`app-scroll h-12 shrink-0 overflow-auto border-t px-3 py-2 text-sm ${messageIsConflict ? "bg-error-surface text-error-foreground" : "bg-muted text-muted-foreground"}`}
         >
           {message || (
             <span className="invisible" aria-hidden="true">

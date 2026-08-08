@@ -684,10 +684,18 @@ export type RemoteWorkSaveLocalFile = {
   available: boolean;
 };
 
+export type RemoteFetchRootReview = {
+  rootPath: string;
+  status: "not_applicable" | "ready" | "managed" | "conflict";
+  conflict: boolean;
+  message: string;
+};
+
 export type RemoteWorkSavePlan = {
   sourceId: number;
   primaryCode: string;
   saveRoot: string;
+  fetchRoot: RemoteFetchRootReview;
   localFiles: RemoteWorkSaveLocalFile[];
   items: RemoteWorkSavePlanItem[];
   summary: RemoteWorkSaveSummary;

@@ -1,7 +1,9 @@
 package localfs
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,7 +13,19 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-const directoryWatcherEventBuffer = 4096
+const (
+	directoryWatcherEventBuffer = 4096
+	fetchRootMarkerMaxBytes     = 4096
+)
+
+// FetchRootMarkerName and FetchRootMarkerVersion define the ownership marker
+// for a directory managed by Kikoto's remote Fetch workflow. Marked trees are
+// registered directly by Fetch and must not enqueue the general local-library
+// scan for their own file changes.
+const (
+	FetchRootMarkerName    = ".kikoto-fetch-root"
+	FetchRootMarkerVersion = 1
+)
 
 type DirectoryWatcher struct {
 	watcher     *fsnotify.Watcher
@@ -24,9 +38,10 @@ type DirectoryWatcher struct {
 	closeOnce   sync.Once
 	mu          sync.RWMutex
 	watched     map[string]struct{}
+	excluded    map[string]struct{}
 }
 
-func NewDirectoryWatcher(root string, scanDepth int) (*DirectoryWatcher, error) {
+func NewDirectoryWatcher(root string, scanDepth int, excludedRoots ...string) (*DirectoryWatcher, error) {
 	if scanDepth <= 0 {
 		scanDepth = 2
 	}
@@ -48,7 +63,13 @@ func NewDirectoryWatcher(root string, scanDepth int) (*DirectoryWatcher, error) 
 	result := &DirectoryWatcher{
 		watcher: watcher, root: filepath.Clean(absRoot), scanDepth: scanDepth,
 		changes: make(chan struct{}, 1), invalidated: make(chan struct{}, 1), errors: make(chan error, 8),
-		done: make(chan struct{}), watched: map[string]struct{}{},
+		done: make(chan struct{}), watched: map[string]struct{}{}, excluded: map[string]struct{}{},
+	}
+	for _, excludedRoot := range excludedRoots {
+		if err := result.addExcludedRoot(excludedRoot); err != nil {
+			_ = watcher.Close()
+			return nil, err
+		}
 	}
 	if err := result.addTree(result.root); err != nil {
 		_ = watcher.Close()
@@ -108,6 +129,15 @@ func (w *DirectoryWatcher) run() {
 
 func (w *DirectoryWatcher) processEvent(event fsnotify.Event) {
 	path := filepath.Clean(event.Name)
+	if strings.EqualFold(filepath.Base(path), FetchRootMarkerName) && event.Has(fsnotify.Create|fsnotify.Write|fsnotify.Rename) && fetchRootMarkerExists(filepath.Dir(path)) {
+		root := filepath.Dir(path)
+		if err := w.addExcludedRoot(root); err != nil {
+			w.emitError(err)
+			return
+		}
+		w.removeTree(root)
+		return
+	}
 	if w.isInternalPath(path) {
 		return
 	}
@@ -145,6 +175,12 @@ func (w *DirectoryWatcher) addTree(start string) error {
 			return nil
 		}
 		if w.isInternalPath(path) {
+			return filepath.SkipDir
+		}
+		if !sameFilesystemPath(path, w.root) && fetchRootMarkerExists(path) {
+			if err := w.addExcludedRoot(path); err != nil {
+				return err
+			}
 			return filepath.SkipDir
 		}
 		depth, _, err := relativeDepth(w.root, path)
@@ -194,12 +230,63 @@ func (w *DirectoryWatcher) isInternalPath(path string) bool {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return true
 	}
+	for root := range w.excluded {
+		if isAncestorOrSame(root, path) {
+			return true
+		}
+	}
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
 		if isKikotoInternalDirectory(part) {
 			return true
 		}
 	}
 	return false
+}
+
+func (w *DirectoryWatcher) addExcludedRoot(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(w.root, path)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	absPath = filepath.Clean(absPath)
+	if sameFilesystemPath(absPath, w.root) || !isAncestorOrSame(w.root, absPath) {
+		return &fs.PathError{Op: "exclude", Path: absPath, Err: errors.New("path must be below the watch root")}
+	}
+	w.excluded[absPath] = struct{}{}
+	return nil
+}
+
+func fetchRootMarkerExists(root string) bool {
+	path := filepath.Join(root, FetchRootMarkerName)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > fetchRootMarkerMaxBytes {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, fetchRootMarkerMaxBytes+1))
+	if err != nil || len(data) > fetchRootMarkerMaxBytes {
+		return false
+	}
+	var marker struct {
+		Version    int    `json:"version"`
+		ManagedBy  string `json:"managed_by"`
+		Purpose    string `json:"purpose"`
+		SourceCode string `json:"source_code"`
+	}
+	if json.Unmarshal(data, &marker) != nil {
+		return false
+	}
+	return marker.Version == FetchRootMarkerVersion && marker.ManagedBy == "kikoto" && marker.Purpose == "remote_fetch" && strings.TrimSpace(marker.SourceCode) != ""
 }
 
 func (w *DirectoryWatcher) emitError(err error) {

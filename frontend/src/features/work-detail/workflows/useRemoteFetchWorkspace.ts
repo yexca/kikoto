@@ -189,6 +189,31 @@ export function useRemoteFetchWorkspace({
         toast.notify(toastFromError(error, "Fetch plan failed."));
       } else if (error instanceof ApiError && error.status === 401) {
         toast.notify(toastFromError(error, "Fetch submission failed."));
+      } else if (error instanceof ApiError && error.status === 409) {
+        try {
+          const plan = await api.planRemoteSourceWorkFetch(
+            draft.intent.sourceId,
+            remoteDetailActionCode(draft.detail),
+            selectedPaths,
+            selectedLocalPaths,
+            draft.targetRoot,
+            decisionList(draft.decisions),
+          );
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  plan,
+                  preparation: plan.preparation,
+                  planDirty: false,
+                  message: formatRemoteFetchPreparation(plan),
+                }
+              : current,
+          );
+          toast.notify({ kind: "warning", message: "The Fetch destination changed and requires review." });
+        } catch (refreshError) {
+          toast.notify(toastFromError(refreshError, "Fetch conflict review could not be refreshed."));
+        }
       } else {
         notifyFetchUnconfirmed(toast);
       }
