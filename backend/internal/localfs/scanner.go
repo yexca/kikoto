@@ -66,7 +66,7 @@ func Discover(root string, options Options) ([]WorkFolder, Summary, error) {
 
 func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error) {
 	if options.ScanDepth <= 0 {
-		options.ScanDepth = 2
+		options.ScanDepth = 3
 	}
 
 	absRoot, err := filepath.Abs(root)

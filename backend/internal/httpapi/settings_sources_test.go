@@ -185,6 +185,9 @@ func TestLoadAppSettingsIsReadOnly(t *testing.T) {
 	if settings.LocalScanDepth != 3 {
 		t.Fatalf("local scan depth = %d, want 3", settings.LocalScanDepth)
 	}
+	if settings.RemoteSaveTemplate != defaultRemoteSaveRootTemplate {
+		t.Fatalf("remote save template = %q, want %q", settings.RemoteSaveTemplate, defaultRemoteSaveRootTemplate)
+	}
 	if settings.RemoteDownloadLimitGB != defaultRemoteDownloadLimitGB || settings.FetchStagingRetentionDays != defaultFetchStagingRetentionDays {
 		t.Fatalf("transfer settings = %d GB / %d days", settings.RemoteDownloadLimitGB, settings.FetchStagingRetentionDays)
 	}

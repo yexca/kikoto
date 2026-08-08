@@ -15,7 +15,10 @@ Sources describe where files come from.
 - Work detail uses backend aggregate availability checks.
 - Remote sync imports metadata and source file trees into the unified database.
 - Remote cache materializes selected remote files under the cache root.
-- Remote fetch promotes selected remote files into the local data tree.
+- Remote fetch promotes selected remote files into the local data tree. The
+  default layout is `/data/<source_code>/<code_prefix>_<code_group>/<work_code>`;
+  the legacy `<source_name>` template token remains accepted as an alias for
+  the stable source code.
 - A compatible source using a source-separated save template claims its Fetch
   root with a machine marker and a multilingual `README.md`. Its file changes
   do not trigger the local folder watcher because Fetch registers publication

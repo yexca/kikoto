@@ -63,7 +63,7 @@ func Load() (Config, error) {
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
 		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
-		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 2),
+		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 3),
 		Mode:                mode,
 		SessionCookieSecure: envBool("KIKOTO_SESSION_COOKIE_SECURE", false),
 		AllowedOrigins:      envList("KIKOTO_ALLOWED_ORIGINS"),

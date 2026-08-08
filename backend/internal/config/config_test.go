@@ -25,6 +25,18 @@ func TestLoadDefaultsToProductionMode(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsLocalScanDepthToThree(t *testing.T) {
+	t.Setenv("KIKOTO_MODE", "development")
+	t.Setenv("KIKOTO_LOCAL_SCAN_DEPTH", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LocalScanDepth != 3 {
+		t.Fatalf("local scan depth = %d, want 3", cfg.LocalScanDepth)
+	}
+}
+
 func TestLoadRequiresExplicitProductionRootPassword(t *testing.T) {
 	t.Setenv("KIKOTO_MODE", "production")
 	t.Setenv("KIKOTO_ROOT_PASSWORD", "")

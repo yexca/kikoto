@@ -10,7 +10,7 @@ Kikoto is configured through environment variables and administrator settings.
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
-| `KIKOTO_LOCAL_SCAN_DEPTH` | `4` | Maximum local scan folder depth. |
+| `KIKOTO_LOCAL_SCAN_DEPTH` | `3` | Maximum local scan folder depth. |
 | `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ALLOWED_ORIGINS` | Empty | Comma-separated exact browser origins allowed to call a separately hosted API. Same-origin deployments should leave this empty. |

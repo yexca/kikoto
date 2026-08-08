@@ -121,17 +121,21 @@ data/
         └── main.wav
 ```
 
-The default Compose scan depth is 4. Administrators can set a value from 1 to 8
+The default Compose scan depth is 3. Administrators can set a value from 1 to 8
 under Maintenance. For nested matching directories, Kikoto selects the deepest
 non-overlapping candidate. Duplicate codes are retained for Activity review.
 Fetch transaction directories named `.kikoto-staging`, `.kikoto-backup`, and
 `.kikoto-trash` are excluded from discovery.
 
-For compatible remote sources using a source-separated save template, Kikoto
-claims a Fetch-managed root under `/data`. Fetch registers published files
-directly, so changes below a claimed Fetch root do not trigger the native folder
-watcher. Startup and manual scans still inspect the complete data tree. Kikoto
-writes a machine ownership marker and a multilingual `README.md` in each
+For compatible remote sources, the default Fetch layout is
+`/data/<source_code>/<code_prefix>_<code_group>/<work_code>`. Kikoto claims a
+Fetch-managed root under `/data`; Fetch registers published files directly, so
+changes below a claimed Fetch root do not trigger the native folder watcher.
+Startup and manual scans still inspect the complete data tree. The new default
+has three data-root directory levels; existing four-level Fetch folders are not
+moved automatically and require scan depth 4 when they must remain discoverable.
+Per-source templates and an already saved global template remain authoritative.
+Kikoto writes a machine ownership marker and a multilingual `README.md` in each
 claimed root; store manually managed works elsewhere in the data directory. A
 non-empty, unclaimed directory at the same path blocks the first Fetch and
 appears in the Fetch review instead of being silently adopted. When upgrading

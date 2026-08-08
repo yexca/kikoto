@@ -86,6 +86,22 @@ func TestDiscoverFoldersIgnoresKikotoInternalTrees(t *testing.T) {
 	}
 }
 
+func TestDiscoverFindsCompactFetchLayoutAtDepthThree(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "example_remote_a", "RJ_000", "RJ00000000", "track.mp3"))
+
+	folders, summary, err := DiscoverFolders(root, Options{ScanDepth: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folders) != 1 || folders[0].Code != "RJ00000000" || folders[0].Depth != 3 {
+		t.Fatalf("folders = %+v, want one depth-three compact Fetch folder", folders)
+	}
+	if summary.DetectedWorks != 1 {
+		t.Fatalf("DetectedWorks = %d, want 1", summary.DetectedWorks)
+	}
+}
+
 func writeFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

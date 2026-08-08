@@ -21,6 +21,8 @@ func TestRemoteFetchManagedRootFromTemplate(t *testing.T) {
 	}{
 		{name: "default", template: defaultRemoteSaveRootTemplate, want: "example_remote_a", ok: true},
 		{name: "nested", template: "/data/remote/<source_name>/library/<work_code>", want: "remote/example_remote_a", ok: true},
+		{name: "canonical source code", template: "/data/<source_code>/library/<work_code>", want: "example_remote_a", ok: true},
+		{name: "compact shard", template: "/data/<source_code>/<code_prefix>_<code_group>/<work_code>", want: "example_remote_a", ok: true},
 		{name: "work token first", template: "/data/<code_prefix>/<source_name>/<work_code>", ok: false},
 		{name: "shared root", template: "/data/library/<work_code>", ok: false},
 	}
@@ -31,6 +33,25 @@ func TestRemoteFetchManagedRootFromTemplate(t *testing.T) {
 				t.Fatalf("managed root = %q/%v, want %q/%v", got, ok, test.want, test.ok)
 			}
 		})
+	}
+}
+
+func TestRemoteSaveRootRendersCompactDefaultAndLegacySourceToken(t *testing.T) {
+	server := NewServer(openMigratedTestDB(t), config.Config{})
+	source := remoteSourceForUse{Code: "example_remote_a"}
+
+	if got := server.remoteSaveRoot(source, "RJ00000000"); got != "example_remote_a/RJ_000/RJ00000000" {
+		t.Fatalf("default save root = %q, want compact source-code layout", got)
+	}
+
+	source.Config.SaveRootTemplate = "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"
+	if got := server.remoteSaveRoot(source, "RJ00000000"); got != "example_remote_a/RJ/000/RJ00000000" {
+		t.Fatalf("legacy save root = %q, want legacy source-name alias to remain supported", got)
+	}
+
+	source.Config.SaveRootTemplate = "/data/<source_code>/<code_prefix>_<code_group>/<work_code>"
+	if got := server.remoteSaveRoot(source, "RJ00000000"); got != "example_remote_a/RJ_000/RJ00000000" {
+		t.Fatalf("canonical save root = %q, want compact source-code layout", got)
 	}
 }
 

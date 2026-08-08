@@ -43,7 +43,7 @@ import {
 } from "@/lib/api";
 
 const DATA_PREFIX = "/data";
-const DEFAULT_SAVE_SUFFIX = "/<source_name>/<code_prefix>/<code_group>/<work_code>";
+const DEFAULT_SAVE_SUFFIX = "/<source_code>/<code_prefix>_<code_group>/<work_code>";
 const DEFAULT_CACHE_SUFFIX = "/media/<source_code>/<code_prefix>/<code_group>/<work_code>";
 const CACHE_GROUP_PAGE_SIZE = 50;
 const LEGACY_NUMBER178_SOURCE_TYPE = "kikoeru_compatible_number178";
@@ -93,7 +93,7 @@ export function MaintenancePage({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<MaintenanceTab>(() => maintenanceTabFromLocation(canManageUsers));
-  const [localScanDepth, setLocalScanDepth] = useState(2);
+  const [localScanDepth, setLocalScanDepth] = useState(3);
   const [cacheEnabled, setCacheEnabled] = useState(false);
   const [cacheLimitGb, setCacheLimitGb] = useState(20);
   const [remoteDownloadLimitGb, setRemoteDownloadLimitGb] = useState(100);
@@ -2558,7 +2558,7 @@ function SourceModal({
           <div className="rounded-md border bg-muted/20 p-3">
             <ReadonlyField label="Save path preview" value={sourceSavePreview} />
             <p className="mt-2 text-xs text-muted-foreground">
-              Example for RJ01234567. Resolved storage paths are managed in Paths.
+              Example for RJ00000000. Resolved storage paths are managed in Paths.
             </p>
           </div>
           <div className="flex gap-2">
@@ -2776,14 +2776,14 @@ function maintenanceTabFromLocation(canManageUsers: boolean): MaintenanceTab {
 }
 
 function storagePathPreview(template: string, sourceCode: string) {
-  const workCode = "RJ01234567";
+  const workCode = "RJ00000000";
   const normalizedSource = sourceCode.trim() || "source";
   const replacements: Array<[string, string]> = [
     ["<source_name>", normalizedSource],
     ["<source_code>", normalizedSource],
     ["<work_code>", workCode],
     ["<code_prefix>", "RJ"],
-    ["<code_group>", "012"],
+    ["<code_group>", "000"],
   ];
   return replacements.reduce(
     (value, [token, replacement]) => value.split(token).join(replacement),

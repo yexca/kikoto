@@ -4959,7 +4959,7 @@ func (s *Server) remoteSaveRoot(source remoteSourceForUse, workCode string) stri
 		template = defaultRemoteSaveRootTemplate
 	}
 	prefix, group := workCodeShard(workCode)
-	value := strings.ReplaceAll(template, "<source_name>", source.Code)
+	value := replaceRemoteFetchSourceTokens(template, source.Code)
 	value = strings.ReplaceAll(value, "<work_code>", strings.ToUpper(strings.TrimSpace(workCode)))
 	value = strings.ReplaceAll(value, "<code_prefix>", prefix)
 	value = strings.ReplaceAll(value, "<code_group>", group)

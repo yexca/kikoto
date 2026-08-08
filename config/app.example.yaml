@@ -7,7 +7,7 @@ database:
 
 library:
   data_root: /data
-  local_scan_depth: 2
+  local_scan_depth: 3
   cache_root: /config/cached
 
 security:

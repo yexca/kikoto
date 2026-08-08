@@ -34,12 +34,12 @@ async function mockCacheSettings(
   onSourceUpdate: (payload: Record<string, unknown>) => void = () => undefined,
 ) {
   let currentSettings = {
-    localScanDepth: 4,
+    localScanDepth: 3,
     cacheEnabled: true,
     cacheLimitGb: 20,
     remoteDownloadLimitGb: 100,
     fetchStagingRetentionDays: 7,
-    remoteSaveTemplate: "/data/<source_name>/<code_prefix>/<code_group>/<work_code>",
+    remoteSaveTemplate: "/data/<source_code>/<code_prefix>_<code_group>/<work_code>",
     remoteDelayBaseSeconds: 0.5,
     remoteDelayRandomSeconds: 1.5,
     remoteBackoffSeconds: 30,
@@ -71,7 +71,7 @@ async function mockCacheSettings(
         sourceType: "local_folder",
         priority: 10,
         enabled: true,
-        config: { scanDepth: 4 },
+        config: { scanDepth: 3 },
         endpoint: {
           baseUrl: "",
           apiUrl: "",
@@ -424,7 +424,7 @@ test("maintenance combines library sources and exposes read-only paths with heal
 
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   const sourceDialog = page.getByRole("dialog", { name: "Edit remote source" });
-  await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ01234567");
+  await expect(sourceDialog.getByLabel("Save path preview")).toHaveValue("/data/example-remote/RJ00000000");
   await expect(sourceDialog.getByText("Save path template", { exact: true })).toHaveCount(0);
   await expect(sourceDialog.getByRole("switch", { name: "Restrict outbound hosts" })).toHaveAttribute(
     "aria-checked",
@@ -452,7 +452,8 @@ test("maintenance combines library sources and exposes read-only paths with heal
 
   await page.getByRole("button", { name: "Paths", exact: true }).click();
   await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ01234567");
+  await expect(page.getByLabel("Remote save path preview")).toHaveValue("/data/source/RJ_000/RJ00000000");
+  await expect(page.getByLabel("Example Remote")).toHaveValue("/data/example-remote/RJ00000000");
   await expect(page.getByRole("button", { name: /Save.*path/i })).toHaveCount(0);
 });
 

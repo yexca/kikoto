@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultRemoteSaveRootTemplate = "/data/<source_name>/<code_prefix>/<code_group>/<work_code>"
+	defaultRemoteSaveRootTemplate = "/data/<source_code>/<code_prefix>_<code_group>/<work_code>"
 	remoteFetchRootReadmeName     = "README.md"
 	remoteFetchRootMarkerMaxBytes = 4096
 )
@@ -394,8 +394,8 @@ func remoteFetchManagedRootFromTemplate(template string, sourceCode string) (str
 		if containsRemoteFetchWorkToken(part) {
 			return "", false
 		}
-		if strings.Contains(part, "<source_name>") {
-			part = strings.ReplaceAll(part, "<source_name>", sourceCode)
+		if containsRemoteFetchSourceToken(part) {
+			part = replaceRemoteFetchSourceTokens(part, sourceCode)
 			if strings.ContainsAny(part, "<>") || strings.TrimSpace(part) == "" {
 				return "", false
 			}
@@ -412,6 +412,20 @@ func remoteFetchManagedRootFromTemplate(template string, sourceCode string) (str
 		resolved = append(resolved, part)
 	}
 	return "", false
+}
+
+// source_name is retained as a compatibility alias for templates saved before
+// source_code became the canonical token. Both names always resolve to the
+// immutable file_source.code, never to its display name.
+func containsRemoteFetchSourceToken(value string) bool {
+	return strings.Contains(value, "<source_code>") || strings.Contains(value, "<source_name>")
+}
+
+func replaceRemoteFetchSourceTokens(value string, sourceCode string) string {
+	return strings.NewReplacer(
+		"<source_code>", sourceCode,
+		"<source_name>", sourceCode,
+	).Replace(value)
 }
 
 func containsRemoteFetchWorkToken(value string) bool {
