@@ -2239,7 +2239,9 @@ test("directory folds matched lyrics into the audio row while preserving text pr
   await expect(page.getByRole("button", { name: "Show attached lyrics (1)" })).toBeVisible();
 
   const audioRow = page.getByTestId("directory-file-row").filter({ hasText: "01.mp3" });
-  await audioRow.getByRole("button", { name: "Lyrics for 01.mp3" }).click();
+  await expect(audioRow.getByRole("button", { name: "Lyrics for 01.mp3" })).toHaveCount(0);
+  await audioRow.getByRole("button", { name: "More actions for 01.mp3" }).click();
+  await page.getByRole("menuitem", { name: "Lyrics" }).click();
   const lyricsDialog = page.getByRole("dialog", { name: "Lyrics for 01.mp3" });
   await expect(lyricsDialog.getByRole("radio", { name: /Auto.*Matches 01\.lrc/ })).toBeChecked();
   await lyricsDialog.getByRole("radio", { name: /01\.lrc.*Matching file name/ }).click();
@@ -2257,7 +2259,8 @@ test("directory folds matched lyrics into the audio row while preserving text pr
     })
     .toBe(9);
 
-  await audioRow.getByRole("button", { name: "Lyrics for 01.mp3" }).click();
+  await audioRow.getByRole("button", { name: "More actions for 01.mp3" }).click();
+  await page.getByRole("menuitem", { name: "Lyrics" }).click();
   preferenceRequest = null;
   const queuedLyricsDialog = page.getByRole("dialog", { name: "Lyrics for 01.mp3" });
   await queuedLyricsDialog.getByRole("radio", { name: /Auto.*Matches 01\.lrc/ }).click();
@@ -2272,6 +2275,15 @@ test("directory folds matched lyrics into the audio row while preserving text pr
     .toBeNull();
   await queuedLyricsDialog.getByRole("button", { name: "Show in directory" }).click();
   await expect(page.getByText("01.lrc", { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(audioRow.getByRole("button", { name: "Lyrics for 01.mp3" })).toHaveCount(0);
+  await audioRow.getByRole("button", { name: "More actions for 01.mp3" }).click();
+  await expect(page.getByRole("menuitem", { name: "Lyrics" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(audioRow.getByRole("button", { name: "Lyrics for 01.mp3" })).toBeVisible();
 
   await page.getByText("notes.txt", { exact: true }).click();
   await expect(page.getByText("Synthetic notes", { exact: true })).toBeVisible();
@@ -2683,7 +2695,7 @@ test("desktop compact player reserves the final directory action area", async ({
   expect(rowBox!.y + rowBox!.height).toBeLessThan(compactBox!.y);
   expect(Math.abs(sidebarBox!.y)).toBeLessThanOrEqual(1);
   expect(Math.abs(sidebarBox!.height - 800)).toBeLessThanOrEqual(1);
-  await expect(lastRow.getByRole("button", { name: /Queue actions for track-24\.mp3/ })).toBeVisible();
+  await expect(lastRow.getByRole("button", { name: /More actions for track-24\.mp3/ })).toBeVisible();
 });
 
 test("mini player reveals actions on tap, persists its snapped edge, and compact mode reserves page space", async ({

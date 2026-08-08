@@ -7269,12 +7269,12 @@ function TreeFile({
   onRevealLyricsAttachment?: (locationId: number) => void;
 }) {
   const player = useLibraryPlayer();
-  const [queueMenuOpen, setQueueMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [lyricsMenuOpen, setLyricsMenuOpen] = useState(false);
-  const queueMenuRef = useRef<HTMLDivElement | null>(null);
-  const lyricsMenuRef = useRef<HTMLDivElement | null>(null);
-  useDismissiblePopover(queueMenuOpen, queueMenuRef, () => setQueueMenuOpen(false));
-  useDismissiblePopover(lyricsMenuOpen, lyricsMenuRef, () => setLyricsMenuOpen(false));
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionAreaRef = useRef<HTMLSpanElement | null>(null);
+  useDismissiblePopover(moreMenuOpen, moreMenuRef, () => setMoreMenuOpen(false));
+  useDismissiblePopover(lyricsMenuOpen, actionAreaRef, () => setLyricsMenuOpen(false));
   const canPlay = Boolean(playableFiles([file]).length > 0 && onPlayFolder);
   const preview = previewForFile(file);
   const canPreview = Boolean(preview && onPreview);
@@ -7285,6 +7285,8 @@ function TreeFile({
   );
   const canOpen = canPlay || canPreview || canDownload;
   const lyricsChoices = file.kind === "audio" ? (file.lyricsChoices ?? []) : [];
+  const hasQueueActions = canPlay && (file.kind === "video" || Boolean(onPlayNext) || Boolean(onAppendQueue));
+  const hasMoreActions = lyricsChoices.length > 0 || hasQueueActions;
   const preferredLyricsMediaItemId = preferredLyricsMediaItemID(file, player.lyricsPreferenceOverrides);
   const automaticLyrics = preferredLyricsMediaItemId === null;
   const selectedLyricsChoice =
@@ -7344,16 +7346,16 @@ function TreeFile({
           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{fileMeta}</span>
         </span>
       </span>
-      <span className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
+      <span ref={actionAreaRef} className="flex shrink-0 items-start gap-2 pt-0.5 text-xs text-muted-foreground">
         {file.kind === "file" && canDownload && (
           <ExternalLink className="h-3.5 w-3.5 text-primary" aria-label="Downloads in new tab" />
         )}
         {lyricsChoices.length > 0 && (
-          <div ref={lyricsMenuRef} onClick={(event) => event.stopPropagation()}>
+          <div className="hidden lg:block" onClick={(event) => event.stopPropagation()}>
             <button
-              className="grid h-11 w-11 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
+              className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
               onClick={() => {
-                setQueueMenuOpen(false);
+                setMoreMenuOpen(false);
                 setLyricsMenuOpen((value) => !value);
               }}
               aria-label={`Lyrics for ${file.title}`}
@@ -7365,7 +7367,7 @@ function TreeFile({
             </button>
             <AnchoredPopover
               open={lyricsMenuOpen}
-              anchorRef={lyricsMenuRef}
+              anchorRef={actionAreaRef}
               onOpenChange={setLyricsMenuOpen}
               className="w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-2 text-card-foreground shadow-xl"
               bottomCollisionPadding={96}
@@ -7452,58 +7454,82 @@ function TreeFile({
             </AnchoredPopover>
           </div>
         )}
-        {canPlay && (file.kind === "video" || onPlayNext || onAppendQueue) && (
-          <div ref={queueMenuRef} onClick={(event) => event.stopPropagation()}>
+        {hasMoreActions && (
+          <div
+            ref={moreMenuRef}
+            className={hasQueueActions ? "" : "lg:hidden"}
+            onClick={(event) => event.stopPropagation()}
+          >
             <button
-              className="grid h-11 w-11 place-items-center rounded-md hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9"
+              className={`grid h-11 w-11 place-items-center rounded-md hover:bg-secondary hover:text-foreground sm:h-9 sm:w-9 ${hasQueueActions ? "" : "lg:hidden"}`}
               onClick={() => {
                 setLyricsMenuOpen(false);
-                setQueueMenuOpen((value) => !value);
+                setMoreMenuOpen((value) => !value);
               }}
-              aria-label={`Queue actions for ${file.title}`}
-              aria-expanded={queueMenuOpen}
+              aria-label={`More actions for ${file.title}`}
+              aria-haspopup="menu"
+              aria-expanded={moreMenuOpen}
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
             <AnchoredPopover
-              open={queueMenuOpen}
-              anchorRef={queueMenuRef}
-              className="w-44 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl"
+              open={moreMenuOpen}
+              anchorRef={moreMenuRef}
+              className={`w-52 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl ${hasQueueActions ? "" : "lg:hidden"}`}
             >
-              {file.kind === "video" && (
-                <button
-                  className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted"
-                  onClick={() => {
-                    onPlayFolder?.(files, file.locationId);
-                    setQueueMenuOpen(false);
-                  }}
-                >
-                  <Headphones className="h-4 w-4" />
-                  Play as audio
-                </button>
-              )}
-              {onPlayNext && (
-                <button
-                  className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted"
-                  onClick={() => {
-                    onPlayNext(file);
-                    setQueueMenuOpen(false);
-                  }}
-                >
-                  Play next
-                </button>
-              )}
-              {onAppendQueue && (
-                <button
-                  className="flex h-9 w-full items-center rounded-md px-2 text-left hover:bg-muted"
-                  onClick={() => {
-                    onAppendQueue(file);
-                    setQueueMenuOpen(false);
-                  }}
-                >
-                  Add to queue
-                </button>
-              )}
+              <div role="menu" aria-label={`More actions for ${file.title}`}>
+                {lyricsChoices.length > 0 && (
+                  <button
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted lg:hidden"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      setLyricsMenuOpen(true);
+                    }}
+                    aria-haspopup="dialog"
+                  >
+                    <Captions className="h-4 w-4" />
+                    Lyrics
+                  </button>
+                )}
+                {canPlay && file.kind === "video" && (
+                  <button
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted sm:h-9 sm:min-h-0"
+                    onClick={() => {
+                      onPlayFolder?.(files, file.locationId);
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    <Headphones className="h-4 w-4" />
+                    Play as audio
+                  </button>
+                )}
+                {canPlay && onPlayNext && (
+                  <button
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center rounded-md px-2 text-left hover:bg-muted sm:h-9 sm:min-h-0"
+                    onClick={() => {
+                      onPlayNext(file);
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    Play next
+                  </button>
+                )}
+                {canPlay && onAppendQueue && (
+                  <button
+                    role="menuitem"
+                    className="flex min-h-11 w-full items-center rounded-md px-2 text-left hover:bg-muted sm:h-9 sm:min-h-0"
+                    onClick={() => {
+                      onAppendQueue(file);
+                      setMoreMenuOpen(false);
+                    }}
+                  >
+                    Add to queue
+                  </button>
+                )}
+              </div>
             </AnchoredPopover>
           </div>
         )}
