@@ -115,6 +115,14 @@ func (s *Server) inspectRemoteFetchRoot(ctx context.Context, source remoteSource
 	if empty {
 		return review, nil
 	}
+	legacyManaged, err := s.legacyRemoteFetchRootIsManaged(ctx, source, absRoot)
+	if err != nil {
+		return review, err
+	}
+	if legacyManaged {
+		review.Status = "legacy_managed"
+		return review, nil
+	}
 	return remoteFetchRootConflict(managedRoot, "This Fetch folder already exists and is not managed by Kikoto. Do not use it for manually managed works. Move or rename the existing directory before Fetching."), nil
 }
 
@@ -144,7 +152,16 @@ func (s *Server) ensureRemoteFetchRootClaim(ctx context.Context, source remoteSo
 			return review, emptyErr
 		}
 		if !empty {
-			return remoteFetchRootConflict(review.RootPath, "This Fetch folder already exists and is not managed by Kikoto. Do not use it for manually managed works. Move or rename the existing directory before Fetching."), nil
+			if review.Status != "legacy_managed" {
+				return remoteFetchRootConflict(review.RootPath, "This Fetch folder already exists and is not managed by Kikoto. Do not use it for manually managed works. Move or rename the existing directory before Fetching."), nil
+			}
+			legacyManaged, legacyErr := s.legacyRemoteFetchRootIsManaged(ctx, source, absRoot)
+			if legacyErr != nil {
+				return review, legacyErr
+			}
+			if !legacyManaged {
+				return remoteFetchRootConflict(review.RootPath, "The Fetch folder contents changed while Fetch was being prepared. Review the directory before retrying."), nil
+			}
 		}
 		if err := createRemoteFetchRootMarker(absRoot, source.Code); err != nil {
 			if !errors.Is(err, os.ErrExist) {
@@ -172,6 +189,187 @@ func remoteFetchRootMarkerMatches(marker remoteFetchRootMarker, sourceCode strin
 		marker.ManagedBy == "kikoto" &&
 		marker.Purpose == "remote_fetch" &&
 		strings.EqualFold(marker.SourceCode, sourceCode)
+}
+
+func (s *Server) legacyRemoteFetchRootIsManaged(ctx context.Context, source remoteSourceForUse, absRoot string) (bool, error) {
+	targets, err := s.loadLegacyRemoteFetchTargets(ctx, source.ID)
+	if err != nil {
+		return false, err
+	}
+	exactTargets, targetAncestors := legacyRemoteFetchTargetPaths(s.cfg.DataRoot, absRoot, targets)
+	if len(exactTargets) == 0 {
+		return false, nil
+	}
+	verified, foundTarget, err := verifyLegacyRemoteFetchRoot(absRoot, exactTargets, targetAncestors)
+	if err != nil {
+		return false, err
+	}
+	return verified && foundTarget, nil
+}
+
+func (s *Server) loadLegacyRemoteFetchTargets(ctx context.Context, sourceID int64) ([]string, error) {
+	targets := map[string]bool{}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT root_path
+		FROM work_folder_location
+		WHERE role = 'managed_fetch'
+			AND state = 'active'
+			AND origin_source_id = ?
+		ORDER BY id ASC
+	`, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var target string
+		if err := rows.Scan(&target); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		target = strings.TrimSpace(target)
+		if target != "" {
+			targets[target] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	rows, err = s.db.QueryContext(ctx, `
+		SELECT run.input_json, plan.output_json
+		FROM workflow_run AS run
+		INNER JOIN workflow_node_run AS plan
+			ON plan.workflow_run_id = run.id
+			AND plan.node_id = 'plan'
+			AND plan.status = 'succeeded'
+		WHERE run.workflow_code = 'remote_work_fetch'
+			AND run.status = 'succeeded'
+			AND CASE
+				WHEN json_valid(run.input_json)
+				THEN CAST(json_extract(run.input_json, '$.source_id') AS INTEGER)
+				ELSE 0
+			END = ?
+			AND CASE
+				WHEN json_valid(plan.output_json)
+				THEN CAST(json_extract(plan.output_json, '$.sourceId') AS INTEGER)
+				ELSE 0
+			END = ?
+		ORDER BY run.id ASC, plan.id ASC
+	`, sourceID, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var inputJSON, outputJSON string
+		if err := rows.Scan(&inputJSON, &outputJSON); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		var input struct {
+			SourceID int64 `json:"source_id"`
+		}
+		var output struct {
+			SourceID int64  `json:"sourceId"`
+			SaveRoot string `json:"saveRoot"`
+		}
+		if json.Unmarshal([]byte(inputJSON), &input) != nil || json.Unmarshal([]byte(outputJSON), &output) != nil {
+			continue
+		}
+		if input.SourceID != sourceID || output.SourceID != sourceID {
+			continue
+		}
+		target := strings.TrimSpace(output.SaveRoot)
+		if target != "" {
+			targets[target] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	result := make([]string, 0, len(targets))
+	for target := range targets {
+		result = append(result, target)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+func legacyRemoteFetchTargetPaths(dataRoot string, absRoot string, targets []string) (map[string]bool, map[string]bool) {
+	exactTargets := map[string]bool{}
+	targetAncestors := map[string]bool{}
+	for _, target := range targets {
+		absTarget, err := safeDataPath(dataRoot, target)
+		if err != nil {
+			continue
+		}
+		relative, err := filepath.Rel(absRoot, absTarget)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		relative = filepath.Clean(relative)
+		exactTargets[relative] = true
+		for parent := filepath.Dir(relative); parent != "."; parent = filepath.Dir(parent) {
+			targetAncestors[parent] = true
+		}
+	}
+	return exactTargets, targetAncestors
+}
+
+func verifyLegacyRemoteFetchRoot(absRoot string, exactTargets map[string]bool, targetAncestors map[string]bool) (bool, bool, error) {
+	foundTarget := false
+	var verifyDirectory func(string, string) (bool, error)
+	verifyDirectory = func(directory string, relativeDirectory string) (bool, error) {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			return false, err
+		}
+		for _, entry := range entries {
+			entryPath := filepath.Join(directory, entry.Name())
+			entryInfo, err := os.Lstat(entryPath)
+			if err != nil {
+				return false, err
+			}
+			if unsafeFetchStagingEntry(entryInfo) {
+				return false, nil
+			}
+			relative := entry.Name()
+			if relativeDirectory != "" {
+				relative = filepath.Join(relativeDirectory, entry.Name())
+			}
+			if relativeDirectory == "" && entry.Name() == remoteFetchRootReadmeName {
+				if !entryInfo.Mode().IsRegular() {
+					return false, nil
+				}
+				continue
+			}
+			if exactTargets[relative] {
+				if !entryInfo.IsDir() {
+					return false, nil
+				}
+				foundTarget = true
+				continue
+			}
+			if !targetAncestors[relative] || !entryInfo.IsDir() {
+				return false, nil
+			}
+			verified, err := verifyDirectory(entryPath, relative)
+			if err != nil || !verified {
+				return verified, err
+			}
+		}
+		return true, nil
+	}
+	verified, err := verifyDirectory(absRoot, "")
+	return verified, foundTarget, err
 }
 
 func (s *Server) remoteFetchManagedRoot(ctx context.Context, source remoteSourceForUse) (string, bool) {
@@ -275,7 +473,7 @@ func (s *Server) configuredRemoteFetchWatchRoots(ctx context.Context) ([]string,
 		if err != nil {
 			return nil, err
 		}
-		if review.Conflict || review.Status != "managed" {
+		if review.Conflict || (review.Status != "managed" && review.Status != "legacy_managed") {
 			continue
 		}
 		absolute, err := safeDataPath(s.cfg.DataRoot, root)

@@ -21,6 +21,15 @@ Sources describe where files come from.
   do not trigger the local folder watcher because Fetch registers publication
   directly. A pre-existing non-empty root without a matching marker is shown as
   a blocking Fetch review conflict and is never adopted automatically.
+- Markerless roots created by older Kikoto versions can be recognized from an
+  active `managed_fetch` folder location for the same origin source or a
+  succeeded `remote_work_fetch` run whose succeeded plan records the same
+  source and target root. Kikoto verifies the complete root against those exact
+  historical targets and their ancestors, without traversing a proven work
+  subtree. A regular root-level `README.md` is allowed, but unexplained entries,
+  links, reparse points, and stale records with no target present keep the root
+  in blocking review. Recognition is read-only; the next Fetch writes the
+  marker and adds the multilingual README only when one is not already present.
 - Cache and local deletion target concrete file locations, not the unified work.
   Mixed selections are submitted as one recoverable workflow; local deletion
   preserves work progress and listening marks.

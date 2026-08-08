@@ -686,7 +686,7 @@ export type RemoteWorkSaveLocalFile = {
 
 export type RemoteFetchRootReview = {
   rootPath: string;
-  status: "not_applicable" | "ready" | "managed" | "conflict";
+  status: "not_applicable" | "ready" | "managed" | "legacy_managed" | "conflict";
   conflict: boolean;
   message: string;
 };

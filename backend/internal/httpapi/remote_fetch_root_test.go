@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,5 +177,253 @@ func TestConfiguredRemoteFetchWatchRootsKeepUnclaimedCollisionVisible(t *testing
 	}
 	if len(roots) != 0 {
 		t.Fatalf("unclaimed collision was excluded from watching: %v", roots)
+	}
+}
+
+func TestLegacyRemoteFetchRootManagedLocationBackfillsClaim(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	seedLegacyRemoteFetchSources(t, db)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Synthetic work');
+		INSERT INTO work_folder_location (
+			work_id, file_source_id, root_path, role, origin_source_id, origin_remote_code, state, is_primary
+		) VALUES (1, 2, 'example_remote_a/RJ/000/RJ00000000', 'managed_fetch', 1, 'RJ00000000', 'active', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dataRoot, filepath.FromSlash("example_remote_a/RJ/000/RJ00000000"))
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "track.mp3"), []byte("fetched data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dataRoot, "example_remote_a")
+	if err := os.WriteFile(filepath.Join(root, remoteFetchRootReadmeName), []byte("operator README"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	source := remoteSourceForUse{ID: 1, Code: "example_remote_a", SourceType: sourceTypeKikoeruCompatible}
+
+	review, err := server.inspectRemoteFetchRoot(context.Background(), source, "example_remote_a/RJ/000/RJ00000001")
+	if err != nil || review.Conflict || review.Status != "legacy_managed" {
+		t.Fatalf("legacy review = %+v, error = %v", review, err)
+	}
+	if _, exists, err := readRemoteFetchRootMarker(root); err != nil || exists {
+		t.Fatalf("inspection marker exists = %v, error = %v", exists, err)
+	}
+
+	review, err = server.ensureRemoteFetchRootClaim(context.Background(), source, "example_remote_a/RJ/000/RJ00000001")
+	if err != nil || review.Conflict || review.Status != "managed" {
+		t.Fatalf("claimed review = %+v, error = %v", review, err)
+	}
+	marker, exists, err := readRemoteFetchRootMarker(root)
+	if err != nil || !exists || marker.SourceCode != source.Code {
+		t.Fatalf("marker = %+v/%v, error = %v", marker, exists, err)
+	}
+	readme, err := os.ReadFile(filepath.Join(root, remoteFetchRootReadmeName))
+	if err != nil || string(readme) != "operator README" {
+		t.Fatalf("README = %q, error = %v", readme, err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(target, "track.mp3")); err != nil || string(contents) != "fetched data" {
+		t.Fatalf("historical target contents = %q, error = %v", contents, err)
+	}
+}
+
+func TestLegacyRemoteFetchRootSucceededWorkflowPlanBackfillsClaim(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	seedLegacyRemoteFetchSources(t, db)
+	targetRoot := "example_remote_a/RJ/000/RJ00000001"
+	insertLegacyRemoteFetchWorkflow(t, db, 1, "succeeded", "succeeded", 1, 1, targetRoot)
+	target := filepath.Join(dataRoot, filepath.FromSlash(targetRoot))
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "track.flac"), []byte("legacy fetch"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	source := remoteSourceForUse{ID: 1, Code: "example_remote_a", SourceType: sourceTypeKikoeruCompatible}
+
+	review, err := server.inspectRemoteFetchRoot(context.Background(), source, "example_remote_a/RJ/000/RJ00000002")
+	if err != nil || review.Conflict || review.Status != "legacy_managed" {
+		t.Fatalf("legacy review = %+v, error = %v", review, err)
+	}
+	review, err = server.ensureRemoteFetchRootClaim(context.Background(), source, "example_remote_a/RJ/000/RJ00000002")
+	if err != nil || review.Conflict || review.Status != "managed" {
+		t.Fatalf("claimed review = %+v, error = %v", review, err)
+	}
+	if _, exists, err := readRemoteFetchRootMarker(filepath.Join(dataRoot, "example_remote_a")); err != nil || !exists {
+		t.Fatalf("marker exists = %v, error = %v", exists, err)
+	}
+}
+
+func TestLegacyRemoteFetchRootRejectsUnexplainedSibling(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	seedLegacyRemoteFetchSources(t, db)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000002', 'Synthetic work');
+		INSERT INTO work_folder_location (
+			work_id, file_source_id, root_path, role, origin_source_id, state, is_primary
+		) VALUES (1, 2, 'example_remote_a/RJ/000/RJ00000002', 'managed_fetch', 1, 'active', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dataRoot, filepath.FromSlash("example_remote_a/RJ/000/RJ00000002"))
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dataRoot, "example_remote_a")
+	if err := os.WriteFile(filepath.Join(root, "user-file.txt"), []byte("manual content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	source := remoteSourceForUse{ID: 1, Code: "example_remote_a", SourceType: sourceTypeKikoeruCompatible}
+
+	review, err := server.ensureRemoteFetchRootClaim(context.Background(), source, "example_remote_a/RJ/000/RJ00000003")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !review.Conflict || review.Status != "conflict" || !strings.Contains(review.Message, "not managed by Kikoto") {
+		t.Fatalf("review = %+v", review)
+	}
+	if _, exists, err := readRemoteFetchRootMarker(root); err != nil || exists {
+		t.Fatalf("conflicting root marker exists = %v, error = %v", exists, err)
+	}
+}
+
+func TestLegacyRemoteFetchRootRejectsUntrustedWorkflowHistory(t *testing.T) {
+	tests := []struct {
+		name           string
+		runStatus      string
+		planStatus     string
+		inputSourceID  int64
+		outputSourceID int64
+	}{
+		{name: "mismatched run source", runStatus: "succeeded", planStatus: "succeeded", inputSourceID: 2, outputSourceID: 1},
+		{name: "mismatched plan source", runStatus: "succeeded", planStatus: "succeeded", inputSourceID: 1, outputSourceID: 2},
+		{name: "failed run", runStatus: "failed", planStatus: "succeeded", inputSourceID: 1, outputSourceID: 1},
+		{name: "failed plan", runStatus: "succeeded", planStatus: "failed", inputSourceID: 1, outputSourceID: 1},
+	}
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataRoot := t.TempDir()
+			db := openMigratedTestDB(t)
+			seedLegacyRemoteFetchSources(t, db)
+			targetRoot := "example_remote_a/RJ/000/RJ00000004"
+			insertLegacyRemoteFetchWorkflow(t, db, int64(index+1), test.runStatus, test.planStatus, test.inputSourceID, test.outputSourceID, targetRoot)
+			target := filepath.Join(dataRoot, filepath.FromSlash(targetRoot))
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			server := NewServer(db, config.Config{DataRoot: dataRoot})
+			source := remoteSourceForUse{ID: 1, Code: "example_remote_a", SourceType: sourceTypeKikoeruCompatible}
+
+			review, err := server.inspectRemoteFetchRoot(context.Background(), source, "example_remote_a/RJ/000/RJ00000005")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !review.Conflict || review.Status != "conflict" {
+				t.Fatalf("review = %+v", review)
+			}
+		})
+	}
+}
+
+func TestLegacyRemoteFetchRootRequiresHistoricalTargetOnDisk(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	seedLegacyRemoteFetchSources(t, db)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000005', 'Synthetic work');
+		INSERT INTO work_folder_location (
+			work_id, file_source_id, root_path, role, origin_source_id, state, is_primary
+		) VALUES (1, 2, 'example_remote_a/RJ/000/RJ00000005', 'managed_fetch', 1, 'active', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dataRoot, "example_remote_a")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, remoteFetchRootReadmeName), []byte("legacy README"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+	source := remoteSourceForUse{ID: 1, Code: "example_remote_a", SourceType: sourceTypeKikoeruCompatible}
+
+	review, err := server.inspectRemoteFetchRoot(context.Background(), source, "example_remote_a/RJ/000/RJ00000006")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !review.Conflict || review.Status != "conflict" {
+		t.Fatalf("review = %+v", review)
+	}
+	if _, exists, err := readRemoteFetchRootMarker(root); err != nil || exists {
+		t.Fatalf("stale history marker exists = %v, error = %v", exists, err)
+	}
+}
+
+func TestConfiguredRemoteFetchWatchRootsIncludeVerifiedLegacySourceFolder(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	seedLegacyRemoteFetchSources(t, db)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000006', 'Synthetic work');
+		INSERT INTO work_folder_location (
+			work_id, file_source_id, root_path, role, origin_source_id, state, is_primary
+		) VALUES (1, 2, 'example_remote_a/RJ/000/RJ00000006', 'managed_fetch', 1, 'active', 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dataRoot, "example_remote_a")
+	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash("RJ/000/RJ00000006")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot})
+
+	roots, err := server.configuredRemoteFetchWatchRoots(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 1 || !strings.EqualFold(roots[0], root) {
+		t.Fatalf("watch roots = %v, want %q", roots, root)
+	}
+	if _, exists, err := readRemoteFetchRootMarker(root); err != nil || exists {
+		t.Fatalf("watch-root inspection marker exists = %v, error = %v", exists, err)
+	}
+}
+
+func seedLegacyRemoteFetchSources(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(`
+		INSERT INTO file_source (id, code, display_name, source_type, config_json)
+		VALUES
+			(1, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible', '{}'),
+			(2, 'local', 'Local', 'local_folder', '{}')
+	`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertLegacyRemoteFetchWorkflow(t *testing.T, db *sql.DB, runID int64, runStatus string, planStatus string, inputSourceID int64, outputSourceID int64, saveRoot string) {
+	t.Helper()
+	workCode := filepath.Base(filepath.FromSlash(saveRoot))
+	_, err := db.Exec(`
+		INSERT INTO workflow_run (id, workflow_code, display_name, status, trigger_type, input_json)
+		VALUES (?, 'remote_work_fetch', 'Fetch remote work', ?, 'manual', ?)
+	`, runID, runStatus, mustJSON(map[string]any{"source_id": inputSourceID, "work_code": workCode}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO workflow_node_run (
+			workflow_run_id, node_id, node_type, display_name, position, status, output_json
+		) VALUES (?, 'plan', 'plan_save', 'Plan save', 3, ?, ?)
+	`, runID, planStatus, mustJSON(map[string]any{"sourceId": outputSourceID, "saveRoot": saveRoot})); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -3688,7 +3688,7 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 		plan.FetchRoot = claimedRoot
 		return remoteWorkSaveResult{}, remoteWorkSaveConflictError{Summary: plan.Summary}
 	}
-	if plan.FetchRoot.Status == "ready" {
+	if plan.FetchRoot.Status == "ready" || plan.FetchRoot.Status == "legacy_managed" {
 		s.notifyFilesystemTriggerConfigChanged()
 	}
 	plan.FetchRoot = claimedRoot

@@ -62,12 +62,16 @@ directory trees; there is no recurring directory traversal. Events are
 debounced for five seconds before the existing full local-scan graph is queued.
 Kikoto's `.kikoto-staging`, `.kikoto-backup`, and `.kikoto-trash` transaction
 trees are excluded. Claimed per-source Fetch roots are also excluded from the
-native event watcher because Fetch registers final publication directly. The
-Startup and manual workflows continue to run the complete local scan. If a
-scan is already queued or running, later changes remain pending and are
-coalesced into at most one follow-up run. Events while the trigger is paused
-are discarded. Changes made while Kikoto is stopped are covered by the default
-Startup scan; they cannot be recovered by the native event stream alone.
+native event watcher because Fetch registers final publication directly. A
+markerless root from an older release receives the same exclusion only after
+same-source Fetch history explains its complete visible structure and at least
+one exact historical target exists on disk; watcher configuration does not
+write the missing marker. The Startup and manual workflows continue to run the
+complete local scan. If a scan is already queued or running, later changes
+remain pending and are coalesced into at most one follow-up run. Events while
+the trigger is paused are discarded. Changes made while Kikoto is stopped are
+covered by the default Startup scan; they cannot be recovered by the native
+event stream alone.
 
 Local scan and metadata sync have separate definitions, jobs, resource lanes,
 statuses, failures, review candidates, and retry histories. A local scan never

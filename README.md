@@ -134,7 +134,12 @@ watcher. Startup and manual scans still inspect the complete data tree. Kikoto
 writes a machine ownership marker and a multilingual `README.md` in each
 claimed root; store manually managed works elsewhere in the data directory. A
 non-empty, unclaimed directory at the same path blocks the first Fetch and
-appears in the Fetch review instead of being silently adopted.
+appears in the Fetch review instead of being silently adopted. When upgrading
+from a version that predates the marker, Kikoto recognizes only same-source
+Fetch targets recorded by successful workflow history or active managed-folder
+locations. It adopts the root only when every existing entry is explained by
+those targets (apart from a regular root-level `README.md`) and at least one
+recorded target still exists; otherwise the normal blocking review remains.
 
 Recognized audio extensions include MP3, M4A, FLAC, WAV, WMA, OGG, Opus, and
 AAC. Video, image, text, and other files remain visible in the directory tree
