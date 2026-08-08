@@ -2,9 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -382,4 +385,315 @@ func TestDLsiteMetadataSyncQueuesIndependentRuns(t *testing.T) {
 	if queuedRuns != 2 || queuedJobs != 2 {
 		t.Fatalf("queued metadata runs/jobs = %d/%d", queuedRuns, queuedJobs)
 	}
+}
+
+func TestLocalLibraryScanInvalidatesMovedFolderLocationsAndReindexesLazily(t *testing.T) {
+	tests := []struct {
+		name                 string
+		presenceAlreadyMoved bool
+	}{
+		{name: "folder path changed during scan"},
+		{name: "presence already points at new folder", presenceAlreadyMoved: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataRoot := t.TempDir()
+			code := "RJ00000013"
+			newRoot := code + " New home"
+			oldRoot := "legacy/RJ/000/" + code
+			if err := os.MkdirAll(filepath.Join(dataRoot, newRoot), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dataRoot, newRoot, "track.mp3"), []byte("audio"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 4})
+			presenceRoot := oldRoot
+			if test.presenceAlreadyMoved {
+				presenceRoot = newRoot
+			}
+			seeded := seedIndexedLocalScanWork(t, db, server, code, presenceRoot, oldRoot+"/track.mp3")
+			runID := executeLocalScanForTest(t, server)
+
+			var sourceURL, oldAvailability string
+			if err := db.QueryRow(`
+				SELECT source_url
+				FROM work_source_presence
+				WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+			`, seeded.workID, seeded.sourceID).Scan(&sourceURL); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", seeded.locationID).Scan(&oldAvailability); err != nil {
+				t.Fatal(err)
+			}
+			if sourceURL != newRoot || oldAvailability != "missing" {
+				t.Fatalf("moved scan = source %q, old availability %q", sourceURL, oldAvailability)
+			}
+			if missing := localScanMissingLocationCount(t, db, runID); missing != 1 {
+				t.Fatalf("missing locations = %d, want 1", missing)
+			}
+
+			var availableBefore int
+			if err := db.QueryRow(`
+				SELECT COUNT(*)
+				FROM media_file_location
+				WHERE media_item_id = ? AND availability = 'available'
+			`, seeded.mediaItemID).Scan(&availableBefore); err != nil {
+				t.Fatal(err)
+			}
+			if availableBefore != 0 {
+				t.Fatalf("available locations before lazy index = %d, want 0", availableBefore)
+			}
+			if err := server.ensureLocalMediaIndexed(context.Background(), seeded.workID); err != nil {
+				t.Fatal(err)
+			}
+
+			var mediaItems, newAvailable int
+			if err := db.QueryRow("SELECT COUNT(*) FROM media_item WHERE work_id = ?", seeded.workID).Scan(&mediaItems); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow(`
+				SELECT COUNT(*)
+				FROM media_file_location
+				WHERE media_item_id = ? AND file_source_id = ? AND path = ? AND availability = 'available'
+			`, seeded.mediaItemID, seeded.sourceID, newRoot+"/track.mp3").Scan(&newAvailable); err != nil {
+				t.Fatal(err)
+			}
+			if mediaItems != 1 || newAvailable != 1 {
+				t.Fatalf("lazy reindex = %d media items, %d new locations", mediaItems, newAvailable)
+			}
+		})
+	}
+}
+
+func TestLocalLibraryScanInvalidatesLocationsWhenFolderDisappears(t *testing.T) {
+	for _, presenceAlreadyMissing := range []bool{false, true} {
+		name := "available presence"
+		if presenceAlreadyMissing {
+			name = "presence already missing"
+		}
+		t.Run(name, func(t *testing.T) {
+			dataRoot := t.TempDir()
+			db := openMigratedTestDB(t)
+			server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 4})
+			code := "RJ00000014"
+			root := code + " Missing"
+			seeded := seedIndexedLocalScanWork(t, db, server, code, root, root+"/track.mp3")
+			if presenceAlreadyMissing {
+				if _, err := db.Exec(`
+					UPDATE work_source_presence
+					SET availability = 'missing'
+					WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+				`, seeded.workID, seeded.sourceID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runID := executeLocalScanForTest(t, server)
+
+			var presenceAvailability, locationAvailability string
+			if err := db.QueryRow(`
+				SELECT availability
+				FROM work_source_presence
+				WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+			`, seeded.workID, seeded.sourceID).Scan(&presenceAvailability); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", seeded.locationID).Scan(&locationAvailability); err != nil {
+				t.Fatal(err)
+			}
+			if presenceAvailability != "missing" || locationAvailability != "missing" {
+				t.Fatalf("missing folder = presence %q, location %q", presenceAvailability, locationAvailability)
+			}
+			if missing := localScanMissingLocationCount(t, db, runID); missing != 1 {
+				t.Fatalf("missing locations = %d, want 1", missing)
+			}
+		})
+	}
+}
+
+func TestLocalLibraryScanKeepsLocationsForDuplicateFolderReview(t *testing.T) {
+	dataRoot := t.TempDir()
+	code := "RJ00000015"
+	firstRoot := "A " + code
+	secondRoot := "B " + code
+	for _, root := range []string{firstRoot, secondRoot} {
+		if err := os.MkdirAll(filepath.Join(dataRoot, root), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dataRoot, root, "track.mp3"), []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 4})
+	seeded := seedIndexedLocalScanWork(t, db, server, code, firstRoot, firstRoot+"/track.mp3")
+	runID := executeLocalScanForTest(t, server)
+
+	var availability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", seeded.locationID).Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	var candidates int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM workflow_candidate
+		WHERE workflow_run_id = ? AND candidate_type = 'local_duplicate_work_folder' AND external_key = ? AND status = 'pending'
+	`, runID, code).Scan(&candidates); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "available" || candidates != 1 || localScanMissingLocationCount(t, db, runID) != 0 {
+		t.Fatalf("duplicate review = availability %q, candidates %d", availability, candidates)
+	}
+}
+
+func TestLocalLibraryScanDoesNotRewriteManagedFetchOwnershipDuringMove(t *testing.T) {
+	dataRoot := t.TempDir()
+	code := "RJ00000016"
+	newRoot := code + " New home"
+	oldRoot := "example_remote_a/RJ/000/" + code
+	if err := os.MkdirAll(filepath.Join(dataRoot, newRoot), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataRoot, newRoot, "track.mp3"), []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 4})
+	seeded := seedIndexedLocalScanWork(t, db, server, code, oldRoot, oldRoot+"/track.mp3")
+	if _, err := db.Exec(`
+		INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state, is_primary)
+		VALUES (?, ?, ?, 'managed_fetch', 'active', 1)
+	`, seeded.workID, seeded.sourceID, oldRoot); err != nil {
+		t.Fatal(err)
+	}
+	executeLocalScanForTest(t, server)
+
+	var rootPath, role, state, locationAvailability string
+	if err := db.QueryRow(`
+		SELECT root_path, role, state
+		FROM work_folder_location
+		WHERE work_id = ? AND file_source_id = ?
+	`, seeded.workID, seeded.sourceID).Scan(&rootPath, &role, &state); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", seeded.locationID).Scan(&locationAvailability); err != nil {
+		t.Fatal(err)
+	}
+	if rootPath != oldRoot || role != "managed_fetch" || state != "active" || locationAvailability != "missing" {
+		t.Fatalf("managed ownership = root %q, role %q, state %q, location %q", rootPath, role, state, locationAvailability)
+	}
+}
+
+func TestLocalLibraryScanKeepsLocationsUnderCurrentFolder(t *testing.T) {
+	dataRoot := t.TempDir()
+	code := "RJ00000017"
+	root := code + " Current"
+	if err := os.MkdirAll(filepath.Join(dataRoot, root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataRoot, root, "track.mp3"), []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 4})
+	seeded := seedIndexedLocalScanWork(t, db, server, code, root, root+"/track.mp3")
+	runID := executeLocalScanForTest(t, server)
+
+	var availability string
+	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", seeded.locationID).Scan(&availability); err != nil {
+		t.Fatal(err)
+	}
+	if availability != "available" || localScanMissingLocationCount(t, db, runID) != 0 {
+		t.Fatalf("current folder availability = %q", availability)
+	}
+}
+
+type seededLocalScanWorkRecord struct {
+	workID      int64
+	mediaItemID int64
+	locationID  int64
+	sourceID    int64
+}
+
+func seedIndexedLocalScanWork(t *testing.T, db *sql.DB, server *Server, code string, presenceRoot string, locationPath string) seededLocalScanWorkRecord {
+	t.Helper()
+	if err := server.EnsureLocalSource(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var sourceID int64
+	if err := db.QueryRow("SELECT id FROM file_source WHERE code = 'main_local_library'").Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	workResult, err := db.Exec("INSERT INTO work (primary_code, work_type, title) VALUES (?, 'audio', 'Synthetic local work')", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, err := workResult.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO work_source_presence (
+			work_id, file_source_id, presence_type, source_url, availability, raw_json, last_seen_at, last_checked_at
+		) VALUES (?, ?, 'local', ?, 'available', '{"file_tree_scanned":true}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`, workID, sourceID, presenceRoot); err != nil {
+		t.Fatal(err)
+	}
+	mediaResult, err := db.Exec(`
+		INSERT INTO media_item (work_id, kind, title, track_no, size_bytes, fingerprint)
+		VALUES (?, 'audio', 'track', 1, 5, ?)
+	`, workID, "local:"+code+":track.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaItemID, err := mediaResult.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	locationResult, err := db.Exec(`
+		INSERT INTO media_file_location (
+			media_item_id, file_source_id, location_type, path, size_bytes, availability, last_checked_at
+		) VALUES (?, ?, 'local', ?, 5, 'available', CURRENT_TIMESTAMP)
+	`, mediaItemID, sourceID, locationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locationID, err := locationResult.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return seededLocalScanWorkRecord{workID: workID, mediaItemID: mediaItemID, locationID: locationID, sourceID: sourceID}
+}
+
+func executeLocalScanForTest(t *testing.T, server *Server) int64 {
+	t.Helper()
+	result, err := server.enqueueLocalScan(context.Background(), "manual", "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(context.Background(), "local-folder-reconcile-test")
+	if err != nil || !ok || job.RunID != result.RunID {
+		t.Fatalf("claim local scan job = %#v, %t, %v", job, ok, err)
+	}
+	if err := server.executeLocalScanJob(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	return result.RunID
+}
+
+func localScanMissingLocationCount(t *testing.T, db *sql.DB, runID int64) int {
+	t.Helper()
+	var summaryJSON string
+	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", runID).Scan(&summaryJSON); err != nil {
+		t.Fatal(err)
+	}
+	var summary struct {
+		MissingLocations int `json:"missing_locations"`
+	}
+	if err := json.Unmarshal([]byte(summaryJSON), &summary); err != nil {
+		t.Fatal(err)
+	}
+	return summary.MissingLocations
 }

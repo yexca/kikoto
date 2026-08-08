@@ -149,9 +149,12 @@ The default Startup workflow scans the library after service startup. A native
 directory watcher queues the same scan while Kikoto is running, and a manual
 scan remains available from Workflows. The scan records folder presence and
 does not wait for metadata synchronization, so the local library becomes usable
-sooner. Manual, Startup, and interval scans can opt into a disabled-by-default
-`Follow-up run` that queues an independent metadata sync after the scan has
-finished. Detailed local media trees are indexed when needed.
+sooner. When one unambiguous work folder disappears or moves, the scan marks its
+stale local file locations missing without deleting files; a moved folder's
+detailed media tree is rebuilt when needed. Duplicate folders remain in Activity
+for review, and this reconciliation does not rewrite Fetch ownership. Manual,
+Startup, and interval scans can opt into a disabled-by-default `Follow-up run`
+that queues an independent metadata sync after the scan has finished.
 
 ## Remote Sources
 

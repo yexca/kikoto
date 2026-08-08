@@ -147,8 +147,14 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 	}
 	updatedLocations := 0
 	skippedLocations := 0
+	missingLocations := 0
 	newWorkCodes := []string{}
 	seenWorkIDs := map[int64]bool{}
+	reconciledWorkIDs := map[int64]bool{}
+	duplicateCodes := map[string]bool{}
+	for _, group := range scanSummary.DuplicateGroups {
+		duplicateCodes[strings.ToUpper(strings.TrimSpace(group.Code))] = true
+	}
 	for _, folder := range workFolders {
 		_, existedBefore, err := workIDForCodeInTx(ctx, tx, folder.Code)
 		if err != nil {
@@ -172,10 +178,27 @@ func (s *Server) executeLocalScanJob(ctx context.Context, job workflowJobRecord)
 		}); err != nil {
 			return rollbackAndFail(err)
 		}
+		// A duplicate stays reviewable. Invalidating either folder here would
+		// choose a winner before the user has reviewed the candidate.
+		if !duplicateCodes[strings.ToUpper(strings.TrimSpace(folder.Code))] && !reconciledWorkIDs[workID] {
+			missing, err := markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
+			if err != nil {
+				return rollbackAndFail(err)
+			}
+			missingLocations += missing
+			reconciledWorkIDs[workID] = true
+		}
 	}
-	missingLocations := 0
-	if err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs); err != nil {
+	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, seenWorkIDs)
+	if err != nil {
 		return rollbackAndFail(err)
+	}
+	for _, workID := range missingWorkIDs {
+		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
+		if err != nil {
+			return rollbackAndFail(err)
+		}
+		missingLocations += missing
 	}
 	runSummary := map[string]any{
 		"candidate_folders":   scanSummary.CandidateFolders,

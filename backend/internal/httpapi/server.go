@@ -4706,30 +4706,87 @@ func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID in
 	return len(missingIDs), nil
 }
 
-func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenWorkIDs map[int64]bool) error {
+func markLocalLocationsMissingForChangedFolder(ctx context.Context, tx *sql.Tx, workID int64, fileSourceID int64, folderPath string) (int, error) {
+	folderPath = filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(folderPath))))
+	folderPath = strings.Trim(folderPath, "/")
+	if folderPath == "" || folderPath == "." {
+		return 0, nil
+	}
+	var mismatched bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM media_file_location AS location
+			INNER JOIN media_item AS item ON item.id = location.media_item_id
+			WHERE item.work_id = ?
+				AND location.file_source_id = ?
+				AND location.location_type = 'local'
+				AND location.availability = 'available'
+				AND NOT (
+					location.path = ?
+					OR substr(location.path, 1, length(?) + 1) = ? || '/'
+				)
+		)
+	`, workID, fileSourceID, folderPath, folderPath, folderPath).Scan(&mismatched); err != nil {
+		return 0, err
+	}
+	if !mismatched {
+		return 0, nil
+	}
+	// Invalidate the complete local set so the existing lazy indexer rebuilds
+	// one consistent tree instead of stopping after it sees a partial new set.
+	return markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
+}
+
+func markAvailableLocalLocationsMissingForWork(ctx context.Context, tx *sql.Tx, workID int64, fileSourceID int64) (int, error) {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET availability = 'missing',
+			last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ?
+			AND location_type = 'local'
+			AND availability = 'available'
+			AND media_item_id IN (
+				SELECT id FROM media_item WHERE work_id = ?
+			)
+	`, fileSourceID, workID)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(affected), nil
+}
+
+func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int64, seenWorkIDs map[int64]bool) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT work_id
 		FROM work_source_presence
 		WHERE file_source_id = ?
 			AND presence_type = 'local'
-			AND availability = 'available'
 	`, fileSourceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer rows.Close()
 	missingWorkIDs := []int64{}
 	for rows.Next() {
 		var workID int64
 		if err := rows.Scan(&workID); err != nil {
-			return err
+			_ = rows.Close()
+			return nil, err
 		}
 		if !seenWorkIDs[workID] {
 			missingWorkIDs = append(missingWorkIDs, workID)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	for _, workID := range missingWorkIDs {
 		if _, err := tx.ExecContext(ctx, `
@@ -4740,11 +4797,12 @@ func markMissingLocalPresence(ctx context.Context, tx *sql.Tx, fileSourceID int6
 			WHERE file_source_id = ?
 				AND presence_type = 'local'
 				AND work_id = ?
+				AND availability != 'missing'
 		`, fileSourceID, workID); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return missingWorkIDs, nil
 }
 
 func localFileKind(path string) string {

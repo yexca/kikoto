@@ -73,6 +73,16 @@ the trigger is paused are discarded. Changes made while Kikoto is stopped are
 covered by the default Startup scan; they cannot be recovered by the native
 event stream alone.
 
+For one unambiguous detected work folder, the scan compares its normalized root
+with available local media paths already stored for that work. If the folder is
+gone or any available path belongs to a different root, all of that work's
+available locations for the local source become `missing`; the existing lazy
+indexer then rebuilds one consistent tree when the work is opened. This adds no
+per-file filesystem traversal to the folder scan. Duplicate-code groups skip
+automatic invalidation and remain review candidates. Reconciliation changes
+availability only: it neither deletes files nor rewrites `managed_fetch`
+ownership records.
+
 Local scan and metadata sync have separate definitions, jobs, resource lanes,
 statuses, failures, review candidates, and retry histories. A local scan never
 calls a metadata provider as part of its own run. Manual, Startup, and interval

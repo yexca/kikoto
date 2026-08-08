@@ -14,6 +14,10 @@ Workflows make backend actions inspectable.
   for a metadata provider. Metadata sync, source availability, remote sync,
   cache, fetch, cleanup, circle refresh, and bulk remote actions record separate
   workflow runs.
+- For one unambiguous local work, a scan marks old local file locations missing
+  when the folder disappears or its stored paths no longer belong to the
+  detected folder. It does not delete files or change Fetch ownership. A moved
+  folder is indexed lazily when opened; duplicate-code folders remain in Review.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
 - Review contains terminal runs with unresolved candidates that need a user
