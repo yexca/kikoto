@@ -1,12 +1,12 @@
 import { AlertCircle, CheckCircle2, Copy } from "lucide-react";
 
+import { isWorkCode } from "@/lib/workCode";
+
 export type WorkCodesParseResult = {
   codes: string[];
   duplicates: string[];
   invalid: string[];
 };
-
-const workCodePattern = /^(RJ|BJ|VJ|CC)[0-9]{4,8}$/i;
 
 export function parseWorkCodes(value: string): WorkCodesParseResult {
   const tokens = value
@@ -19,7 +19,7 @@ export function parseWorkCodes(value: string): WorkCodesParseResult {
   const seen = new Set<string>();
   for (const token of tokens) {
     const code = token.toUpperCase();
-    if (!workCodePattern.test(code)) {
+    if (!isWorkCode(code)) {
       invalid.push(token);
       continue;
     }
@@ -49,7 +49,7 @@ export function WorkCodesField({
         className="min-h-28 w-full resize-y rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={"RJ01234567\nRJ07654321"}
+        placeholder={"RJ00000000\nRJ00000001"}
         autoCapitalize="off"
         spellCheck={false}
       />

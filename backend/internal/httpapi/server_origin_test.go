@@ -10,9 +10,9 @@ import (
 )
 
 func TestParseDLsiteSnapshotUsesLanguageEditionOrigin(t *testing.T) {
-	raw := `{"product":{"workno":"RJ09999992","product_name":"Chinese title","language_editions":[{"workno":"RJ09999991","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ09999992","display_order":3,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]},"_kikoto":{"response_language":"ja-jp","edition_language":"CHI_HANS"}}`
+	raw := `{"product":{"workno":"RJ00000001","product_name":"Chinese title","language_editions":[{"workno":"RJ00000000","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ00000001","display_order":3,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]},"_kikoto":{"response_language":"ja-jp","edition_language":"CHI_HANS"}}`
 	metadata := parseDLsiteSnapshot(raw)
-	if metadata.BaseCode != "RJ09999991" {
+	if metadata.BaseCode != "RJ00000000" {
 		t.Fatalf("base code = %q", metadata.BaseCode)
 	}
 	if metadata.MetadataLanguage != "CHI_HANS" {
@@ -46,7 +46,7 @@ func TestWorkSummariesKeepAllProviderTags(t *testing.T) {
 	}
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	works, err := server.remoteWorkSummaries(context.Background(), 0, 7, []kikoeru.Work{{ID: 1, SourceID: "RJ09999999", AgeCategoryString: "R15", Tags: remoteTags}}, "ja-jp")
+	works, err := server.remoteWorkSummaries(context.Background(), 0, 7, []kikoeru.Work{{ID: 1, SourceID: "RJ00000002", AgeCategoryString: "R15", Tags: remoteTags}}, "ja-jp")
 	if err != nil {
 		t.Fatal(err)
 	}

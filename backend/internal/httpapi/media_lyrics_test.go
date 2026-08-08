@@ -101,8 +101,8 @@ func TestEnsureLocalMediaIndexedHonorsCompletedEmptyScan(t *testing.T) {
 
 func TestEnsureLocalMediaIndexedIndexesRequestedEditionDespiteSiblingMedia(t *testing.T) {
 	dataRoot := t.TempDir()
-	originPath := filepath.Join(dataRoot, "RJ01000081")
-	translationPath := filepath.Join(dataRoot, "RJ01000082")
+	originPath := filepath.Join(dataRoot, "RJ00000005")
+	translationPath := filepath.Join(dataRoot, "RJ00000006")
 	for _, path := range []string{originPath, translationPath} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
@@ -115,29 +115,29 @@ func TestEnsureLocalMediaIndexedIndexesRequestedEditionDespiteSiblingMedia(t *te
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(81, 'RJ01000081', 'Origin work'),
-			(82, 'RJ01000082', 'Translated work');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (81, 81, 'RJ01000081');
+			(81, 'RJ00000005', 'Origin work'),
+			(82, 'RJ00000006', 'Translated work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (81, 81, 'RJ00000005');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical) VALUES
-			(81, 81, 'RJ01000081', 'RJ01000081', 'JPN', 1),
-			(82, 81, 'RJ01000082', 'RJ01000081', 'ENG', 0);
+			(81, 81, 'RJ00000005', 'RJ00000005', 'JPN', 1),
+			(82, 81, 'RJ00000006', 'RJ00000005', 'ENG', 0);
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (91, 'edition-local', 'Edition local', 'local_folder');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json) VALUES
-			(81, 91, 'local', 'RJ01000081', 'available', '{"file_tree_scanned":true}'),
-			(82, 91, 'local', 'RJ01000082', 'available', '{"file_tree_scanned":false}');
+			(81, 91, 'local', 'RJ00000005', 'available', '{"file_tree_scanned":true}'),
+			(82, 91, 'local', 'RJ00000006', 'available', '{"file_tree_scanned":false}');
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (101, 81, 'audio', 'Origin track', 'origin-track');
 		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
-		VALUES (101, 91, 'local', 'RJ01000081/origin.mp3', 'available');
+		VALUES (101, 91, 'local', 'RJ00000005/origin.mp3', 'available');
 	`); err != nil {
 		t.Fatal(err)
 	}
 
 	server := NewServer(db, config.Config{DataRoot: dataRoot})
-	before, err := server.loadLogicalWorkTranslations(context.Background(), "RJ01000081")
+	before, err := server.loadLogicalWorkTranslations(context.Background(), "RJ00000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state := translationMediaStateForCode(before, "RJ01000082"); state != workMediaStatePresentUnindexed {
+	if state := translationMediaStateForCode(before, "RJ00000006"); state != workMediaStatePresentUnindexed {
 		t.Fatalf("translation state before indexing = %q, want %q", state, workMediaStatePresentUnindexed)
 	}
 	if err := server.ensureLocalMediaIndexed(context.Background(), 82); err != nil {
@@ -156,11 +156,11 @@ func TestEnsureLocalMediaIndexedIndexesRequestedEditionDespiteSiblingMedia(t *te
 	if translatedLocations != 1 {
 		t.Fatalf("translated locations = %d, want 1", translatedLocations)
 	}
-	after, err := server.loadLogicalWorkTranslations(context.Background(), "RJ01000081")
+	after, err := server.loadLogicalWorkTranslations(context.Background(), "RJ00000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state := translationMediaStateForCode(after, "RJ01000082"); state != workMediaStateIndexedAvailable {
+	if state := translationMediaStateForCode(after, "RJ00000006"); state != workMediaStateIndexedAvailable {
 		t.Fatalf("translation state after indexing = %q, want %q", state, workMediaStateIndexedAvailable)
 	}
 }
@@ -169,32 +169,32 @@ func TestLoadWorkTranslationsPromotesMaterializedEditionMediaState(t *testing.T)
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(83, 'RJ01000083', 'Origin work'),
-			(84, 'RJ01000084', 'Translated work');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (83, 83, 'RJ01000083');
+			(83, 'RJ00000007', 'Origin work'),
+			(84, 'RJ00000008', 'Translated work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (83, 83, 'RJ00000007');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, is_canonical, translation_kind) VALUES
-			(83, 83, 'RJ01000083', 'RJ01000083', 'JPN', 1, 'origin'),
-			(84, 83, 'RJ01000084', 'RJ01000083', 'ENG', 0, 'third_party');
+			(83, 83, 'RJ00000007', 'RJ00000007', 'JPN', 1, 'origin'),
+			(84, 83, 'RJ00000008', 'RJ00000007', 'ENG', 0, 'third_party');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (92, 'translated-local', 'Translated local', 'local_folder');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
-		VALUES (84, 92, 'local', 'RJ01000084', 'available', '{"file_tree_scanned":false}');
+		VALUES (84, 92, 'local', 'RJ00000008', 'available', '{"file_tree_scanned":false}');
 	`); err != nil {
 		t.Fatal(err)
 	}
 
 	server := NewServer(db, config.Config{})
-	translations, err := server.loadWorkTranslations(context.Background(), "RJ01000083", "RJ01000083", []workTranslation{
-		{PrimaryCode: "RJ01000083", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
-		{PrimaryCode: "RJ01000084", MetadataLanguage: "ENG", TranslationKind: "unknown"},
+	translations, err := server.loadWorkTranslations(context.Background(), "RJ00000007", "RJ00000007", []workTranslation{
+		{PrimaryCode: "RJ00000007", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
+		{PrimaryCode: "RJ00000008", MetadataLanguage: "ENG", TranslationKind: "unknown"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state := translationMediaStateForCode(translations, "RJ01000084"); state != workMediaStatePresentUnindexed {
+	if state := translationMediaStateForCode(translations, "RJ00000008"); state != workMediaStatePresentUnindexed {
 		t.Fatalf("merged translation state = %q, want %q", state, workMediaStatePresentUnindexed)
 	}
 	for _, item := range translations {
-		if item.PrimaryCode == "RJ01000084" && item.TranslationKind != "third_party" {
+		if item.PrimaryCode == "RJ00000008" && item.TranslationKind != "third_party" {
 			t.Fatalf("merged translation kind = %q, want third_party", item.TranslationKind)
 		}
 	}
@@ -204,23 +204,23 @@ func TestLoadWorkTranslationsOnlyResolvesDeclaredLegacyCodes(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(85, 'RJ09999885', 'Legacy origin'),
-			(86, 'RJ09999886', 'Declared translation'),
-			(87, 'RJ09999887', 'Unrelated snapshot');
+			(85, 'RJ00000009', 'Legacy origin'),
+			(86, 'RJ00000010', 'Declared translation'),
+			(87, 'RJ00000011', 'Unrelated snapshot');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (93, 'legacy-local', 'Legacy local', 'local_folder');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
-		VALUES (86, 93, 'local', 'RJ09999886', 'available', '{"file_tree_scanned":false}');
+		VALUES (86, 93, 'local', 'RJ00000010', 'available', '{"file_tree_scanned":false}');
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		SELECT 87, id, 'RJ09999887', '{"product_id":"RJ09999887","base_code":"RJ09999885","language":"ENG"}'
+		SELECT 87, id, 'RJ00000011', '{"product_id":"RJ00000011","base_code":"RJ00000009","language":"ENG"}'
 		FROM metadata_provider WHERE code = 'dlsite';
 	`); err != nil {
 		t.Fatal(err)
 	}
 
 	server := NewServer(db, config.Config{})
-	translations, err := server.loadWorkTranslations(context.Background(), "RJ09999885", "RJ09999885", []workTranslation{
-		{PrimaryCode: "RJ09999885", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
-		{PrimaryCode: "RJ09999886", MetadataLanguage: "ENG", TranslationKind: "official"},
+	translations, err := server.loadWorkTranslations(context.Background(), "RJ00000009", "RJ00000009", []workTranslation{
+		{PrimaryCode: "RJ00000009", MetadataLanguage: "JPN", Origin: true, TranslationKind: "origin"},
+		{PrimaryCode: "RJ00000010", MetadataLanguage: "ENG", TranslationKind: "official"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -228,11 +228,11 @@ func TestLoadWorkTranslationsOnlyResolvesDeclaredLegacyCodes(t *testing.T) {
 	if len(translations) != 2 {
 		t.Fatalf("translations = %+v, want only the two declared codes", translations)
 	}
-	if state := translationMediaStateForCode(translations, "RJ09999886"); state != workMediaStatePresentUnindexed {
+	if state := translationMediaStateForCode(translations, "RJ00000010"); state != workMediaStatePresentUnindexed {
 		t.Fatalf("declared translation state = %q, want %q", state, workMediaStatePresentUnindexed)
 	}
 	for _, item := range translations {
-		if item.PrimaryCode == "RJ09999887" {
+		if item.PrimaryCode == "RJ00000011" {
 			t.Fatalf("unrelated snapshot was included: %+v", item)
 		}
 	}
@@ -242,16 +242,16 @@ func TestResolveMediaWorkIDForRequestUsesMediaBearingEdition(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(51, 'RJ01000051', 'Origin work'),
-			(52, 'RJ01000052', 'Media edition');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (51, 51, 'RJ01000051');
+			(51, 'RJ00000000', 'Origin work'),
+			(52, 'RJ00000001', 'Media edition');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (51, 51, 'RJ00000000');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
-			(51, 51, 'RJ01000051', 'RJ01000051', 1),
-			(52, 51, 'RJ01000052', 'RJ01000051', 0);
+			(51, 51, 'RJ00000000', 'RJ00000000', 1),
+			(52, 51, 'RJ00000001', 'RJ00000000', 0);
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (53, 'media-edition', 'Media edition', 'local_folder');
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (54, 52, 'audio', 'Track', 'edition-track');
 		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
-		VALUES (54, 53, 'local', 'RJ01000052/track.mp3', 'available');
+		VALUES (54, 53, 'local', 'RJ00000001/track.mp3', 'available');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -269,16 +269,16 @@ func TestResolveMediaWorkIDForRequestDoesNotFallbackFromSelectedTranslation(t *t
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(61, 'RJ01000071', 'Origin work'),
-			(62, 'RJ01000072', 'Selected translation');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (61, 61, 'RJ01000071');
+			(61, 'RJ00000003', 'Origin work'),
+			(62, 'RJ00000004', 'Selected translation');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (61, 61, 'RJ00000003');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
-			(61, 61, 'RJ01000071', 'RJ01000071', 1),
-			(62, 61, 'RJ01000072', 'RJ01000071', 0);
+			(61, 61, 'RJ00000003', 'RJ00000003', 1),
+			(62, 61, 'RJ00000004', 'RJ00000003', 0);
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (63, 'origin-media', 'Origin media', 'local_folder');
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (64, 61, 'audio', 'Origin track', 'origin-track-71');
 		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
-		VALUES (64, 63, 'local', 'RJ01000071/track.mp3', 'available');
+		VALUES (64, 63, 'local', 'RJ00000003/track.mp3', 'available');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func translationMediaStateForCode(items []workTranslation, code string) string {
 
 func TestIndexLocalMediaForWorkCoalescesConcurrentRequests(t *testing.T) {
 	dataRoot := t.TempDir()
-	workPath := filepath.Join(dataRoot, "RJ01000061")
+	workPath := filepath.Join(dataRoot, "RJ00000002")
 	if err := os.MkdirAll(workPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -315,10 +315,10 @@ func TestIndexLocalMediaForWorkCoalescesConcurrentRequests(t *testing.T) {
 	}
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
-		INSERT INTO work (id, primary_code, title) VALUES (61, 'RJ01000061', 'Concurrent index work');
+		INSERT INTO work (id, primary_code, title) VALUES (61, 'RJ00000002', 'Concurrent index work');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (71, 'concurrent-local', 'Concurrent local', 'local_folder');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability, raw_json)
-		VALUES (61, 71, 'local', 'RJ01000061', 'available', '{"file_tree_scanned":false}');
+		VALUES (61, 71, 'local', 'RJ00000002', 'available', '{"file_tree_scanned":false}');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestIndexLocalMediaForWorkCoalescesConcurrentRequests(t *testing.T) {
 		go func() {
 			defer workers.Done()
 			<-start
-			errorsByWorker <- server.indexLocalMediaForWork(context.Background(), 61, 71, "RJ01000061")
+			errorsByWorker <- server.indexLocalMediaForWork(context.Background(), 61, 71, "RJ00000002")
 		}()
 	}
 	close(start)

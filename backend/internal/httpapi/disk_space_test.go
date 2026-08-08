@@ -35,7 +35,7 @@ func TestEnsureRemoteWorkSaveDiskReserveCountsExistingTarget(t *testing.T) {
 	root := t.TempDir()
 	dataRoot := filepath.Join(root, "data")
 	cacheRoot := filepath.Join(root, "cache")
-	target := filepath.Join(dataRoot, "library", "RJ09999991")
+	target := filepath.Join(dataRoot, "library", "RJ00000000")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestEnsureRemoteWorkSaveDiskReserveCountsExistingTarget(t *testing.T) {
 	}
 	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
 	size := int64(32)
-	plan := remoteWorkSavePlan{SaveRoot: "library/RJ09999991", Items: []remoteWorkSavePlanItem{{Action: "cache_download", SizeBytes: &size}}}
+	plan := remoteWorkSavePlan{SaveRoot: "library/RJ00000000", Items: []remoteWorkSavePlanItem{{Action: "cache_download", SizeBytes: &size}}}
 	if err := server.ensureRemoteWorkSaveDiskReserve(plan, 1); err != nil {
 		t.Fatalf("small reserve: %v", err)
 	}

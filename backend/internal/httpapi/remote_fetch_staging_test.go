@@ -17,8 +17,8 @@ import (
 
 func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 	dataRoot := t.TempDir()
-	oldRoot := filepath.Join(dataRoot, "Library", "RJ01234567")
-	publishedRoot := filepath.Join(dataRoot, "remote", "RJ", "012", "RJ01234567")
+	oldRoot := filepath.Join(dataRoot, "Library", "RJ00000001")
+	publishedRoot := filepath.Join(dataRoot, "remote", "RJ", "012", "RJ00000001")
 	if err := os.MkdirAll(oldRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +32,10 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: dataRoot})
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
 		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Old', 'old')`,
-		`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 1, 'local', 'Library/RJ01234567/old.mp3', 'available')`,
-		`INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary) VALUES (1, 1, 1, 'Library/RJ01234567', 'external', 'active', 0), (2, 1, 1, 'remote/RJ/012/RJ01234567', 'managed_fetch', 'active', 1)`,
+		`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 1, 'local', 'Library/RJ00000001/old.mp3', 'available')`,
+		`INSERT INTO work_folder_location (id, work_id, file_source_id, root_path, role, state, is_primary) VALUES (1, 1, 1, 'Library/RJ00000001', 'external', 'active', 0), (2, 1, 1, 'remote/RJ/000/RJ00000001', 'managed_fetch', 'active', 1)`,
 		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'succeeded', 'manual')`,
 	}
@@ -44,7 +44,7 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, []remoteWorkSavePlanItem{{TargetPath: "remote/RJ/012/RJ01234567/track.mp3"}})
+	archived, err := server.quarantineFetchLocalRoots(context.Background(), 1, 1, 1, []remoteWorkSavePlanItem{{TargetPath: "remote/RJ/000/RJ00000001/track.mp3"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 	if folderState != "pending_cleanup" || locationAvailability != "unavailable" {
 		t.Fatalf("state = %q, availability = %q", folderState, locationAvailability)
 	}
-	result, err := db.Exec(`INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json) VALUES (1, 'local_fetch_merge_cleanup', 'RJ01234567', 'pending', ?)`, mustJSON(map[string]any{"archived_roots": archived}))
+	result, err := db.Exec(`INSERT INTO workflow_candidate (workflow_run_id, candidate_type, external_key, status, payload_json) VALUES (1, 'local_fetch_merge_cleanup', 'RJ00000001', 'pending', ?)`, mustJSON(map[string]any{"archived_roots": archived}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	ctx := context.Background()
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
 		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'running', 'manual')`,
 		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status) VALUES (1, 1, 'remote_work_fetch', 'running')`,
@@ -109,7 +109,7 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 		}
 	}
 	content := []byte("verified audio payload")
-	cachePath := filepath.Join(cacheRoot, "remote", "RJ01234567", "track.mp3")
+	cachePath := filepath.Join(cacheRoot, "remote", "RJ00000001", "track.mp3")
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +118,8 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	}
 	size := int64(len(content))
 	plan := remoteWorkSavePlan{
-		SourceID: 1, PrimaryCode: "RJ01234567", SaveRoot: "remote/RJ01234567",
-		Items: []remoteWorkSavePlanItem{{ItemKey: "remote:track.mp3", Path: "track.mp3", Kind: "audio", SizeBytes: &size, SourceKind: "remote", Action: "cache_hit", CachePath: "remote/RJ01234567/track.mp3", TargetPath: "remote/RJ01234567/track.mp3", OriginalTargetPath: "remote/RJ01234567/track.mp3", Resolution: "auto", RemoteSourceID: 1, SourcePath: "https://remote.invalid/track.mp3"}},
+		SourceID: 1, PrimaryCode: "RJ00000001", SaveRoot: "remote/RJ00000001",
+		Items: []remoteWorkSavePlanItem{{ItemKey: "remote:track.mp3", Path: "track.mp3", Kind: "audio", SizeBytes: &size, SourceKind: "remote", Action: "cache_hit", CachePath: "remote/RJ00000001/track.mp3", TargetPath: "remote/RJ00000001/track.mp3", OriginalTargetPath: "remote/RJ00000001/track.mp3", Resolution: "auto", RemoteSourceID: 1, SourcePath: "https://remote.invalid/track.mp3"}},
 	}
 	plan.Summary = summarizeRemoteSavePlan(plan.Items)
 	tx, err := db.BeginTx(ctx, nil)
@@ -147,7 +147,7 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	if promoted, err := server.stageAndPublishRemoteFetch(ctx, manifest, plan); err != nil || promoted != 1 {
 		t.Fatalf("promoted=%d err=%v", promoted, err)
 	}
-	target := filepath.Join(dataRoot, "remote", "RJ01234567", "track.mp3")
+	target := filepath.Join(dataRoot, "remote", "RJ00000001", "track.mp3")
 	got, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
@@ -170,19 +170,19 @@ func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
 	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
 		`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Selected', 'selected'), (2, 1, 'audio', 'Other', 'other')`,
 		`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES
-			(1, 1, 'cache', 'remote/RJ01234567/selected.mp3', 'available'),
-			(2, 1, 'cache', 'remote/RJ01234567/other.flac', 'available')`,
+			(1, 1, 'cache', 'remote/RJ00000001/selected.mp3', 'available'),
+			(2, 1, 'cache', 'remote/RJ00000001/other.flac', 'available')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
 		}
 	}
-	selectedPath := filepath.Join(cacheRoot, "remote", "RJ01234567", "selected.mp3")
-	otherPath := filepath.Join(cacheRoot, "remote", "RJ01234567", "other.flac")
+	selectedPath := filepath.Join(cacheRoot, "remote", "RJ00000001", "selected.mp3")
+	otherPath := filepath.Join(cacheRoot, "remote", "RJ00000001", "other.flac")
 	if err := os.MkdirAll(filepath.Dir(selectedPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
 		}
 	}
 	plan := remoteWorkSavePlan{Items: []remoteWorkSavePlanItem{{
-		Action: "cache_hit", RemoteSourceID: 1, CachePath: "remote/RJ01234567/selected.mp3",
+		Action: "cache_hit", RemoteSourceID: 1, CachePath: "remote/RJ00000001/selected.mp3",
 	}}}
 	removed, err := server.cleanupPromotedFetchCache(context.Background(), plan, 1)
 	if err != nil {
@@ -270,7 +270,7 @@ func TestReconcileRemoteFetchDoesNotRequeueFailedRun(t *testing.T) {
 	ctx := context.Background()
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
 		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type, finished_at) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'failed', 'manual', CURRENT_TIMESTAMP)`,
 		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status, recoverable, max_retries, retry_count) VALUES (1, 1, 'remote_work_fetch', 'failed', 1, 5, 2)`,
@@ -280,7 +280,7 @@ func TestReconcileRemoteFetchDoesNotRequeueFailedRun(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ01234567", SaveRoot: "remote/RJ01234567", Items: []remoteWorkSavePlanItem{}}
+	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ00000001", SaveRoot: "remote/RJ00000001", Items: []remoteWorkSavePlanItem{}}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)

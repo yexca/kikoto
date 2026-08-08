@@ -40,13 +40,13 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 	}
 	statements := []string{
 		`INSERT INTO work (id, primary_code, title) VALUES
-			(8101, 'RJ90008101', 'Synthetic origin'),
-			(8102, 'RJ90008102', 'Synthetic translation'),
-			(8103, 'RJ90008103', 'Synthetic translation without party projection'),
-			(8110, 'RJ90008110', 'Synthetic origin without maker metadata'),
-			(8111, 'RJ90008111', 'Synthetic translation with preserved origin evidence')`,
-		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (8201, 8101, 'RJ90008101')`,
-		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (8210, 8110, 'RJ90008110')`,
+			(8101, 'RJ00000000', 'Synthetic origin'),
+			(8102, 'RJ00000001', 'Synthetic translation'),
+			(8103, 'RJ00000002', 'Synthetic translation without party projection'),
+			(8110, 'RJ00000003', 'Synthetic origin without maker metadata'),
+			(8111, 'RJ00000004', 'Synthetic translation with preserved origin evidence')`,
+		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (8201, 8101, 'RJ00000000')`,
+		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (8210, 8110, 'RJ00000003')`,
 		`INSERT INTO party (id, display_name) VALUES
 			(8301, 'Synthetic Origin Studio'),
 			(8302, 'Synthetic Catalog Studio'),
@@ -62,9 +62,9 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 			work_id, logical_work_id, provider_id, primary_code, is_canonical,
 			translation_kind, classification_source, maker_id, origin_maker_id
 		) VALUES
-			(8101, 8201, ?, 'RJ90008101', 1, 'origin', 'canonical', 'RG900081', 'RG900081'),
-			(8102, 8201, ?, 'RJ90008102', 0, 'third_party', 'maker_mismatch', 'RG900082', 'RG900081'),
-			(8103, 8201, ?, 'RJ90008103', 0, 'third_party', 'maker_mismatch', 'RG900083', 'RG900081')
+			(8101, 8201, ?, 'RJ00000000', 1, 'origin', 'canonical', 'RG900081', 'RG900081'),
+			(8102, 8201, ?, 'RJ00000001', 0, 'third_party', 'maker_mismatch', 'RG900082', 'RG900081'),
+			(8103, 8201, ?, 'RJ00000002', 0, 'third_party', 'maker_mismatch', 'RG900083', 'RG900081')
 	`, providerID, providerID, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -73,8 +73,8 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 			work_id, logical_work_id, provider_id, primary_code, is_canonical,
 			translation_kind, classification_source, maker_id, origin_maker_id
 		) VALUES
-			(8110, 8210, ?, 'RJ90008110', 1, 'origin', 'canonical', '', ''),
-			(8111, 8210, ?, 'RJ90008111', 0, 'third_party', 'maker_mismatch', 'RG900085', 'RG900086')
+			(8110, 8210, ?, 'RJ00000003', 1, 'origin', 'canonical', '', ''),
+			(8111, 8210, ?, 'RJ00000004', 0, 'third_party', 'maker_mismatch', 'RG900085', 'RG900086')
 	`, providerID, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -98,9 +98,9 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 		code   string
 		raw    string
 	}{
-		{workID: 8101, code: "RJ90008101", raw: `{"product":{"workno":"RJ90008101","maker_id":"RG900081","maker_name":"Synthetic Origin Studio"}}`},
-		{workID: 8102, code: "RJ90008102", raw: `{"product":{"workno":"RJ90008102","maker_id":"RG900082","maker_name":"Synthetic Catalog Studio"}}`},
-		{workID: 8103, code: "RJ90008103", raw: `{"product":{"workno":"RJ90008103","maker_id":"RG900083","maker_name":"Synthetic Third Studio"}}`},
+		{workID: 8101, code: "RJ00000000", raw: `{"product":{"workno":"RJ00000000","maker_id":"RG900081","maker_name":"Synthetic Origin Studio"}}`},
+		{workID: 8102, code: "RJ00000001", raw: `{"product":{"workno":"RJ00000001","maker_id":"RG900082","maker_name":"Synthetic Catalog Studio"}}`},
+		{workID: 8103, code: "RJ00000002", raw: `{"product":{"workno":"RJ00000002","maker_id":"RG900083","maker_name":"Synthetic Third Studio"}}`},
 	} {
 		if _, err := db.Exec(`INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, ?, ?)`, snapshot.workID, providerID, snapshot.code, snapshot.raw); err != nil {
 			t.Fatal(err)
@@ -123,7 +123,7 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 	}
 	if _, err := db.Exec(`
 		INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, catalog_status)
-		VALUES (8302, ?, 'RJ90008101', 'Catalog provenance', 'catalog')
+		VALUES (8302, ?, 'RJ00000000', 'Catalog provenance', 'catalog')
 	`, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 	if err := db.QueryRow("SELECT COUNT(*) FROM work_party WHERE source IN ('circle_refresh', 'remote_source_catalog')").Scan(&invalidRelations); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 8302 AND primary_code = 'RJ90008101'").Scan(&catalogRows); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 8302 AND primary_code = 'RJ00000000'").Scan(&catalogRows); err != nil {
 		t.Fatal(err)
 	}
 	if invalidRelations != 0 || catalogRows != 1 {

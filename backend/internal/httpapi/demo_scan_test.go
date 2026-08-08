@@ -20,26 +20,26 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	db := openMigratedTestDB(t)
 	dataRoot := t.TempDir()
 	products := map[string]dlsite.Product{
-		"RJ02000001": demoScanProduct("RJ02000001", "Eligible", "general", int64Pointer(0), int64Pointer(0), nil),
-		"RJ02000002": demoScanProduct("RJ02000002", "Adult free", "adult", int64Pointer(0), int64Pointer(0), nil),
-		"RJ02000003": demoScanProduct("RJ02000003", "Paid", "general", int64Pointer(1100), int64Pointer(1100), nil),
-		"RJ02000004": demoScanProduct("RJ02000004", "Temporary free", "general", int64Pointer(1100), int64Pointer(0), int64Pointer(100)),
-		"RJ02000005": demoScanProduct("RJ02000005", "Unknown price", "general", nil, nil, nil),
+		"RJ00000000": demoScanProduct("RJ00000000", "Eligible", "general", int64Pointer(0), int64Pointer(0), nil),
+		"RJ00000001": demoScanProduct("RJ00000001", "Adult free", "adult", int64Pointer(0), int64Pointer(0), nil),
+		"RJ00000002": demoScanProduct("RJ00000002", "Paid", "general", int64Pointer(1100), int64Pointer(1100), nil),
+		"RJ00000003": demoScanProduct("RJ00000003", "Temporary free", "general", int64Pointer(1100), int64Pointer(0), int64Pointer(100)),
+		"RJ00000004": demoScanProduct("RJ00000004", "Unknown price", "general", nil, nil, nil),
 	}
 	for code := range products {
 		writeDemoScanFile(t, dataRoot, code, "track.mp3", "audio "+code)
 	}
-	writeDemoScanFile(t, dataRoot, "RJ02000006", "track.mp3", "unverified audio")
-	eligible := products["RJ02000001"]
-	eligible.TranslationInfo.OriginalWorkNo = "RJ09999998"
-	products["RJ02000001"] = eligible
+	writeDemoScanFile(t, dataRoot, "RJ00000005", "track.mp3", "unverified audio")
+	eligible := products["RJ00000000"]
+	eligible.TranslationInfo.OriginalWorkNo = "RJ00000006"
+	products["RJ00000000"] = eligible
 
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO work (primary_code, title, age_rating, is_permanently_free)
-		VALUES ('RJ09999999', 'Stale eligible work', 'general', 1)
+		VALUES ('RJ00000007', 'Stale eligible work', 'general', 1)
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, CacheRoot: t.TempDir(), LocalScanDepth: 2})
 	client := &fakeDemoScanDLsiteClient{
 		products: products,
-		errors:   map[string]error{"RJ02000006": errors.New("provider unavailable")},
+		errors:   map[string]error{"RJ00000005": errors.New("provider unavailable")},
 		calls:    map[string]int{},
 	}
 	server.dlsiteClient = client
@@ -62,11 +62,11 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	if client.coverDownloads != 1 {
 		t.Fatalf("Demo scan attempted %d cover downloads, want 1", client.coverDownloads)
 	}
-	if client.calls["RJ09999998"] != 0 {
-		t.Fatalf("Demo scan fetched unverified related product %d times", client.calls["RJ09999998"])
+	if client.calls["RJ00000006"] != 0 {
+		t.Fatalf("Demo scan fetched unverified related product %d times", client.calls["RJ00000006"])
 	}
 
-	for _, code := range []string{"RJ02000002", "RJ02000003", "RJ02000004", "RJ02000005", "RJ02000006"} {
+	for _, code := range []string{"RJ00000001", "RJ00000002", "RJ00000003", "RJ00000004", "RJ00000005"} {
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = ?", code).Scan(&count); err != nil {
 			t.Fatal(err)
@@ -89,7 +89,7 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	if err := json.Unmarshal(listResponse.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ02000001" {
+	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ00000000" {
 		t.Fatalf("Demo library page = %#v", page)
 	}
 	var voiceCredits int
@@ -97,7 +97,7 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 		SELECT COUNT(*)
 		FROM work_credit AS credit
 		INNER JOIN work ON work.id = credit.work_id
-		WHERE work.primary_code = 'RJ02000001' AND credit.role = 'voice_actor'
+		WHERE work.primary_code = 'RJ00000000' AND credit.role = 'voice_actor'
 	`).Scan(&voiceCredits); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 		FROM media_file_location AS location
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
 		INNER JOIN work ON work.id = item.work_id
-		WHERE work.primary_code = 'RJ02000001' AND location.availability = 'available'
+		WHERE work.primary_code = 'RJ00000000' AND location.availability = 'available'
 	`).Scan(&locationID); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestDemoLibraryScanOnlyStoresEligibleWorks(t *testing.T) {
 	streamRequest.SetPathValue("id", strconv.FormatInt(locationID, 10))
 	streamResponse := httptest.NewRecorder()
 	server.streamMedia(streamResponse, streamRequest)
-	if streamResponse.Code != http.StatusOK || streamResponse.Body.String() != "audio RJ02000001" {
+	if streamResponse.Code != http.StatusOK || streamResponse.Body.String() != "audio RJ00000000" {
 		t.Fatalf("stream status = %d, body = %q", streamResponse.Code, streamResponse.Body.String())
 	}
 

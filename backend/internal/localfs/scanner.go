@@ -164,13 +164,19 @@ func duplicateGroups(folders []WorkFolder) []DuplicateGroup {
 }
 
 func ExtractWorkCode(name string) (string, bool) {
-	matches := workCodePattern.FindAllStringSubmatch(name, -1)
-	if len(matches) == 0 {
+	indices := workCodePattern.FindAllStringSubmatchIndex(name, -1)
+	codes := make([]string, 0, len(indices))
+	for _, match := range indices {
+		if match[1] < len(name) && name[match[1]] >= '0' && name[match[1]] <= '9' {
+			continue
+		}
+		codes = append(codes, strings.ToUpper(name[match[2]:match[3]])+name[match[4]:match[5]])
+	}
+	if len(codes) == 0 {
 		return "", false
 	}
 
-	code := strings.ToUpper(matches[0][1]) + matches[0][2]
-	return code, len(matches) > 1
+	return codes[0], len(codes) > 1
 }
 
 func chooseDeepest(candidates []WorkFolder) []WorkFolder {

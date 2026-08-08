@@ -24,8 +24,8 @@ func TestRemotePopularWorkflowQueuesThenTracksAndTags(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
 			Works: []kikoeru.Work{
-				{ID: 11, SourceID: "RJ09991001", Title: "First popular work"},
-				{ID: 12, SourceID: "RJ09991002", Title: "Second popular work"},
+				{ID: 11, SourceID: "RJ00000000", Title: "First popular work"},
+				{ID: 12, SourceID: "RJ00000001", Title: "Second popular work"},
 			},
 			Pagination: kikoeru.Pagination{Page: 1, PageSize: 25, TotalCount: 2},
 		})

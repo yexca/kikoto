@@ -25,19 +25,19 @@ func TestUpdateMediaProgressUpsertsCanonicalWorkCursorWithLocationIdentity(t *te
 	userID, _ := userResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(701, 'RJ09999201', 'Canonical work'),
-			(702, 'RJ09999202', 'Translated work');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (700, 701, 'RJ09999201');
+			(701, 'RJ00000000', 'Canonical work'),
+			(702, 'RJ00000001', 'Translated work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (700, 701, 'RJ00000000');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, is_canonical) VALUES
-			(701, 700, 'RJ09999201', 1),
-			(702, 700, 'RJ09999202', 0);
+			(701, 700, 'RJ00000000', 1),
+			(702, 700, 'RJ00000001', 0);
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES
 			(711, 'example_remote', 'Example Remote', 'kikoeru_compatible');
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
 			(721, 702, 'audio', 'Translated track', 'progress-track');
 		INSERT INTO media_file_location (
 			id, media_item_id, file_source_id, location_type, path, stream_url, availability
-		) VALUES (731, 721, 711, 'remote_stream', 'RJ09999202/track.mp3', 'https://example.invalid/track.mp3', 'remote');
+		) VALUES (731, 721, 711, 'remote_stream', 'RJ00000001/track.mp3', 'https://example.invalid/track.mp3', 'remote');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestUpdateMediaProgressRejectsLocationFromAnotherMediaItemWithoutReplacingC
 	}
 	userID, _ := userResult.LastInsertId()
 	if _, err := db.Exec(`
-		INSERT INTO work (id, primary_code, title) VALUES (741, 'RJ09999241', 'Location work');
+		INSERT INTO work (id, primary_code, title) VALUES (741, 'RJ00000002', 'Location work');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (742, 'local-test', 'Local test', 'local');
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
 			(743, 741, 'audio', 'First', 'first'),

@@ -289,7 +289,7 @@ async function mockWorkflows(
           targets: [
             {
               id: 1,
-              workCode: "RJ09999991",
+              workCode: "RJ00000000",
               state: "monitoring",
               nextCheckAt: "2026-07-27T01:00:00Z",
               lastCheckedAt: "",
@@ -301,7 +301,7 @@ async function mockWorkflows(
             },
             {
               id: 2,
-              workCode: "RJ09999992",
+              workCode: "RJ00000001",
               state: "completed",
               nextCheckAt: "",
               lastCheckedAt: "2026-07-27T00:00:00Z",
@@ -450,8 +450,8 @@ test("mobile notification center opens fetched works and dismisses individual re
         type: "remote_fetch",
         status: "failed",
         workId: 12,
-        workCode: "RJ09999996",
-        message: "Fetch failed for RJ09999996.",
+        workCode: "RJ00000003",
+        message: "Fetch failed for RJ00000003.",
         createdAt: "2026-07-27T02:00:00Z",
       },
       {
@@ -460,8 +460,8 @@ test("mobile notification center opens fetched works and dismisses individual re
         type: "remote_fetch",
         status: "succeeded",
         workId: 11,
-        workCode: "RJ09999995",
-        message: "Fetch completed for RJ09999995.",
+        workCode: "RJ00000002",
+        message: "Fetch completed for RJ00000002.",
         createdAt: "2026-07-27T01:00:00Z",
       },
     ],
@@ -469,16 +469,16 @@ test("mobile notification center opens fetched works and dismisses individual re
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
-  await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fetch completed for RJ00000002.", { exact: true })).toBeVisible();
   const dismissRequest = page.waitForRequest(
     (request) => request.method() === "DELETE" && request.url().endsWith("/api/notifications/1"),
   );
-  await page.getByRole("button", { name: "Dismiss notification for RJ09999995" }).click();
+  await page.getByRole("button", { name: "Dismiss notification for RJ00000002" }).click();
   await dismissRequest;
-  await expect(page.getByText("Fetch completed for RJ09999995.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Fetch completed for RJ00000002.", { exact: true })).toHaveCount(0);
 
-  await page.getByText("Fetch failed for RJ09999996.", { exact: true }).click();
-  await expect(page).toHaveURL(/\/RJ09999996\?view=local$/);
+  await page.getByText("Fetch failed for RJ00000003.", { exact: true }).click();
+  await expect(page).toHaveURL(/\/RJ00000003\?view=local$/);
 });
 
 test("definitions foreground runnable presets and configure DLsite popular collection", async ({ page }) => {
@@ -662,16 +662,16 @@ test("availability watch keeps monitoring and ready pools outside Activity", asy
   await expect(page.getByText("dispatched", { exact: true })).toBeVisible();
 
   const works = page.getByRole("textbox", { name: "Works" });
-  await works.fill("RJ09999991, invalid; RJ09999992");
+  await works.fill("RJ00000000, invalid; RJ00000001");
   await expect(page.getByText("1 invalid", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save watch", exact: true })).toBeDisabled();
-  await works.fill("RJ09999991, RJ09999992; RJ09999992");
+  await works.fill("RJ00000000, RJ00000001; RJ00000001");
   await expect(page.getByText("2 valid", { exact: true })).toBeVisible();
   await expect(page.getByText("1 duplicate", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save watch", exact: true }).click();
 
   await expect.poll(() => updates).toHaveLength(1);
-  expect(updates[0]).toMatchObject({ targetCodes: ["RJ09999991", "RJ09999992"], excludeExtensions: ["wav"] });
+  expect(updates[0]).toMatchObject({ targetCodes: ["RJ00000000", "RJ00000001"], excludeExtensions: ["wav"] });
   await expect(page).toHaveURL(/\/workflows$/);
 });
 

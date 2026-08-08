@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestParseSearchClausesSupportsStructuredAndQuotedValues(t *testing.T) {
@@ -11,11 +13,29 @@ func TestParseSearchClausesSupportsStructuredAndQuotedValues(t *testing.T) {
 		{Kind: "tag", Value: "耳かき ASMR"},
 		{Kind: "voice_actor", Value: "Example Voice"},
 		{Kind: "rating_min", Value: "4.5"},
-		{Kind: "code", Value: "RJ01234567"},
+		{Kind: "code", Value: "RJ00000000"},
 	}
-	got := ParseSearchClauses(`tag:"耳かき ASMR" va:'Example Voice' rating:4.5 RJ01234567`)
+	got := ParseSearchClauses(`tag:"耳かき ASMR" va:'Example Voice' rating:4.5 RJ00000000`)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseSearchClausesRecognizesSupportedWorkCodePrefixes(t *testing.T) {
+	for _, prefix := range []testfixture.WorkCodePrefix{
+		testfixture.PrefixRJ,
+		testfixture.PrefixBJ,
+		testfixture.PrefixVJ,
+		testfixture.PrefixCC,
+	} {
+		code := testfixture.WorkCode(prefix, 0)
+		query := strings.ToLower(code)
+		if got := ParseSearchClauses(query); !reflect.DeepEqual(got, []SearchClause{{Kind: "code", Value: query}}) {
+			t.Fatalf("ParseSearchClauses(%q) = %#v", code, got)
+		}
+	}
+	if got := ParseSearchClauses("RJ0000"); !reflect.DeepEqual(got, []SearchClause{{Kind: "text", Value: "RJ0000"}}) {
+		t.Fatalf("four-digit work code parsed as code: %#v", got)
 	}
 }
 
@@ -58,7 +78,7 @@ func TestNumericClauseValueIgnoresUnits(t *testing.T) {
 }
 
 func TestCodeAndTextSearchPredicatesAvoidRawMetadataSnapshots(t *testing.T) {
-	for _, query := range []string{"RJ01234567", "Example title"} {
+	for _, query := range []string{"RJ00000000", "Example title"} {
 		where, _ := SearchWhereForUser(query, 42)
 		lower := strings.ToLower(where)
 		if strings.Contains(lower, "metadata_snapshot") || strings.Contains(lower, "snapshot_json") {
@@ -68,11 +88,11 @@ func TestCodeAndTextSearchPredicatesAvoidRawMetadataSnapshots(t *testing.T) {
 }
 
 func TestCodeSearchUsesExactNormalizedAliases(t *testing.T) {
-	where, args := SearchWhere("rj01234567")
+	where, args := SearchWhere("rj00000000")
 	if !strings.Contains(where, "work_code_alias") || strings.Contains(where, " LIKE ") {
 		t.Fatalf("code predicate = %s", where)
 	}
-	want := []any{"RJ01234567", "RJ01234567", "RJ01234567", "RJ01234567"}
+	want := []any{"RJ00000000", "RJ00000000", "RJ00000000", "RJ00000000"}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("code args = %#v, want %#v", args, want)
 	}

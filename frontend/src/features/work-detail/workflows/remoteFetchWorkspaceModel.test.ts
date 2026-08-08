@@ -15,9 +15,9 @@ describe("remote fetch workspace model", () => {
 
   it("keeps the request id while the same draft is reviewed", () => {
     const remoteDetail = detail("REMOTE-1");
-    remoteDetail.primaryCode = "RJ09999991";
+    remoteDetail.primaryCode = "RJ00000000";
     const draft = createRemoteFetchDraft({
-      intent: { sourceId: 7, remoteCode: "REMOTE-1", canonicalCode: "RJ09999991" },
+      intent: { sourceId: 7, remoteCode: "REMOTE-1", canonicalCode: "RJ00000000" },
       detail: remoteDetail,
       paths: ["Disc/01.mp3"],
       plan: plan("REMOTE-1"),
@@ -33,7 +33,7 @@ describe("remote fetch workspace model", () => {
 
     expect(reviewed.requestId).toBe("fetch:stable");
     expect(reviewed.intent.remoteCode).toBe("REMOTE-1");
-    expect(reviewed.intent.canonicalCode).toBe("RJ09999991");
+    expect(reviewed.intent.canonicalCode).toBe("RJ00000000");
   });
 
   it("starts a distinct idempotency scope when the selected edition changes", () => {
@@ -60,10 +60,10 @@ describe("remote fetch workspace model", () => {
 
   it("builds a local-only preview plan for demo Fetch", () => {
     const remoteDetail = detail("REMOTE-1");
-    remoteDetail.primaryCode = "RJ09999991";
+    remoteDetail.primaryCode = "RJ00000000";
     remoteDetail.languageEditions = [
       {
-        remoteCode: "RJ09999991",
+        remoteCode: "RJ00000000",
         language: "JPN",
         label: "Japanese",
         displayOrder: 0,
@@ -109,12 +109,12 @@ describe("remote fetch workspace model", () => {
 
     const preview = createDemoRemoteFetchPlan({ detail: remoteDetail, paths: ["Disc/01.mp3"] });
 
-    expect(preview.saveRoot).toBe("/data/demo-preview/RJ09999991");
+    expect(preview.saveRoot).toBe("/data/demo-preview/RJ00000000");
     expect(preview.summary).toMatchObject({ total: 1, promote: 1, conflict: 0 });
     expect(preview.items[0]).toMatchObject({
       action: "preview",
       status: "preview only",
-      targetPath: "/data/demo-preview/RJ09999991/Disc/01.mp3",
+      targetPath: "/data/demo-preview/RJ00000000/Disc/01.mp3",
     });
     expect(preview.preparation.warnings[0]).toContain("preview-only");
   });

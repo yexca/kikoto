@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { syntheticWorkCode } from "../../src/test-support/workCode";
+
 const work = {
   id: 1,
-  primaryCode: "RJ09999999",
+  primaryCode: syntheticWorkCode("RJ", 0),
   title: "Tagged mobile work",
   ageRating: "R18",
   createdAt: "2026-01-01T00:00:00Z",
@@ -49,7 +51,7 @@ const persistedTrack = {
   sizeBytes: null,
   availability: "available",
   workId: 1,
-  workCode: "RJ09999999",
+  workCode: "RJ00000000",
   workTitle: "Tagged mobile work",
   coverUrl: "",
   circle: "Test circle",
@@ -222,7 +224,7 @@ async function mockApplication(
           : {
               ...fixtureWork,
               id: index + 1,
-              primaryCode: `RJ${String(9989999 + index).padStart(8, "0")}`,
+              primaryCode: syntheticWorkCode("RJ", index),
               title: `Mobile work ${index + 1}`,
             },
       );
@@ -301,7 +303,7 @@ async function mockApplication(
           : {
               ...fixtureWork,
               id,
-              primaryCode: `RJ${String(9989998 + id).padStart(8, "0")}`,
+              primaryCode: syntheticWorkCode("RJ", id - 1),
               title: `Mobile work ${id}`,
             };
       await route.fulfill({
@@ -516,12 +518,12 @@ async function mockRemoteSource(
     }
     if (
       url.pathname === `/api/works/${work.primaryCode}/source-availability` ||
-      url.pathname === "/api/works/RJ09999991/source-availability"
+      url.pathname === "/api/works/RJ00000051/source-availability"
     ) {
-      const remoteOnlyWork = url.pathname.includes("RJ09999991");
+      const remoteOnlyWork = url.pathname.includes("RJ00000051");
       await route.fulfill({
         json: {
-          workCode: remoteOnlyWork ? "RJ09999991" : work.primaryCode,
+          workCode: remoteOnlyWork ? "RJ00000051" : work.primaryCode,
           checkedAt: "2026-07-17T00:00:00Z",
           sources: [
             {
@@ -530,7 +532,7 @@ async function mockRemoteSource(
               displayName: "Example Remote",
               status: "available",
               remoteId: "1",
-              primaryCode: remoteOnlyWork ? "RJ09999991" : work.primaryCode,
+              primaryCode: remoteOnlyWork ? "RJ00000051" : work.primaryCode,
               title: remoteOnlyWork ? "Remote Japanese work" : work.title,
               coverUrl: "",
               workId: remoteOnlyWork ? (trackCompleted ? 91 : null) : 1,
@@ -550,7 +552,7 @@ async function mockRemoteSource(
         json: {
           ...work,
           id: 91,
-          primaryCode: "RJ09999991",
+          primaryCode: "RJ00000051",
           title: "Remote Japanese work",
           circle: "Remote circle",
           ratingCount: 240,
@@ -562,7 +564,7 @@ async function mockRemoteSource(
               fileSourceId: 1,
               fileSourceCode: "example_remote",
               fileSourceName: "Example Remote",
-              remoteCode: "RJ09999991",
+              remoteCode: "RJ00000051",
               forked: true,
             },
           ],
@@ -659,9 +661,9 @@ async function mockRemoteSource(
                 options.persisted && pageNumber === 1
                   ? work.primaryCode
                   : pageNumber === 1
-                    ? "RJ09999991"
-                    : "RJ09999992",
-              remoteCode: pageNumber === 1 ? "RJ09999991" : "RJ09999992",
+                    ? "RJ00000051"
+                    : "RJ00000052",
+              remoteCode: pageNumber === 1 ? "RJ00000051" : "RJ00000052",
               title: pageNumber === 1 ? "Remote Japanese work" : "Remote page two work",
               releaseDate: "2026-04-03",
               updatedAt: "2026-04-03",
@@ -683,15 +685,15 @@ async function mockRemoteSource(
       });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ09999991/tracks" && route.request().method() === "GET") {
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000051/tracks" && route.request().method() === "GET") {
       await route.fulfill({
         json: {
           sourceId: 1,
           sourceCode: "example_remote",
           sourceName: "Example Remote",
           remoteId: "1",
-          primaryCode: "RJ09999991",
-          remoteCode: "RJ09999991",
+          primaryCode: "RJ00000051",
+          remoteCode: "RJ00000051",
           tracks: [
             {
               type: "audio",
@@ -714,15 +716,15 @@ async function mockRemoteSource(
       });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ09999991" && route.request().method() === "GET") {
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000051" && route.request().method() === "GET") {
       await route.fulfill({
         json: {
           sourceId: 1,
           sourceCode: "example_remote",
           sourceName: "Example Remote",
           remoteId: "1",
-          primaryCode: "RJ09999991",
-          remoteCode: "RJ09999991",
+          primaryCode: "RJ00000051",
+          remoteCode: "RJ00000051",
           title: "Remote Japanese work",
           coverUrl: "",
           sourceUrl: "",
@@ -739,7 +741,7 @@ async function mockRemoteSource(
           workId: trackCompleted ? 91 : null,
           languageEditions: [
             {
-              remoteCode: "RJ09999991",
+              remoteCode: "RJ00000051",
               language: "JPN",
               label: "Japanese",
               displayOrder: 1,
@@ -747,7 +749,7 @@ async function mockRemoteSource(
               origin: true,
             },
             {
-              remoteCode: "RJ09999993",
+              remoteCode: "RJ00000053",
               language: "ENG",
               label: "English",
               displayOrder: 2,
@@ -777,15 +779,15 @@ async function mockRemoteSource(
       });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ09999993/tracks" && route.request().method() === "GET") {
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000053/tracks" && route.request().method() === "GET") {
       await route.fulfill({
         json: {
           sourceId: 1,
           sourceCode: "example_remote",
           sourceName: "Example Remote",
           remoteId: "3",
-          primaryCode: "RJ09999993",
-          remoteCode: "RJ09999993",
+          primaryCode: "RJ00000053",
+          remoteCode: "RJ00000053",
           tracks: [
             {
               type: "audio",
@@ -808,15 +810,15 @@ async function mockRemoteSource(
       });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ09999993" && route.request().method() === "GET") {
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000053" && route.request().method() === "GET") {
       await route.fulfill({
         json: {
           sourceId: 1,
           sourceCode: "example_remote",
           sourceName: "Example Remote",
           remoteId: "3",
-          primaryCode: "RJ09999993",
-          remoteCode: "RJ09999993",
+          primaryCode: "RJ00000053",
+          remoteCode: "RJ00000053",
           title: "Remote English work",
           coverUrl: "",
           sourceUrl: "",
@@ -833,7 +835,7 @@ async function mockRemoteSource(
           workId: null,
           languageEditions: [
             {
-              remoteCode: "RJ09999991",
+              remoteCode: "RJ00000051",
               language: "JPN",
               label: "Japanese",
               displayOrder: 1,
@@ -841,7 +843,7 @@ async function mockRemoteSource(
               origin: true,
             },
             {
-              remoteCode: "RJ09999993",
+              remoteCode: "RJ00000053",
               language: "ENG",
               label: "English",
               displayOrder: 2,
@@ -898,12 +900,12 @@ async function mockRemoteSource(
       options.trackControl.statusRequests += 1;
       const summaryJson =
         options.trackControl.status === "succeeded"
-          ? JSON.stringify({ work_id: 91, primary_code: "RJ09999991", source_id: 1, forked: true })
+          ? JSON.stringify({ work_id: 91, primary_code: "RJ00000051", source_id: 1, forked: true })
           : "{}";
       await route.fulfill({ json: { runId: 91, status: options.trackControl.status, summaryJson } });
       return;
     }
-    if (url.pathname === "/api/remote-sources/1/works/RJ09999991/fetch-plan") {
+    if (url.pathname === "/api/remote-sources/1/works/RJ00000051/fetch-plan") {
       const requestBody = route.request().postDataJSON() as {
         decisions?: Array<{ sourceId?: number; resolution?: string; targetPath?: string }>;
       };
@@ -915,8 +917,8 @@ async function mockRemoteSource(
       await route.fulfill({
         json: {
           sourceId: 1,
-          primaryCode: "RJ09999991",
-          saveRoot: "example_remote/RJ/015/RJ09999991",
+          primaryCode: "RJ00000051",
+          saveRoot: "example_remote/RJ/000/RJ00000051",
           fetchRoot: fetchRootConflict
             ? {
                 rootPath: "example_remote",
@@ -926,7 +928,7 @@ async function mockRemoteSource(
                   "This Fetch folder already exists and is not managed by Kikoto. Do not use it for manually managed works.",
               }
             : { rootPath: "example_remote", status: "ready", conflict: false, message: "" },
-          localFiles: [{ mediaItemId: 2, path: "Existing/RJ09999991/local.txt", sizeBytes: 4, available: true }],
+          localFiles: [{ mediaItemId: 2, path: "Existing/RJ00000051/local.txt", sizeBytes: 4, available: true }],
           items: [
             {
               itemKey: "remote:track.mp3",
@@ -940,9 +942,9 @@ async function mockRemoteSource(
               localSourcePath: "",
               cachePath: "remote/track.mp3",
               targetPath: keepBoth
-                ? "example_remote/RJ/015/RJ09999991/track (mirror).mp3"
-                : "example_remote/RJ/015/RJ09999991/track.mp3",
-              originalTargetPath: "example_remote/RJ/015/RJ09999991/track.mp3",
+                ? "example_remote/RJ/000/RJ00000051/track (mirror).mp3"
+                : "example_remote/RJ/000/RJ00000051/track.mp3",
+              originalTargetPath: "example_remote/RJ/000/RJ00000051/track.mp3",
               resolution: decision?.resolution ?? "auto",
               remoteSourceId: decision?.sourceId ?? 1,
               remoteSourceCode: decision?.sourceId === 2 ? "mirror" : "example_remote",
@@ -975,14 +977,14 @@ async function mockRemoteSource(
             conflict: (unresolvedConflict ? 1 : 0) + (fetchRootConflict ? 1 : 0),
           },
           preparation: {
-            requestedCode: "RJ09999991",
-            canonicalCode: "RJ09999990",
+            requestedCode: "RJ00000051",
+            canonicalCode: "RJ00000050",
             metadataStatus: "complete",
             warnings: [],
             editions: [
               {
                 workId: 10,
-                primaryCode: "RJ09999990",
+                primaryCode: "RJ00000050",
                 title: "Origin",
                 metadataLanguage: "JPN",
                 editionLabel: "日本語",
@@ -999,7 +1001,7 @@ async function mockRemoteSource(
                     displayName: "Example Remote",
                     status: "available",
                     remoteId: "2",
-                    primaryCode: "RJ09999990",
+                    primaryCode: "RJ00000050",
                     title: "Origin",
                     coverUrl: "",
                     workId: 10,
@@ -1013,7 +1015,7 @@ async function mockRemoteSource(
               },
               {
                 workId: 11,
-                primaryCode: "RJ09999991",
+                primaryCode: "RJ00000051",
                 title: "Community",
                 metadataLanguage: "CHI_HANS",
                 editionLabel: "簡体中文",
@@ -1026,7 +1028,7 @@ async function mockRemoteSource(
                   {
                     id: 1,
                     fileSourceId: 2,
-                    rootPath: "Existing/RJ09999991",
+                    rootPath: "Existing/RJ00000051",
                     role: "external",
                     state: "active",
                     primary: false,
@@ -1039,7 +1041,7 @@ async function mockRemoteSource(
                     displayName: "Example Remote",
                     status: "unavailable",
                     remoteId: "1",
-                    primaryCode: "RJ09999991",
+                    primaryCode: "RJ00000051",
                     title: "Community",
                     coverUrl: "",
                     workId: 11,
@@ -1097,8 +1099,8 @@ test("remote source keeps alias matches returned by the backend", async ({ page 
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
 
   const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
-  await search.fill("RJ09999994");
-  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ09999994")).toBe(true);
+  await search.fill("RJ00000054");
+  await expect.poll(() => requests.some((url) => url.searchParams.get("q") === "RJ00000054")).toBe(true);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
 });
 
@@ -1136,10 +1138,10 @@ test("remote card Track queues in place and reports a terminal failure without n
   await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(sourceURL);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
-  await expect(page.getByText("Track workflow #91 failed for RJ09999991.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Track workflow #91 failed for RJ00000051.", { exact: true })).toHaveCount(0);
 
   trackControl.status = "failed";
-  await expect(page.getByText("Track workflow #91 failed for RJ09999991.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Track workflow #91 failed for RJ00000051.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(sourceURL);
 });
 
@@ -1153,7 +1155,7 @@ test("new detail navigation starts at the top, preserves user scroll while media
   const savedScroll = await page.evaluate(() => window.scrollY);
   expect(savedScroll).toBeGreaterThan(500);
   await target.click();
-  await expect(page).toHaveURL(/\/RJ09990016/);
+  await expect(page).toHaveURL(/\/RJ00000017/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
   await page.evaluate(() => window.scrollTo(0, 300));
   await page.waitForTimeout(650);
@@ -1212,7 +1214,7 @@ test("mobile library pagination returns to the page top after detail return", as
   const target = page.getByText("Mobile work 18", { exact: true });
   await target.scrollIntoViewIfNeeded();
   await target.click();
-  await expect(page).toHaveURL(/\/RJ09990016/);
+  await expect(page).toHaveURL(/\/RJ00000017/);
   await page.getByRole("button", { name: "Back to library" }).click();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
   await page.getByRole("button", { name: "Next page" }).last().click();
@@ -1230,10 +1232,10 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Origin", { exact: true })).toBeVisible();
   await expect(page.getByText("Community", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Select RJ09999991")).toBeChecked();
+  await expect(page.getByLabel("Select RJ00000051")).toBeChecked();
   await expect(page.getByLabel("Include MP3")).toBeChecked();
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
-  await expect(page.getByLabel("Select RJ09999991")).toBeEnabled();
+  await expect(page.getByLabel("Select RJ00000051")).toBeEnabled();
   await page.getByLabel("Include MP3").click();
   await expect(page.getByLabel("Include MP3")).not.toBeChecked();
   await expect(page.getByText("0 remote / 1")).toBeVisible();
@@ -1309,7 +1311,7 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
           fileSourceCode: "local",
           fileSourceName: "Local",
           locationType: "local",
-          path: "RJ09999999/track.mp3",
+          path: "RJ00000000/track.mp3",
           streamUrl: "/api/media/1/stream",
           downloadUrl: "",
           remoteHash: "",
@@ -1324,7 +1326,7 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
           fileSourceCode: "local",
           fileSourceName: "Local",
           locationType: "cache",
-          path: "local/RJ09999999/track.mp3",
+          path: "local/RJ00000000/track.mp3",
           streamUrl: "/api/media/2/stream",
           downloadUrl: "",
           remoteHash: "",
@@ -1642,9 +1644,9 @@ test("unknown routes and missing work codes render not found states", async ({ p
   await page.goto("/missing-route");
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
 
-  await page.goto("/RJ09999994");
+  await page.goto("/RJ00000054");
   await expect(page.getByRole("heading", { name: "Work not found" })).toBeVisible();
-  await expect(page.getByText("Loading RJ09999994...")).toHaveCount(0);
+  await expect(page.getByText("Loading RJ00000054...")).toHaveCount(0);
 });
 
 test("remote-only work uses the shared mobile detail shell without becoming persisted", async ({ page }) => {
@@ -1682,7 +1684,7 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   const englishVersions = page.getByRole("group", { name: "English versions" });
   await englishVersions.getByRole("button", { name: "Choose English DLsite code", exact: true }).click();
   const englishCodes = page.getByRole("menu", { name: "English DLsite codes", exact: true });
-  await englishCodes.getByRole("menuitemradio", { name: "RJ09999993 Official Available", exact: true }).click();
+  await englishCodes.getByRole("menuitemradio", { name: "RJ00000053 Official Available", exact: true }).click();
   await page.getByRole("button", { name: "Directory", exact: true }).click();
   await expect(page.getByText("english.mp3", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);
@@ -1694,7 +1696,7 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await page.goto("/");
   await page.getByRole("button", { name: "Example Remote", exact: true }).click();
   await page.getByText("Remote Japanese work", { exact: true }).click();
-  await expect(page).toHaveURL(/\/RJ09999991\?source=1/);
+  await expect(page).toHaveURL(/\/RJ00000051\?source=1/);
   const detailURL = page.url();
   const trackedTab = page.locator('button[title^="Tracked:"]');
   await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
@@ -1708,7 +1710,7 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
 
   trackControl.status = "succeeded";
-  await expect(page.getByText("Track workflow #91 completed for RJ09999991.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Track workflow #91 completed for RJ00000051.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(detailURL);
   await expect(trackedTab).toHaveAttribute("title", "Tracked: Forked directory available");
   await page.getByRole("button", { name: /Source actions for/ }).click();
@@ -1732,7 +1734,7 @@ test("persisted remote result opens the canonical detail with its remote source 
   await expect(page).toHaveURL(new RegExp(`/${work.primaryCode}\\?`));
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("remote");
   expect(new URL(page.url()).searchParams.get("source")).toBe("1");
-  expect(new URL(page.url()).searchParams.get("remoteCode")).toBe("RJ09999991");
+  expect(new URL(page.url()).searchParams.get("remoteCode")).toBe("RJ00000051");
   await expect(page.locator('button[title="Example Remote: Available"]')).toHaveClass(/bg-primary/);
   await expect(page.getByText("Previewing remote files from Example Remote.", { exact: true })).toBeVisible();
   expect(trackRequests).toEqual([]);
@@ -1918,7 +1920,7 @@ test("recently played cards stay aligned and remember their collapsed state", as
     {
       ...work,
       id: 21,
-      primaryCode: "RJ08888881",
+      primaryCode: "RJ00000060",
       title: "Short title",
       progress: {
         ...work.progress,
@@ -1931,7 +1933,7 @@ test("recently played cards stay aligned and remember their collapsed state", as
     {
       ...work,
       id: 22,
-      primaryCode: "RJ08888882",
+      primaryCode: "RJ00000061",
       title: "A deliberately long title that occupies both reserved title lines",
       circle: "A circle name that is deliberately too long for the compact card",
       progress: {
@@ -2066,7 +2068,7 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
           fileSourceCode: "local",
           fileSourceName: "Local",
           locationType: "local",
-          path: "RJ09999999/track.mp3",
+          path: "RJ00000000/track.mp3",
           streamUrl: "/api/media/1/stream",
           downloadUrl: "",
           remoteHash: "",
@@ -2102,7 +2104,7 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
 });
 
 test("work detail reserves a structured directory skeleton until media is ready", async ({ page }) => {
-  const mediaItems = [mediaFixture(1, "track.mp3", "RJ09999999/track.mp3", "audio")];
+  const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")];
   await mockApplication(page, undefined, false, 1, 800, mediaItems, undefined, { authenticated: true });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
@@ -2148,7 +2150,7 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
           fileSourceCode: "local",
           fileSourceName: "Local",
           locationType: "local",
-          path: `RJ09999999/${longTitle}`,
+          path: `RJ00000000/${longTitle}`,
           streamUrl: "/api/media/1/stream",
           downloadUrl: "",
           remoteHash: "",
@@ -2175,7 +2177,7 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
           fileSourceCode: "local",
           fileSourceName: "Local",
           locationType: "local",
-          path: `RJ09999999/${imageTitle}`,
+          path: `RJ00000000/${imageTitle}`,
           streamUrl: "",
           downloadUrl: "/api/media/2/download",
           remoteHash: "",
@@ -2294,10 +2296,10 @@ test("mobile directory breadcrumbs collapse long ancestors without losing naviga
   const second = "Second folder with another deliberately long descriptive name";
   const current = "Current folder with an especially long descriptive suffix CHI_HANS";
   const mediaItems = [
-    mediaFixture(1, "root-note.txt", `RJ09999999/root-note.txt`, "file"),
-    mediaFixture(2, "first-note.txt", `RJ09999999/${first}/first-note.txt`, "file"),
-    mediaFixture(3, "second-note.txt", `RJ09999999/${first}/${second}/second-note.txt`, "file"),
-    mediaFixture(4, "track.mp3", `RJ09999999/${first}/${second}/${current}/track.mp3`, "audio"),
+    mediaFixture(1, "root-note.txt", `RJ00000000/root-note.txt`, "file"),
+    mediaFixture(2, "first-note.txt", `RJ00000000/${first}/first-note.txt`, "file"),
+    mediaFixture(3, "second-note.txt", `RJ00000000/${first}/${second}/second-note.txt`, "file"),
+    mediaFixture(4, "track.mp3", `RJ00000000/${first}/${second}/${current}/track.mp3`, "audio"),
   ];
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
   await page.goto("/");
@@ -2342,7 +2344,7 @@ test("work detail groups DLsite and active source information", async ({ page })
           fileSourceCode: "local",
           fileSourceName: "Main local library",
           locationType: "local",
-          path: "RJ09999999/track.mp3",
+          path: "RJ00000000/track.mp3",
           streamUrl: "/api/media/1/stream",
           downloadUrl: "",
           remoteHash: "",
@@ -2424,7 +2426,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await cover.tap();
   await page.waitForTimeout(100);
   await cover.tap();
-  await expect(page).toHaveURL(/\/RJ09999999$/);
+  await expect(page).toHaveURL(/\/RJ00000000$/);
   await expect(fullPlayer).toBeHidden();
 });
 
@@ -2661,11 +2663,11 @@ test("desktop player restores the user's compact dock preference", async ({ page
 test("desktop compact player reserves the final directory action area", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const mediaItems = Array.from({ length: 24 }, (_, index) =>
-    mediaFixture(index + 1, `track-${index + 1}.mp3`, `RJ09999999/track-${index + 1}.mp3`, "audio"),
+    mediaFixture(index + 1, `track-${index + 1}.mp3`, `RJ00000000/track-${index + 1}.mp3`, "audio"),
   );
   await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
   await seedPlayer(page, persistedTrack, 1);
-  await page.goto("/RJ09999999");
+  await page.goto("/RJ00000000");
   await page.getByRole("button", { name: "Collapse player" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
   await expect(page.getByTestId("directory-file-row")).toHaveCount(mediaItems.length);

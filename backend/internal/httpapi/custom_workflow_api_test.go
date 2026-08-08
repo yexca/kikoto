@@ -62,7 +62,7 @@ func TestCustomWorkflowRunPreviewThenConfirmQueuesRecoverableGraph(t *testing.T)
 	server := NewServer(db, config.Config{})
 	actor := account.User{ID: ownerID, Permissions: []string{"workflows:run", "downloads:manage"}}
 
-	preview := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"preview","inputs":{"work":"rj09999991"}}`)
+	preview := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"preview","inputs":{"work":"rj00000001"}}`)
 	if preview.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", preview.Code, preview.Body.String())
 	}
@@ -73,7 +73,7 @@ func TestCustomWorkflowRunPreviewThenConfirmQueuesRecoverableGraph(t *testing.T)
 	if previewResult.Mode != "preview" || previewResult.Status != "preview" || previewResult.PreviewToken == "" {
 		t.Fatalf("preview result = %+v", previewResult)
 	}
-	if got := previewResult.NormalizedInputs["work"]; got != "RJ09999991" {
+	if got := previewResult.NormalizedInputs["work"]; got != "RJ00000001" {
 		t.Fatalf("normalized work = %#v", got)
 	}
 	if previewResult.Plan == nil || fmt.Sprint(previewResult.Plan.TopologicalOrder) != "[work_input fetch]" {
@@ -85,13 +85,13 @@ func TestCustomWorkflowRunPreviewThenConfirmQueuesRecoverableGraph(t *testing.T)
 	assertCustomWorkflowAPICount(t, db, "workflow_run", 0)
 	assertCustomWorkflowAPICount(t, db, "work", 0)
 
-	staleConfirm := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"confirm","inputs":{"work":"RJ09999992"},"previewToken":"`+previewResult.PreviewToken+`"}`)
+	staleConfirm := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"confirm","inputs":{"work":"RJ00000002"},"previewToken":"`+previewResult.PreviewToken+`"}`)
 	if staleConfirm.Code != http.StatusConflict {
 		t.Fatalf("stale confirm status = %d, body = %s", staleConfirm.Code, staleConfirm.Body.String())
 	}
 	assertCustomWorkflowAPICount(t, db, "workflow_run", 0)
 
-	confirm := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"confirm","inputs":{"work":"RJ09999991"},"previewToken":"`+previewResult.PreviewToken+`"}`)
+	confirm := requestCustomWorkflowAPIRun(t, server, definitionID, actor, `{"mode":"confirm","inputs":{"work":"RJ00000001"},"previewToken":"`+previewResult.PreviewToken+`"}`)
 	if confirm.Code != http.StatusAccepted {
 		t.Fatalf("confirm status = %d, body = %s", confirm.Code, confirm.Body.String())
 	}
@@ -108,7 +108,7 @@ func TestCustomWorkflowRunPreviewThenConfirmQueuesRecoverableGraph(t *testing.T)
 		Scan(&runStatus, &triggerType, &triggerReason, &inputJSON); err != nil {
 		t.Fatal(err)
 	}
-	if runStatus != "queued" || triggerType != "manual" || triggerReason != "custom_definition" || !strings.Contains(inputJSON, `"work":"RJ09999991"`) {
+	if runStatus != "queued" || triggerType != "manual" || triggerReason != "custom_definition" || !strings.Contains(inputJSON, `"work":"RJ00000001"`) {
 		t.Fatalf("run = status %s, trigger %s/%s, input %s", runStatus, triggerType, triggerReason, inputJSON)
 	}
 	var nodeRuns int
@@ -221,21 +221,21 @@ func TestCustomWorkflowRunEnforcesCapabilityPermissionAndOwnership(t *testing.T)
 
 	missingPermission := requestCustomWorkflowAPIRun(t, server, definitionID,
 		account.User{ID: ownerID, Permissions: []string{"workflows:run"}},
-		`{"mode":"preview","inputs":{"work":"RJ09999991"}}`)
+		`{"mode":"preview","inputs":{"work":"RJ00000001"}}`)
 	if missingPermission.Code != http.StatusForbidden || !strings.Contains(missingPermission.Body.String(), `"permission":"downloads:manage"`) {
 		t.Fatalf("missing permission response = %d, %s", missingPermission.Code, missingPermission.Body.String())
 	}
 
 	wrongOwner := requestCustomWorkflowAPIRun(t, server, definitionID,
 		account.User{ID: otherID, Permissions: []string{"workflows:run", "downloads:manage"}},
-		`{"mode":"preview","inputs":{"work":"RJ09999991"}}`)
+		`{"mode":"preview","inputs":{"work":"RJ00000001"}}`)
 	if wrongOwner.Code != http.StatusForbidden {
 		t.Fatalf("wrong owner response = %d, %s", wrongOwner.Code, wrongOwner.Body.String())
 	}
 
 	administrator := requestCustomWorkflowAPIRun(t, server, definitionID,
 		account.User{ID: otherID, Permissions: []string{"system:admin", "workflows:run"}},
-		`{"mode":"preview","inputs":{"work":"RJ09999991"}}`)
+		`{"mode":"preview","inputs":{"work":"RJ00000001"}}`)
 	if administrator.Code != http.StatusOK {
 		t.Fatalf("administrator response = %d, %s", administrator.Code, administrator.Body.String())
 	}
@@ -244,7 +244,7 @@ func TestCustomWorkflowRunEnforcesCapabilityPermissionAndOwnership(t *testing.T)
 	}
 	ownerless := requestCustomWorkflowAPIRun(t, server, definitionID,
 		account.User{ID: ownerID, Permissions: []string{"workflows:run", "downloads:manage"}},
-		`{"mode":"preview","inputs":{"work":"RJ09999991"}}`)
+		`{"mode":"preview","inputs":{"work":"RJ00000001"}}`)
 	if ownerless.Code != http.StatusForbidden {
 		t.Fatalf("ownerless definition response = %d, %s", ownerless.Code, ownerless.Body.String())
 	}
@@ -271,7 +271,7 @@ func TestCustomWorkflowApprovedPolicyAllowsBoundedDirectConfirm(t *testing.T) {
 	server := NewServer(db, config.Config{})
 	response := requestCustomWorkflowAPIRun(t, server, definitionID,
 		account.User{ID: ownerID, Permissions: []string{"workflows:run", "downloads:manage"}},
-		`{"mode":"confirm","inputs":{"work":"CC0001"}}`)
+		`{"mode":"confirm","inputs":{"work":"CC00000000"}}`)
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("direct confirm status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -311,7 +311,7 @@ func TestCustomWorkflowScheduleAcceptsBoundedDAG(t *testing.T) {
 	}
 	definitionID, _ := result.LastInsertId()
 	server := NewServer(db, config.Config{})
-	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Custom schedule","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":5}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
+	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Custom schedule","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":5}","configJson":"{\"inputs\":{\"works\":\"RJ00000001\"}}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
 	response := httptest.NewRecorder()
@@ -361,7 +361,7 @@ func TestCustomWorkflowStartupTriggerCoexistsWithScheduleAndQueuesOnce(t *testin
 	server := NewServer(db, config.Config{})
 	actor := account.User{ID: ownerID, Permissions: []string{"workflows:run"}}
 
-	startupBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Run at startup","triggerType":"startup","enabled":true,"scheduleJson":"{}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
+	startupBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Run at startup","triggerType":"startup","enabled":true,"scheduleJson":"{}","configJson":"{\"inputs\":{\"works\":\"RJ00000001\"}}"}`, definitionID)
 	startupRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(startupBody))
 	startupRequest = startupRequest.WithContext(context.WithValue(startupRequest.Context(), currentUserKey, actor))
 	startupResponse := httptest.NewRecorder()
@@ -382,7 +382,7 @@ func TestCustomWorkflowStartupTriggerCoexistsWithScheduleAndQueuesOnce(t *testin
 		t.Fatalf("duplicate startup response = %d, %s", duplicateResponse.Code, duplicateResponse.Body.String())
 	}
 
-	scheduleBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Every hour","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":60}","configJson":"{\"inputs\":{\"works\":\"RJ09999991\"}}"}`, definitionID)
+	scheduleBody := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Every hour","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":60}","configJson":"{\"inputs\":{\"works\":\"RJ00000001\"}}"}`, definitionID)
 	scheduleRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(scheduleBody))
 	scheduleRequest = scheduleRequest.WithContext(context.WithValue(scheduleRequest.Context(), currentUserKey, actor))
 	scheduleResponse := httptest.NewRecorder()
@@ -608,21 +608,21 @@ func TestCustomWorkflowRunReadReviewAndCandidateAccessIsOwnerScoped(t *testing.T
 		INSERT INTO workflow_node_run (
 			workflow_run_id, node_id, node_type, display_name, position, status, input_json, output_json
 		) VALUES (?, 'fetch', 'fetch_works', 'Private fetch', 1, 'succeeded', ?, ?)
-	`, customRunID, `{"config":{"sourceId":91,"targetRoot":"private/<work_code>"}}`, `{"completed":{"codes":["RJ09999991"]}}`)
+	`, customRunID, `{"config":{"sourceId":91,"targetRoot":"private/<work_code>"}}`, `{"completed":{"codes":["RJ00000001"]}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	customNodeID, _ := customNodeResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO workflow_event (workflow_run_id, workflow_node_run_id, level, event_type, message, detail_json)
-		VALUES (?, ?, 'info', 'private.event', 'Private event', '{"code":"RJ09999991"}')
+		VALUES (?, ?, 'info', 'private.event', 'Private event', '{"code":"RJ00000001"}')
 	`, customRunID, customNodeID); err != nil {
 		t.Fatal(err)
 	}
 	customCandidateResult, err := db.Exec(`
 		INSERT INTO workflow_candidate (
 			workflow_run_id, workflow_node_run_id, candidate_type, external_key, status, payload_json
-		) VALUES (?, ?, 'synthetic_private', 'RJ09999991', 'ignored', '{"private":true}')
+		) VALUES (?, ?, 'synthetic_private', 'RJ00000001', 'ignored', '{"private":true}')
 	`, customRunID, customNodeID)
 	if err != nil {
 		t.Fatal(err)
@@ -1036,7 +1036,7 @@ func TestCustomWorkflowRetryRequiresOwnerAndCurrentPermissions(t *testing.T) {
 	nodeID, _ := nodeResult.LastInsertId()
 	payload := customWorkflowJobPayload{
 		DefinitionJSON: customWorkflowAPIDefinitionJSON,
-		Inputs:         map[string]any{"work": "RJ09999991"},
+		Inputs:         map[string]any{"work": "RJ00000001"},
 		UserID:         ownerID,
 		Permissions:    []string{"workflows:run", "downloads:manage"},
 	}
@@ -1088,7 +1088,7 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 	if _, err := db.Exec(`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_source_sync', 'Track remote source')`); err != nil {
 		t.Fatal(err)
 	}
-	requestID := customTrackRequestID(parentRunID, "track", 77, "RJ09999991")
+	requestID := customTrackRequestID(parentRunID, "track", 77, "RJ00000001")
 	childResult, err := db.Exec(`
 		INSERT INTO workflow_run (
 			workflow_definition_id, workflow_code, display_name, status, trigger_type, trigger_reason, input_json
@@ -1096,7 +1096,7 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 			(SELECT id FROM workflow_definition WHERE code = 'remote_source_sync'),
 			'remote_source_sync', 'Track remote source', 'succeeded', 'manual', ?, ?
 		)
-	`, requestID, mustJSON(map[string]any{"file_source_id": 77, "work_code": "RJ09999991", "requested_work_code": "RJ09999991"}))
+	`, requestID, mustJSON(map[string]any{"file_source_id": 77, "work_code": "RJ00000001", "requested_work_code": "RJ00000001"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1117,7 +1117,7 @@ func TestCustomTrackReusesCompletedChildRunAfterCheckpointGap(t *testing.T) {
 	}
 	server := NewServer(db, config.Config{})
 	node := customWorkflowNode{ID: "track", Type: "track_works", Config: map[string]any{"maxWorks": 1}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991", SourceID: 77}}}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001", SourceID: 77}}}}
 	for attempt := 0; attempt < 2; attempt++ {
 		execution, err := server.executeCustomTrackWorks(context.Background(), parentRunID, node, inputs)
 		if err != nil {
@@ -1148,7 +1148,7 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (92, 'RJ09999991', 'Synthetic work')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (92, 'RJ00000001', 'Synthetic work')`); err != nil {
 		t.Fatal(err)
 	}
 	parentResult, err := db.Exec(`
@@ -1170,12 +1170,12 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	childRunID, _ := childResult.LastInsertId()
-	requestID := customFetchRequestID(parentRunID, "fetch", "RJ09999991")
+	requestID := customFetchRequestID(parentRunID, "fetch", "RJ00000001")
 	manifestResult, err := db.Exec(`
 		INSERT INTO remote_fetch_manifest (
 			workflow_run_id, request_id, work_id, remote_source_id, local_source_id,
 			edition_code, target_root, staging_root, plan_json
-		) VALUES (?, ?, 92, 88, 89, 'RJ09999991', 'library/RJ09999991', 'staging/RJ09999991', '{}')
+		) VALUES (?, ?, 92, 88, 89, 'RJ00000001', 'library/RJ00000001', 'staging/RJ00000001', '{}')
 	`, childRunID, requestID)
 	if err != nil {
 		t.Fatal(err)
@@ -1185,15 +1185,15 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		INSERT INTO remote_fetch_manifest_item (
 			manifest_id, relative_path, target_path, source_kind, action, expected_size_bytes, remote_source_id
 		) VALUES
-			(?, 'track.mp3', 'library/RJ09999991/track.mp3', 'remote', 'cache_download', 512, 88),
-			(?, 'cached.mp3', 'library/RJ09999991/cached.mp3', 'cache', 'cache_hit', 256, 88)
+			(?, 'track.mp3', 'library/RJ00000001/track.mp3', 'remote', 'cache_download', 512, 88),
+			(?, 'cached.mp3', 'library/RJ00000001/cached.mp3', 'cache', 'cache_hit', 256, 88)
 	`, manifestID, manifestID); err != nil {
 		t.Fatal(err)
 	}
-	stored := remoteWorkSaveResult{RunID: childRunID, WorkID: 92, PrimaryCode: "RJ09999991", Status: "queued", RequestID: requestID}
+	stored := remoteWorkSaveResult{RunID: childRunID, WorkID: 92, PrimaryCode: "RJ00000001", Status: "queued", RequestID: requestID}
 	if _, err := db.Exec(`
 		INSERT INTO remote_fetch_request (request_id, source_id, work_code, workflow_run_id, result_json)
-		VALUES (?, 88, 'RJ09999991', ?, ?)
+		VALUES (?, 88, 'RJ00000001', ?, ?)
 	`, requestID, childRunID, mustJSON(stored)); err != nil {
 		t.Fatal(err)
 	}
@@ -1206,7 +1206,7 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 		t.Fatalf("persisted fetch usage = %+v", usage)
 	}
 	node := customWorkflowNode{ID: "fetch", Type: "fetch_works", Config: map[string]any{"maxWorks": 1, "maxFiles": 10, "maxBytes": 1024}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991", SourceID: 88}}}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001", SourceID: 88}}}}
 	for attempt := 0; attempt < 2; attempt++ {
 		execution, err := server.executeCustomFetchWorks(context.Background(), parentRunID, 0, workflow.JobPriorityUserInitiated, node, inputs)
 		if err != nil {
@@ -1222,8 +1222,8 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 	execution, waiting, err := server.resumeCustomPendingExecution(context.Background(), customPendingExecution{
 		NodeID: "fetch", Kind: "fetch", Children: []customPendingChild{{
 			RunID:     childRunID,
-			Candidate: customWorkCandidate{Code: "RJ09999991", SourceID: 88},
-			WorkRef:   customWorkRef{Code: "RJ09999991", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
+			Candidate: customWorkCandidate{Code: "RJ00000001", SourceID: 88},
+			WorkRef:   customWorkRef{Code: "RJ00000001", WorkID: 92, SourceID: 88, ChildRunID: childRunID},
 		}},
 	})
 	if err != nil || waiting {
@@ -1238,7 +1238,7 @@ func TestCustomFetchReusesRequestBeforeRemotePreflight(t *testing.T) {
 func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
 	db := openMigratedTestDB(t)
 	userID := insertCustomWorkflowAPIUser(t, db, "workflow-filter-owner")
-	workResult, err := db.Exec(`INSERT INTO work (primary_code, title, release_date) VALUES ('RJ09999991', 'Synthetic work', '2026-04-03')`)
+	workResult, err := db.Exec(`INSERT INTO work (primary_code, title, release_date) VALUES ('RJ00000001', 'Synthetic work', '2026-04-03')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1272,7 +1272,7 @@ func TestCustomFilterWorksUsesNormalizedMetadataAndUserTags(t *testing.T) {
 		"releaseFrom": "2026-01-01", "releaseTo": "2026-12-31",
 		"voiceNames": []string{"example voice"}, "metadataTags": []string{"healing"}, "userTags": []string{"listen later"},
 	}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991"}}}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001"}}}}
 	execution, err := server.executeCustomFilterWorks(context.Background(), userID, node, inputs)
 	if err != nil {
 		t.Fatal(err)
@@ -1311,7 +1311,7 @@ func TestCustomSubworkflowWaitsAndCollectsTerminalWorkRefs(t *testing.T) {
 	server := NewServer(db, config.Config{})
 	payload := customWorkflowJobPayload{UserID: ownerID, OwnerUserID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}, DefinitionStack: []int64{999}}
 	node := customWorkflowNode{ID: "reuse", Type: "subworkflow", Config: map[string]any{"definitionId": childDefinitionID, "inputKey": "works", "maxWorks": 10}}
-	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ09999991"}}}}
+	inputs := map[string]customPortValue{"works": {Type: "work_candidates", Candidates: []customWorkCandidate{{Code: "RJ00000001"}}}}
 	execution, err := server.executeCustomSubworkflow(context.Background(), 123, payload, node, inputs)
 	if err != nil {
 		t.Fatal(err)
@@ -1324,7 +1324,7 @@ func TestCustomSubworkflowWaitsAndCollectsTerminalWorkRefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkpoint := customWorkflowCheckpoint{CompletedNodeIDs: []string{"input", "metadata"}, Outputs: map[string]map[string]customPortValue{
-		"metadata": {"completed": {Type: "work_refs", WorkRefs: []customWorkRef{{Code: "RJ09999991", WorkID: 91}}}},
+		"metadata": {"completed": {Type: "work_refs", WorkRefs: []customWorkRef{{Code: "RJ00000001", WorkID: 91}}}},
 	}}
 	if _, err := db.Exec("UPDATE workflow_job SET checkpoint_json = ? WHERE workflow_run_id = ?", mustJSON(map[string]any{"phase": "completed", "detail": checkpoint}), childRunID); err != nil {
 		t.Fatal(err)

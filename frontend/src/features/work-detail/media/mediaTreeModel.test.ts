@@ -78,7 +78,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 1,
           fileSourceName: "Local",
           locationType: "local",
-          path: "library/RJ09999995/audio/01.mp3",
+          path: "library/RJ00000001/audio/01.mp3",
           streamUrl: "/api/media/21/stream",
           downloadUrl: "",
           availability: "available",
@@ -100,7 +100,7 @@ describe("mediaTreeModel", () => {
       ],
     } as MediaItem;
 
-    const tree = buildTree([item], 1, "RJ09999995");
+    const tree = buildTree([item], 1, "RJ00000001");
     const tracks = flattenTracks(tree);
 
     expect(tracks).toHaveLength(1);
@@ -135,7 +135,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 1,
           fileSourceName: "Local",
           locationType: "local",
-          path: "library/RJ09999995/audio/01.mp3",
+          path: "library/RJ00000001/audio/01.mp3",
           streamUrl: "/api/media/21/stream",
           downloadUrl: "",
           availability: "available",
@@ -146,7 +146,7 @@ describe("mediaTreeModel", () => {
     } as MediaItem;
     const work = {
       id: 7,
-      primaryCode: "RJ09999995",
+      primaryCode: "RJ00000001",
       title: "Work",
       coverUrl: "",
       circle: "Circle",
@@ -175,7 +175,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 1,
           fileSourceName: "Local",
           locationType: "local",
-          path: "library/RJ09999995/01.mp3",
+          path: "library/RJ00000001/01.mp3",
           streamUrl: "/api/media/21/stream",
           downloadUrl: "",
           availability: "available",
@@ -187,7 +187,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 2,
           fileSourceName: "Example Remote",
           locationType: "remote_stream",
-          path: "RJ09999995/01.mp3",
+          path: "RJ00000001/01.mp3",
           streamUrl: "/remote/01",
           downloadUrl: "",
           availability: "remote",
@@ -198,7 +198,7 @@ describe("mediaTreeModel", () => {
     } as MediaItem;
     const work = {
       id: 7,
-      primaryCode: "RJ09999995",
+      primaryCode: "RJ00000001",
       title: "Work",
       coverUrl: "",
       circle: "Circle",
@@ -242,7 +242,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 1,
           fileSourceName: "Missing local",
           locationType: "local",
-          path: "library/RJ09999995/audio/01.mp3",
+          path: "library/RJ00000001/audio/01.mp3",
           streamUrl: "",
           downloadUrl: "",
           availability: "missing",
@@ -254,7 +254,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 2,
           fileSourceName: "Available local",
           locationType: "local",
-          path: "backup/RJ09999995/audio/01.mp3",
+          path: "backup/RJ00000001/audio/01.mp3",
           streamUrl: "/api/media/31/stream",
           downloadUrl: "",
           availability: "available",
@@ -264,8 +264,8 @@ describe("mediaTreeModel", () => {
       ],
     } as MediaItem;
 
-    expect(treeStats(buildTree([item], 1, "RJ09999995")).files).toBe(0);
-    expect(flattenTracks(buildTree([item], null, "RJ09999995"))[0]).toMatchObject({ locationId: 31 });
+    expect(treeStats(buildTree([item], 1, "RJ00000001")).files).toBe(0);
+    expect(flattenTracks(buildTree([item], null, "RJ00000001"))[0]).toMatchObject({ locationId: 31 });
   });
 
   it("keeps available non-playable files in the directory tree", () => {
@@ -282,7 +282,7 @@ describe("mediaTreeModel", () => {
           fileSourceId: 1,
           fileSourceName: "Local",
           locationType: "local",
-          path: "library/RJ09999995/cover.jpg",
+          path: "library/RJ00000001/cover.jpg",
           streamUrl: "",
           downloadUrl: "/api/media/24/download",
           availability: "available",
@@ -292,7 +292,7 @@ describe("mediaTreeModel", () => {
       ],
     } as MediaItem;
 
-    const tree = buildTree([item], 1, "RJ09999995");
+    const tree = buildTree([item], 1, "RJ00000001");
 
     expect(treeStats(tree)).toMatchObject({ files: 1, playable: 0, sizeBytes: 2048 });
     expect(tree.files[0]).toMatchObject({ kind: "image", locationId: 24, title: "cover.jpg" });
@@ -545,7 +545,7 @@ describe("mediaTreeModel", () => {
             fileSourceId: 1,
             fileSourceName: "Local",
             locationType: "local",
-            path: `library/RJ09999995/${id}.mp4`,
+            path: `library/RJ00000001/${id}.mp4`,
             streamUrl: `/api/media/${id + 100}/stream`,
             downloadUrl: "",
             availability: "available",
@@ -554,7 +554,7 @@ describe("mediaTreeModel", () => {
           },
         ],
       }) as MediaItem;
-    const tree = buildTree([videoItem(1, true), videoItem(2, false)], 1, "RJ09999995");
+    const tree = buildTree([videoItem(1, true), videoItem(2, false)], 1, "RJ00000001");
 
     expect(flattenTracks(tree).map((track) => track.mediaItemId)).toEqual([1]);
     expect(treeStats(tree)).toMatchObject({ files: 2, video: 2, playable: 1, durationSeconds: 45 });

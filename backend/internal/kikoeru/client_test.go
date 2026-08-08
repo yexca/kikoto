@@ -5,15 +5,37 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestWorkCodeFallsBackToOriginalWorkID(t *testing.T) {
-	work := Work{OriginalWorkID: 12345}
+	work := Work{OriginalWorkID: 42}
 
-	if got := WorkCode(work); got != "RJ00012345" {
-		t.Fatalf("WorkCode() = %q, want RJ00012345", got)
+	if got, want := WorkCode(work), testfixture.WorkCode(testfixture.PrefixRJ, 42); got != want {
+		t.Fatalf("WorkCode() = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizeWorkCodeUsesSupportedPrefixesAndLength(t *testing.T) {
+	for _, prefix := range []testfixture.WorkCodePrefix{
+		testfixture.PrefixRJ,
+		testfixture.PrefixBJ,
+		testfixture.PrefixVJ,
+		testfixture.PrefixCC,
+	} {
+		code := testfixture.WorkCode(prefix, 0)
+		if got := normalizeWorkCode(strings.ToLower(code)); got != code {
+			t.Fatalf("normalizeWorkCode(%q) = %q, want %q", strings.ToLower(code), got, code)
+		}
+	}
+	for _, code := range []string{"RJ0000", "RJ000000000", "ZZ00000000"} {
+		if got := normalizeWorkCode(code); got != "" {
+			t.Fatalf("normalizeWorkCode(%q) = %q, want empty", code, got)
+		}
 	}
 }
 

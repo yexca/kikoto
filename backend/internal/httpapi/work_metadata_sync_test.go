@@ -11,23 +11,23 @@ import (
 func TestWorkMetadataSyncQueuesOneRecoverableRunPerFamily(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
-	originResult, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999991', 'Origin')`)
+	originResult, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Origin')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	originID, _ := originResult.LastInsertId()
-	translationResult, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999992', 'Translation')`)
+	translationResult, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000001', 'Translation')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	translationID, _ := translationResult.LastInsertId()
-	logicalResult, err := db.Exec(`INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09999991')`, originID)
+	logicalResult, err := db.Exec(`INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000000')`, originID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	logicalID, _ := logicalResult.LastInsertId()
 	if _, err := db.Exec(`INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical)
-		VALUES (?, ?, 'RJ09999991', 'RJ09999991', 1), (?, ?, 'RJ09999992', 'RJ09999991', 0)`, originID, logicalID, translationID, logicalID); err != nil {
+		VALUES (?, ?, 'RJ00000000', 'RJ00000000', 1), (?, ?, 'RJ00000001', 'RJ00000000', 0)`, originID, logicalID, translationID, logicalID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestWorkMetadataSyncQueuesOneRecoverableRunPerFamily(t *testing.T) {
 func TestUnavailableRequestedProductCompletesWithoutReviewCandidate(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
-	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999993', 'Unavailable')`)
+	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Unavailable')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +71,10 @@ func TestUnavailableRequestedProductCompletesWithoutReviewCandidate(t *testing.T
 		t.Fatal(err)
 	}
 	job := workflowJobRecord{ID: run.JobID, RunID: run.RunID, NodeRunID: nodeRunID}
-	payload := workMetadataSyncPayload{WorkID: workID, PrimaryCode: "RJ09999993", FamilyCode: "RJ09999993"}
+	payload := workMetadataSyncPayload{WorkID: workID, PrimaryCode: "RJ00000002", FamilyCode: "RJ00000002"}
 	family := metasync.DLsiteFamilySyncResult{
-		RequestedCode: "RJ09999993", CanonicalCode: "RJ09999993", Codes: []string{"RJ09999993"},
-		Failures: []string{"RJ09999993: dlsite product not found"}, RequestedUnavailable: true,
+		RequestedCode: "RJ00000002", CanonicalCode: "RJ00000002", Codes: []string{"RJ00000002"},
+		Failures: []string{"RJ00000002: dlsite product not found"}, RequestedUnavailable: true,
 	}
 	if err := server.finishUnavailableWorkMetadataSyncJob(context.Background(), job, payload, family, "dlsite product not found"); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestUnavailableRequestedProductCompletesWithoutReviewCandidate(t *testing.T
 func TestUnavailableProviderStateSkipsDetailRefresh(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
-	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ09999994', 'Unavailable')`)
+	result, err := db.Exec(`INSERT INTO work (primary_code, title) VALUES ('RJ00000003', 'Unavailable')`)
 	if err != nil {
 		t.Fatal(err)
 	}

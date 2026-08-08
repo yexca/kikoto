@@ -52,13 +52,13 @@ describe("workVersionModel", () => {
 
   it("prefers the smallest usable code instead of a smaller metadata-only alias", () => {
     const versions = [
-      version("RJ09999787", "ENG", "official", "metadata_only", null),
-      version("RJ09999790", "ENG", "third_party", "indexed_available", 3),
-      version("RJ09999788", "ENG", "third_party", "indexed_available", 2),
+      version("RJ00000000", "ENG", "official", "metadata_only", null),
+      version("RJ00000002", "ENG", "third_party", "indexed_available", 3),
+      version("RJ00000001", "ENG", "third_party", "indexed_available", 2),
     ];
 
-    expect(preferredWorkVersion(versions, "")?.primaryCode).toBe("RJ09999788");
-    expect(preferredWorkVersion(versions, "RJ09999790")?.primaryCode).toBe("RJ09999790");
+    expect(preferredWorkVersion(versions, "")?.primaryCode).toBe("RJ00000001");
+    expect(preferredWorkVersion(versions, "RJ00000002")?.primaryCode).toBe("RJ00000002");
   });
 });
 

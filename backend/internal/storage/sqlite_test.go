@@ -233,13 +233,13 @@ func TestNormalizedTagMigrationBackfillsEscapedUnicodeSnapshots(t *testing.T) {
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)
 	}
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999998', 'Migration test')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000003', 'Migration test')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	workID, _ := workResult.LastInsertId()
 	snapshot := `{"product":{"genres":[{"name":"\u30ed\u30ea"},{"name":"\u8033\u304b\u304d"}]},"_kikoto":{"language":"ja_JP"}}`
-	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09999998', ?)", workID, providerID, snapshot); err != nil {
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ00000003', ?)", workID, providerID, snapshot); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,24 +297,24 @@ func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)
 	}
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09994001', 'Canonical')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Canonical')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	workID, _ := workResult.LastInsertId()
-	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09994001')", workID)
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000000')", workID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	logicalWorkID, _ := logicalResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical)
-		VALUES (?, ?, ?, 'RJ09994001', 1)
+		VALUES (?, ?, ?, 'RJ00000000', 1)
 	`, workID, logicalWorkID, providerID); err != nil {
 		t.Fatal(err)
 	}
-	snapshot := `{"product":{"language_editions":[{"workno":"RJ09994001","lang":"JPN","label":"Japanese"},{"workno":"RJ09994002","lang":"ENG","label":"English"}]}}`
-	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09994001', ?)", workID, providerID, snapshot); err != nil {
+	snapshot := `{"product":{"language_editions":[{"workno":"RJ00000000","lang":"JPN","label":"Japanese"},{"workno":"RJ00000001","lang":"ENG","label":"English"}]}}`
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ00000000', ?)", workID, providerID, snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if err := Migrate(db, migrationDir); err != nil {
@@ -326,7 +326,7 @@ func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
 	if err := db.QueryRow(`
 		SELECT source_work_id, metadata_language, edition_label, relationship_kind
 		FROM work_code_alias
-		WHERE provider_id = ? AND primary_code = 'RJ09994002'
+		WHERE provider_id = ? AND primary_code = 'RJ00000001'
 	`, providerID).Scan(&sourceWorkID, &language, &label, &kind); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestWorkCodeAliasMigrationBackfillsDeclaredLanguageEditions(t *testing.T) {
 		t.Fatalf("declared alias = source %v, language %q, label %q, kind %q", sourceWorkID, language, label, kind)
 	}
 	var persistedSourceID sql.NullInt64
-	if err := db.QueryRow("SELECT source_work_id FROM work_code_alias WHERE provider_id = ? AND primary_code = 'RJ09994001'", providerID).Scan(&persistedSourceID); err != nil {
+	if err := db.QueryRow("SELECT source_work_id FROM work_code_alias WHERE provider_id = ? AND primary_code = 'RJ00000000'", providerID).Scan(&persistedSourceID); err != nil {
 		t.Fatal(err)
 	}
 	if !persistedSourceID.Valid || persistedSourceID.Int64 != workID {
@@ -360,24 +360,24 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 	if err := Migrate(db, v010Dir); err != nil {
 		t.Fatalf("create v0.1.0 database: %v", err)
 	}
-	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999997', 'Preserved')"); err != nil {
+	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Preserved')"); err != nil {
 		t.Fatal(err)
 	}
 	var workID, providerID int64
-	if err := db.QueryRow("SELECT id FROM work WHERE primary_code = 'RJ09999997'").Scan(&workID); err != nil {
+	if err := db.QueryRow("SELECT id FROM work WHERE primary_code = 'RJ00000002'").Scan(&workID); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := `{"product":{"age_category_string":"general","official_price":0,"price":0},"dynamic":{"rate_average_2dp":4.5,"dl_count":321,"official_price":0,"price":0,"discount_rate":0,"is_discount":false}}`
-	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ09999997', ?)", workID, providerID, snapshot); err != nil {
+	if _, err := db.Exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, 'RJ00000002', ?)", workID, providerID, snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec("INSERT INTO file_source (code, display_name, source_type) VALUES ('legacy-number178', 'Legacy number178', 'kikoeru_compilable_number178')"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (?, 'file', 'Preview', 'local:RJ09999997:bonus/preview.mp4')", workID); err != nil {
+	if _, err := db.Exec("INSERT INTO media_item (work_id, kind, title, fingerprint) VALUES (?, 'file', 'Preview', 'local:RJ00000002:bonus/preview.mp4')", workID); err != nil {
 		t.Fatal(err)
 	}
 	if err := Migrate(db, migrationDir); err != nil {
@@ -518,7 +518,7 @@ func TestMigrateUpgradesV010DatabaseThroughCurrentMigrations(t *testing.T) {
 		t.Fatalf("column workflow_job.priority count = %d", workflowPriorityColumn)
 	}
 	var preserved int
-	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ09999997'").Scan(&preserved); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000002'").Scan(&preserved); err != nil {
 		t.Fatal(err)
 	}
 	if preserved != 1 {

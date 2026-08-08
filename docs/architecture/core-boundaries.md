@@ -7,7 +7,7 @@ and tracked state describe availability for that work; they do not create new
 work identities.
 
 The primary identity key is currently a normalized DLsite-style `primary_code`,
-such as `RJ0123456`.
+such as the synthetic example `RJ00000000`.
 
 ## Metadata Sources
 

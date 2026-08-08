@@ -16,19 +16,19 @@ import (
 
 func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	db := openMigratedTestDB(t)
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title, age_rating) VALUES ('RJ09999997', 'Single connection work', 'R18')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title, age_rating) VALUES ('RJ00000007', 'Single connection work', 'R18')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	workID, _ := workResult.LastInsertId()
-	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09999997')", workID)
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000007')", workID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	logicalWorkID, _ := logicalResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical)
-		VALUES (?, ?, 'RJ09999997', 'RJ09999997', 1)
+		VALUES (?, ?, 'RJ00000007', 'RJ00000007', 1)
 	`, workID, logicalWorkID); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	mediaItemID, _ := mediaResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
-		VALUES (?, ?, 'local', 'RJ09999997/track.wav', 'available')
+		VALUES (?, ?, 'local', 'RJ00000007/track.wav', 'available')
 	`, mediaItemID, sourceID); err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +92,9 @@ func TestDemoModeReturnsOnlyAllAgesPermanentlyFreeWorks(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title, age_rating, regular_price, current_price, price_currency, is_permanently_free) VALUES
-			(201, 'RJ02000001', 'Eligible demo work', 'general', 0, 0, 'JPY', 1),
-			(202, 'RJ02000002', 'Paid work', 'general', 1100, 550, 'JPY', 0),
-			(203, 'RJ02000003', 'Adult free work', 'adult', 0, 0, 'JPY', 1)
+			(201, 'RJ00000002', 'Eligible demo work', 'general', 0, 0, 'JPY', 1),
+			(202, 'RJ00000003', 'Paid work', 'general', 1100, 550, 'JPY', 0),
+			(203, 'RJ00000004', 'Adult free work', 'adult', 0, 0, 'JPY', 1)
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestDemoRemoteSourcePageUsesFilteredUpstreamPagination(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
 			// Demo trusts the upstream filtered page and does not inspect these fields.
-			Works:      []kikoeru.Work{{ID: 11, SourceID: "RJ02000011", Title: "Filtered remote work"}},
+			Works:      []kikoeru.Work{{ID: 11, SourceID: "RJ00000006", Title: "Filtered remote work"}},
 			Pagination: kikoeru.Pagination{CurrentPage: 3, PageSize: 17, TotalCount: 57},
 		})
 	}))
@@ -157,7 +157,7 @@ func TestDemoRemoteSourcePageUsesFilteredUpstreamPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 57 || len(works) != 1 || works[0].RemoteCode != "RJ02000011" || !sortApplied {
+	if total != 57 || len(works) != 1 || works[0].RemoteCode != "RJ00000006" || !sortApplied {
 		t.Fatalf("demo remote page = total %d works %#v sortApplied %t", total, works, sortApplied)
 	}
 }
@@ -166,19 +166,19 @@ func TestDemoRemoteWorkAccessUsesFilteredExactCodeSearch(t *testing.T) {
 	paid := int64(900)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		keyword, _ := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/api/search/"))
-		if keyword != `$age:general$ $-price:1$ RJ02000011` {
+		if keyword != `$age:general$ $-price:1$ RJ00000006` {
 			t.Errorf("keyword = %q", keyword)
 		}
 		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{
-			{ID: 10, SourceID: "RJ02000010"},
+			{ID: 10, SourceID: "RJ00000005"},
 			// Search membership is authoritative; response fields are presentation data.
-			{ID: 11, SourceID: "RJ02000011", AgeCategoryString: "adult", Price: &paid},
+			{ID: 11, SourceID: "RJ00000006", AgeCategoryString: "adult", Price: &paid},
 		}})
 	}))
 	defer remote.Close()
 
 	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
-	work, _, err := server.resolveRemoteWorkForAccess(context.Background(), kikoeru.NewClient(remote.URL, remote.Client()), "rj02000011")
+	work, _, err := server.resolveRemoteWorkForAccess(context.Background(), kikoeru.NewClient(remote.URL, remote.Client()), "rj00000006")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,19 +192,19 @@ func TestListWorksSearchesLanguageFamilyAliasesAndReturnsOrigin(t *testing.T) {
 	server := NewServer(db, config.Config{})
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(101, 'RJ01000011', 'Origin title'),
-			(102, 'RJ01000012', 'Translated searchable title');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (101, 101, 'RJ01000011');
+			(101, 'RJ00000000', 'Origin title'),
+			(102, 'RJ00000001', 'Translated searchable title');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (101, 101, 'RJ00000000');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, metadata_language, edition_label, is_canonical) VALUES
-			(101, 101, 'RJ01000011', 'RJ01000011', 'JPN', 'Japanese', 1),
-			(102, 101, 'RJ01000012', 'RJ01000011', 'CHI_HANS', 'Simplified Chinese', 0);
+			(101, 101, 'RJ00000000', 'RJ00000000', 'JPN', 'Japanese', 1),
+			(102, 101, 'RJ00000001', 'RJ00000000', 'CHI_HANS', 'Simplified Chinese', 0);
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (101, 'test-local-family', 'Test local family', 'local');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (102, 101, 'local', 'available');
 	`); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, query := range []string{"RJ01000012", "Translated searchable", `$lang:CHI_HANS$`} {
+	for _, query := range []string{"RJ00000001", "Translated searchable", `$lang:CHI_HANS$`} {
 		request := httptest.NewRequest(http.MethodGet, "/api/works?page=1&pageSize=10&scope=local&status=all&q="+url.QueryEscape(query), nil)
 		recorder := httptest.NewRecorder()
 		server.listWorks(recorder, request)
@@ -218,7 +218,7 @@ func TestListWorksSearchesLanguageFamilyAliasesAndReturnsOrigin(t *testing.T) {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
 		}
-		if response.Total != 1 || len(response.Works) != 1 || response.Works[0].PrimaryCode != "RJ01000011" {
+		if response.Total != 1 || len(response.Works) != 1 || response.Works[0].PrimaryCode != "RJ00000000" {
 			t.Fatalf("query %q response = total %d works %#v, want the origin only", query, response.Total, response.Works)
 		}
 	}

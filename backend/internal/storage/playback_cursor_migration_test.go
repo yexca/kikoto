@@ -38,13 +38,13 @@ func TestPlaybackCursorMigrationBackfillsLatestCanonicalFamilyProgress(t *testin
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (801, 'cursor-user', 'Cursor User', 'user');
 		INSERT INTO work (id, primary_code, title) VALUES
-			(811, 'RJ09999811', 'Canonical work'),
-			(812, 'RJ09999812', 'Translated work'),
-			(813, 'RJ09999813', 'Standalone work');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (821, 811, 'RJ09999811');
+			(811, 'RJ00000000', 'Canonical work'),
+			(812, 'RJ00000001', 'Translated work'),
+			(813, 'RJ00000002', 'Standalone work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (821, 811, 'RJ00000000');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, is_canonical) VALUES
-			(811, 821, 'RJ09999811', 1),
-			(812, 821, 'RJ09999812', 0);
+			(811, 821, 'RJ00000000', 1),
+			(812, 821, 'RJ00000001', 0);
 		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
 			(831, 811, 'audio', 'Older canonical track', 'cursor-older'),
 			(832, 812, 'audio', 'Latest translated track', 'cursor-latest'),

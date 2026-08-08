@@ -7,17 +7,18 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 	db := openMigratedTestDB(t, "library.db")
 	var err error
-	first, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ01234567', 'Local work')")
+	first, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Local work')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	localWorkID, _ := first.LastInsertId()
-	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ07654321', 'Database work')"); err != nil {
+	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000001', 'Database work')"); err != nil {
 		t.Fatal(err)
 	}
 	source, err := db.Exec("INSERT INTO file_source (code, display_name, source_type) VALUES ('test-local', 'Test local', 'local')")
@@ -30,12 +31,12 @@ func TestStoreListPageFiltersScopeAndSearch(t *testing.T) {
 	}
 
 	page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{
-		Page: 1, PageSize: 24, Scope: "local", Query: "RJ01234567", Sort: "code", Direction: "asc",
+		Page: 1, PageSize: 24, Scope: "local", Query: "RJ00000000", Sort: "code", Direction: "asc",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ01234567" {
+	if page.Total != 1 || len(page.Works) != 1 || page.Works[0].PrimaryCode != "RJ00000000" {
 		t.Fatalf("ListPage() = total %d, works %#v", page.Total, page.Works)
 	}
 	if page.Works[0].SourcePresence == "" {
@@ -51,7 +52,7 @@ func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999003', 'Ordinary title')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000010', 'Ordinary title')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,37 +80,37 @@ func TestStoreListPageSearchesCurrentUsersTags(t *testing.T) {
 func TestStoreListPageSearchesDeclaredCodeAliasesWithoutRawSnapshots(t *testing.T) {
 	db := openMigratedTestDB(t, "code-aliases.db")
 	providerID := testMetadataProviderID(t, db)
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09992001', 'Canonical title')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Canonical title')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	workID, _ := workResult.LastInsertId()
-	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09992001')", workID)
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000002')", workID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	logicalWorkID, _ := logicalResult.LastInsertId()
 	if _, err := db.Exec(`
 		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical)
-		VALUES (?, ?, ?, 'RJ09992001', 1)
+		VALUES (?, ?, ?, 'RJ00000002', 1)
 	`, workID, logicalWorkID, providerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO work_code_alias (logical_work_id, provider_id, primary_code, metadata_language, edition_label)
-		VALUES (?, ?, 'RJ09992002', 'ENG', 'English')
+		VALUES (?, ?, 'RJ00000003', 'ENG', 'English')
 	`, logicalWorkID, providerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, 'RJ09992001', '{"internal_only":"RawSnapshotNeedle"}')
+		VALUES (?, ?, 'RJ00000002', '{"internal_only":"RawSnapshotNeedle"}')
 	`, workID, providerID); err != nil {
 		t.Fatal(err)
 	}
 
 	store := library.NewStore(db)
-	page, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: "RJ09992002"})
+	page, err := store.ListPage(context.Background(), library.ListOptions{Page: 1, PageSize: 24, Query: "RJ00000003"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) 
 		INSERT INTO work (
 			primary_code, title, age_rating, rating_average, sales_count,
 			regular_price, current_price, price_currency, is_permanently_free
-		) VALUES ('RJ09992501', 'Permanent free', 'general', 4.8, 100, 0, 0, 'JPY', 1)
+		) VALUES ('RJ00000004', 'Permanent free', 'general', 4.8, 100, 0, 0, 'JPY', 1)
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -143,14 +144,14 @@ func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) 
 			primary_code, title, age_rating, rating_average, sales_count,
 			regular_price, current_price, price_currency, is_permanently_free
 		) VALUES
-			('RJ09992502', 'Paid all ages', 'general', 4.0, 1000, 1100, 550, 'JPY', 0),
-			('RJ09992503', 'Adult free', 'adult', 5.0, 2000, 0, 0, 'JPY', 1)
+			('RJ00000005', 'Paid all ages', 'general', 4.0, 1000, 1100, 550, 'JPY', 0),
+			('RJ00000006', 'Adult free', 'adult', 5.0, 2000, 0, 0, 'JPY', 1)
 	`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (?, ?, 'RJ09992501', '{"dynamic":{"rate_average_2dp":1.0,"dl_count":1}}')
+		VALUES (?, ?, 'RJ00000004', '{"dynamic":{"rate_average_2dp":1.0,"dl_count":1}}')
 	`, firstID, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +161,7 @@ func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ratingPage.Total != 2 || len(ratingPage.Works) != 2 || ratingPage.Works[0].PrimaryCode != "RJ09992503" || ratingPage.Works[1].Rating == nil || *ratingPage.Works[1].Rating != 4.8 {
+	if ratingPage.Total != 2 || len(ratingPage.Works) != 2 || ratingPage.Works[0].PrimaryCode != "RJ00000006" || ratingPage.Works[1].Rating == nil || *ratingPage.Works[1].Rating != 4.8 {
 		t.Fatalf("normalized rating/sales page = %#v", ratingPage)
 	}
 
@@ -168,7 +169,7 @@ func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if demoPage.Total != 1 || len(demoPage.Works) != 1 || demoPage.Works[0].PrimaryCode != "RJ09992501" {
+	if demoPage.Total != 1 || len(demoPage.Works) != 1 || demoPage.Works[0].PrimaryCode != "RJ00000004" {
 		t.Fatalf("demo page = %#v", demoPage)
 	}
 }
@@ -176,17 +177,17 @@ func TestStoreListPageUsesNormalizedRatingSalesAndDemoEligibility(t *testing.T) 
 func TestStoreListPageSearchesNormalizedFamilyRelations(t *testing.T) {
 	db := openMigratedTestDB(t, "family-search.db")
 	providerID := testMetadataProviderID(t, db)
-	canonicalResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09993001', 'Canonical title')")
+	canonicalResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000007', 'Canonical title')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	canonicalID, _ := canonicalResult.LastInsertId()
-	siblingResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09993002', 'Translated title')")
+	siblingResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000008', 'Translated title')")
 	if err != nil {
 		t.Fatal(err)
 	}
 	siblingID, _ := siblingResult.LastInsertId()
-	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ09993001')", canonicalID)
+	logicalResult, err := db.Exec("INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, 'RJ00000007')", canonicalID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestStoreListPageSearchesNormalizedFamilyRelations(t *testing.T) {
 		code   string
 		base   string
 		canon  int
-	}{{canonicalID, "RJ09993001", "", 1}, {siblingID, "RJ09993002", "RJ09993001", 0}} {
+	}{{canonicalID, "RJ00000007", "", 1}, {siblingID, "RJ00000008", "RJ00000007", 0}} {
 		if _, err := db.Exec(`
 			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, is_canonical)
 			VALUES (?, ?, ?, ?, ?, ?)
@@ -255,7 +256,7 @@ func testMetadataProviderID(t *testing.T, db interface {
 func TestStoreListPageRandomSortIsStableForSeed(t *testing.T) {
 	db := openMigratedTestDB(t, "random.db")
 	for index := 1; index <= 12; index++ {
-		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", fmt.Sprintf("RJ0999%04d", index), fmt.Sprintf("Work %d", index)); err != nil {
+		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", testfixture.WorkCode(testfixture.PrefixRJ, index), fmt.Sprintf("Work %d", index)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -299,14 +300,14 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	}
 	userID, _ := userResult.LastInsertId()
 	workIDs := map[string]int64{}
-	for _, item := range []struct{ code, title string }{{"RJ09999101", "Liked"}, {"RJ09999102", "Candidate"}, {"RJ09999103", "Unrelated"}} {
+	for _, item := range []struct{ code, title string }{{"RJ00000011", "Liked"}, {"RJ00000012", "Candidate"}, {"RJ00000013", "Unrelated"}} {
 		result, insertErr := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", item.code, item.title)
 		if insertErr != nil {
 			t.Fatal(insertErr)
 		}
 		workIDs[item.code], _ = result.LastInsertId()
 	}
-	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, workIDs["RJ09999101"]); err != nil {
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, workIDs["RJ00000011"]); err != nil {
 		t.Fatal(err)
 	}
 	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'sleep', 'Sleep')")
@@ -314,7 +315,7 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagID, _ := tagResult.LastInsertId()
-	for _, code := range []string{"RJ09999101", "RJ09999102"} {
+	for _, code := range []string{"RJ00000011", "RJ00000012"} {
 		if _, err := db.Exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, ?, 'test')", workIDs[code], tagID); err != nil {
 			t.Fatal(err)
 		}
@@ -323,15 +324,15 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Works) != 3 || page.Works[0].PrimaryCode != "RJ09999102" {
+	if len(page.Works) != 3 || page.Works[0].PrimaryCode != "RJ00000012" {
 		t.Fatalf("recommend order = %#v, want candidate first", page.Works)
 	}
 	store := library.NewStore(db)
-	candidateScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ09999102"])
+	candidateScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ00000012"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	likedScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ09999101"])
+	likedScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ00000011"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +358,7 @@ func TestRecommendationConfigLoadsV3LaneDefaultsAndLegacyAffinity(t *testing.T) 
 func TestStoreListPageRecommendSortIsStableForSeededTies(t *testing.T) {
 	db := openMigratedTestDB(t, "recommend-seed.db")
 	for index := 1; index <= 12; index++ {
-		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", fmt.Sprintf("RJ0998%04d", index), fmt.Sprintf("Work %d", index)); err != nil {
+		if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", testfixture.WorkCode(testfixture.PrefixRJ, index), fmt.Sprintf("Work %d", index)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -401,7 +402,7 @@ func TestRecommendationScoreDoesNotUseCandidateAsItsOwnTasteHistory(t *testing.T
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09998001', 'Only liked work')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000009', 'Only liked work')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +465,7 @@ func TestStoreListPageRecommendSortMixesLifecycleLanes(t *testing.T) {
 	workNumber := 0
 	for _, fixture := range fixtures {
 		for range fixture.count {
-			code := fmt.Sprintf("RJ%08d", workNumber)
+			code := testfixture.WorkCode(testfixture.PrefixRJ, workNumber)
 			result, insertErr := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", code, "Synthetic recommendation work")
 			if insertErr != nil {
 				t.Fatal(insertErr)

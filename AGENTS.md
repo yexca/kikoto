@@ -105,8 +105,10 @@ app composition -> domain feature -> shared application code -> primitives
   not repeat the same assertion at every layer.
 - Before adding or changing test fixtures, follow
   [Synthetic Fixture Data](docs/development/testing.md#synthetic-fixture-data).
-  Use the repository-reserved `RJ00000000` through `RJ00000099` sequence when
-  work identity is incidental; do not improvise a plausible catalog number.
+  Use the deterministic test fixture constructors and repository-reserved
+  `RJ00000000` through `RJ00000099` sequence when work identity is incidental;
+  use the bounded high-cardinality constructor only when more than 100 distinct
+  works are required. Do not randomize or improvise a plausible catalog number.
 - Prefer accessible roles, names, and labels in browser tests. Add an authored
   stable semantic marker only when a complex app-owned surface has no useful
   accessible boundary. Do not make utility classes or incidental DOM ancestry a

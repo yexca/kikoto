@@ -9,7 +9,7 @@ import (
 
 func TestDirectoryWatcherReportsVisibleChangesAndRegistersNewTrees(t *testing.T) {
 	root := t.TempDir()
-	workDir := filepath.Join(root, "Library", "RJ01234567")
+	workDir := filepath.Join(root, "Library", "RJ00000002")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestDirectoryWatcherReportsVisibleChangesAndRegistersNewTrees(t *testing.T)
 	}
 	waitForDirectoryChange(t, watcher.Changes())
 
-	newWorkDir := filepath.Join(root, "New", "RJ07654321")
+	newWorkDir := filepath.Join(root, "New", "RJ00000003")
 	if err := os.MkdirAll(newWorkDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestDirectoryWatcherIgnoresInternalTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = watcher.Close() })
-	if err := os.MkdirAll(filepath.Join(root, ".kikoto-staging", "42", "RJ01234567"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".kikoto-staging", "42", "RJ00000002"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -62,7 +62,7 @@ func TestDirectoryWatcherIgnoresInternalTrees(t *testing.T) {
 
 func TestDirectoryWatcherReportsAtomicPublicationFromInternalTree(t *testing.T) {
 	root := t.TempDir()
-	staged := filepath.Join(root, ".kikoto-staging", "42", "RJ01234567")
+	staged := filepath.Join(root, ".kikoto-staging", "42", "RJ00000002")
 	if err := os.MkdirAll(staged, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestDirectoryWatcherReportsAtomicPublicationFromInternalTree(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = watcher.Close() })
-	published := filepath.Join(root, "RJ01234567")
+	published := filepath.Join(root, "RJ00000002")
 	if err := os.Rename(staged, published); err != nil {
 		t.Fatal(err)
 	}

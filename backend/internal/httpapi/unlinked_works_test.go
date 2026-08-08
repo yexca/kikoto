@@ -21,8 +21,8 @@ func TestCheckUnlinkedWorkSourcesEnqueuesOneParentWorkflow(t *testing.T) {
 	insertUnlinkedMaintenanceUser(t, db, 1)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(101, 'RJ03000001', 'Unlinked one'),
-			(102, 'RJ03000002', 'Unlinked two')
+			(101, 'RJ00000000', 'Unlinked one'),
+			(102, 'RJ00000001', 'Unlinked two')
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +63,8 @@ func TestUnlinkedWorkSourceCheckKeepsMissingWorksAndLinksAvailableWorks(t *testi
 		switch {
 		case r.URL.Path == "/api/health":
 			_ = json.NewEncoder(w).Encode("ok")
-		case r.URL.Path == "/api/workInfo/RJ03000011":
-			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 11, SourceID: "RJ03000011", Title: "Available work"})
+		case r.URL.Path == "/api/workInfo/RJ00000002":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 11, SourceID: "RJ00000002", Title: "Available work"})
 		case strings.HasPrefix(r.URL.Path, "/api/workInfo/"):
 			http.NotFound(w, r)
 		case strings.HasPrefix(r.URL.Path, "/api/search/") || r.URL.Path == "/api/works":
@@ -79,8 +79,8 @@ func TestUnlinkedWorkSourceCheckKeepsMissingWorksAndLinksAvailableWorks(t *testi
 	insertUnlinkedMaintenanceUser(t, db, 1)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(111, 'RJ03000011', 'Available work'),
-			(112, 'RJ03000012', 'Still missing work');
+			(111, 'RJ00000002', 'Available work'),
+			(112, 'RJ00000003', 'Still missing work');
 		INSERT INTO file_source (id, code, display_name, source_type, enabled)
 		VALUES (11, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1);
 		INSERT INTO file_source_endpoint (file_source_id, base_url, api_url)
@@ -130,7 +130,7 @@ func TestDeleteUnlinkedWorksDeletesWholeFamilyButKeepsFiles(t *testing.T) {
 	db := openMigratedTestDB(t)
 	insertUnlinkedMaintenanceUser(t, db, 1)
 	dataRoot := t.TempDir()
-	mediaPath := filepath.Join(dataRoot, "RJ03000021", "track.mp3")
+	mediaPath := filepath.Join(dataRoot, "RJ00000004", "track.mp3")
 	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -139,22 +139,22 @@ func TestDeleteUnlinkedWorksDeletesWholeFamilyButKeepsFiles(t *testing.T) {
 	}
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
-			(121, 'RJ03000021', 'Origin work'),
-			(122, 'RJ03000022', 'Translated work'),
-			(123, 'RJ03000023', 'Linked work');
-		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (21, 121, 'RJ03000021');
+			(121, 'RJ00000004', 'Origin work'),
+			(122, 'RJ00000005', 'Translated work'),
+			(123, 'RJ00000006', 'Linked work');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (21, 121, 'RJ00000004');
 		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
-			(121, 21, 'RJ03000021', 'RJ03000021', 1),
-			(122, 21, 'RJ03000022', 'RJ03000021', 0);
+			(121, 21, 'RJ00000004', 'RJ00000004', 1),
+			(122, 21, 'RJ00000005', 'RJ00000004', 0);
 		INSERT INTO work_code_alias (logical_work_id, provider_id, primary_code, relationship_kind, source_work_id)
-		VALUES (21, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ03000029', 'provider_declared', 121);
+		VALUES (21, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000007', 'provider_declared', 121);
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES
-			(121, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ03000021', '{}'),
-			(122, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ03000022', '{}');
+			(121, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000004', '{}'),
+			(122, (SELECT id FROM metadata_provider WHERE code = 'dlsite'), 'RJ00000005', '{}');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (21, 'test_local', 'Test local', 'local_folder');
 		INSERT INTO media_item (id, work_id, kind, title) VALUES (211, 121, 'audio', 'track.mp3');
 		INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability)
-		VALUES (211, 21, 'local', 'RJ03000021/track.mp3', 'unavailable');
+		VALUES (211, 21, 'local', 'RJ00000004/track.mp3', 'unavailable');
 		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability)
 		VALUES (123, 21, 'local', 'available');
 		INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (1, 121, 'finished', 1);
@@ -189,7 +189,7 @@ func TestDeleteUnlinkedWorksDeletesWholeFamilyButKeepsFiles(t *testing.T) {
 	}
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM work WHERE id IN (121, 122)", 0)
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM logical_work WHERE id = 21", 0)
-	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM metadata_snapshot WHERE external_id IN ('RJ03000021', 'RJ03000022')", 0)
+	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM metadata_snapshot WHERE external_id IN ('RJ00000004', 'RJ00000005')", 0)
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM media_item WHERE id = 211", 0)
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM user_work_state WHERE work_id = 121", 0)
 	assertUnlinkedMaintenanceCount(t, db, "SELECT COUNT(*) FROM work WHERE id = 123", 1)

@@ -9,6 +9,7 @@ import {
   workflowRunInputPayload,
 } from "./workflowCommands";
 import type { WorkflowDefinition } from "@/lib/api";
+import { syntheticWorkCode } from "@/test-support/workCode";
 
 const circleInput: WorkflowInputDefinition = {
   key: "circle",
@@ -122,14 +123,17 @@ describe("workflow Quick Action commands", () => {
 
   it("validates domain ids before starting a workflow", () => {
     const workInput: WorkflowInputDefinition = { key: "work", label: "Work", type: "work_code", required: true };
+    const rjCode = syntheticWorkCode("RJ", 0);
+    const ccCode = syntheticWorkCode("CC", 0);
 
-    expect(workflowCommandInputValues(["circle=RJ01234567"], [circleInput]).errors).toEqual([
+    expect(workflowCommandInputValues([`circle=${rjCode}`], [circleInput]).errors).toEqual([
       "Circle: use a DLsite circle id such as RG01234.",
     ]);
     expect(workflowCommandInputValues(["work=../../outside"], [workInput]).errors).toEqual([
       "Work: use a supported work code.",
     ]);
-    expect(workflowCommandInputValues(["CC0001"], [workInput]).errors).toEqual([]);
+    expect(workflowCommandInputValues([ccCode], [workInput]).errors).toEqual([]);
+    expect(workflowCommandInputValues(["RJ0000"], [workInput]).errors).toEqual(["Work: use a supported work code."]);
     expect(workflowCommandInputValues(["BG01234"], [circleInput]).errors).toEqual([]);
     expect(workflowCommandInputValues(["VG12345678"], [circleInput]).errors).toEqual([]);
     expect(workflowCommandInputValues(["RG1234"], [circleInput]).errors).toEqual([
@@ -137,8 +141,8 @@ describe("workflow Quick Action commands", () => {
     ]);
 
     const worksInput: WorkflowInputDefinition = { key: "works", label: "Works", type: "work_codes", required: true };
-    expect(workflowCommandInputValues(["RJ01234567,", "CC0001"], [worksInput]).errors).toEqual([]);
-    expect(workflowCommandInputValues(["RJ01234567,", "outside"], [worksInput]).errors).toEqual([
+    expect(workflowCommandInputValues([`${rjCode},`, ccCode], [worksInput]).errors).toEqual([]);
+    expect(workflowCommandInputValues([`${rjCode},`, "outside"], [worksInput]).errors).toEqual([
       "Works: use supported work codes separated by commas.",
     ]);
   });

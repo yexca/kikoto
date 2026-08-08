@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { syntheticWorkCode } from "../../src/test-support/workCode";
+
 const baseWork = {
   id: 1,
-  primaryCode: "RJ09998001",
+  primaryCode: syntheticWorkCode("RJ", 0),
   title: "Favorite work 1",
   ageRating: "R18",
   createdAt: "2026-01-01T00:00:00Z",
@@ -56,7 +58,7 @@ async function mockFavorites(
   const works = Array.from({ length: 24 }, (_, index) => ({
     ...baseWork,
     id: index + 1,
-    primaryCode: `RJ${String(9998001 + index).padStart(8, "0")}`,
+    primaryCode: syntheticWorkCode("RJ", index),
     title: `Favorite work ${index + 1}`,
     userTags: index === 17 ? savedTags : [],
   }));
@@ -173,7 +175,7 @@ async function mockFavorites(
       return;
     }
     if (/^\/api\/works\/[^/]+\/source-availability$/.test(url.pathname)) {
-      await route.fulfill({ json: { workCode: "RJ09998018", checkedAt: "", sources: [] } });
+      await route.fulfill({ json: { workCode: "RJ00000017", checkedAt: "", sources: [] } });
       return;
     }
     await route.fulfill({ status: 404, json: { error: `Not mocked: ${url.pathname}` } });
@@ -197,7 +199,7 @@ test("favorites detail return restores browse state, selection, anchor, and work
   expect(savedScroll).toBeGreaterThan(500);
   await target.click();
 
-  await expect(page).toHaveURL(/RJ09998018/);
+  await expect(page).toHaveURL(/RJ00000017/);
   await page.getByRole("button", { name: "Info", exact: true }).click();
   await expect(page.getByText("My tags", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Add tag" }).click();

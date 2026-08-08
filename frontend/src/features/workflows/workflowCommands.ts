@@ -1,5 +1,6 @@
 import { parseWorkflowDefinition, type WorkflowInputDefinition } from "./definitionModel";
 import type { WorkflowDefinition } from "@/lib/api";
+import { isWorkCode } from "@/lib/workCode";
 
 export type ParsedWorkflowCommand = {
   isCommand: boolean;
@@ -124,10 +125,10 @@ export function workflowRunInputPayload(inputs: WorkflowInputDefinition[], value
 
 function validateInputValue(type: WorkflowInputDefinition["type"], value: string) {
   if (type === "circle_id" && !/^[RBV]G\d{5,8}$/i.test(value)) return "use a DLsite circle id such as RG01234.";
-  if (type === "work_code" && !/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(value)) return "use a supported work code.";
+  if (type === "work_code" && !isWorkCode(value)) return "use a supported work code.";
   if (type === "work_codes") {
     const codes = value.split(/[\s,]+/).filter(Boolean);
-    if (codes.length === 0 || codes.some((code) => !/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(code)))
+    if (codes.length === 0 || codes.some((code) => !isWorkCode(code)))
       return "use supported work codes separated by commas.";
   }
   return "";

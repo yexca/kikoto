@@ -4,16 +4,18 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "RJ23456", "track01.mp3"))
-	writeFile(t, filepath.Join(root, "RJ23456", "cover.jpg"))
-	writeFile(t, filepath.Join(root, "RJ23456", "readme.txt"))
-	writeFile(t, filepath.Join(root, "Chinese", "RJ12345 name", "track01.flac"))
-	writeFile(t, filepath.Join(root, "RJ01", "RJ0123456 name", "track01.wav"))
-	writeFile(t, filepath.Join(root, "RJ09", "RJ099999 name", "track01.ogg"))
+	writeFile(t, filepath.Join(root, "RJ00000009", "track01.mp3"))
+	writeFile(t, filepath.Join(root, "RJ00000009", "cover.jpg"))
+	writeFile(t, filepath.Join(root, "RJ00000009", "readme.txt"))
+	writeFile(t, filepath.Join(root, "Chinese", "RJ00000008 name", "track01.flac"))
+	writeFile(t, filepath.Join(root, "RJ01", "RJ00000002 name", "track01.wav"))
+	writeFile(t, filepath.Join(root, "RJ09", "RJ00000007 name", "track01.ogg"))
 	writeFile(t, filepath.Join(root, "Other", "No code", "track01.mp3"))
 
 	works, summary, err := Discover(root, Options{ScanDepth: 2})
@@ -27,10 +29,10 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"RJ12345":   true,
-		"RJ0123456": true,
-		"RJ099999":  true,
-		"RJ23456":   true,
+		"RJ00000008": true,
+		"RJ00000002": true,
+		"RJ00000007": true,
+		"RJ00000009": true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("codes = %v, want %v", got, want)
@@ -47,31 +49,48 @@ func TestDiscoverMatchesDeepestFoldersWithinDepth(t *testing.T) {
 		t.Fatalf("ScannedFiles = %d, want 6", summary.ScannedFiles)
 	}
 	for _, work := range works {
-		if work.Code == "RJ23456" && len(work.Files) != 3 {
-			t.Fatalf("RJ23456 files = %d, want 3", len(work.Files))
+		if work.Code == "RJ00000009" && len(work.Files) != 3 {
+			t.Fatalf("RJ00000009 files = %d, want 3", len(work.Files))
 		}
 	}
 }
 
 func TestExtractWorkCodeAllowsSeparatorAndIgnoresShortBuckets(t *testing.T) {
-	code, ambiguous := ExtractWorkCode("RJ 0123456 title")
-	if code != "RJ0123456" || ambiguous {
-		t.Fatalf("ExtractWorkCode returned %q, %v", code, ambiguous)
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "RJ with space", path: "RJ 00000000 title", want: testfixture.WorkCode(testfixture.PrefixRJ, 0)},
+		{name: "BJ with underscore", path: "edition_BJ_00000001", want: testfixture.WorkCode(testfixture.PrefixBJ, 1)},
+		{name: "VJ with hyphen and lowercase", path: "vj-00000002 title", want: testfixture.WorkCode(testfixture.PrefixVJ, 2)},
+		{name: "CC without separator", path: "CC00000003 title", want: testfixture.WorkCode(testfixture.PrefixCC, 3)},
+		{name: "five digit minimum", path: "RJ00000 title", want: "RJ00000"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, ambiguous := ExtractWorkCode(test.path)
+			if code != test.want || ambiguous {
+				t.Fatalf("ExtractWorkCode(%q) returned %q, %v", test.path, code, ambiguous)
+			}
+		})
 	}
 
-	code, ambiguous = ExtractWorkCode("RJ01")
-	if code != "" || ambiguous {
-		t.Fatalf("ExtractWorkCode returned %q, %v for short bucket", code, ambiguous)
+	for _, path := range []string{"RJ0000", "RJ000000000", "RJ01"} {
+		code, ambiguous := ExtractWorkCode(path)
+		if code != "" || ambiguous {
+			t.Fatalf("ExtractWorkCode(%q) returned %q, %v", path, code, ambiguous)
+		}
 	}
 }
 
 func TestDiscoverFoldersIgnoresKikotoInternalTrees(t *testing.T) {
 	root := t.TempDir()
 	for _, relative := range []string{
-		filepath.Join(".kikoto-staging", "12", "RJ01234567"),
-		filepath.Join(".kikoto-backup", "12", "RJ07654321"),
-		filepath.Join(".kikoto-trash", "fetch", "12", "RJ02222222"),
-		filepath.Join("Library", "RJ01111111"),
+		filepath.Join(".kikoto-staging", "12", "RJ00000004"),
+		filepath.Join(".kikoto-backup", "12", "RJ00000006"),
+		filepath.Join(".kikoto-trash", "fetch", "12", "RJ00000005"),
+		filepath.Join("Library", "RJ00000001"),
 	} {
 		if err := os.MkdirAll(filepath.Join(root, relative), 0o755); err != nil {
 			t.Fatal(err)
@@ -81,7 +100,7 @@ func TestDiscoverFoldersIgnoresKikotoInternalTrees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(folders) != 1 || folders[0].Code != "RJ01111111" {
+	if len(folders) != 1 || folders[0].Code != "RJ00000001" {
 		t.Fatalf("folders = %+v", folders)
 	}
 }

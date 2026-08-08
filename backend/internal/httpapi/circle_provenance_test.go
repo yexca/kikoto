@@ -103,8 +103,8 @@ func TestUpsertRemoteWorkDoesNotOverrideAuthoritativeMetadataOrCircle(t *testing
 		t.Fatal(err)
 	}
 	statements := []string{
-		`INSERT INTO work (id, primary_code, title, release_date, age_rating) VALUES (9101, 'RJ90009101', 'Authoritative title', '2025-01-02', 'general')`,
-		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (9201, 9101, 'RJ90009101')`,
+		`INSERT INTO work (id, primary_code, title, release_date, age_rating) VALUES (9101, 'RJ00000001', 'Authoritative title', '2025-01-02', 'general')`,
+		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (9201, 9101, 'RJ00000001')`,
 		`INSERT INTO party (id, display_name) VALUES (9301, 'Origin Studio'), (9302, 'Remote Translation Studio')`,
 	}
 	for _, statement := range statements {
@@ -114,13 +114,13 @@ func TestUpsertRemoteWorkDoesNotOverrideAuthoritativeMetadataOrCircle(t *testing
 	}
 	if _, err := db.Exec(`
 		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical, translation_kind, maker_id, origin_maker_id)
-		VALUES (9101, 9201, ?, 'RJ90009101', 1, 'origin', 'RG900091', 'RG900091')
+		VALUES (9101, 9201, ?, 'RJ00000001', 1, 'origin', 'RG900091', 'RG900091')
 	`, providerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json)
-		VALUES (9101, ?, 'RJ90009101', '{"product":{"workno":"RJ90009101","maker_id":"RG900091","maker_name":"Origin Studio"}}')
+		VALUES (9101, ?, 'RJ00000001', '{"product":{"workno":"RJ00000001","maker_id":"RG900091","maker_name":"Origin Studio"}}')
 	`, providerID); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestUpsertRemoteWorkDoesNotOverrideAuthoritativeMetadataOrCircle(t *testing
 	remoteSourceID := insertSyntheticRemoteSource(t, db, "remote-provenance-a")
 	remoteWork := kikoeru.Work{
 		ID:                501,
-		SourceID:          "RJ90009101",
+		SourceID:          "RJ00000001",
 		Title:             "Remote fallback title",
 		Release:           "2026-03-04",
 		AgeCategoryString: "adult",
@@ -198,7 +198,7 @@ func TestUpsertRemoteWorkRefreshesFallbackMetadataAndIgnoresUnrelatedManualOverr
 	db := openMigratedTestDB(t)
 	ctx := context.Background()
 	statements := []string{
-		`INSERT INTO work (id, primary_code, title, release_date, age_rating, duration_seconds) VALUES (9351, 'RJ90009351', 'Local seed title', '2024-01-01', 'general', 30)`,
+		`INSERT INTO work (id, primary_code, title, release_date, age_rating, duration_seconds) VALUES (9351, 'RJ00000002', 'Local seed title', '2024-01-01', 'general', 30)`,
 		`INSERT INTO party (id, display_name) VALUES (9352, 'Fallback Studio')`,
 		`INSERT INTO work_manual_override (work_id, field_name, value_json) VALUES (9351, 'cover', '"manual-cover.jpg"')`,
 	}
@@ -212,12 +212,12 @@ func TestUpsertRemoteWorkRefreshesFallbackMetadataAndIgnoresUnrelatedManualOverr
 	secondDuration := 90.0
 	versions := []kikoeru.Work{
 		{
-			ID: 511, SourceID: "RJ90009351", Title: "Remote fallback v1", Release: "2025-02-03",
+			ID: 511, SourceID: "RJ00000002", Title: "Remote fallback v1", Release: "2025-02-03",
 			AgeCategoryString: "adult", Duration: &firstDuration,
 			Circle: &kikoeru.Circle{ID: 91, Name: "Fallback Studio"},
 		},
 		{
-			ID: 511, SourceID: "RJ90009351", Title: "Remote fallback v2", Release: "2026-03-04",
+			ID: 511, SourceID: "RJ00000002", Title: "Remote fallback v2", Release: "2026-03-04",
 			AgeCategoryString: "adult-only", Duration: &secondDuration,
 			Circle: &kikoeru.Circle{ID: 91, Name: "Fallback Studio"},
 		},
@@ -283,7 +283,7 @@ func TestRemoteCatalogKeepsUnknownWorkAsCatalogProvenanceOnly(t *testing.T) {
 	}
 	server := &Server{db: db}
 	remoteWork := kikoeru.Work{
-		ID: 502, SourceID: "RJ90009401", Title: "Catalog-only work",
+		ID: 502, SourceID: "RJ00000003", Title: "Catalog-only work",
 		Circle: &kikoeru.Circle{ID: 88, Name: "Catalog Studio"},
 	}
 	if err := server.upsertRemoteSourceCatalogWork(ctx, 9401, providerID, remoteSourceForUse{
@@ -292,17 +292,17 @@ func TestRemoteCatalogKeepsUnknownWorkAsCatalogProvenanceOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	var catalogRows, workRows, ownerLinks, presenceRows int
-	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 9401 AND primary_code = 'RJ90009401'").Scan(&catalogRows); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 9401 AND primary_code = 'RJ00000003'").Scan(&catalogRows); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ90009401'").Scan(&workRows); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000003'").Scan(&workRows); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`
 		SELECT COUNT(*)
 		FROM work_party AS relation
 		INNER JOIN work ON work.id = relation.work_id
-		WHERE work.primary_code = 'RJ90009401' AND relation.party_id = 9401
+		WHERE work.primary_code = 'RJ00000003' AND relation.party_id = 9401
 	`).Scan(&ownerLinks); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestRemoteCatalogKeepsUnknownWorkAsCatalogProvenanceOnly(t *testing.T) {
 		SELECT COUNT(*)
 		FROM work_source_presence AS presence
 		INNER JOIN work ON work.id = presence.work_id
-		WHERE work.primary_code = 'RJ90009401' AND presence.file_source_id = ? AND presence.availability = 'available'
+		WHERE work.primary_code = 'RJ00000003' AND presence.file_source_id = ? AND presence.availability = 'available'
 	`, remoteSourceID).Scan(&presenceRows); err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestRemoteCatalogAddsPresenceForAlreadyMaterializedWork(t *testing.T) {
 	ctx := context.Background()
 	statements := []string{
 		`INSERT INTO party (id, display_name) VALUES (9451, 'Catalog Studio')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (9452, 'RJ90009452', 'Known work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (9452, 'RJ00000004', 'Known work')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -341,7 +341,7 @@ func TestRemoteCatalogAddsPresenceForAlreadyMaterializedWork(t *testing.T) {
 	}
 	server := &Server{db: db}
 	remoteWork := kikoeru.Work{
-		ID: 503, SourceID: "RJ90009452", Title: "Catalog title must not overwrite known work",
+		ID: 503, SourceID: "RJ00000004", Title: "Catalog title must not overwrite known work",
 		Circle: &kikoeru.Circle{ID: 92, Name: "Catalog Studio"},
 	}
 	if err := server.upsertRemoteSourceCatalogWork(ctx, 9451, providerID, remoteSourceForUse{
@@ -354,7 +354,7 @@ func TestRemoteCatalogAddsPresenceForAlreadyMaterializedWork(t *testing.T) {
 	if err := db.QueryRow("SELECT title FROM work WHERE id = 9452").Scan(&title); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 9451 AND primary_code = 'RJ90009452'").Scan(&catalogRows); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM party_catalog_item WHERE party_id = 9451 AND primary_code = 'RJ00000004'").Scan(&catalogRows); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow("SELECT COUNT(*) FROM work_party WHERE work_id = 9452").Scan(&ownerLinks); err != nil {
@@ -379,8 +379,8 @@ func TestAuthoritativeTranslationPartyUsesEditionRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	statements := []string{
-		`INSERT INTO work (id, primary_code, title) VALUES (9501, 'RJ90009501', 'Origin'), (9502, 'RJ90009502', 'Translated edition')`,
-		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (9601, 9501, 'RJ90009501')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (9501, 'RJ00000005', 'Origin'), (9502, 'RJ00000006', 'Translated edition')`,
+		`INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (9601, 9501, 'RJ00000005')`,
 		`INSERT INTO party (id, display_name) VALUES (9701, 'Origin Studio'), (9702, 'Translation Studio')`,
 	}
 	for _, statement := range statements {
@@ -391,8 +391,8 @@ func TestAuthoritativeTranslationPartyUsesEditionRole(t *testing.T) {
 	if _, err := db.Exec(`
 		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, is_canonical, translation_kind, maker_id, origin_maker_id)
 		VALUES
-			(9501, 9601, ?, 'RJ90009501', 1, 'origin', 'RG900095', 'RG900095'),
-			(9502, 9601, ?, 'RJ90009502', 0, 'third_party', 'RG900096', 'RG900095')
+			(9501, 9601, ?, 'RJ00000005', 1, 'origin', 'RG900095', 'RG900095'),
+			(9502, 9601, ?, 'RJ00000006', 0, 'third_party', 'RG900096', 'RG900095')
 	`, providerID, providerID); err != nil {
 		t.Fatal(err)
 	}

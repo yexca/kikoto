@@ -94,7 +94,7 @@ describe("workflow definition model", () => {
   it("upgrades only lossless legacy metadata flows in memory", () => {
     const upgrade = upgradeLegacyWorkflowDefinition(
       [
-        { id: "select", type: "select_works", config: { codes: ["RJ01234567"] } },
+        { id: "select", type: "select_works", config: { codes: ["RJ00000000"] } },
         { id: "sync", type: "sync_metadata" },
       ],
       [{ triggerType: "schedule", scheduleJson: '{"intervalMinutes":60}', configJson: '{"inputs":{}}' }],
@@ -103,7 +103,7 @@ describe("workflow definition model", () => {
     expect(upgrade.kind).toBe("upgradeable");
     if (upgrade.kind !== "upgradeable") return;
     expect(upgrade.document.policy.requirePreview).toBe(false);
-    expect(upgrade.document.inputs[0]).toMatchObject({ type: "work_codes", defaultValue: "RJ01234567" });
+    expect(upgrade.document.inputs[0]).toMatchObject({ type: "work_codes", defaultValue: "RJ00000000" });
     expect(upgrade.document.nodes.map((node) => node.type)).toEqual(["workflow_input", "metadata_sync"]);
   });
 

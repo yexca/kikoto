@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestTranslationStatusesAcceptsProviderEmptyArray(t *testing.T) {
@@ -29,6 +31,23 @@ func TestTranslationStatusesRejectsNonEmptyArray(t *testing.T) {
 	}
 }
 
+func TestCandidateSitesUsesWorkCodePrefix(t *testing.T) {
+	tests := []struct {
+		prefix testfixture.WorkCodePrefix
+		want   string
+	}{
+		{prefix: testfixture.PrefixRJ, want: "maniax,pro"},
+		{prefix: testfixture.PrefixBJ, want: "maniax,pro"},
+		{prefix: testfixture.PrefixVJ, want: "pro,maniax"},
+	}
+	for _, test := range tests {
+		code := testfixture.WorkCode(test.prefix, 0)
+		if got := strings.Join(candidateSites(code), ","); got != test.want {
+			t.Fatalf("candidateSites(%q) = %q, want %q", code, got, test.want)
+		}
+	}
+}
+
 func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/maniax/ranking/day" {
@@ -37,10 +56,10 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 		if r.URL.Query().Get("category") != "voice" || r.URL.Query().Get("date") != "30d" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
-		_, _ = io.WriteString(w, `<dl class="work_1col"><dt class="work_name"><span class="period_date">Date</span><div class="icon_wrap"></div><a href="/maniax/work/=/product_id/RJ01111111.html">One</a></dt></dl>
-			<a href="/maniax/work/=/product_id/RJ09999999.html">Outside ranking</a>
-			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ02222222.html">Two</a></dt></dl>
-			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ01111111.html">Duplicate</a></dt></dl>`)
+		_, _ = io.WriteString(w, `<dl class="work_1col"><dt class="work_name"><span class="period_date">Date</span><div class="icon_wrap"></div><a href="/maniax/work/=/product_id/RJ00000000.html">One</a></dt></dl>
+			<a href="/maniax/work/=/product_id/RJ00000004.html">Outside ranking</a>
+			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ00000003.html">Two</a></dt></dl>
+			<dl class="work_1col"><dt class="work_name"><a href="/maniax/work/=/product_id/RJ00000000.html">Duplicate</a></dt></dl>`)
 	}))
 	defer server.Close()
 
@@ -50,7 +69,7 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchVoiceRanking() error = %v", err)
 	}
-	if got, want := strings.Join(result.WorkCodes, ","), "RJ01111111,RJ02222222"; got != want {
+	if got, want := strings.Join(result.WorkCodes, ","), "RJ00000000,RJ00000003"; got != want {
 		t.Fatalf("work codes = %s, want %s", got, want)
 	}
 }
@@ -63,7 +82,7 @@ func TestFetchVoiceRankingAnnualUsesYearAndDropsReleaseWindow(t *testing.T) {
 		if r.URL.Query().Has("date") {
 			t.Fatalf("annual ranking kept date: %s", r.URL.RawQuery)
 		}
-		_, _ = io.WriteString(w, `<div class="work_1col"><a href="/maniax/work/=/product_id/RJ01111111.html">One</a></div>`)
+		_, _ = io.WriteString(w, `<div class="work_1col"><a href="/maniax/work/=/product_id/RJ00000000.html">One</a></div>`)
 	}))
 	defer server.Close()
 
@@ -83,15 +102,15 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/maniax/api/=/product.json":
-			if r.URL.Query().Get("workno") != "RJ0123456" {
+			if r.URL.Query().Get("workno") != "RJ00000001" {
 				t.Fatalf("workno = %s", r.URL.Query().Get("workno"))
 			}
-			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult","translation_info":{"translation_status_for_translator":{"CHI_HANT":{"applied_count":1,"on_sale_count":0}}}}]`))
+			_, _ = w.Write([]byte(`[{"workno":"RJ00000001","product_name":"Example","work_name_kana":"エグザンプル","intro_s":"Short","regist_date":"2024-01-02","age_category_string":"adult","translation_info":{"translation_status_for_translator":{"CHI_HANT":{"applied_count":1,"on_sale_count":0}}}}]`))
 		case "/maniax-touch/product/info/ajax":
-			if r.URL.Query().Get("product_id") != "RJ0123456" {
+			if r.URL.Query().Get("product_id") != "RJ00000001" {
 				t.Fatalf("product_id = %s", r.URL.Query().Get("product_id"))
 			}
-			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.89,"dl_count":1234,"official_price":1100,"price":550,"discount_rate":50,"is_discount":true,"is_sale":true,"is_free":false}}`))
+			_, _ = w.Write([]byte(`{"RJ00000001":{"rate_average_2dp":4.89,"dl_count":1234,"official_price":1100,"price":550,"discount_rate":50,"is_discount":true,"is_sale":true,"is_free":false}}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -101,11 +120,11 @@ func TestFetchProductUsesCandidateSiteAndParsesProduct(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	product, err := client.FetchProduct(context.Background(), "rj0123456")
+	product, err := client.FetchProduct(context.Background(), "rj00000001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if product.WorkNo != "RJ0123456" {
+	if product.WorkNo != "RJ00000001" {
 		t.Fatalf("WorkNo = %s", product.WorkNo)
 	}
 	if product.ProductName != "Example" {
@@ -170,9 +189,9 @@ func TestFetchProductAcceptsEmptyCreatorsArray(t *testing.T) {
 		switch r.URL.Path {
 		case "/maniax/api/=/product.json":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Bonus","creaters":[]}]`))
+			_, _ = w.Write([]byte(`[{"workno":"RJ00000001","product_name":"Bonus","creaters":[]}]`))
 		case "/maniax-touch/product/info/ajax":
-			_, _ = w.Write([]byte(`{"RJ0123456":{}}`))
+			_, _ = w.Write([]byte(`{"RJ00000001":{}}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -182,7 +201,7 @@ func TestFetchProductAcceptsEmptyCreatorsArray(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	product, err := client.FetchProduct(context.Background(), "RJ0123456")
+	product, err := client.FetchProduct(context.Background(), "RJ00000001")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +220,7 @@ func TestFetchProductReturnsNoProductSentinel(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	_, err := client.FetchProduct(context.Background(), "RJ0123456")
+	_, err := client.FetchProduct(context.Background(), "RJ00000001")
 	if !errors.Is(err, ErrNoProduct) {
 		t.Fatalf("err = %v, want ErrNoProduct", err)
 	}
@@ -215,9 +234,9 @@ func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 				t.Fatalf("locale = %s", r.URL.Query().Get("locale"))
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"workno":"RJ0123456","product_name":"Localized title"}]`))
+			_, _ = w.Write([]byte(`[{"workno":"RJ00000001","product_name":"Localized title"}]`))
 		case "/maniax-touch/product/info/ajax":
-			_, _ = w.Write([]byte(`{"RJ0123456":{"rate_average_2dp":4.5}}`))
+			_, _ = w.Write([]byte(`{"RJ00000001":{"rate_average_2dp":4.5}}`))
 		default:
 			t.Fatalf("path = %s", r.URL.Path)
 		}
@@ -227,7 +246,7 @@ func TestFetchProductWithOptionsSendsLanguage(t *testing.T) {
 	client := NewClient(server.Client())
 	client.baseURL = server.URL
 
-	product, err := client.FetchProductWithOptions(context.Background(), "RJ0123456", ProductOptions{Languages: []string{"en-us"}})
+	product, err := client.FetchProductWithOptions(context.Background(), "RJ00000001", ProductOptions{Languages: []string{"en-us"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +275,7 @@ func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 					<div class="page_total">1 件中 1～1 件目</div>
 					<div id="search_result_list">
 						<div class="n_worklist">
-							<a href="/maniax/work/=/product_id/RJ01234567.html">Work</a>
+							<a href="/maniax/work/=/product_id/RJ00000002.html">Work</a>
 						</div>
 					</div>
 				</body>
@@ -272,7 +291,7 @@ func TestFetchMakerCatalogUsesAllLanguageOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(profile.WorkCodes) != 1 || profile.WorkCodes[0] != "RJ01234567" {
+	if len(profile.WorkCodes) != 1 || profile.WorkCodes[0] != "RJ00000002" {
 		t.Fatalf("WorkCodes = %#v", profile.WorkCodes)
 	}
 }
@@ -283,17 +302,17 @@ func TestParseWorkCodesPrefersSearchResultList(t *testing.T) {
 			<body>
 				<div id="search_result_list">
 					<div class="n_worklist">
-						<a href="/maniax/work/=/product_id/RJ01111111.html">Catalog work</a>
+						<a href="/maniax/work/=/product_id/RJ00000000.html">Catalog work</a>
 					</div>
 				</div>
 				<div class="recommend">
-					<a href="/maniax/work/=/product_id/RJ09999999.html">Recommended work</a>
+					<a href="/maniax/work/=/product_id/RJ00000004.html">Recommended work</a>
 				</div>
 			</body>
 		</html>
 	`
 	codes := parseWorkCodes(raw)
-	if len(codes) != 1 || codes[0] != "RJ01111111" {
+	if len(codes) != 1 || codes[0] != "RJ00000000" {
 		t.Fatalf("codes = %#v", codes)
 	}
 }
@@ -304,18 +323,18 @@ func TestParseWorkCodesKeepsNestedSearchResults(t *testing.T) {
 			<body>
 				<div id="search_result_list">
 					<div class="n_worklist">
-						<div><a href="/maniax/work/=/product_id/RJ01111111.html">Catalog work 1</a></div>
-						<div><a href="/maniax/work/=/product_id/RJ02222222.html">Catalog work 2</a></div>
+						<div><a href="/maniax/work/=/product_id/RJ00000000.html">Catalog work 1</a></div>
+						<div><a href="/maniax/work/=/product_id/RJ00000003.html">Catalog work 2</a></div>
 					</div>
 				</div>
 				<div class="recommend">
-					<a href="/maniax/work/=/product_id/RJ09999999.html">Recommended work</a>
+					<a href="/maniax/work/=/product_id/RJ00000004.html">Recommended work</a>
 				</div>
 			</body>
 		</html>
 	`
 	codes := parseWorkCodes(raw)
-	if len(codes) != 2 || codes[0] != "RJ01111111" || codes[1] != "RJ02222222" {
+	if len(codes) != 2 || codes[0] != "RJ00000000" || codes[1] != "RJ00000003" {
 		t.Fatalf("codes = %#v", codes)
 	}
 }
@@ -354,7 +373,7 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 				<html>
 					<head><title>Example Circle | DLsite</title></head>
 					<body>
-						<div id="search_result_list"><a href="/maniax/work/=/product_id/RJ01111111.html">Work</a></div>
+						<div id="search_result_list"><a href="/maniax/work/=/product_id/RJ00000000.html">Work</a></div>
 						<div class="prof_work_series">
 							<a href="` + server.URL + `/maniax/fsr/=/title_id/SRI0999999999/order/release_d/from/maker_profile.series">「Example Series」シリーズ （2作品）</a>
 						</div>
@@ -366,7 +385,7 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 			_, _ = w.Write([]byte(`
 				<html><body>
 					<div id="search_result_list">
-						<a href="/maniax/work/=/product_id/RJ02222222.html">Series work</a>
+						<a href="/maniax/work/=/product_id/RJ00000003.html">Series work</a>
 					</div>
 				</body></html>
 			`))
@@ -383,7 +402,7 @@ func TestFetchMakerCatalogLoadsSeriesWorksWithLanguageOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(profile.Series) != 1 || len(profile.Series[0].WorkCodes) != 1 || profile.Series[0].WorkCodes[0] != "RJ02222222" {
+	if len(profile.Series) != 1 || len(profile.Series[0].WorkCodes) != 1 || profile.Series[0].WorkCodes[0] != "RJ00000003" {
 		t.Fatalf("Series = %#v", profile.Series)
 	}
 	if !strings.Contains(seriesPath, "/options[1]/CHI_HANS/") {

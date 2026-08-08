@@ -88,7 +88,7 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("claim = %+v, %v, %v", job, ok, err)
 	}
-	if err := server.executeDLsitePopularCollectionJobWith(context.Background(), job, fakeDLsiteRankingProvider{codes: []string{"RJ01111111", "RJ02222222"}}, fakeDLsiteFamilySyncer{db: db}); err != nil {
+	if err := server.executeDLsitePopularCollectionJobWith(context.Background(), job, fakeDLsiteRankingProvider{codes: []string{"RJ00000000", "RJ00000001"}}, fakeDLsiteFamilySyncer{db: db}); err != nil {
 		t.Fatal(err)
 	}
 	var status string

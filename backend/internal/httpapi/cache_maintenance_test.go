@@ -21,24 +21,24 @@ func TestCacheMaintenanceScansAndExecutesRecoverableCleanup(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ09990001', 'Referenced work')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Referenced work')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'referenced.mp3'), (2, 1, 'audio', 'missing.mp3')`); err != nil {
 		t.Fatal(err)
 	}
-	referencedRel := "media/example_remote/RJ/RJ09990001/referenced.mp3"
-	missingRel := "media/example_remote/RJ/RJ09990001/missing.mp3"
+	referencedRel := "media/example_remote/RJ/RJ00000000/referenced.mp3"
+	missingRel := "media/example_remote/RJ/RJ00000000/missing.mp3"
 	if _, err := db.Exec(`INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 'cache', ?, 'available'), (2, 1, 'cache', ?, 'available')`, referencedRel, missingRel); err != nil {
 		t.Fatal(err)
 	}
 
 	referencedPath := writeCacheTestFile(t, cacheRoot, referencedRel, "referenced", 48*time.Hour)
-	orphanRel := "media/example_remote/RJ/RJ09990002/orphan.mp3"
+	orphanRel := "media/example_remote/RJ/RJ00000001/orphan.mp3"
 	orphanPath := writeCacheTestFile(t, cacheRoot, orphanRel, "orphan", 48*time.Hour)
-	recentRel := "media/example_remote/RJ/RJ09990003/recent.mp3"
+	recentRel := "media/example_remote/RJ/RJ00000002/recent.mp3"
 	recentPath := writeCacheTestFile(t, cacheRoot, recentRel, "recent", time.Hour)
-	emptyPath := filepath.Join(cacheRoot, "media", "example_remote", "RJ", "RJ09990004", "nested")
+	emptyPath := filepath.Join(cacheRoot, "media", "example_remote", "RJ", "RJ00000003", "nested")
 	if err := os.MkdirAll(emptyPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestCacheMaintenanceScansAndExecutesRecoverableCleanup(t *testing.T) {
 	if _, err := os.Stat(orphanPath); !os.IsNotExist(err) {
 		t.Fatalf("old orphan still exists or stat failed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(cacheRoot, "media", "example_remote", "RJ", "RJ09990004")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cacheRoot, "media", "example_remote", "RJ", "RJ00000003")); !os.IsNotExist(err) {
 		t.Fatalf("empty parent tree still exists or stat failed: %v", err)
 	}
 	for _, path := range []string{referencedPath, recentPath} {
@@ -99,13 +99,13 @@ func TestCacheCleanupRechecksDatabaseReferenceBeforeDelete(t *testing.T) {
 	cacheRoot := t.TempDir()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
-	relPath := "media/example_remote/RJ/RJ09990100/track.mp3"
+	relPath := "media/example_remote/RJ/RJ00000004/track.mp3"
 	path := writeCacheTestFile(t, cacheRoot, relPath, "audio", 48*time.Hour)
 
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ09990100', 'Late reference')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000004', 'Late reference')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'track.mp3')`); err != nil {
@@ -131,12 +131,12 @@ func TestCacheMaintenanceQueuesOnlySelectedOrphanGroup(t *testing.T) {
 	cacheRoot := t.TempDir()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: cacheRoot})
-	firstRel := "media/remote_a/RJ/RJ09990201/first.mp3"
-	secondRel := "media/remote_a/RJ/RJ09990202/second.mp3"
+	firstRel := "media/remote_a/RJ/RJ00000005/first.mp3"
+	secondRel := "media/remote_a/RJ/RJ00000006/second.mp3"
 	writeCacheTestFile(t, cacheRoot, firstRel, "first", 48*time.Hour)
 	writeCacheTestFile(t, cacheRoot, secondRel, "second", 48*time.Hour)
 
-	result, err := server.enqueueOrphanCacheCleanup(context.Background(), []string{cacheGroupKey(0, "remote_a", "RJ09990201")})
+	result, err := server.enqueueOrphanCacheCleanup(context.Background(), []string{cacheGroupKey(0, "remote_a", "RJ00000005")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,13 +160,13 @@ func TestCacheMaintenanceQueuesOnlySelectedWorkCache(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote_a', 'Remote A', 'kikoeru_compatible')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ09990301', 'First'), (2, 'RJ09990302', 'Second')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000007', 'First'), (2, 'RJ00000008', 'Second')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'first.mp3'), (2, 2, 'audio', 'second.mp3')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (11, 1, 1, 'cache', 'media/remote_a/RJ/RJ09990301/first.mp3', 'available'), (12, 2, 1, 'cache', 'media/remote_a/RJ/RJ09990302/second.mp3', 'available')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (11, 1, 1, 'cache', 'media/remote_a/RJ/RJ00000007/first.mp3', 'available'), (12, 2, 1, 'cache', 'media/remote_a/RJ/RJ00000008/second.mp3', 'available')`); err != nil {
 		t.Fatal(err)
 	}
 

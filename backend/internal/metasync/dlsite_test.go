@@ -8,8 +8,30 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 	_ "modernc.org/sqlite"
 )
+
+func TestDLsiteWorkNoPatternUsesMetadataPrefixesAndLength(t *testing.T) {
+	for _, prefix := range []testfixture.WorkCodePrefix{
+		testfixture.PrefixRJ,
+		testfixture.PrefixBJ,
+		testfixture.PrefixVJ,
+	} {
+		if code := testfixture.WorkCode(prefix, 0); !dlsiteWorkNoPattern.MatchString(code) {
+			t.Fatalf("dlsiteWorkNoPattern rejected %q", code)
+		}
+	}
+	for _, code := range []string{
+		testfixture.WorkCode(testfixture.PrefixCC, 0),
+		"RJ0000",
+		"RJ000000000",
+	} {
+		if dlsiteWorkNoPattern.MatchString(code) {
+			t.Fatalf("dlsiteWorkNoPattern accepted %q", code)
+		}
+	}
+}
 
 type fakeDLsiteClient struct {
 	products map[string]dlsite.Product
@@ -55,18 +77,18 @@ func (f *localizedFakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Pr
 func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing.T) {
 	db := openTestDB(t)
 	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{
-		"RJ0123678": {
-			"zh-cn": {WorkNo: "RJ0123678", ProductName: "中文本地化标题", Raw: json.RawMessage(`{"workno":"RJ0123678","product_name":"中文本地化标题"}`)},
-			"ja-jp": {WorkNo: "RJ0123678", ProductName: "Origin Japanese title", Raw: json.RawMessage(`{"workno":"RJ0123678","product_name":"Origin Japanese title"}`)},
+		"RJ00000011": {
+			"zh-cn": {WorkNo: "RJ00000011", ProductName: "中文本地化标题", Raw: json.RawMessage(`{"workno":"RJ00000011","product_name":"中文本地化标题"}`)},
+			"ja-jp": {WorkNo: "RJ00000011", ProductName: "Origin Japanese title", Raw: json.RawMessage(`{"workno":"RJ00000011","product_name":"Origin Japanese title"}`)},
 		},
 	}}
 	syncer := NewDLsiteSyncer(db, client).WithLanguages([]string{"zh-cn", "ja-jp", ""}).WithRequestPacing(0, 0, 0)
-	if _, err := syncer.SyncFamily(context.Background(), "RJ0123678"); err != nil {
+	if _, err := syncer.SyncFamily(context.Background(), "RJ00000011"); err != nil {
 		t.Fatal(err)
 	}
 
 	var title string
-	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123678'").Scan(&title); err != nil {
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ00000011'").Scan(&title); err != nil {
 		t.Fatal(err)
 	}
 	if title != "Origin Japanese title" {
@@ -74,7 +96,7 @@ func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing
 	}
 	foundOriginRefresh := false
 	for _, call := range client.calls {
-		if call == "RJ0123678:ja-jp" {
+		if call == "RJ00000011:ja-jp" {
 			foundOriginRefresh = true
 			break
 		}
@@ -105,7 +127,7 @@ func (f fakeDLsiteClient) DownloadCover(_ context.Context, _ dlsite.Product, _ s
 
 func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	db := openTestDB(t)
-	raw := json.RawMessage(`{"workno":"RJ0123456","product_name":"DLsite title"}`)
+	raw := json.RawMessage(`{"workno":"RJ00000004","product_name":"DLsite title"}`)
 	rating := 4.75
 	sales := int64(4321)
 	regularPrice := int64(0)
@@ -113,8 +135,8 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	isDiscount := false
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		products: map[string]dlsite.Product{
-			"RJ0123456": {
-				WorkNo:            "RJ0123456",
+			"RJ00000004": {
+				WorkNo:            "RJ00000004",
 				SiteID:            "maniax",
 				ProductName:       "DLsite title",
 				WorkNameKana:      "ディーエルサイト",
@@ -144,7 +166,7 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 
 	var title string
 	var snapshotCount int
-	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123456'").Scan(&title); err != nil {
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ00000004'").Scan(&title); err != nil {
 		t.Fatal(err)
 	}
 	if title != "DLsite title" {
@@ -162,7 +184,7 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 	var storedPermanentlyFree bool
 	if err := db.QueryRow(`
 		SELECT rating_average, sales_count, regular_price, current_price, price_currency, is_permanently_free
-		FROM work WHERE primary_code = 'RJ0123456'
+		FROM work WHERE primary_code = 'RJ00000004'
 	`).Scan(&storedRating, &storedSales, &storedRegularPrice, &storedCurrentPrice, &storedCurrency, &storedPermanentlyFree); err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +197,7 @@ func TestSyncAllUpdatesWorkAndStoresSnapshot(t *testing.T) {
 		FROM work_tag
 		INNER JOIN tag ON tag.id = work_tag.tag_id
 		INNER JOIN work ON work.id = work_tag.work_id
-		WHERE work.primary_code = 'RJ0123456' AND work_tag.source = 'dlsite'
+		WHERE work.primary_code = 'RJ00000004' AND work_tag.source = 'dlsite'
 	`).Scan(&tagName); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +211,7 @@ func TestSyncAllRecordsNoProductProviderStateAndSkipsFutureRefreshes(t *testing.
 	calls := map[string]int{}
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		errors: map[string]error{
-			"RJ0123456": dlsite.ErrNoProduct,
+			"RJ00000004": dlsite.ErrNoProduct,
 		},
 		calls: calls,
 	})
@@ -208,7 +230,7 @@ func TestSyncAllRecordsNoProductProviderStateAndSkipsFutureRefreshes(t *testing.
 		FROM work_metadata_provider_state AS state
 		INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
 		INNER JOIN work ON work.id = state.work_id
-		WHERE provider.code = 'dlsite' AND work.primary_code = 'RJ0123456'
+		WHERE provider.code = 'dlsite' AND work.primary_code = 'RJ00000004'
 	`).Scan(&status, &message); err != nil {
 		t.Fatal(err)
 	}
@@ -226,25 +248,25 @@ func TestSyncAllRecordsNoProductProviderStateAndSkipsFutureRefreshes(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.TargetWorks != 0 || calls["RJ0123456"] != 1 {
-		t.Fatalf("second sync = %+v calls = %d, want skipped without another provider call", second, calls["RJ0123456"])
+	if second.TargetWorks != 0 || calls["RJ00000004"] != 1 {
+		t.Fatalf("second sync = %+v calls = %d, want skipped without another provider call", second, calls["RJ00000004"])
 	}
 }
 
 func TestSyncAllRetriesRateLimitedProduct(t *testing.T) {
 	db := openTestDB(t)
 	calls := map[string]int{}
-	raw := json.RawMessage(`{"workno":"RJ0123456","product_name":"DLsite title"}`)
+	raw := json.RawMessage(`{"workno":"RJ00000004","product_name":"DLsite title"}`)
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{
 		calls: calls,
 		failures: map[string][]error{
-			"RJ0123456": {
+			"RJ00000004": {
 				dlsite.HTTPStatusError{Operation: "dlsite maniax", Status: "429 Too Many Requests", StatusCode: 429},
 			},
 		},
 		products: map[string]dlsite.Product{
-			"RJ0123456": {
-				WorkNo:      "RJ0123456",
+			"RJ00000004": {
+				WorkNo:      "RJ00000004",
 				SiteID:      "maniax",
 				ProductName: "DLsite title",
 				Raw:         raw,
@@ -259,22 +281,22 @@ func TestSyncAllRetriesRateLimitedProduct(t *testing.T) {
 	if result.Status != "succeeded" || result.SyncedWorks != 1 {
 		t.Fatalf("result = %+v", result)
 	}
-	if calls["RJ0123456"] != 2 {
-		t.Fatalf("calls = %d, want 2", calls["RJ0123456"])
+	if calls["RJ00000004"] != 2 {
+		t.Fatalf("calls = %d, want 2", calls["RJ00000004"])
 	}
 }
 
 func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
 	db := openTestDB(t)
 	editions := []dlsite.LanguageEdition{
-		{WorkNo: "RJ0123455", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
-		{WorkNo: "RJ0123456", DisplayOrder: 2, Label: "簡体中文（公式翻訳）", Lang: "CHI_HANS"},
+		{WorkNo: "RJ00000003", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
+		{WorkNo: "RJ00000004", DisplayOrder: 2, Label: "簡体中文（公式翻訳）", Lang: "CHI_HANS"},
 	}
-	translatedRaw := json.RawMessage(`{"workno":"RJ0123456","product_name":"Translated title","language_editions":[{"workno":"RJ0123455","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ0123456","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
-	originRaw := json.RawMessage(`{"workno":"RJ0123455","product_name":"Origin title","language_editions":[{"workno":"RJ0123455","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ0123456","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
+	translatedRaw := json.RawMessage(`{"workno":"RJ00000004","product_name":"Translated title","language_editions":[{"workno":"RJ00000003","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ00000004","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
+	originRaw := json.RawMessage(`{"workno":"RJ00000003","product_name":"Origin title","language_editions":[{"workno":"RJ00000003","display_order":1,"label":"日本語","lang":"JPN"},{"workno":"RJ00000004","display_order":2,"label":"簡体中文（公式翻訳）","lang":"CHI_HANS"}]}`)
 	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{products: map[string]dlsite.Product{
-		"RJ0123456": {WorkNo: "RJ0123456", ProductName: "Translated title", LanguageEditions: editions, Raw: translatedRaw},
-		"RJ0123455": {WorkNo: "RJ0123455", ProductName: "Origin title", LanguageEditions: editions, Raw: originRaw},
+		"RJ00000004": {WorkNo: "RJ00000004", ProductName: "Translated title", LanguageEditions: editions, Raw: translatedRaw},
+		"RJ00000003": {WorkNo: "RJ00000003", ProductName: "Origin title", LanguageEditions: editions, Raw: originRaw},
 	}})
 
 	result, err := syncer.SyncAll(context.Background())
@@ -286,7 +308,7 @@ func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
 	}
 
 	var title string
-	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ0123455'").Scan(&title); err != nil {
+	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ00000003'").Scan(&title); err != nil {
 		t.Fatal(err)
 	}
 	if title != "Origin title" {
@@ -298,11 +320,11 @@ func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
 		FROM work_edition AS edition
 		INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		INNER JOIN work ON work.id = edition.work_id
-		WHERE work.primary_code = 'RJ0123456'
+		WHERE work.primary_code = 'RJ00000004'
 	`).Scan(&canonicalCode, &translatedBase, &translatedLanguage); err != nil {
 		t.Fatal(err)
 	}
-	if canonicalCode != "RJ0123455" || translatedBase != "RJ0123455" || translatedLanguage != "CHI_HANS" {
+	if canonicalCode != "RJ00000003" || translatedBase != "RJ00000003" || translatedLanguage != "CHI_HANS" {
 		t.Fatalf("edition = canonical %q, base %q, language %q", canonicalCode, translatedBase, translatedLanguage)
 	}
 
@@ -318,23 +340,23 @@ func TestSyncAllResolvesOriginFromLanguageEditions(t *testing.T) {
 func TestSyncFamilyClassifiesMakerRelationships(t *testing.T) {
 	db := openTestDB(t)
 	editions := []dlsite.LanguageEdition{
-		{WorkNo: "RJ0123401", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
-		{WorkNo: "RJ0123402", DisplayOrder: 2, Label: "簡体中文", Lang: "CHI_HANS"},
-		{WorkNo: "RJ0123403", DisplayOrder: 3, Label: "English", Lang: "ENG"},
+		{WorkNo: "RJ00000000", DisplayOrder: 1, Label: "日本語", Lang: "JPN"},
+		{WorkNo: "RJ00000001", DisplayOrder: 2, Label: "簡体中文", Lang: "CHI_HANS"},
+		{WorkNo: "RJ00000002", DisplayOrder: 3, Label: "English", Lang: "ENG"},
 	}
 	products := map[string]dlsite.Product{
-		"RJ0123401": {WorkNo: "RJ0123401", ProductName: "Origin", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123401"}`)},
-		"RJ0123402": {WorkNo: "RJ0123402", ProductName: "Official", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123402"}`)},
-		"RJ0123403": {WorkNo: "RJ0123403", ProductName: "Community", MakerID: "RG60289", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ0123403"}`)},
+		"RJ00000000": {WorkNo: "RJ00000000", ProductName: "Origin", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ00000000"}`)},
+		"RJ00000001": {WorkNo: "RJ00000001", ProductName: "Official", MakerID: "RG12345", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ00000001"}`)},
+		"RJ00000002": {WorkNo: "RJ00000002", ProductName: "Community", MakerID: "RG60289", LanguageEditions: editions, Raw: json.RawMessage(`{"workno":"RJ00000002"}`)},
 	}
-	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{products: products}).SyncFamily(context.Background(), "RJ0123402")
+	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{products: products}).SyncFamily(context.Background(), "RJ00000001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CanonicalCode != "RJ0123401" || len(result.SyncedCodes) != 3 {
+	if result.CanonicalCode != "RJ00000000" || len(result.SyncedCodes) != 3 {
 		t.Fatalf("result = %+v", result)
 	}
-	want := map[string]string{"RJ0123401": "origin", "RJ0123402": "official", "RJ0123403": "community"}
+	want := map[string]string{"RJ00000000": "origin", "RJ00000001": "official", "RJ00000002": "community"}
 	rows, err := db.Query("SELECT primary_code, translation_kind FROM work_edition")
 	if err != nil {
 		t.Fatal(err)
@@ -360,11 +382,11 @@ func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
 	zero := 0
 	one := 1
 	editions := []dlsite.LanguageEdition{
-		{WorkNo: "RJ0123501", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
-		{WorkNo: "RJ0123502", DisplayOrder: 2, Label: "Traditional Chinese", Lang: "CHI_HANT"},
-		{WorkNo: "RJ0123503", DisplayOrder: 3, Label: "English", Lang: "ENG"},
-		{WorkNo: "RJ0123504", DisplayOrder: 4, Label: "Korean", Lang: "KO_KR"},
-		{WorkNo: "RJ0123505", DisplayOrder: 5, Label: "Indonesian", Lang: "IND"},
+		{WorkNo: "RJ00000005", DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: "RJ00000006", DisplayOrder: 2, Label: "Traditional Chinese", Lang: "CHI_HANT"},
+		{WorkNo: "RJ00000007", DisplayOrder: 3, Label: "English", Lang: "ENG"},
+		{WorkNo: "RJ00000008", DisplayOrder: 4, Label: "Korean", Lang: "KO_KR"},
+		{WorkNo: "RJ00000009", DisplayOrder: 5, Label: "Indonesian", Lang: "IND"},
 	}
 	translationInfo := dlsite.TranslationInfo{StatusForTranslatorByLang: map[string]dlsite.TranslationStatus{
 		"CHI_HANT": {AppliedCount: 1, OnSaleCount: &zero},
@@ -372,38 +394,38 @@ func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
 	}}
 	calls := map[string]int{}
 	products := map[string]dlsite.Product{
-		"RJ0123501": {WorkNo: "RJ0123501", ProductName: "Origin", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123501"}`)},
-		"RJ0123503": {WorkNo: "RJ0123503", ProductName: "English", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123503"}`)},
-		"RJ0123504": {WorkNo: "RJ0123504", ProductName: "Korean", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ0123504"}`)},
+		"RJ00000005": {WorkNo: "RJ00000005", ProductName: "Origin", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ00000005"}`)},
+		"RJ00000007": {WorkNo: "RJ00000007", ProductName: "English", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ00000007"}`)},
+		"RJ00000008": {WorkNo: "RJ00000008", ProductName: "Korean", LanguageEditions: editions, TranslationInfo: translationInfo, Raw: json.RawMessage(`{"workno":"RJ00000008"}`)},
 	}
 	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{
 		products: products,
 		errors: map[string]error{
-			"RJ0123502": dlsite.ErrNoProduct,
-			"RJ0123505": dlsite.ErrNoProduct,
+			"RJ00000006": dlsite.ErrNoProduct,
+			"RJ00000009": dlsite.ErrNoProduct,
 		},
 		calls: calls,
-	}).SyncFamily(context.Background(), "RJ0123501")
+	}).SyncFamily(context.Background(), "RJ00000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.SyncedCodes) != 3 || len(result.SkippedCodes) != 2 || result.SkippedCodes[0] != "RJ0123502" || result.SkippedCodes[1] != "RJ0123505" || len(result.Failures) != 0 {
+	if len(result.SyncedCodes) != 3 || len(result.SkippedCodes) != 2 || result.SkippedCodes[0] != "RJ00000006" || result.SkippedCodes[1] != "RJ00000009" || len(result.Failures) != 0 {
 		t.Fatalf("result = %+v", result)
 	}
-	if calls["RJ0123502"] != 0 {
-		t.Fatalf("unavailable edition calls = %d, want 0", calls["RJ0123502"])
+	if calls["RJ00000006"] != 0 {
+		t.Fatalf("unavailable edition calls = %d, want 0", calls["RJ00000006"])
 	}
-	if calls["RJ0123503"] != 1 || calls["RJ0123504"] != 1 {
+	if calls["RJ00000007"] != 1 || calls["RJ00000008"] != 1 {
 		t.Fatalf("available and unknown-status calls = %+v", calls)
 	}
-	if calls["RJ0123505"] != 1 {
-		t.Fatalf("unknown-status unavailable edition calls = %d, want 1", calls["RJ0123505"])
+	if calls["RJ00000009"] != 1 {
+		t.Fatalf("unknown-status unavailable edition calls = %d, want 1", calls["RJ00000009"])
 	}
 	var aliasCount, workCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM work_code_alias WHERE primary_code IN ('RJ0123502', 'RJ0123505') AND source_work_id IS NULL").Scan(&aliasCount); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_code_alias WHERE primary_code IN ('RJ00000006', 'RJ00000009') AND source_work_id IS NULL").Scan(&aliasCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code IN ('RJ0123502', 'RJ0123505')").Scan(&workCount); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code IN ('RJ00000006', 'RJ00000009')").Scan(&workCount); err != nil {
 		t.Fatal(err)
 	}
 	if aliasCount != 2 || workCount != 0 {
@@ -414,8 +436,8 @@ func TestSyncFamilySkipsExplicitlyUnavailableLanguageEditions(t *testing.T) {
 func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
 	db := openTestDB(t)
 	result, err := NewDLsiteSyncer(db, fakeDLsiteClient{
-		errors: map[string]error{"RJ0123599": dlsite.ErrNoProduct},
-	}).SyncFamily(context.Background(), "RJ0123599")
+		errors: map[string]error{"RJ00000010": dlsite.ErrNoProduct},
+	}).SyncFamily(context.Background(), "RJ00000010")
 	if err == nil {
 		t.Fatal("SyncFamily() succeeded for an unavailable requested product")
 	}
@@ -454,7 +476,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE workflow_job (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, worker_type TEXT NOT NULL, status TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, resource_key TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL DEFAULT '{}', checkpoint_json TEXT NOT NULL DEFAULT '{}', recoverable INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, resume_count INTEGER NOT NULL DEFAULT 0, available_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, error_message TEXT NOT NULL DEFAULT '', progress_current INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, progress_bytes_current INTEGER NOT NULL DEFAULT 0, progress_bytes_total INTEGER NOT NULL DEFAULT 0, progress_bytes_unknown_items INTEGER NOT NULL DEFAULT 0, locked_by TEXT NOT NULL DEFAULT '', locked_at TEXT, heartbeat_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_candidate (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, candidate_type TEXT NOT NULL, external_key TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', decision_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE workflow_event (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, workflow_job_id INTEGER REFERENCES workflow_job(id) ON DELETE SET NULL, level TEXT NOT NULL DEFAULT 'info', event_type TEXT NOT NULL, message TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`INSERT INTO work (primary_code, title) VALUES ('RJ0123456', 'Local title')`,
+		`INSERT INTO work (primary_code, title) VALUES ('RJ00000004', 'Local title')`,
 	}
 	for _, statement := range schema {
 		if _, err := db.Exec(statement); err != nil {

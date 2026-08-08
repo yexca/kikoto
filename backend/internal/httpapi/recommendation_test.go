@@ -24,8 +24,8 @@ func TestWorkRecommendationScoreUsesPositiveTagHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID, _ := user.LastInsertId()
-	liked, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999201', 'Liked')")
-	candidate, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999202', 'Candidate')")
+	liked, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Liked')")
+	candidate, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000001', 'Candidate')")
 	likedID, _ := liked.LastInsertId()
 	candidateID, _ := candidate.LastInsertId()
 	tag, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'sleep', 'Sleep')")
@@ -54,7 +54,7 @@ func TestPausedSimilarityNeedsRepeatedEvidence(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
-	firstPausedID := insertRecommendationWork(t, db, "RJ09999203", "First shelved")
+	firstPausedID := insertRecommendationWork(t, db, "RJ00000002", "First shelved")
 	linkRecommendationTag(t, db, firstPausedID, tagID)
 	setRecommendationState(t, db, userID, firstPausedID, "paused", false)
 
@@ -66,7 +66,7 @@ func TestPausedSimilarityNeedsRepeatedEvidence(t *testing.T) {
 		t.Fatalf("one paused signal breakdown = %+v", breakdown)
 	}
 
-	secondPausedID := insertRecommendationWork(t, db, "RJ09999204", "Second shelved")
+	secondPausedID := insertRecommendationWork(t, db, "RJ00000003", "Second shelved")
 	linkRecommendationTag(t, db, secondPausedID, tagID)
 	setRecommendationState(t, db, userID, secondPausedID, "paused", false)
 	breakdown, err = server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
@@ -82,7 +82,7 @@ func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
-	for _, code := range []string{"RJ09999205", "RJ09999206"} {
+	for _, code := range []string{"RJ00000004", "RJ00000005"} {
 		workID := insertRecommendationWork(t, db, code, "Shelved")
 		linkRecommendationTag(t, db, workID, tagID)
 		setRecommendationState(t, db, userID, workID, "paused", false)
@@ -121,7 +121,7 @@ func TestFavoritePausedHistoryDoesNotPropagateNegativePreference(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
-	for _, code := range []string{"RJ09999208", "RJ09999209"} {
+	for _, code := range []string{"RJ00000006", "RJ00000007"} {
 		workID := insertRecommendationWork(t, db, code, "Favorite shelved")
 		linkRecommendationTag(t, db, workID, tagID)
 		setRecommendationState(t, db, userID, workID, "paused", true)
@@ -140,7 +140,7 @@ func TestRecommendationListScoreMatchesBreakdown(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
-	likedID := insertRecommendationWork(t, db, "RJ09999210", "Liked")
+	likedID := insertRecommendationWork(t, db, "RJ00000008", "Liked")
 	linkRecommendationTag(t, db, likedID, tagID)
 	setRecommendationState(t, db, userID, likedID, "relisten", false)
 
@@ -169,7 +169,7 @@ func TestRecommendationSeedOrderIsStableAndJitterBounded(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, _, _ := seedRecommendationUserCandidateAndTag(t, db)
-	highID := insertRecommendationWork(t, db, "RJ09999211", "Favorite candidate")
+	highID := insertRecommendationWork(t, db, "RJ00000009", "Favorite candidate")
 	setRecommendationState(t, db, userID, highID, "none", true)
 
 	listIDs := func(seed int64) []int64 {
@@ -206,7 +206,7 @@ func TestRecommendationTelemetryRejectsArbitraryFieldsAndAggregates(t *testing.T
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	workID := insertRecommendationWork(t, db, "RJ09999212", "Telemetry candidate")
+	workID := insertRecommendationWork(t, db, "RJ00000010", "Telemetry candidate")
 	user := account.User{ID: userID, Username: "telemetry-user", Role: "admin", Permissions: account.PermissionsForRole("admin")}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/recommendation-events", strings.NewReader(`{"events":[{"workId":`+jsonInt(workID)+`,"eventType":"impression","contextId":"library:seed-3","seed":3,"rank":1,"score":61}]}`))
@@ -255,7 +255,7 @@ func seedRecommendationUserCandidateAndTag(t *testing.T, db recommendationTestDB
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	candidateID := insertRecommendationWork(t, db, "RJ09999202", "Candidate")
+	candidateID := insertRecommendationWork(t, db, "RJ00000001", "Candidate")
 	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'sleep', 'Sleep')")
 	if err != nil {
 		t.Fatal(err)

@@ -6,12 +6,12 @@ import (
 )
 
 func TestParseListSearchClauses(t *testing.T) {
-	got := parseListSearchClauses(`quiet $tag:耳かき$ circle:"Example Circle" RJ01234567`)
+	got := parseListSearchClauses(`quiet $tag:耳かき$ circle:"Example Circle" RJ00000001`)
 	want := []listSearchClause{
 		{Kind: "tag", Value: "耳かき"},
 		{Kind: "text", Value: "quiet"},
 		{Kind: "circle", Value: "Example Circle"},
-		{Kind: "code", Value: "RJ01234567"},
+		{Kind: "code", Value: "RJ00000001"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseListSearchClauses() = %#v, want %#v", got, want)
@@ -43,8 +43,8 @@ func TestPlanRemoteSourceQueryPushesCompoundQueryToCompatibleSource(t *testing.T
 }
 
 func TestPlanRemoteSourceCodeQueryTrustsCompatibleSourceAliasMatches(t *testing.T) {
-	plan := planRemoteSourceQuery(`RJ01000001`, sourceTypeKikoeruCompatible)
-	if plan.PushdownQuery != "RJ01000001" {
+	plan := planRemoteSourceQuery(`RJ00000000`, sourceTypeKikoeruCompatible)
+	if plan.PushdownQuery != "RJ00000000" {
 		t.Fatalf("PushdownQuery = %q, want code query", plan.PushdownQuery)
 	}
 	if len(plan.PostFilterClauses) != 0 {
@@ -53,7 +53,7 @@ func TestPlanRemoteSourceCodeQueryTrustsCompatibleSourceAliasMatches(t *testing.
 }
 
 func TestPlanLimitedRemoteSourceQueryPrioritizesLanguagePushdown(t *testing.T) {
-	plan := planRemoteSourceQuery(`RJ01234567 $lang:CHI_HANS$`, sourceTypeKikoeruCompatible178)
+	plan := planRemoteSourceQuery(`RJ00000001 $lang:CHI_HANS$`, sourceTypeKikoeruCompatible178)
 	if plan.PushdownQuery != "$lang:CHI_HANS$" {
 		t.Fatalf("PushdownQuery = %q, want language clause", plan.PushdownQuery)
 	}
@@ -64,7 +64,7 @@ func TestPlanLimitedRemoteSourceQueryPrioritizesLanguagePushdown(t *testing.T) {
 
 func TestLibrarySearchWhereMatchesNormalizedUnicodeTag(t *testing.T) {
 	db := openMigratedTestDB(t)
-	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999999', 'Unicode tag work')")
+	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Unicode tag work')")
 	if err != nil {
 		t.Fatal(err)
 	}

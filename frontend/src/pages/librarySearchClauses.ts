@@ -1,3 +1,5 @@
+import { isWorkCode } from "@/lib/workCode";
+
 export type SearchClauseKind =
   | "text"
   | "code"
@@ -70,7 +72,7 @@ export function parseSearchClauses(query: string): SearchClause[] {
         continue;
       }
     }
-    if (/^(RJ|BJ|VJ|CC)\d{4,8}$/i.test(part)) {
+    if (isWorkCode(part)) {
       clauses.push({ kind: "code", value: part.toUpperCase() });
     } else {
       clauses.push({ kind: "text", value: part });

@@ -200,9 +200,9 @@ async function mockCacheSettings(
           emptyDirectories: 1,
           works: [
             {
-              groupKey: "1:remote-a:RJ09990001",
+              groupKey: "1:remote-a:RJ00000001",
               workId: 1,
-              workCode: "RJ09990001",
+              workCode: "RJ00000001",
               sourceId: 1,
               sourceCode: "remote-a",
               sourceName: "Example Remote",
@@ -263,11 +263,11 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await expect(page.getByText("30 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("1 groups · 1 works", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand Example Remote cache group" })).toBeVisible();
-  await expect(page.getByText("RJ09990001", { exact: true })).toBeHidden();
+  await expect(page.getByText("RJ00000001", { exact: true })).toBeHidden();
   await page.getByRole("button", { name: "Expand Example Remote cache group" }).click();
-  await expect(page.getByText("RJ09990001", { exact: true })).toBeVisible();
+  await expect(page.getByText("RJ00000001", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Collapse Example Remote cache group" }).click();
-  await expect(page.getByText("RJ09990001", { exact: true })).toBeHidden();
+  await expect(page.getByText("RJ00000001", { exact: true })).toBeHidden();
   await page.getByRole("button", { name: "Expand Example Remote cache group" }).click();
   await page.getByRole("checkbox", { name: "Select all cache in Example Remote" }).click();
   await expect(page.getByRole("button", { name: "Clean selected orphans" })).toHaveClass(/bg-destructive/);
@@ -276,7 +276,7 @@ test("cache settings scan managed media and require cleanup confirmation", async
   await expect(page.getByRole("button", { name: "Confirm cleanup (2 files)" })).toBeVisible();
   await page.getByRole("button", { name: "Confirm cleanup (2 files)" }).click();
   await expect.poll(() => cleanupRequests).toHaveLength(1);
-  expect(cleanupRequests[0]).toEqual({ mode: "orphans", groupKeys: ["1:remote-a:RJ09990001"] });
+  expect(cleanupRequests[0]).toEqual({ mode: "orphans", groupKeys: ["1:remote-a:RJ00000001"] });
   await expect(page.getByText("Cleanup queued in workflow run #52 (4 items).", { exact: true })).toBeVisible();
 });
 

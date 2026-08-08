@@ -1,4 +1,5 @@
 import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/api";
+import { isWorkCodePath } from "@/lib/workCode";
 import {
   isWorkCollectionColumnCount,
   type WorkCollectionColumnSetting,
@@ -227,5 +228,5 @@ function isLibraryBrowsePath(path: string) {
   ) {
     return false;
   }
-  return /^\/[^/]+\/?$/.test(path) && !/^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i.test(path);
+  return /^\/[^/]+\/?$/.test(path) && !isWorkCodePath(path);
 }

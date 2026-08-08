@@ -29,8 +29,8 @@ func TestRecentlyPlayedWorksKeepsCompletedWorkCursor(t *testing.T) {
 		mediaID, _ := media.LastInsertId()
 		return workID, mediaID
 	}
-	olderWorkID, olderMediaID := insertWork("RJ09999301", "audio")
-	newerWorkID, newerMediaID := insertWork("RJ09999302", "video")
+	olderWorkID, olderMediaID := insertWork("RJ00000000", "audio")
+	newerWorkID, newerMediaID := insertWork("RJ00000001", "video")
 	for _, item := range []struct {
 		workID    int64
 		mediaID   int64

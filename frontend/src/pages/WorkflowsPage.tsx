@@ -1937,7 +1937,7 @@ function workflowInputPlaceholder(input: WorkflowInputDefinition) {
     case "series_id":
       return "SRI0000000000";
     case "work_code":
-      return "RJ01234567";
+      return "RJ00000000";
     case "voice_name":
       return "Voice name";
     default:

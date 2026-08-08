@@ -2,14 +2,21 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestCustomStringValuesAcceptsDocumentedWorkCodeSeparators(t *testing.T) {
-	values, err := customStringValues("RJ01234567; BJ1234，VJ12345；CC123456\nRJ01234567")
+	rj := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	bj := testfixture.WorkCode(testfixture.PrefixBJ, 0)
+	vj := testfixture.WorkCode(testfixture.PrefixVJ, 0)
+	cc := testfixture.WorkCode(testfixture.PrefixCC, 0)
+	values, err := customStringValues(fmt.Sprintf("%s; %s，%s；%s\n%s", rj, bj, vj, cc, rj))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,9 +24,15 @@ func TestCustomStringValuesAcceptsDocumentedWorkCodeSeparators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"RJ01234567", "BJ1234", "VJ12345", "CC123456"}
+	want := []string{rj, bj, vj, cc}
 	if !reflect.DeepEqual(codes, want) {
 		t.Fatalf("codes = %v, want %v", codes, want)
+	}
+}
+
+func TestNormalizeCustomWorkCodesRejectsFourDigitCode(t *testing.T) {
+	if _, err := normalizeCustomWorkCodes([]string{"RJ0000"}, 1000); err == nil {
+		t.Fatal("normalizeCustomWorkCodes accepted a four-digit work code")
 	}
 }
 
@@ -88,7 +101,7 @@ func TestValidateCustomWorkflowDefinitionRequiresExplicitAutomaticFetchBounds(t 
 		"schemaVersion":2,
 		"policy":{"requirePreview":false},
 		"nodes":[
-			{"id":"works","type":"input_work","config":{"codes":["RJ01234567"]}},
+			{"id":"works","type":"input_work","config":{"codes":["RJ00000001"]}},
 			{"id":"fetch","type":"fetch_works","config":{"maxWorks":1,"maxFiles":100,"maxBytes":1000000,"minFreeBytes":1000000}}
 		],
 		"edges":[{"id":"fetch_works","source":"works","sourceHandle":"works","target":"fetch","targetHandle":"works"}]
@@ -103,7 +116,7 @@ func TestValidateCustomWorkflowDefinitionRejectsNegativeDiskReserve(t *testing.T
 		"schemaVersion":2,
 		"policy":{"requirePreview":true},
 		"nodes":[
-			{"id":"works","type":"input_work","config":{"codes":["RJ01234567"]}},
+			{"id":"works","type":"input_work","config":{"codes":["RJ00000001"]}},
 			{"id":"fetch","type":"fetch_works","config":{"minFreeBytes":-1}}
 		],
 		"edges":[{"id":"fetch_works","source":"works","sourceHandle":"works","target":"fetch","targetHandle":"works"}]
@@ -172,12 +185,12 @@ func TestWorkflowInputWorkCandidatesUseValueHandle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate graph: %v", err)
 	}
-	execution, err := executeCustomInputNode(customWorkflowJobPayload{Inputs: map[string]any{"works": []any{"RJ01234567", "cc0001"}}}, graph, graph.NodesByID["input"])
+	execution, err := executeCustomInputNode(customWorkflowJobPayload{Inputs: map[string]any{"works": []any{"RJ00000000", "cc00000000"}}}, graph, graph.NodesByID["input"])
 	if err != nil {
 		t.Fatalf("executeCustomInputNode() error = %v", err)
 	}
 	value, ok := execution.Outputs["value"]
-	if !ok || value.Type != "work_candidates" || len(value.Candidates) != 2 || value.Candidates[0].Code != "RJ01234567" || value.Candidates[1].Code != "CC0001" {
+	if !ok || value.Type != "work_candidates" || len(value.Candidates) != 2 || value.Candidates[0].Code != "RJ00000000" || value.Candidates[1].Code != "CC00000000" {
 		t.Fatalf("workflow input output = %+v", execution.Outputs)
 	}
 }
@@ -215,7 +228,7 @@ func TestValidateCustomWorkflowDefinitionRejectsInvalidConfigType(t *testing.T) 
 	raw := `{
 		"schemaVersion":2,
 		"nodes":[
-			{"id":"works","type":"input_work","config":{"codes":["RJ01234567"]}},
+			{"id":"works","type":"input_work","config":{"codes":["RJ00000001"]}},
 			{"id":"filter","type":"filter_works","config":{"limit":"10"}}
 		],
 		"edges":[{"id":"works","source":"works","sourceHandle":"works","target":"filter","targetHandle":"works"}]

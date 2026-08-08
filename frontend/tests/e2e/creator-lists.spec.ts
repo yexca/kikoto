@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const latestWork = {
-  primaryCode: "RJ09999002",
+  primaryCode: "RJ00000000",
   title: "Latest known work",
   releaseDate: "2026-07-01",
-  coverUrl: "/api/assets/covers/RJ09999002.png",
+  coverUrl: "/api/assets/covers/RJ00000000.png",
 };
 
 const circle = {
@@ -92,7 +92,7 @@ async function mockCreatorLists(page: Page) {
               id: 2,
               externalId: "RG10000",
               displayName: "No Cover Circle",
-              latestWork: { ...latestWork, primaryCode: "RJ09999003", coverUrl: "" },
+              latestWork: { ...latestWork, primaryCode: "RJ00000001", coverUrl: "" },
             },
           ],
           page: 1,
@@ -113,7 +113,7 @@ async function mockCreatorLists(page: Page) {
               ...voice,
               personId: 8,
               displayName: "No Cover Voice",
-              latestWork: { ...latestWork, primaryCode: "RJ09999004", coverUrl: "" },
+              latestWork: { ...latestWork, primaryCode: "RJ00000002", coverUrl: "" },
             },
           ],
           page: 1,
@@ -222,7 +222,7 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await page.goto("/circles?pageSize=24");
 
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
-  await expect(page.getByText("Latest RJ09999002", { exact: true })).toBeVisible();
+  await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("No cover", { exact: true })).toBeVisible();
   await expect(page.getByText("1-24 of 30 circles", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
@@ -237,7 +237,7 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
   await page.goto("/voices?pageSize=24");
 
   await expect(page.getByRole("heading", { name: "Voice Actors" })).toBeVisible();
-  await expect(page.getByText("Latest RJ09999002", { exact: true })).toBeVisible();
+  await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("Cache 1", { exact: true }).first()).toBeVisible();
   await expect(
     page

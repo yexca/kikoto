@@ -100,6 +100,7 @@ import { ageRatingPresentation } from "@/lib/ageRating";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
 import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
@@ -256,7 +257,6 @@ type ActiveSourceInfoModel = {
   metadataDurationSeconds: number | null;
 };
 
-const WORK_CODE_PATTERN = /^\/((?:RJ|BJ|VJ|CC)\d{4,8})\/?$/i;
 const REMOTE_SOURCE_WORK_PATTERN = /^\/([^/?#]+)\/?$/;
 const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "none", label: "Unmarked" },
@@ -8735,7 +8735,7 @@ function knownLibraryRoute(path: string, search: string, sources: LibrarySource[
     ].includes(normalizedPath)
   )
     return true;
-  if (WORK_CODE_PATTERN.test(normalizedPath)) return true;
+  if (WORK_CODE_PATH_PATTERN.test(normalizedPath)) return true;
 
   const sourceID = Number(new URLSearchParams(search).get("source"));
   if (Number.isInteger(sourceID) && sourceID > 0) {
@@ -8979,7 +8979,7 @@ function searchQueryWithoutClause(clauses: SearchClause[], removeIndex: number) 
 }
 
 function codeFromPath(path: string) {
-  const match = path.match(WORK_CODE_PATTERN);
+  const match = path.match(WORK_CODE_PATH_PATTERN);
   return match ? match[1].toUpperCase() : null;
 }
 
@@ -9024,7 +9024,7 @@ function tabFromPath(path: string, sources: LibrarySource[], fallback: LibraryTa
   if (encodedKey === "") {
     return fallback;
   }
-  if (WORK_CODE_PATTERN.test(`/${encodedKey}`)) {
+  if (WORK_CODE_PATH_PATTERN.test(`/${encodedKey}`)) {
     return fallback;
   }
   const key = safeDecodePathSegment(encodedKey).toLowerCase();

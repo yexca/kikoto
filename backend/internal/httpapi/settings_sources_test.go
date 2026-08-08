@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -294,37 +295,37 @@ func TestPublicRemoteWorkURL(t *testing.T) {
 		{
 			name:     "default code route",
 			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example/"},
-			code:     "RJ0123",
-			want:     "https://remote.example/work/RJ0123",
+			code:     "RJ00000000",
+			want:     "https://remote.example/work/RJ00000000",
 		},
 		{
 			name:     "configured lower-case route",
 			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "/{codeLower}"},
-			code:     "VJ0123",
-			want:     "https://remote.example/vj0123",
+			code:     "VJ00000000",
+			want:     "https://remote.example/vj00000000",
 		},
 		{
 			name:     "configured alternate route",
 			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "/library/{code}"},
-			code:     "RJ0123",
-			want:     "https://remote.example/library/RJ0123",
+			code:     "RJ00000000",
+			want:     "https://remote.example/library/RJ00000000",
 		},
 		{
 			name:     "reject non-http base",
 			endpoint: fileSourceEndpoint{BaseURL: "javascript:alert(1)"},
-			code:     "RJ0123",
+			code:     "RJ00000000",
 			want:     "",
 		},
 		{
 			name:     "reject embedded credentials",
 			endpoint: fileSourceEndpoint{BaseURL: "https://synthetic-user:synthetic-password@example.invalid"},
-			code:     "RJ0123",
+			code:     "RJ00000000",
 			want:     "",
 		},
 		{
 			name:     "reject absolute template",
 			endpoint: fileSourceEndpoint{BaseURL: "https://remote.example", WorkURLTemplate: "https://other.example/{code}"},
-			code:     "RJ0123",
+			code:     "RJ00000000",
 			want:     "",
 		},
 	}
@@ -428,8 +429,8 @@ func TestManualFileSourceHealthCheckRefreshesStatus(t *testing.T) {
 func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/workInfo/RJ09999999":
-			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: "RJ09999999", Title: "Forked work"})
+		case "/api/workInfo/RJ00000008":
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: "RJ00000008", Title: "Forked work"})
 		case "/api/tracks/10":
 			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaStreamURL: "/media/track.mp3"}})
 		default:
@@ -446,7 +447,7 @@ func TestRemoteWorkSyncForksTrackTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
-	result, err := server.runRemoteWorkSync(context.Background(), 1, "RJ09999999", "test_fork")
+	result, err := server.runRemoteWorkSync(context.Background(), 1, "RJ00000008", "test_fork")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,9 +516,9 @@ func TestRemoteWorkTrackQueuesDeduplicatesForksAndNotifiesSubscribers(t *testing
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch r.URL.Path {
-		case "/api/workInfo/RJ09999995":
+		case "/api/workInfo/RJ00000006":
 			_ = json.NewEncoder(w).Encode(kikoeru.Work{
-				ID: 15, SourceID: "RJ09999995", Title: "Queued track work", ReviewCount: trackTestInt64Pointer(27),
+				ID: 15, SourceID: "RJ00000006", Title: "Queued track work", ReviewCount: trackTestInt64Pointer(27),
 			})
 		case "/api/tracks/15":
 			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "queued-track.mp3", MediaStreamURL: "/media/queued-track.mp3"}})
@@ -548,7 +549,7 @@ func TestRemoteWorkTrackQueuesDeduplicatesForksAndNotifiesSubscribers(t *testing
 	}
 
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
-	queued, err := server.enqueueRemoteWorkTrack(context.Background(), ownerID, 1, "RJ09999995", "manual_track")
+	queued, err := server.enqueueRemoteWorkTrack(context.Background(), ownerID, 1, "RJ00000006", "manual_track")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +559,7 @@ func TestRemoteWorkTrackQueuesDeduplicatesForksAndNotifiesSubscribers(t *testing
 	if requests != 0 {
 		t.Fatalf("enqueue performed %d upstream requests, want 0", requests)
 	}
-	reused, err := server.enqueueRemoteWorkTrack(context.Background(), subscriberID, 1, "rj09999995", "manual_track")
+	reused, err := server.enqueueRemoteWorkTrack(context.Background(), subscriberID, 1, "rj00000006", "manual_track")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +616,7 @@ func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
 	db := openMigratedTestDB(t)
 	result, err := db.Exec(`
 		INSERT INTO workflow_run (workflow_code, display_name, status, trigger_type, input_json)
-		VALUES ('remote_work_fetch', 'Fetch remote work', 'queued', 'manual', '{"work_code":"RJ09999998"}')
+		VALUES ('remote_work_fetch', 'Fetch remote work', 'queued', 'manual', '{"work_code":"RJ00000007"}')
 	`)
 	if err != nil {
 		t.Fatal(err)
@@ -631,11 +632,11 @@ func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
 	jobID, _ := result.LastInsertId()
 
 	server := NewServer(db, config.Config{})
-	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj09999998", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000007", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fetch.Deduplicated || fetch.RunID != runID || fetch.JobID != jobID || fetch.PrimaryCode != "RJ09999998" {
+	if !fetch.Deduplicated || fetch.RunID != runID || fetch.JobID != jobID || fetch.PrimaryCode != "RJ00000007" {
 		t.Fatalf("deduplicated fetch = %+v", fetch)
 	}
 	var runs int
@@ -755,13 +756,13 @@ func TestRemoteSourceSortMapping(t *testing.T) {
 
 func TestRemotePostFilterUsesExactRemoteCodeAndPersonalTags(t *testing.T) {
 	work := remoteWorkSummary{
-		PrimaryCode:    "RJ01000011",
-		RemoteCode:     "RJ01000012",
+		PrimaryCode:    "RJ00000002",
+		RemoteCode:     "RJ00000003",
 		RemoteID:       "42",
 		SearchUserTags: []string{"Sleep aid"},
 	}
 	for _, clause := range []listSearchClause{
-		{Kind: "code", Value: "RJ01000012"},
+		{Kind: "code", Value: "RJ00000003"},
 		{Kind: "user_tag", Value: "sleep"},
 		{Kind: "exclude_user_tag", Value: "archived"},
 	} {
@@ -783,7 +784,7 @@ func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) 
 		}
 		upstream = append(upstream, kikoeru.Work{
 			ID:       int64(index),
-			SourceID: fmt.Sprintf("RJ%08d", index),
+			SourceID: testfixture.WorkCodeAt(index - 1),
 			Title:    fmt.Sprintf("Work %d", index),
 			Tags:     tags,
 		})
@@ -828,7 +829,7 @@ func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 2 || len(works) != 1 || works[0].PrimaryCode != "RJ00000102" {
+	if total != 2 || len(works) != 1 || works[0].PrimaryCode != testfixture.WorkCodeAt(101) {
 		t.Fatalf("works = %+v, total = %d", works, total)
 	}
 	if !sortApplied {
@@ -887,14 +888,14 @@ func TestRemoteFetchRequestResultReturnsExistingRun(t *testing.T) {
 
 func TestNormalizedRemoteLanguageEditions(t *testing.T) {
 	editions := normalizedRemoteLanguageEditions(kikoeru.Work{
-		SourceID: "RJ09999992",
+		SourceID: "RJ00000005",
 		LanguageEditions: []kikoeru.LanguageEdition{
-			{WorkNo: "RJ09999992", Language: "CHI_HANS", Label: "Chinese", DisplayOrder: 2},
-			{WorkNo: "RJ09999991", Language: "JPN", Label: "Japanese", DisplayOrder: 1},
+			{WorkNo: "RJ00000005", Language: "CHI_HANS", Label: "Chinese", DisplayOrder: 2},
+			{WorkNo: "RJ00000004", Language: "JPN", Label: "Japanese", DisplayOrder: 1},
 			{WorkNo: "invalid", Language: "ENG", Label: "Invalid", DisplayOrder: 3},
 		},
 	})
-	if len(editions) != 2 || editions[0].RemoteCode != "RJ09999991" || !editions[0].Origin || editions[1].RemoteCode != "RJ09999992" || !editions[1].Current {
+	if len(editions) != 2 || editions[0].RemoteCode != "RJ00000004" || !editions[0].Origin || editions[1].RemoteCode != "RJ00000005" || !editions[1].Current {
 		t.Fatalf("editions = %+v", editions)
 	}
 }

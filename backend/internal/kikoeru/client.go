@@ -455,7 +455,7 @@ func normalizeWorkCode(value string) string {
 	if code == "" {
 		return ""
 	}
-	if matched, _ := regexp.MatchString(`^(RJ|BJ|VJ|CC)[0-9]{4,8}$`, code); matched {
+	if matched, _ := regexp.MatchString(`^(RJ|BJ|VJ|CC)[0-9]{5,8}$`, code); matched {
 		return code
 	}
 	return ""

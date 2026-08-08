@@ -20,7 +20,7 @@ func TestReplaceWorkUserTagsDeduplicatesAndLoadsBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999001', 'Tagged work')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Tagged work')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestSetWorkUserTagsReturnsUserTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID, _ := userResult.LastInsertId()
-	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999002', 'Handler work')")
+	workResult, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000001', 'Handler work')")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestAddWorkUserTagPreservesExistingTagsAndIsIdempotent(t *testing.T) {
 	db := openMigratedTestDB(t)
 	userResult, _ := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('tag-add', 'Tag Add', 'user')")
 	userID, _ := userResult.LastInsertId()
-	workResult, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ09999003', 'Add tag work')")
+	workResult, _ := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Add tag work')")
 	workID, _ := workResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	if _, err := server.replaceWorkUserTags(context.Background(), userID, workID, []string{"Existing"}); err != nil {

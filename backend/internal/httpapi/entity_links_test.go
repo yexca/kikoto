@@ -14,7 +14,7 @@ import (
 
 func TestSyncVoiceCreditPersistsProviderScopedExternalIdentity(t *testing.T) {
 	db := openMigratedTestDB(t)
-	if _, err := db.Exec("INSERT INTO work (id, primary_code, title) VALUES (50, 'RJ05000000', 'Remote identity work')"); err != nil {
+	if _, err := db.Exec("INSERT INTO work (id, primary_code, title) VALUES (50, 'RJ00000001', 'Remote identity work')"); err != nil {
 		t.Fatal(err)
 	}
 	var providerID int64
@@ -51,12 +51,12 @@ func TestSyncVoiceCreditPersistsProviderScopedExternalIdentity(t *testing.T) {
 func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testing.T) {
 	db := openMigratedTestDB(t)
 	statements := []string{
-		"INSERT INTO work (id, primary_code, title) VALUES (10, 'RJ01234567', 'Linked work')",
+		"INSERT INTO work (id, primary_code, title) VALUES (10, 'RJ00000000', 'Linked work')",
 		"INSERT INTO party (id, display_name) VALUES (20, 'Linked circle')",
 		"INSERT INTO party_external_id (party_id, provider_id, id_type, external_id, is_primary) SELECT 20, id, 'maker_id', 'RG01234567', 1 FROM metadata_provider WHERE code = 'dlsite'",
 		"INSERT INTO work_party (work_id, party_id, role, provider_id, source) SELECT 10, 20, 'circle', id, 'test' FROM metadata_provider WHERE code = 'dlsite'",
 		"INSERT INTO party_series (id, party_id, provider_id, title_id, name) SELECT 30, 20, id, 'SRI0000000001', 'Linked series' FROM metadata_provider WHERE code = 'dlsite'",
-		"INSERT INTO party_series_work (series_id, primary_code) VALUES (30, 'RJ01234567')",
+		"INSERT INTO party_series_work (series_id, primary_code) VALUES (30, 'RJ00000000')",
 		"INSERT INTO person (id, display_name) VALUES (40, 'Linked voice')",
 		"INSERT INTO person_alias (person_id, alias, source) VALUES (40, 'Voice alias', 'test')",
 		"INSERT INTO work_credit (work_id, person_id, role, provider_id, source) SELECT 10, 40, 'voice_actor', id, 'test' FROM metadata_provider WHERE code = 'dlsite'",
@@ -78,8 +78,8 @@ func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testi
 	}
 	for _, test := range tests {
 		t.Run(test.kind, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/api/works/RJ01234567/entity-links/resolve", strings.NewReader(`{"kind":"`+test.kind+`","name":"`+test.name+`"}`))
-			request.SetPathValue("code", "RJ01234567")
+			request := httptest.NewRequest(http.MethodPost, "/api/works/RJ00000000/entity-links/resolve", strings.NewReader(`{"kind":"`+test.kind+`","name":"`+test.name+`"}`))
+			request.SetPathValue("code", "RJ00000000")
 			response := httptest.NewRecorder()
 			server.resolveWorkEntityLink(response, request)
 			if response.Code != http.StatusOK {

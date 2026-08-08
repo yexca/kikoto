@@ -14,8 +14,7 @@ import {
 } from "@/features/workflows/workflowCommands";
 import { api, type WorkflowDefinition } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-const WORK_CODE_PATTERN = /^(RJ|BJ|VJ|CC)\d{4,8}$/i;
+import { isWorkCode } from "@/lib/workCode";
 
 type CommandPaletteProps = {
   open: boolean;
@@ -68,7 +67,7 @@ export function CommandPalette({
   );
   const cleanQuery = query.trim();
   const parsedCommand = useMemo(() => parseWorkflowCommand(query), [query]);
-  const codeMatch = WORK_CODE_PATTERN.test(cleanQuery);
+  const codeMatch = isWorkCode(cleanQuery);
   const handleWorkflowBusyChange = useCallback(
     (nextBusy: boolean) => {
       setWorkflowLaunchBusy(nextBusy);

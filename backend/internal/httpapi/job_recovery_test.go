@@ -95,10 +95,10 @@ func TestDecodeWorkflowJobCheckpointDetailSupportsRawAndEnvelope(t *testing.T) {
 	type checkpoint struct {
 		Completed []string `json:"completed"`
 	}
-	want := checkpoint{Completed: []string{"RJ01234567"}}
+	want := checkpoint{Completed: []string{"RJ00000001"}}
 	for name, raw := range map[string]string{
-		"raw":      `{"completed":["RJ01234567"]}`,
-		"envelope": `{"phase":"dispatch","detail":{"completed":["RJ01234567"]},"progressCurrent":1}`,
+		"raw":      `{"completed":["RJ00000001"]}`,
+		"envelope": `{"phase":"dispatch","detail":{"completed":["RJ00000001"]},"progressCurrent":1}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			var got checkpoint
@@ -261,7 +261,7 @@ func TestLocalLocationCleanupResumeSkipsCompletedLocations(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: t.TempDir()})
 	statements := []string{
 		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'local', 'Local', 'local_folder')`,
-		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ01234567', 'Work')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
 		`INSERT INTO media_item (id, work_id, kind, title) VALUES (1, 1, 'audio', 'One'), (2, 1, 'audio', 'Two')`,
 		`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (1, 1, 1, 'cache', 'already-completed.mp3', 'available'), (2, 2, 1, 'local', 'pending.mp3', 'available')`,
 		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'local_location_cleanup'), 'local_location_cleanup', 'Cleanup', 'running', 'manual')`,

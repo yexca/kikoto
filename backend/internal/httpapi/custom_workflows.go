@@ -30,7 +30,7 @@ var (
 	customWorkflowIDPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 	customWorkflowAliasPattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{1,31}$`)
 	customWorkflowInputKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
-	customWorkflowWorkCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{4,8}$`)
+	customWorkflowWorkCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
 )
 
 type customWorkflowDefinition struct {

@@ -16,8 +16,8 @@ func TestAvailabilityWatchObservationDoesNotMaterializeWorkOrActivity(t *testing
 		switch r.URL.Path {
 		case "/api/health":
 			_ = json.NewEncoder(w).Encode("ok")
-		case "/api/search/RJ09999991":
-			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{{ID: 91, SourceID: "RJ09999991", Title: "Available"}}})
+		case "/api/search/RJ00000000":
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{{ID: 91, SourceID: "RJ00000000", Title: "Available"}}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -29,7 +29,7 @@ func TestAvailabilityWatchObservationDoesNotMaterializeWorkOrActivity(t *testing
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'watcher', 'admin')`,
 		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`,
 		`INSERT INTO availability_watch (id, owner_user_id, enabled, interval_minutes, action, source_id) VALUES (1, 1, 1, 60, 'monitor', 1)`,
-		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, next_check_at) VALUES (1, 1, 'RJ09999991', 'monitoring', CURRENT_TIMESTAMP)`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, next_check_at) VALUES (1, 1, 'RJ00000000', 'monitoring', CURRENT_TIMESTAMP)`,
 		`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0')`,
 	} {
 		if _, err := db.Exec(statement); err != nil {

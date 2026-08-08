@@ -28,6 +28,7 @@ import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/app/events";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { isWorkCodePath } from "@/lib/workCode";
 import {
   HISTORY_ENTRY_UPDATED_EVENT,
   NAVIGATION_EVENT,
@@ -61,7 +62,6 @@ const CirclesPage = lazy(() => import("@/pages/CirclesPage").then((module) => ({
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 
 const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
-const WORK_CODE_PATH_PATTERN = /^\/(?:RJ|BJ|VJ|CC)\d{4,8}\/?$/i;
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
 type AppPage = PageID | "not-found";
 
@@ -666,7 +666,7 @@ function PageLoading() {
 
 function pageFromPath(rawPath: string): AppPage {
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath;
-  if (path === "/" || WORK_CODE_PATH_PATTERN.test(path)) {
+  if (path === "/" || isWorkCodePath(path)) {
     return "library";
   }
   if (path === "/runs") {
