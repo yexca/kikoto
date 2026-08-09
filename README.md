@@ -16,9 +16,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/yexca/kikoto/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/yexca/kikoto/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/yexca/kikoto/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/yexca/kikoto"></a>
-  <a href="https://hub.docker.com/r/yexca/kikoto"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/yexca/kikoto"></a>
+  <a href="https://kikoto.yexca.net"><img alt="Live demo" src="https://img.shields.io/badge/demo-kikoto.yexca.net-0f766e"></a>
+  <a href="https://hub.docker.com/r/yexca/kikoto"><img alt="Docker image" src="https://img.shields.io/badge/docker-yexca%2Fkikoto-2496ed?logo=docker&amp;logoColor=white"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/github/license/yexca/kikoto"></a>
 </p>
 
