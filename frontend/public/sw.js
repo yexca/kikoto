@@ -1,4 +1,4 @@
-const CACHE_NAME = "kikoto-app-v1";
+const CACHE_NAME = "kikoto-app-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
