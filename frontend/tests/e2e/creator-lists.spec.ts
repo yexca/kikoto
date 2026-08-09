@@ -31,6 +31,79 @@ const circle = {
   latestWork,
 };
 
+const circleCatalogWorks = [
+  {
+    workId: 1,
+    primaryCode: "RJ00000003",
+    remoteCode: "RJ00000003",
+    title: "Example Circle Work",
+    releaseDate: "2026-07-02",
+    updatedAt: "2026-07-02T00:00:00Z",
+    coverUrl: "",
+    dlsiteUrl: "",
+    circle: "Example Circle",
+    circleExternalId: "RG09999",
+    ageRating: "R15",
+    tags: [],
+    userTags: [],
+    voiceActors: [],
+    voiceRefs: [],
+    voiceCredits: [],
+    rating: null,
+    ratingCount: null,
+    sales: null,
+    hasAvailableNonOriginEdition: false,
+    regularPrice: null,
+    price: null,
+    priceCurrency: "JPY",
+    permanentlyFree: false,
+    series: "",
+    seriesTitleId: "",
+    catalogStatus: "imported",
+    dlsiteAvailable: true,
+    listeningMark: "none",
+    favorite: false,
+    local: true,
+    remote: false,
+    sourceTags: [{ key: "local", sourceId: null, displayName: "Local", status: "available", count: 1 }],
+  },
+  {
+    workId: null,
+    primaryCode: "RJ00000004",
+    remoteCode: "RJ00000004",
+    title: "Example Catalog-only Work",
+    releaseDate: "2026-07-03",
+    updatedAt: "2026-07-03T00:00:00Z",
+    coverUrl: "",
+    dlsiteUrl: "",
+    circle: "Example Circle",
+    circleExternalId: "RG09999",
+    ageRating: "R15",
+    tags: [],
+    userTags: [],
+    voiceActors: [],
+    voiceRefs: [],
+    voiceCredits: [],
+    rating: null,
+    ratingCount: null,
+    sales: null,
+    hasAvailableNonOriginEdition: false,
+    regularPrice: null,
+    price: null,
+    priceCurrency: "JPY",
+    permanentlyFree: false,
+    series: "",
+    seriesTitleId: "",
+    catalogStatus: "catalog_only",
+    dlsiteAvailable: true,
+    listeningMark: "none",
+    favorite: false,
+    local: false,
+    remote: false,
+    sourceTags: [],
+  },
+];
+
 const voice = {
   personId: 7,
   displayName: "Example Voice",
@@ -142,7 +215,12 @@ async function mockCreatorDetails(page: Page) {
   const circleDetail = {
     ...circle,
     aliases: ["Circle alias", "Second alias"],
-    works: [],
+    localWorks: 1,
+    playableWorks: 1,
+    remoteWorks: 0,
+    missingWorks: 1,
+    catalogWorks: circleCatalogWorks.length,
+    works: circleCatalogWorks,
     series: [],
   };
 
@@ -198,6 +276,19 @@ async function mockCreatorDetails(page: Page) {
     }
     if (url.pathname === "/api/circles/RG09999") {
       await route.fulfill({ json: circleDetail });
+      return;
+    }
+    if (url.pathname === "/api/circles") {
+      await route.fulfill({
+        json: {
+          circles: [circle],
+          page: Number(url.searchParams.get("page") ?? "1"),
+          pageSize: 24,
+          total: 30,
+          catalogWorks: circle.catalogWorks,
+          availableWorks: circle.playableWorks,
+        },
+      });
       return;
     }
     if (url.pathname === "/api/circles/RG09999/auto-refresh") {
@@ -335,4 +426,138 @@ test("circle detail keeps stats together and aliases folded on mobile", async ({
   await expect(aliases).not.toHaveAttribute("open", "");
   await expect(aliases.getByText("Circle alias, Second alias", { exact: true })).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("mobile circle detail keeps the work surface visible and moves secondary controls into sheets", async ({
+  page,
+}) => {
+  await mockCreatorDetails(page);
+  await page.goto("/circles/RG09999");
+
+  await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
+  await expect(page.getByText("Workflow Shortcuts", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open advanced refresh actions" }).click();
+  const refreshDialog = page.getByRole("dialog", { name: "Advanced refresh" });
+  await expect(refreshDialog).toBeVisible();
+  await expect(refreshDialog.getByRole("button", { name: "Incremental" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Close advanced refresh actions" }).click();
+
+  await page.getByRole("button", { name: "Open catalog options" }).click();
+  const optionsDialog = page.getByRole("dialog", { name: "Catalog options" });
+  await expect(optionsDialog).toBeVisible();
+  await expect(optionsDialog.getByRole("button", { name: "1 column" })).toHaveText("1");
+  await expect(optionsDialog.getByRole("button", { name: "2 columns" })).toHaveText("2");
+  await expect(optionsDialog.getByRole("button", { name: "Automatic columns" })).toHaveText("Auto");
+
+  await optionsDialog.getByRole("button", { name: "Unavailable" }).click();
+  await expect(optionsDialog.getByRole("button", { name: "Unavailable" })).toHaveAttribute("aria-pressed", "true");
+  await optionsDialog.getByRole("button", { name: "Masonry" }).click();
+  await optionsDialog.getByRole("button", { name: "2 columns" }).click();
+  await expect(optionsDialog.getByRole("button", { name: "2 columns" })).toHaveAttribute("aria-pressed", "true");
+  await optionsDialog.getByRole("button", { name: "Select works" }).click();
+  await expect(optionsDialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Open catalog options" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Catalog options" }).getByRole("button", { name: "Exit selection mode" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close catalog options" }).click();
+
+  const dialogMetrics = await page
+    .getByTestId("work-card")
+    .first()
+    .evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+    }));
+  expect(dialogMetrics.width).toBeLessThanOrEqual(dialogMetrics.viewport);
+});
+
+test("desktop circle detail keeps a full-width compact summary and source-aware return", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    window.history.replaceState({ returnTo: "/", returnLabel: "Back to library" }, "", window.location.href);
+  });
+  await mockCreatorDetails(page);
+  await page.goto("/circles/RG09999");
+
+  await expect(page.getByRole("button", { name: "Back to library", exact: true })).toBeVisible();
+  const summary = page.getByRole("region", { name: "Circle summary" });
+  await expect(summary).toBeVisible();
+  const summaryWidths = await summary.evaluate((element) => ({
+    region: element.getBoundingClientRect().width,
+    card: element.firstElementChild?.getBoundingClientRect().width ?? 0,
+  }));
+  expect(Math.abs(summaryWidths.region - summaryWidths.card)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("group", { name: "Catalog only: 1" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Playable: 1" })).toBeVisible();
+
+  await page.getByLabel("Catalog availability filter").selectOption("unavailable");
+  await expect(page.getByRole("group", { name: "Catalog only: 1" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Playable: 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open catalog options" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
+});
+
+test("mobile circle detail returns to the circle list entry that opened it", async ({ page }) => {
+  await mockCreatorDetails(page);
+  await page.goto("/circles?q=Example&page=2&pageSize=24");
+
+  await page.getByRole("button", { name: "Open Example Circle" }).click();
+  await expect(page).toHaveURL(/\/circles\/RG09999$/);
+  await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to circles", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
+  await expect(page.getByRole("heading", { name: "Circles", exact: true })).toBeVisible();
+});
+
+test("mobile circle navigation does not resume a detail route after returning from Library", async ({ page }) => {
+  await mockCreatorDetails(page);
+  await page.goto("/circles?q=Example&page=2&pageSize=24");
+  await expect(page.getByRole("button", { name: "Open Example Circle" })).toBeVisible();
+
+  const libraryTab = page.locator("footer").getByRole("button", { name: "Library", exact: true });
+  await libraryTab.click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.evaluate(() => {
+    window.history.pushState({ returnTo: "/", returnLabel: "Back to library" }, "", "/circles/RG09999");
+    window.dispatchEvent(new Event("kikoto:navigation"));
+  });
+  await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to circles", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
+
+  await libraryTab.click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.locator("footer").getByRole("button", { name: "Circles", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\?q=Example&page=2&pageSize=24$/);
+  await expect(page.getByRole("heading", { name: "Circles", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to circles", exact: true })).toHaveCount(0);
+});
+
+test("command palette stays within the resized mobile visual viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await mockCreatorDetails(page);
+  await page.goto("/circles/RG09999");
+
+  await page.getByRole("button", { name: "Open command palette" }).click();
+  const dialog = page.getByRole("dialog", { name: "Command palette" });
+  const input = page.getByPlaceholder("Search, open a work code, or type /workflow");
+  await expect(dialog).toBeVisible();
+  await expect(input).toBeFocused();
+
+  await page.setViewportSize({ width: 412, height: 430 });
+  await expect
+    .poll(async () => {
+      const box = await dialog.boundingBox();
+      return box ? box.y + box.height <= 430 : false;
+    })
+    .toBe(true);
+  await expect(input).toBeVisible();
+  await expect(page.locator("footer")).toHaveCount(0);
 });

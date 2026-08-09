@@ -18,7 +18,17 @@ Circles represent makers, circles, and related party catalog state.
   cards as the Library. This applies to both circle detail and circle series;
   the separate circle-entity list keeps its own controls.
 - On mobile detail views, the four catalog statistics remain in one compact row
-  and non-empty aliases start folded below the circle name.
+  and non-empty aliases start folded below the circle name. The same compact
+  statistics treatment applies on wide layouts, and the values describe the
+  whole circle rather than the active work filter.
+- Keeps the two common refresh actions in the detail summary and moves targeted
+  catalog, metadata, and source refresh modes into an Advanced sheet.
+- Keeps mobile work controls to the Works/Series switch, search, and one Catalog
+  options action. Availability, grid/masonry, mobile columns, and selection mode
+  live in that sheet; wide layouts retain inline controls.
+- Treats the mobile detail back control as Up to the last server-and-user-scoped
+  Circles list location, including when the detail was opened from Library.
+  Wide layouts keep the source-aware history return label and destination.
 - Allows stale catalog rows to be removed after confirmation.
 
 ## Boundary

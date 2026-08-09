@@ -117,6 +117,10 @@
     --safe-area-right: env(safe-area-inset-right, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
+    --visual-viewport-width: 100vw;
+    --visual-viewport-height: 100dvh;
+    --visual-viewport-offset-top: 0px;
+    --visual-viewport-offset-left: 0px;
     --mobile-navigation-height: 4rem;
     --compact-player-height: 4.5rem;
     --mini-player-size: 5.75rem;
@@ -502,6 +506,14 @@
 
   .app-main {
     padding-bottom: var(--app-content-bottom-clearance);
+  }
+
+  .visual-viewport-layer {
+    position: fixed;
+    top: var(--visual-viewport-offset-top);
+    left: var(--visual-viewport-offset-left);
+    width: var(--visual-viewport-width);
+    height: var(--visual-viewport-height);
   }
 
   html[data-player-mode="compact"] {

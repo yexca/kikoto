@@ -65,6 +65,10 @@ small shared contract should resolve cross-domain needs.
 - Keep playback global so navigation does not interrupt the current queue.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
+- Size mobile search and modal layers against the visual viewport. The Android
+  shell requests resize behavior for the software keyboard, while the frontend
+  hides bottom navigation and player surfaces during text entry so focused
+  controls and scrollable results remain visible.
 - Treat each mobile bottom-navigation destination as a resumable workspace.
   Switching destinations restores that destination's last stable list or detail
   route, history state, and scroll position for the current server and user;
@@ -74,6 +78,10 @@ small shared contract should resolve cross-domain needs.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid/masonry behavior and responsive column choices should remain aligned.
+- Treat a compact detail-page back control as Up navigation. Circle detail uses
+  the current server-and-user-scoped Circles list location on mobile instead of
+  returning to another bottom-navigation destination; wide layouts retain the
+  source-aware browser-history return.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, and known available
   alternate-language state; playback history belongs outside the shared card.

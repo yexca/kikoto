@@ -121,15 +121,23 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     const viewport = window.visualViewport;
+    const root = document.documentElement;
     const isTextInput = (element: Element | null) => {
       if (!(element instanceof HTMLElement)) return false;
       return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable;
     };
     const currentViewportHeight = () => viewport?.height ?? window.innerHeight;
+    const applyViewportMetrics = () => {
+      root.style.setProperty("--visual-viewport-width", `${Math.max(1, viewport?.width ?? window.innerWidth)}px`);
+      root.style.setProperty("--visual-viewport-height", `${Math.max(1, currentViewportHeight())}px`);
+      root.style.setProperty("--visual-viewport-offset-top", `${Math.max(0, viewport?.offsetTop ?? 0)}px`);
+      root.style.setProperty("--visual-viewport-offset-left", `${Math.max(0, viewport?.offsetLeft ?? 0)}px`);
+    };
     keyboardBaselineHeight.current = Math.max(window.innerHeight, currentViewportHeight());
     let frame: number | null = null;
     const updateKeyboardState = () => {
       frame = null;
+      applyViewportMetrics();
       const height = currentViewportHeight();
       const baseline = keyboardBaselineHeight.current || height;
       const focused = isTextInput(document.activeElement);
@@ -157,6 +165,10 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
       window.removeEventListener("focusout", scheduleUpdate);
       viewport?.removeEventListener("resize", scheduleUpdate);
       viewport?.removeEventListener("scroll", scheduleUpdate);
+      root.style.removeProperty("--visual-viewport-width");
+      root.style.removeProperty("--visual-viewport-height");
+      root.style.removeProperty("--visual-viewport-offset-top");
+      root.style.removeProperty("--visual-viewport-offset-left");
     };
   }, []);
 

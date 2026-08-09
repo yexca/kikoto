@@ -8,6 +8,7 @@ import {
   HardDriveDownload,
   Heart,
   ListChecks,
+  MoreHorizontal,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -16,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
@@ -61,7 +62,9 @@ import {
   type ListeningStatus,
 } from "@/lib/api";
 import { NAVIGATION_EVENT, historyStateWithReturn, navigateToHistoryReturn } from "@/lib/browserHistory";
+import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
+import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
@@ -71,6 +74,18 @@ import {
   REMOTE_TRACK_TERMINAL_EVENT,
   type RemoteTrackTerminalDetail,
 } from "@/app/remoteTrackWorkflows";
+import {
+  isCircleListLocation,
+  readLastCircleListLocation,
+  writeLastCircleListLocation,
+} from "@/pages/circleNavigationState";
+import {
+  CircleAdvancedRefreshSheet,
+  CircleCatalogOptionsSheet,
+  type CircleAvailabilityFilter,
+  type CircleRefreshMode,
+  type CircleRefreshScope,
+} from "@/pages/CircleDetailSheets";
 import { creatorBrowseSearch, creatorBrowseStateFromSearch } from "@/pages/creatorBrowseState";
 
 const PLACEHOLDER_CIRCLE_ID = "RG012345";
@@ -97,9 +112,7 @@ const circleFilters: readonly CircleFilter[] = [
   "missing",
   "stale",
 ];
-type CircleRefreshScope = "all" | "catalog" | "work" | "source";
 type CircleRefreshResultScope = CircleRefreshScope | "metadata";
-type CircleRefreshMode = "incremental" | "full";
 
 export function CirclesPage() {
   const [path, setPath] = useState(window.location.pathname);
@@ -121,7 +134,11 @@ export function CirclesPage() {
 
 export function openCircleRoute(externalId = PLACEHOLDER_CIRCLE_ID) {
   const returnTo = currentCircleReturnPath();
-  window.history.pushState(historyStateWithReturn(returnTo, "Back"), "", `/circles/${encodeURIComponent(externalId)}`);
+  window.history.pushState(
+    historyStateWithReturn(returnTo, circleReturnLabelForLocation(returnTo)),
+    "",
+    `/circles/${encodeURIComponent(externalId)}`,
+  );
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
@@ -129,7 +146,7 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
   const suffix = seriesCode ? `/series/${encodeURIComponent(seriesCode)}` : "/series";
   const returnTo = currentCircleReturnPath();
   window.history.pushState(
-    historyStateWithReturn(returnTo, "Back"),
+    historyStateWithReturn(returnTo, circleReturnLabelForLocation(returnTo)),
     "",
     `/circles/${encodeURIComponent(externalId)}${suffix}`,
   );
@@ -137,7 +154,9 @@ export function openCircleSeriesRoute(externalId: string, seriesCode?: string | 
 }
 
 function CircleListPage() {
+  const auth = useAuth();
   const toast = useToast();
+  const storageScope = currentClientStorageScope(auth.user?.id ?? null);
   const initialBrowseState = useMemo(
     () =>
       creatorBrowseStateFromSearch(
@@ -169,8 +188,10 @@ function CircleListPage() {
 
   useEffect(() => {
     const search = creatorBrowseSearch({ query, filter, tag: "", page, pageSize });
-    window.history.replaceState(window.history.state ?? {}, "", `/circles${search}`);
-  }, [filter, page, pageSize, query]);
+    const location = `/circles${search}`;
+    window.history.replaceState(window.history.state ?? {}, "", location);
+    writeLastCircleListLocation(storageScope, location);
+  }, [filter, page, pageSize, query, storageScope]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -332,8 +353,10 @@ function CircleListPage() {
   );
 }
 function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seriesCode?: string | null }) {
+  const auth = useAuth();
   const toast = useToast();
   const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const compactLayout = useCompactLayout();
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -345,13 +368,13 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ count: number; run: () => Promise<void> } | null>(null);
+  const [advancedRefreshOpen, setAdvancedRefreshOpen] = useState(false);
+  const [catalogOptionsOpen, setCatalogOptionsOpen] = useState(false);
   const fetchWorkspace = useRemoteFetchWorkspace({
     onWorksChanged: async () => setDetail(await api.getCircle(externalId)),
   });
   const [workQuery, setWorkQuery] = useState("");
-  const [availabilityFilter, setAvailabilityFilter] = useState<
-    "all" | "available" | "unavailable" | "local" | "remote"
-  >("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<CircleAvailabilityFilter>("all");
   const [workPage, setWorkPage] = useState(1);
   const [workPageSize, setWorkPageSize] = useState<CatalogWorkPageSize>(24);
 
@@ -462,14 +485,16 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       }
     });
   }, [availabilityFilter, circle.works, workQuery]);
-  const catalogOnlyCount = filteredWorks.filter((work) => work.catalogStatus !== "imported").length;
-  const playableCount = filteredWorks.filter((work) => work.local || work.remote).length;
+  const catalogOnlyCount = circle.works.filter((work) => work.catalogStatus !== "imported").length;
+  const playableCount = circle.playableWorks;
   const totalWorkPages = Math.max(1, Math.ceil(filteredWorks.length / workPageSize));
   const currentWorkPage = Math.min(workPage, totalWorkPages);
   const pagedWorks = filteredWorks.slice((currentWorkPage - 1) * workPageSize, currentWorkPage * workPageSize);
   const selectablePagedWorks = pagedWorks.filter(isCircleBulkSaveSelectable);
   const selectedWorks = circle.works.filter((work) => selectedWorkCodes.has(work.primaryCode));
   const selectedSyncableWorks = selectedWorks.filter((work) => work.workId === null);
+  const circleListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
+  const navigateToList = () => navigateToCirclesList(circleListStorageScope);
 
   useEffect(() => {
     setWorkPage(1);
@@ -749,7 +774,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
       <NotFoundPage
         title="Circle not found"
         message={`${externalId} is not available in the current catalog.`}
-        onBack={() => navigateToCirclesList()}
+        onBack={navigateToList}
         onOpenLibrary={() => {
           window.history.pushState({}, "", "/");
           window.dispatchEvent(new Event("kikoto:navigation"));
@@ -760,12 +785,12 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
 
   return (
     <div className="space-y-5">
-      <Button variant="outline" size="sm" onClick={() => navigateToCirclesList()}>
+      <Button variant="outline" size="sm" onClick={navigateToList}>
         <ChevronLeft className="h-4 w-4" />
-        Back to circles
+        {compactLayout ? "Back to circles" : circleReturnLabel()}
       </Button>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section aria-label="Circle summary">
         <Card>
           <CardContent className="space-y-4 p-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -823,10 +848,21 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                   <RefreshCw className="h-4 w-4" />
                   Refresh circle
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2 px-2 sm:px-3"
+                  aria-label="Open advanced refresh actions"
+                  title="Advanced refresh actions"
+                  onClick={() => setAdvancedRefreshOpen(true)}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">Advanced</span>
+                </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-px overflow-hidden rounded-md border bg-border sm:gap-3 sm:overflow-visible sm:border-0 sm:bg-transparent">
+            <div className="grid grid-cols-4 gap-px overflow-hidden rounded-md border bg-border">
               <Stat label="Catalog works" value={String(circle.catalogWorks || circle.works.length)} />
               <Stat label="Series" value={String(circle.series.length)} />
               <Stat label="Catalog only" value={String(catalogOnlyCount)} />
@@ -834,59 +870,25 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Workflow Shortcuts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <RefreshActionRow
-              title="Catalog"
-              description={`${circle.catalogWorks} works · ${circle.lastSyncedAt ? `last ${circle.lastSyncedAt}` : "never synced"}`}
-              disabled={refreshingScope !== null || isTranslationCircle(circle.externalId)}
-              active={refreshingScope === "catalog" || refreshingScope === "all"}
-              onRun={(mode) => void refresh("catalog", mode)}
-            />
-            <RefreshActionRow
-              title="Work metadata"
-              description={`${catalogOnlyCount} catalog only · ${playableCount} playable in current filter`}
-              disabled={refreshingScope !== null}
-              active={refreshingScope === "work" || refreshingScope === "all"}
-              onRun={(mode) => void refresh("work", mode)}
-            />
-            <RefreshActionRow
-              title="Sources"
-              description={`${circle.localWorks} local · ${circle.remoteWorks} remote · ${circle.missingWorks} missing`}
-              disabled={refreshingScope !== null || isTranslationCircle(circle.externalId)}
-              active={refreshingScope === "source" || refreshingScope === "all"}
-              onRun={(mode) => void refresh("source", mode)}
-            />
-            {isTranslationCircle(circle.externalId) && (
-              <div className="text-xs text-muted-foreground">
-                Catalog and source refresh are disabled for translation umbrella circles.
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex h-9 rounded-md border bg-background p-1 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 lg:flex-row lg:items-center">
+          <div className="flex h-10 shrink-0 rounded-md border bg-background p-1 text-sm">
             <button
-              className={`rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              className={`min-h-8 rounded px-3 ${!isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               onClick={() => openCircleRoute(circle.externalId)}
             >
               Works {circle.works.length}
             </button>
             <button
-              className={`rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+              className={`min-h-8 rounded px-3 ${isSeriesView ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
               onClick={() => openCircleSeriesRoute(circle.externalId)}
             >
               Series {circle.series.length}
             </button>
           </div>
-          <div className="flex min-h-10 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
+          <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-3 text-sm text-muted-foreground">
             <Search className="h-4 w-4" />
             <input
               className="min-w-0 flex-1 bg-transparent outline-none"
@@ -895,8 +897,21 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               onChange={(event) => setWorkQuery(event.target.value)}
               placeholder="Search circle catalog works"
             />
+            <Button
+              variant="outline"
+              size="icon"
+              className="relative shrink-0 lg:hidden"
+              aria-label="Open catalog options"
+              title="Catalog options"
+              onClick={() => setCatalogOptionsOpen(true)}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              {availabilityFilter !== "all" && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+              )}
+            </Button>
           </div>
-          <div className="flex gap-2">
+          <div className="hidden shrink-0 gap-2 lg:flex">
             <WorkCollectionLayoutPicker
               viewMode={viewMode}
               mobileColumns={mobileColumns}
@@ -908,9 +923,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={availabilityFilter}
-              onChange={(event) =>
-                setAvailabilityFilter(event.target.value as "all" | "available" | "unavailable" | "local" | "remote")
-              }
+              onChange={(event) => setAvailabilityFilter(event.target.value as CircleAvailabilityFilter)}
               aria-label="Catalog availability filter"
             >
               <option value="all">All works</option>
@@ -919,10 +932,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               <option value="local">Local</option>
               <option value="remote">Remote</option>
             </select>
-            <Button variant="outline" size="sm" disabled>
-              <SlidersHorizontal className="h-4 w-4" />
-              More
-            </Button>
             {!isSeriesView && (
               <Button
                 variant={selectionMode ? "default" : "outline"}
@@ -939,6 +948,26 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
             )}
           </div>
         </div>
+
+        <CircleCatalogOptionsSheet
+          open={catalogOptionsOpen}
+          onClose={() => setCatalogOptionsOpen(false)}
+          isSeriesView={isSeriesView}
+          selectionMode={selectionMode}
+          availabilityFilter={availabilityFilter}
+          onAvailabilityFilterChange={setAvailabilityFilter}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          mobileColumns={mobileColumns}
+          onMobileColumnsChange={setMobileColumns}
+          onSelectWorks={() => {
+            setCatalogOptionsOpen(false);
+            setSelectionMode((value) => {
+              if (value) setSelectedWorkCodes(new Set());
+              return !value;
+            });
+          }}
+        />
 
         {isSeriesView ? (
           <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -1167,6 +1196,16 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           onConfirm={() => void saveConfirm.run()}
         />
       )}
+      <CircleAdvancedRefreshSheet
+        open={advancedRefreshOpen}
+        circle={circle}
+        catalogOnlyCount={catalogOnlyCount}
+        playableCount={playableCount}
+        refreshingScope={refreshingScope}
+        isTranslationCircle={isTranslationCircle(circle.externalId)}
+        onClose={() => setAdvancedRefreshOpen(false)}
+        onRun={(scope, mode) => void refresh(scope, mode)}
+      />
       <RemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
     </div>
   );
@@ -1400,40 +1439,6 @@ function WorkProgressLine({ progress }: { progress: NonNullable<CircleCatalogWor
   );
 }
 
-function RefreshActionRow({
-  title,
-  description,
-  disabled,
-  active,
-  onRun,
-}: {
-  title: string;
-  description: string;
-  disabled?: boolean;
-  active?: boolean;
-  onRun: (mode: CircleRefreshMode) => void;
-}) {
-  return (
-    <div className="rounded-md border bg-background px-3 py-2">
-      <div className="mb-1.5 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{title}</div>
-          <div className="truncate text-xs text-muted-foreground">{description}</div>
-        </div>
-        {active && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-primary" />}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("incremental")}>
-          Incremental
-        </Button>
-        <Button className="h-8" variant="outline" size="sm" disabled={disabled} onClick={() => onRun("full")}>
-          Full
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function workProductMode(scope: CircleRefreshScope, mode: CircleRefreshMode): "available" | "all" {
   if (scope === "work" && mode === "full") {
     return "all";
@@ -1477,12 +1482,10 @@ function SyncBadge({ state }: { state: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="min-w-0 rounded-none border-0 sm:rounded-lg sm:border">
-      <CardContent className="p-2 text-center sm:p-4 sm:text-left">
-        <div className="text-lg font-semibold tabular-nums sm:text-2xl">{value}</div>
-        <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-sm">{label}</div>
-      </CardContent>
-    </Card>
+    <div role="group" aria-label={`${label}: ${value}`} className="min-w-0 bg-card p-2 text-center">
+      <div className="text-lg font-semibold tabular-nums sm:text-xl">{value}</div>
+      <div className="break-words text-[10px] leading-tight text-muted-foreground sm:text-xs">{label}</div>
+    </div>
   );
 }
 
@@ -1708,6 +1711,27 @@ function currentCircleReturnPath() {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
+function circleReturnLabel() {
+  const state = window.history.state as { returnTo?: unknown; returnLabel?: unknown } | null;
+  if (typeof state?.returnTo === "string") return circleReturnLabelForLocation(state.returnTo);
+  return "Back to circles";
+}
+
+function circleReturnLabelForLocation(location: string) {
+  try {
+    const pathname = new URL(location, window.location.origin).pathname;
+    if (pathname === "/" || pathname === "") return "Back to library";
+    if (/^\/favorites\/?$/i.test(pathname)) return "Back to favorites";
+    if (/^\/circles\/?$/i.test(pathname)) return "Back to circles";
+    if (/^\/voices(?:\/|$)/i.test(pathname)) return "Back to voice actors";
+    if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
+    if (/^\/RJ|^\/BJ|^\/VJ|^\/CC/i.test(pathname)) return "Back to work";
+  } catch {
+    // Fall through to the generic label for malformed history state.
+  }
+  return "Back";
+}
+
 function dlsiteMakerURL(externalId: string) {
   const site = externalId.toUpperCase().startsWith("VG") ? "pro" : "maniax";
   return `https://www.dlsite.com/${site}/circle/profile/=/maker_id/${encodeURIComponent(externalId)}.html`;
@@ -1739,8 +1763,31 @@ function circleRouteFromPath(path: string) {
   };
 }
 
-function navigateToCirclesList() {
-  navigateToHistoryReturn({ fallbackLocation: "/circles" });
+function navigateToCirclesList(storageScope?: string) {
+  if (!window.matchMedia("(max-width: 1023px)").matches) {
+    navigateToHistoryReturn({ fallbackLocation: "/circles" });
+    return;
+  }
+  const state = window.history.state as { returnTo?: unknown } | null;
+  const returnTo = typeof state?.returnTo === "string" ? state.returnTo : null;
+  if (returnTo && isCircleListLocation(returnTo)) {
+    window.history.back();
+    return;
+  }
+  const fallback = (storageScope && readLastCircleListLocation(storageScope)) || "/circles";
+  window.history.replaceState({}, "", fallback);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
+}
+
+function useCompactLayout() {
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return compact;
 }
 
 function safeDecodePathSegment(value: string) {

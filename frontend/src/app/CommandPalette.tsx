@@ -216,9 +216,15 @@ export function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/55 p-4 backdrop-blur-sm" onMouseDown={() => onOpenChange(false)}>
+    <div
+      className="visual-viewport-layer z-50 flex min-h-0 bg-background/55 p-2 backdrop-blur-sm sm:p-4 lg:block"
+      onMouseDown={() => onOpenChange(false)}
+    >
       <div
-        className="mx-auto mt-[10vh] flex max-h-[76vh] w-full max-w-2xl flex-col overflow-hidden rounded-md border bg-card shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden rounded-md border bg-card shadow-xl lg:mt-[10vh] lg:flex-none lg:max-h-[76vh]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex min-h-14 items-center gap-3 border-b px-4">
