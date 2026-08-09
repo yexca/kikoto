@@ -71,6 +71,22 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      boxShadow: {
+        sm: "var(--shadow-sm)",
+        DEFAULT: "var(--shadow-md)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+        xl: "var(--shadow-xl)",
+        "2xl": "var(--shadow-2xl)",
+      },
+      transitionDuration: {
+        DEFAULT: "calc(150ms * var(--motion-scale))",
+        100: "calc(100ms * var(--motion-scale))",
+        150: "calc(150ms * var(--motion-scale))",
+        200: "calc(200ms * var(--motion-scale))",
+        300: "calc(300ms * var(--motion-scale))",
+        500: "calc(500ms * var(--motion-scale))",
+      },
       opacity: {
         15: "0.15",
         35: "0.35",

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f5f6f8" />
+    <meta name="theme-color" content="#f7f3ed" />
     <meta name="application-name" content="Kikoto" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -12,15 +12,27 @@
     <link rel="apple-touch-icon" href="/kikoto-icon-192.png" />
     <script>
       (() => {
-        const mode = localStorage.getItem("kikoto:theme") || "system";
-        const storedAccent = localStorage.getItem("kikoto:theme-accent");
-        const accent =
-          storedAccent === "pink" || storedAccent === "blue" || storedAccent === "green" ? storedAccent : "blue";
+        const storedMode = localStorage.getItem("kikoto:theme");
+        const mode = storedMode === "light" || storedMode === "dark" || storedMode === "system" ? storedMode : "system";
+        const storedPreset = localStorage.getItem("kikoto:theme-preset");
+        const preset =
+          storedPreset === "claude" ||
+          storedPreset === "openai" ||
+          storedPreset === "apple" ||
+          storedPreset === "google-md"
+            ? storedPreset
+            : "claude";
         const dark =
           mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
-        document.documentElement.dataset.themeAccent = accent;
-        document.querySelector('meta[name="theme-color"]').content = dark ? "#0f1115" : "#f5f6f8";
+        document.documentElement.dataset.themePreset = preset;
+        const themeColors = {
+          claude: { light: "#f7f3ed", dark: "#1a1715" },
+          openai: { light: "#fafafa", dark: "#141414" },
+          apple: { light: "#f2f2f7", dark: "#111112" },
+          "google-md": { light: "#f8fafd", dark: "#121316" },
+        };
+        document.querySelector('meta[name="theme-color"]').content = themeColors[preset][dark ? "dark" : "light"];
       })();
     </script>
     <title>Kikoto</title>

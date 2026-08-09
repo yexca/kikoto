@@ -272,8 +272,13 @@ function AuthenticatedApp() {
           sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
         )}
       >
-        <aside className="sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
-          <div className={cn("flex h-16 items-center border-b", sidebarCollapsed ? "justify-center px-3" : "px-5")}>
+        <aside className="theme-shell-surface sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
+          <div
+            className={cn(
+              "flex h-[var(--header-height)] items-center border-b",
+              sidebarCollapsed ? "justify-center px-3" : "px-5",
+            )}
+          >
             <div className="flex min-w-0 items-center gap-2">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/10 ring-1 ring-primary/15">
                 <img src="/kikoto-icon.svg" alt="" className="h-7 w-7" />
@@ -318,10 +323,10 @@ function AuthenticatedApp() {
 
         <main className="app-main min-w-0">
           <header
-            className="sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0"
+            className="theme-shell-surface sticky top-0 z-40 border-b bg-card/95 pt-[var(--safe-area-top)] backdrop-blur lg:pt-0"
             data-toast-avoid
           >
-            <div className="flex min-h-16 min-w-0 items-center justify-between gap-2 py-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
+            <div className="flex min-h-[var(--header-height)] min-w-0 items-center justify-between gap-2 py-2 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:gap-3 lg:px-6">
               <div className="flex min-w-0 flex-col lg:flex-row lg:items-baseline lg:gap-3">
                 <h1 className="truncate text-xl font-semibold lg:text-2xl">
                   {page === "not-found" ? "Not found" : (activeItem?.label ?? "Library")}
@@ -353,7 +358,7 @@ function AuthenticatedApp() {
 
           <RouteErrorBoundary resetKey={routeRenderKey} onOpenLibrary={() => openPath("/")}>
             <Suspense fallback={<PageLoading />}>
-              <div className="py-5 pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
+              <div className="py-[var(--page-padding-y)] pl-[max(1rem,var(--safe-area-left))] pr-[max(1rem,var(--safe-area-right))] lg:px-6">
                 {page !== "not-found" && !canAccessCurrentPage && (
                   <AccessRequiredPage page={page} onOpenLogin={() => setLoginOpen(true)} />
                 )}
@@ -407,14 +412,14 @@ function AuthenticatedApp() {
         </main>
 
         {!mobileRuntime.keyboardOpen && (
-          <footer className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
+          <footer className="theme-shell-surface fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
             <nav className="grid grid-cols-4">
               {mobileNavItems.map((item) => {
                 return (
                   <button
                     key={item.id}
                     className={cn(
-                      "flex h-16 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
+                      "flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground",
                       page === item.id && "bg-muted text-foreground",
                     )}
                     onClick={() => openMobilePage(item.id)}

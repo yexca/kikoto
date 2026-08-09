@@ -991,8 +991,8 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await page.getByRole("button", { name: "dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.getByRole("button", { name: "Open menu" }).click();
-  await page.getByRole("button", { name: "Blue accent" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "blue");
+  await page.getByRole("button", { name: "Apple", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
 });
@@ -1003,7 +1003,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Theme" }).click();
-  const popover = page.getByText("Mode and accent").locator("..");
+  const popover = page.getByText("Mode and style").locator("..");
   await expect(popover).toBeVisible();
   const headerBox = await page.locator("header").boundingBox();
   const popoverBox = await popover.boundingBox();
@@ -1014,17 +1014,36 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
-test("settings persists display mode and accent color together", async ({ page }) => {
+test("settings theme presets change the visual system and persist", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockWorkflows(page);
   await page.goto("/settings");
 
-  await page.getByRole("button", { name: "Green", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
-  await expect(page.getByRole("button", { name: "Green", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "claude");
+  const claudeTokens = await themeVisualTokens(page);
+  await page.getByRole("button", { name: "Apple", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
+  await expect(page.getByRole("button", { name: "Apple", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const appleTokens = await themeVisualTokens(page);
+  expect(appleTokens.radius).not.toBe(claudeTokens.radius);
+  expect(appleTokens.controlHeight).not.toBe(claudeTokens.controlHeight);
+  expect(appleTokens.motionScale).not.toBe(claudeTokens.motionScale);
+  expect(appleTokens.fontHeading).not.toBe(claudeTokens.fontHeading);
   await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme-accent", "green");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
 });
+
+async function themeVisualTokens(page: Page) {
+  return page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      radius: style.getPropertyValue("--radius").trim(),
+      controlHeight: style.getPropertyValue("--control-height").trim(),
+      motionScale: style.getPropertyValue("--motion-scale").trim(),
+      fontHeading: style.getPropertyValue("--font-heading").trim(),
+    };
+  });
+}
 
 test("settings identifies an environment-managed root password", async ({ page }) => {
   await mockWorkflows(page);
@@ -1062,7 +1081,7 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Demo mode is read-only.");
-  for (const name of ["Light", "Dark", "System", "Pink", "Blue", "Green"]) {
+  for (const name of ["Light", "Dark", "System", "Claude", "OpenAI", "Apple", "Google MD"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
   }
 

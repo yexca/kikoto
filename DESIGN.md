@@ -23,13 +23,17 @@ convergence; they do not claim that every legacy surface already complies.
 
 Current implemented direction:
 
-- Neutral graphite surfaces in both light and dark modes.
-- Cobalt blue accent by default, with user-selectable pink and green alternatives.
-- Clear borders.
-- Minimal shadows.
-- 8px radius.
-- Compact cards.
+- Claude-inspired warm editorial styling by default.
+- User-selectable Claude, OpenAI, Apple, and Google Material Design presets.
+- Preset-owned color, typography, density, radius, elevation, icon weight, and
+  motion strength.
+- Light, dark, and system display modes remain independent from the preset.
 - Persistent mini player.
+
+Preset names describe visual inspiration only. Kikoto does not bundle
+third-party logos or proprietary font files, and does not imply affiliation
+with those products. Presets must be implemented through shared semantic tokens
+and primitives rather than page code branching on a preset name.
 
 Surfaces form a small elevation stack:
 
@@ -59,10 +63,11 @@ remain low emphasis; green, amber, and red describe available, degraded, and
 unavailable states consistently across sources. New shared roles must be added
 to the token contract before pages use them.
 
-Accent preferences change primary actions, selected states, and focus rings.
-Secondary, muted, and general hover surfaces remain neutral. Semantic feedback
-does not follow the accent preference: cyan is info, green is success, amber is
-warning, and red is error or destructive intent.
+Presets may vary primary actions, selected states, surface tonality, density,
+radius, elevation, typography, icon weight, and motion strength. Semantic
+feedback does not follow the preset: cyan is info, green is success, amber is
+warning, and red is error or destructive intent. Age-rating colors remain fixed
+across presets.
 
 Interactive controls use one state language across management and listening
 surfaces: visible hover on fine pointers, pressed feedback on every input type,
@@ -104,6 +109,11 @@ Avoid:
   and dark palette branches.
 
 ## Information Density
+
+Presets may tune shared control heights, card padding, navigation height, and
+page rhythm, but they do not change information architecture. Touch targets
+retain their accessibility floor on mobile, and dense operational surfaces must
+remain scannable in every preset.
 
 Work cards should show browsing-level facts:
 

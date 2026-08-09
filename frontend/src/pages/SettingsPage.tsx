@@ -2,18 +2,18 @@ import { KeyRound, LoaderCircle, Monitor, Moon, Save, Sun, UserRound } from "luc
 import { useEffect, useState, type FormEvent } from "react";
 
 import {
-  applyThemeAccent,
   applyThemeMode,
-  getStoredThemeAccent,
+  applyThemePreset,
   getStoredThemeMode,
-  storeThemeAccent,
+  getStoredThemePreset,
   storeThemeMode,
-  THEME_ACCENT_OPTIONS,
-  THEME_ACCENT_CHANGE_EVENT,
+  storeThemePreset,
   THEME_CHANGE_EVENT,
-  type ThemeAccent,
+  THEME_PRESET_CHANGE_EVENT,
   type ThemeMode,
+  type ThemePreset,
 } from "@/app/theme";
+import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -37,7 +37,7 @@ export function SettingsPage({
 }) {
   const toast = useToast();
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
-  const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => getStoredThemeAccent());
+  const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [displayName, setDisplayName] = useState(user.displayName || user.username);
   const [passwordDraft, setPasswordDraft] = useState<PasswordChangeDraft>(emptyPasswordDraft);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -50,13 +50,13 @@ export function SettingsPage({
 
   useEffect(() => {
     const syncMode = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
-    const syncAccent = (event: Event) =>
-      setThemeAccent((event as CustomEvent<ThemeAccent>).detail ?? getStoredThemeAccent());
+    const syncPreset = (event: Event) =>
+      setThemePreset((event as CustomEvent<ThemePreset>).detail ?? getStoredThemePreset());
     window.addEventListener(THEME_CHANGE_EVENT, syncMode);
-    window.addEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
+    window.addEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
     return () => {
       window.removeEventListener(THEME_CHANGE_EVENT, syncMode);
-      window.removeEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
+      window.removeEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
     };
   }, []);
 
@@ -66,10 +66,10 @@ export function SettingsPage({
     storeThemeMode(mode);
   };
 
-  const updateAccent = (accent: ThemeAccent) => {
-    setThemeAccent(accent);
-    applyThemeAccent(accent);
-    storeThemeAccent(accent);
+  const updatePreset = (preset: ThemePreset) => {
+    setThemePreset(preset);
+    applyThemePreset(preset);
+    storeThemePreset(preset);
   };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -142,7 +142,7 @@ export function SettingsPage({
                 <span className="font-medium">Display name</span>
                 <input
                   id="account-display-name"
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+                  className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
                   value={displayName}
                   autoComplete="name"
                   disabled={readOnly || isProfileSaving}
@@ -249,7 +249,7 @@ export function SettingsPage({
                   <button
                     key={option.value}
                     type="button"
-                    className={`flex h-9 items-center gap-2 rounded px-3 text-sm font-medium transition-[color,background-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:active:scale-100 ${themeMode === option.value ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-background/60 hover:text-foreground"}`}
+                    className={`flex h-[var(--control-height)] items-center gap-2 rounded px-3 text-sm font-medium transition-[color,background-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 ${themeMode === option.value ? "bg-background shadow-sm" : "text-muted-foreground hover:bg-background/60 hover:text-foreground"}`}
                     aria-pressed={themeMode === option.value}
                     onClick={() => updateTheme(option.value)}
                   >
@@ -260,8 +260,8 @@ export function SettingsPage({
               </div>
             </fieldset>
             <fieldset className="space-y-2" disabled={readOnly}>
-              <legend className="text-sm font-medium">Accent color</legend>
-              <AccentColorPicker value={themeAccent} onChange={updateAccent} />
+              <legend className="text-sm font-medium">Theme style</legend>
+              <ThemePresetPicker value={themePreset} onChange={updatePreset} />
             </fieldset>
           </CardContent>
         </Card>
@@ -270,34 +270,15 @@ export function SettingsPage({
   );
 }
 
-function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: (accent: ThemeAccent) => void }) {
-  return (
-    <div className="flex flex-wrap gap-2" aria-label="Accent color">
-      {THEME_ACCENT_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:active:scale-100 ${value === option.value ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20" : "bg-background text-muted-foreground"}`}
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-        >
-          <span
-            className="h-4 w-4 rounded-full border border-black/10 shadow-sm"
-            style={{ backgroundColor: option.swatch }}
-            aria-hidden="true"
-          />
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
     <label className="space-y-1 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <input className="h-10 w-full rounded-md border bg-muted px-3 text-sm" value={value} readOnly />
+      <input
+        className="h-[var(--control-height)] w-full rounded-md border bg-muted px-3 text-sm"
+        value={value}
+        readOnly
+      />
     </label>
   );
 }
@@ -322,7 +303,7 @@ function PasswordField({
       <span className="font-medium">{label}</span>
       <input
         id={id}
-        className="h-10 w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
+        className="h-[var(--control-height)] w-full rounded-md border bg-background px-3 text-sm disabled:bg-muted"
         type="password"
         value={value}
         autoComplete={autoComplete}

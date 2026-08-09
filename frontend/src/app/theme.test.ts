@@ -1,24 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_THEME_ACCENT, getStoredThemeAccent, THEME_ACCENT_OPTIONS } from "@/app/theme";
+import { DEFAULT_THEME_PRESET, getStoredThemePreset, themeColorFor, THEME_PRESET_OPTIONS } from "@/app/theme";
 
-describe("theme accent preferences", () => {
+describe("theme preset preferences", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("uses cobalt blue when no valid accent is stored", () => {
-    for (const storedValue of [null, "purple"]) {
+  it("uses Claude when no valid preset is stored", () => {
+    for (const storedValue of [null, "blue", "purple"]) {
       vi.stubGlobal("localStorage", { getItem: () => storedValue });
-      expect(getStoredThemeAccent()).toBe("blue");
+      expect(getStoredThemePreset()).toBe("claude");
     }
-    expect(DEFAULT_THEME_ACCENT).toBe("blue");
+    expect(DEFAULT_THEME_PRESET).toBe("claude");
   });
 
-  it.each(["pink", "blue", "green"] as const)("preserves a stored %s accent", (storedValue) => {
+  it.each(["claude", "openai", "apple", "google-md"] as const)("preserves a stored %s preset", (storedValue) => {
     vi.stubGlobal("localStorage", { getItem: () => storedValue });
-    expect(getStoredThemeAccent()).toBe(storedValue);
+    expect(getStoredThemePreset()).toBe(storedValue);
   });
 
-  it("lists the default accent first in the shared picker options", () => {
-    expect(THEME_ACCENT_OPTIONS.map((option) => option.value)).toEqual(["blue", "pink", "green"]);
+  it("lists the default preset first", () => {
+    expect(THEME_PRESET_OPTIONS.map((option) => option.value)).toEqual(["claude", "openai", "apple", "google-md"]);
+  });
+
+  it("provides light and dark browser chrome colors for every preset", () => {
+    for (const option of THEME_PRESET_OPTIONS) {
+      expect(themeColorFor(option.value, "light")).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(themeColorFor(option.value, "dark")).toMatch(/^#[0-9a-f]{6}$/i);
+    }
   });
 });

@@ -1781,7 +1781,7 @@ export function PlayerDock() {
           </div>
         )}
         <div
-          className="relative touch-pan-y select-none animate-player-enter overflow-hidden rounded-[22px] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70"
+          className="relative touch-pan-y select-none animate-player-enter overflow-hidden rounded-[var(--player-radius-dock)] border border-white/35 bg-card/75 shadow-2xl shadow-primary/15 backdrop-blur-2xl transition-all duration-300 ease-out dark:border-white/10 dark:bg-card/70"
           onPointerDown={beginCompactScrub}
           onPointerMove={moveCompactScrub}
           onPointerUp={(event) => finishCompactScrub(event, true)}
@@ -1847,7 +1847,7 @@ export function PlayerDock() {
 
   return (
     <section
-      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[28px] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
+      className={`fixed inset-0 z-50 h-[100dvh] animate-player-enter overflow-hidden border-0 bg-background/95 text-foreground shadow-xl backdrop-blur-2xl transition-[transform,opacity,height] duration-200 ease-out lg:inset-auto lg:bottom-6 lg:right-6 lg:w-[390px] lg:rounded-[var(--player-radius-panel)] lg:border lg:border-white/35 lg:bg-card/82 dark:lg:border-white/10 dark:lg:bg-card/78 ${compactFullLayout ? "lg:text-[0.9rem]" : ""}`}
       style={{
         ...(!isMobile ? { height: desktopFullHeight } : {}),
         ...(isMobile && fullDragOffset > 0
@@ -1988,13 +1988,16 @@ export function PlayerDock() {
               <button
                 data-player-cover-shell
                 data-player-measure
-                className={`mx-auto w-full touch-manipulation rounded-[24px] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
+                className={`mx-auto w-full touch-manipulation rounded-[var(--player-radius-panel)] bg-white/25 p-2 shadow-inner transition-[max-width,transform] duration-200 hover:scale-[1.015] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/5 ${compactFullLayout ? "max-w-[min(68vw,210px)]" : lyricsDisplayMode === "hidden" ? "max-w-[min(92vw,390px)] lg:max-w-[340px]" : "max-w-[min(86vw,340px)] lg:max-w-[282px]"}`}
                 onClick={handleCoverClick}
                 onDoubleClick={isMobile ? undefined : openWorkDetail}
                 title="Double-click to open work detail"
                 aria-label="Open work detail"
               >
-                <CoverImage track={track} className="mx-auto aspect-[4/3] w-full rounded-[20px] shadow-lg" />
+                <CoverImage
+                  track={track}
+                  className="mx-auto aspect-[4/3] w-full rounded-[var(--player-radius-cover)] shadow-lg"
+                />
               </button>
               <div data-player-title-block data-player-measure className="min-w-0 max-w-full space-y-0.5 text-center">
                 <div

@@ -44,20 +44,20 @@
 
 @layer base {
   :root {
-    --background: 220 18% 97%;
-    --foreground: 222 20% 13%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 20% 13%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 20% 13%;
-    --primary: 223 67% 52%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 16% 92%;
-    --secondary-foreground: 222 18% 24%;
-    --muted: 220 15% 94%;
-    --muted-foreground: 220 9% 43%;
-    --accent: 220 16% 90%;
-    --accent-foreground: 222 18% 20%;
+    --background: 36 38% 95%;
+    --foreground: 24 12% 17%;
+    --card: 40 33% 98%;
+    --card-foreground: 24 12% 17%;
+    --popover: 36 28% 98%;
+    --popover-foreground: 24 12% 17%;
+    --primary: 15 57% 43%;
+    --primary-foreground: 30 33% 98%;
+    --secondary: 34 24% 90%;
+    --secondary-foreground: 24 18% 23%;
+    --muted: 34 26% 92%;
+    --muted-foreground: 24 8% 43%;
+    --accent: 34 24% 86%;
+    --accent-foreground: 24 18% 21%;
     --destructive: 0 65% 47%;
     --destructive-foreground: 0 0% 100%;
     --success: 145 58% 34%;
@@ -76,13 +76,43 @@
     --error-foreground: 2 67% 33%;
     --error-surface: 3 75% 96%;
     --error-border: 3 53% 74%;
-    --border: 220 13% 85%;
-    --input: 220 13% 82%;
-    --ring: 223 74% 57%;
-    --workflow-shell: 220 20% 95%;
-    --workflow-canvas: 220 17% 90%;
-    --workflow-grid: 220 10% 65%;
-    --radius: 0.5rem;
+    --border: 32 22% 80%;
+    --input: 30 18% 75%;
+    --ring: 15 62% 52%;
+    --workflow-shell: 34 25% 92%;
+    --workflow-canvas: 32 19% 87%;
+    --workflow-grid: 28 10% 62%;
+    --radius: 0.625rem;
+    --control-radius: 0.5rem;
+    --badge-radius: 0.375rem;
+    --control-height: 2.5rem;
+    --control-height-sm: 2rem;
+    --control-icon-size: 2.5rem;
+    --control-padding-x: 1rem;
+    --control-padding-sm-x: 0.75rem;
+    --card-padding: 1rem;
+    --card-padding-tight: 0.5rem;
+    --player-radius-dock: 1.125rem;
+    --player-radius-panel: 1.5rem;
+    --player-radius-cover: 1rem;
+    --header-height: 4rem;
+    --page-padding-y: 1.25rem;
+    --motion-scale: 0.9;
+    --press-scale: 0.98;
+    --press-brightness: 0.96;
+    --icon-stroke: 1.8;
+    --surface-blur: 0px;
+    --surface-opacity: 1;
+    --shell-opacity: 0.96;
+    --font-sans: "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+    --shadow-sm: 0 1px 2px hsl(24 18% 18% / 0.06);
+    --shadow-md: 0 5px 14px hsl(24 18% 18% / 0.08);
+    --shadow-lg: 0 10px 28px hsl(24 18% 18% / 0.11);
+    --shadow-xl: 0 16px 42px hsl(24 18% 18% / 0.14);
+    --shadow-2xl: 0 24px 64px hsl(24 18% 18% / 0.18);
+    --card-shadow: var(--shadow-sm);
+    --card-border-width: 1px;
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -97,20 +127,20 @@
   }
 
   .dark {
-    --background: 220 17% 7%;
-    --foreground: 220 14% 92%;
-    --card: 220 16% 11%;
-    --card-foreground: 220 14% 92%;
-    --popover: 220 16% 13%;
-    --popover-foreground: 220 14% 92%;
-    --primary: 223 100% 75%;
-    --primary-foreground: 223 45% 12%;
-    --secondary: 220 14% 18%;
-    --secondary-foreground: 220 14% 88%;
-    --muted: 220 13% 16%;
-    --muted-foreground: 220 9% 64%;
-    --accent: 220 13% 22%;
-    --accent-foreground: 220 14% 92%;
+    --background: 24 11% 9%;
+    --foreground: 35 19% 90%;
+    --card: 24 10% 12%;
+    --card-foreground: 35 19% 90%;
+    --popover: 24 10% 15%;
+    --popover-foreground: 35 19% 90%;
+    --primary: 19 76% 70%;
+    --primary-foreground: 20 42% 12%;
+    --secondary: 24 9% 19%;
+    --secondary-foreground: 34 18% 88%;
+    --muted: 24 7% 17%;
+    --muted-foreground: 30 8% 64%;
+    --accent: 24 10% 23%;
+    --accent-foreground: 34 18% 91%;
     --destructive: 0 62% 52%;
     --destructive-foreground: 0 0% 100%;
     --success: 145 64% 62%;
@@ -129,36 +159,273 @@
     --error-foreground: 3 85% 86%;
     --error-surface: 3 42% 16%;
     --error-border: 3 53% 42%;
-    --border: 220 12% 25%;
-    --input: 220 12% 25%;
-    --ring: 223 100% 75%;
-    --workflow-shell: 220 16% 13%;
-    --workflow-canvas: 220 14% 17%;
-    --workflow-grid: 220 9% 36%;
+    --border: 24 7% 25%;
+    --input: 24 8% 29%;
+    --ring: 19 76% 70%;
+    --workflow-shell: 24 9% 13%;
+    --workflow-canvas: 24 8% 18%;
+    --workflow-grid: 25 7% 37%;
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.24);
+    --shadow-md: 0 6px 16px hsl(0 0% 0% / 0.28);
+    --shadow-lg: 0 12px 32px hsl(0 0% 0% / 0.34);
+    --shadow-xl: 0 18px 46px hsl(0 0% 0% / 0.4);
+    --shadow-2xl: 0 28px 72px hsl(0 0% 0% / 0.48);
   }
 
-  :root[data-theme-accent="pink"] {
-    --primary: 326 58% 45%;
+  :root[data-theme-preset="openai"] {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 12%;
+    --primary: 160 84% 28%;
     --primary-foreground: 0 0% 100%;
-    --ring: 326 63% 55%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 90%;
+    --accent-foreground: 0 0% 16%;
+    --border: 0 0% 83%;
+    --input: 0 0% 78%;
+    --ring: 160 76% 36%;
+    --workflow-shell: 0 0% 95%;
+    --workflow-canvas: 0 0% 90%;
+    --workflow-grid: 0 0% 64%;
+    --radius: 0.5rem;
+    --control-radius: 0.375rem;
+    --badge-radius: 0.375rem;
+    --control-height: 2.375rem;
+    --control-height-sm: 1.875rem;
+    --control-icon-size: 2.375rem;
+    --control-padding-x: 0.875rem;
+    --control-padding-sm-x: 0.625rem;
+    --card-padding: 0.875rem;
+    --card-padding-tight: 0.4375rem;
+    --player-radius-dock: 0.75rem;
+    --player-radius-panel: 1rem;
+    --player-radius-cover: 0.625rem;
+    --header-height: 3.75rem;
+    --page-padding-y: 1rem;
+    --mobile-navigation-height: 3.75rem;
+    --motion-scale: 0.72;
+    --press-scale: 0.99;
+    --press-brightness: 0.97;
+    --icon-stroke: 1.85;
+    --surface-blur: 0px;
+    --surface-opacity: 1;
+    --shell-opacity: 0.98;
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-heading: var(--font-sans);
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
+    --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.06);
+    --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.08);
+    --shadow-xl: 0 12px 34px hsl(0 0% 0% / 0.1);
+    --shadow-2xl: 0 18px 48px hsl(0 0% 0% / 0.14);
+    --card-shadow: none;
   }
 
-  .dark[data-theme-accent="pink"] {
-    --primary: 326 77% 74%;
-    --primary-foreground: 326 45% 11%;
-    --ring: 326 77% 74%;
+  .dark[data-theme-preset="openai"] {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 92%;
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 92%;
+    --popover: 0 0% 14%;
+    --popover-foreground: 0 0% 92%;
+    --primary: 160 55% 60%;
+    --primary-foreground: 160 70% 8%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 88%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 23%;
+    --accent-foreground: 0 0% 94%;
+    --border: 0 0% 25%;
+    --input: 0 0% 29%;
+    --ring: 160 55% 60%;
+    --workflow-shell: 0 0% 13%;
+    --workflow-canvas: 0 0% 18%;
+    --workflow-grid: 0 0% 37%;
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.24);
+    --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.28);
+    --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.32);
+    --shadow-xl: 0 12px 34px hsl(0 0% 0% / 0.38);
+    --shadow-2xl: 0 18px 48px hsl(0 0% 0% / 0.44);
   }
 
-  :root[data-theme-accent="green"] {
-    --primary: 164 62% 31%;
+  :root[data-theme-preset="apple"] {
+    --background: 240 20% 96%;
+    --foreground: 240 4% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 4% 11%;
+    --popover: 240 20% 99%;
+    --popover-foreground: 240 4% 11%;
+    --primary: 211 100% 43%;
     --primary-foreground: 0 0% 100%;
-    --ring: 164 62% 41%;
+    --secondary: 240 8% 92%;
+    --secondary-foreground: 240 4% 20%;
+    --muted: 240 10% 94%;
+    --muted-foreground: 240 3% 40%;
+    --accent: 240 9% 89%;
+    --accent-foreground: 240 4% 16%;
+    --border: 240 6% 82%;
+    --input: 240 5% 77%;
+    --ring: 211 100% 50%;
+    --workflow-shell: 240 15% 94%;
+    --workflow-canvas: 240 10% 89%;
+    --workflow-grid: 240 5% 63%;
+    --radius: 0.875rem;
+    --control-radius: 0.625rem;
+    --badge-radius: 9999px;
+    --control-height: 2.75rem;
+    --control-height-sm: 2.25rem;
+    --control-icon-size: 2.75rem;
+    --control-padding-x: 1rem;
+    --control-padding-sm-x: 0.75rem;
+    --card-padding: 1.125rem;
+    --card-padding-tight: 0.625rem;
+    --player-radius-dock: 1.5rem;
+    --player-radius-panel: 2rem;
+    --player-radius-cover: 1.25rem;
+    --header-height: 4.5rem;
+    --page-padding-y: 1.5rem;
+    --mobile-navigation-height: 4.25rem;
+    --motion-scale: 1.12;
+    --press-scale: 0.96;
+    --press-brightness: 0.95;
+    --icon-stroke: 1.7;
+    --surface-blur: 18px;
+    --surface-opacity: 0.84;
+    --shell-opacity: 0.8;
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    --font-heading: var(--font-sans);
+    --shadow-sm: 0 1px 3px hsl(240 10% 15% / 0.08);
+    --shadow-md: 0 6px 18px hsl(240 10% 15% / 0.11);
+    --shadow-lg: 0 12px 34px hsl(240 10% 15% / 0.14);
+    --shadow-xl: 0 20px 48px hsl(240 10% 15% / 0.18);
+    --shadow-2xl: 0 30px 72px hsl(240 10% 15% / 0.22);
+    --card-shadow: var(--shadow-sm);
   }
 
-  .dark[data-theme-accent="green"] {
-    --primary: 164 58% 63%;
-    --primary-foreground: 164 44% 10%;
-    --ring: 164 58% 63%;
+  .dark[data-theme-preset="apple"] {
+    --background: 240 5% 7%;
+    --foreground: 240 5% 93%;
+    --card: 240 4% 11%;
+    --card-foreground: 240 5% 93%;
+    --popover: 240 4% 15%;
+    --popover-foreground: 240 5% 93%;
+    --primary: 211 100% 66%;
+    --primary-foreground: 211 65% 10%;
+    --secondary: 240 4% 19%;
+    --secondary-foreground: 240 5% 89%;
+    --muted: 240 4% 17%;
+    --muted-foreground: 240 3% 65%;
+    --accent: 240 4% 24%;
+    --accent-foreground: 240 5% 94%;
+    --border: 240 4% 27%;
+    --input: 240 4% 31%;
+    --ring: 211 100% 66%;
+    --workflow-shell: 240 4% 13%;
+    --workflow-canvas: 240 4% 18%;
+    --workflow-grid: 240 3% 38%;
+    --surface-opacity: 0.78;
+    --shell-opacity: 0.72;
+    --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.28);
+    --shadow-md: 0 7px 20px hsl(0 0% 0% / 0.34);
+    --shadow-lg: 0 14px 38px hsl(0 0% 0% / 0.4);
+    --shadow-xl: 0 22px 54px hsl(0 0% 0% / 0.46);
+    --shadow-2xl: 0 32px 78px hsl(0 0% 0% / 0.54);
+  }
+
+  :root[data-theme-preset="google-md"] {
+    --background: 210 33% 98%;
+    --foreground: 220 6% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 6% 13%;
+    --popover: 210 25% 99%;
+    --popover-foreground: 220 6% 13%;
+    --primary: 217 82% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 55% 92%;
+    --secondary-foreground: 216 35% 22%;
+    --muted: 210 12% 94%;
+    --muted-foreground: 220 5% 41%;
+    --accent: 214 60% 88%;
+    --accent-foreground: 216 42% 20%;
+    --border: 214 15% 80%;
+    --input: 214 16% 75%;
+    --ring: 217 82% 55%;
+    --workflow-shell: 214 30% 94%;
+    --workflow-canvas: 214 20% 89%;
+    --workflow-grid: 214 10% 62%;
+    --radius: 0.875rem;
+    --control-radius: 9999px;
+    --badge-radius: 9999px;
+    --control-height: 2.75rem;
+    --control-height-sm: 2.25rem;
+    --control-icon-size: 2.75rem;
+    --control-padding-x: 1.125rem;
+    --control-padding-sm-x: 0.875rem;
+    --card-padding: 1.125rem;
+    --card-padding-tight: 0.625rem;
+    --player-radius-dock: 1.25rem;
+    --player-radius-panel: 1.75rem;
+    --player-radius-cover: 1.125rem;
+    --header-height: 4.25rem;
+    --page-padding-y: 1.5rem;
+    --mobile-navigation-height: 4.25rem;
+    --motion-scale: 1;
+    --press-scale: 0.97;
+    --press-brightness: 0.95;
+    --icon-stroke: 2.05;
+    --surface-blur: 0px;
+    --surface-opacity: 1;
+    --shell-opacity: 0.98;
+    --font-sans: Roboto, "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: var(--font-sans);
+    --shadow-sm: 0 1px 3px hsl(220 10% 20% / 0.12);
+    --shadow-md: 0 3px 8px hsl(220 10% 20% / 0.14);
+    --shadow-lg: 0 6px 16px hsl(220 10% 20% / 0.16);
+    --shadow-xl: 0 10px 26px hsl(220 10% 20% / 0.18);
+    --shadow-2xl: 0 18px 44px hsl(220 10% 20% / 0.22);
+    --card-shadow: var(--shadow-sm);
+  }
+
+  .dark[data-theme-preset="google-md"] {
+    --background: 220 10% 8%;
+    --foreground: 210 14% 91%;
+    --card: 220 9% 12%;
+    --card-foreground: 210 14% 91%;
+    --popover: 220 9% 15%;
+    --popover-foreground: 210 14% 91%;
+    --primary: 216 86% 76%;
+    --primary-foreground: 216 55% 12%;
+    --secondary: 216 22% 20%;
+    --secondary-foreground: 214 42% 89%;
+    --muted: 220 8% 17%;
+    --muted-foreground: 216 7% 65%;
+    --accent: 216 28% 25%;
+    --accent-foreground: 214 42% 92%;
+    --border: 216 10% 27%;
+    --input: 216 11% 31%;
+    --ring: 216 86% 76%;
+    --workflow-shell: 220 8% 13%;
+    --workflow-canvas: 220 7% 18%;
+    --workflow-grid: 216 6% 38%;
+    --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 3px 9px hsl(0 0% 0% / 0.34);
+    --shadow-lg: 0 7px 18px hsl(0 0% 0% / 0.4);
+    --shadow-xl: 0 12px 30px hsl(0 0% 0% / 0.46);
+    --shadow-2xl: 0 20px 50px hsl(0 0% 0% / 0.54);
+  }
+
+  @media (max-width: 1023px) {
+    :root[data-theme-preset] {
+      --control-height: 2.75rem;
+      --control-height-sm: 2.5rem;
+      --control-icon-size: 2.75rem;
+    }
   }
 
   * {
@@ -167,14 +434,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family:
-      Inter,
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
+    font-family: var(--font-sans);
+    letter-spacing: 0;
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-heading);
   }
 
   button {
@@ -191,7 +457,7 @@
   }
 
   button:active:not(:disabled) {
-    filter: brightness(0.94);
+    filter: brightness(var(--press-brightness));
   }
 
   html {
@@ -380,7 +646,7 @@
 
   .workflow-canvas .workflow-viewport-controls,
   .workflow-canvas .workflow-viewport-minimap {
-    transition: right 160ms ease;
+    transition: right calc(160ms * var(--motion-scale)) ease;
   }
 
   .workflow-canvas .workflow-minimap-toggle svg {
@@ -412,9 +678,9 @@
   .workflow-canvas .workflow-data-edge .react-flow__edge-path {
     opacity: 0.58;
     transition:
-      opacity 160ms ease,
-      stroke-width 160ms ease,
-      filter 160ms ease;
+      opacity calc(160ms * var(--motion-scale)) ease,
+      stroke-width calc(160ms * var(--motion-scale)) ease,
+      filter calc(160ms * var(--motion-scale)) ease;
   }
 
   .workflow-canvas .workflow-data-edge.selected .react-flow__edge-path,
@@ -436,7 +702,7 @@
 
   .workflow-canvas .workflow-data-edge--active.animated .react-flow__edge-path {
     stroke-dasharray: 8 6;
-    animation: workflow-edge-flow 650ms linear infinite;
+    animation: workflow-edge-flow calc(650ms * var(--motion-scale)) linear infinite;
   }
 
   .workflow-canvas .workflow-data-edge--failed .react-flow__edge-path {
@@ -451,10 +717,10 @@
 
   .workflow-canvas .workflow-run-node {
     transition:
-      border-color 160ms ease,
-      box-shadow 160ms ease,
-      opacity 160ms ease,
-      transform 160ms ease;
+      border-color calc(160ms * var(--motion-scale)) ease,
+      box-shadow calc(160ms * var(--motion-scale)) ease,
+      opacity calc(160ms * var(--motion-scale)) ease,
+      transform calc(160ms * var(--motion-scale)) ease;
   }
 
   .workflow-canvas .workflow-run-node--queued {
@@ -509,8 +775,8 @@
     content: "";
     transform: translate(-50%, -50%);
     transition:
-      box-shadow 120ms ease,
-      transform 120ms ease;
+      box-shadow calc(120ms * var(--motion-scale)) ease,
+      transform calc(120ms * var(--motion-scale)) ease;
   }
 
   .workflow-canvas .workflow-port-handle:hover::after,
@@ -531,11 +797,11 @@
   }
 
   .animate-player-enter {
-    animation: player-enter 180ms ease-out;
+    animation: player-enter calc(180ms * var(--motion-scale)) ease-out;
   }
 
   .animate-player-panel-enter {
-    animation: player-panel-enter 180ms ease-out;
+    animation: player-panel-enter calc(180ms * var(--motion-scale)) ease-out;
   }
 
   .overflow-marquee--auto .overflow-marquee__track,
@@ -581,4 +847,24 @@
       transform: none !important;
     }
   }
+}
+
+.theme-card-surface {
+  border-width: var(--card-border-width);
+  box-shadow: var(--card-shadow);
+}
+
+.theme-floating-surface {
+  background-color: hsl(var(--popover) / var(--surface-opacity));
+  box-shadow: var(--shadow-xl);
+  backdrop-filter: blur(var(--surface-blur));
+}
+
+.theme-shell-surface {
+  background-color: hsl(var(--card) / var(--shell-opacity));
+  backdrop-filter: blur(var(--surface-blur));
+}
+
+svg.lucide {
+  stroke-width: var(--icon-stroke);
 }

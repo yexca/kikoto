@@ -17,7 +17,6 @@ import {
   LogOut,
   MoreHorizontal,
   Moon,
-  Palette,
   Play,
   RotateCcw,
   ScanLine,
@@ -34,20 +33,21 @@ import {
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import {
-  applyThemeAccent,
   applyThemeMode,
-  getStoredThemeAccent,
+  applyThemePreset,
   getStoredThemeMode,
+  getStoredThemePreset,
   resolvedThemeMode,
-  storeThemeAccent,
   storeThemeMode,
-  THEME_ACCENT_OPTIONS,
-  THEME_ACCENT_CHANGE_EVENT,
+  storeThemePreset,
+  themePresetLabel,
   THEME_CHANGE_EVENT,
-  type ThemeAccent,
+  THEME_PRESET_CHANGE_EVENT,
   type ThemeMode,
+  type ThemePreset,
   watchSystemTheme,
 } from "@/app/theme";
+import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
@@ -82,7 +82,7 @@ export function HeaderActions({
   const canSyncMetadata = hasPermission("metadata:sync");
   const canManageUsers = hasPermission("users:manage");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
-  const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => getStoredThemeAccent());
+  const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
   const [reviewOpen, setReviewOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -107,9 +107,9 @@ export function HeaderActions({
   }, [themeMode]);
 
   useEffect(() => {
-    applyThemeAccent(themeAccent);
-    storeThemeAccent(themeAccent);
-  }, [themeAccent]);
+    applyThemePreset(themePreset);
+    storeThemePreset(themePreset);
+  }, [themePreset]);
 
   useEffect(() => {
     const syncTheme = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
@@ -118,10 +118,10 @@ export function HeaderActions({
   }, []);
 
   useEffect(() => {
-    const syncAccent = (event: Event) =>
-      setThemeAccent((event as CustomEvent<ThemeAccent>).detail ?? getStoredThemeAccent());
-    window.addEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
-    return () => window.removeEventListener(THEME_ACCENT_CHANGE_EVENT, syncAccent);
+    const syncPreset = (event: Event) =>
+      setThemePreset((event as CustomEvent<ThemePreset>).detail ?? getStoredThemePreset());
+    window.addEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
+    return () => window.removeEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
   }, []);
 
   const refreshNotificationCenter = () => {
@@ -309,7 +309,7 @@ export function HeaderActions({
                 }}
               />
               <div className="mt-2 border-t px-2 pt-3">
-                <AccentColorPicker value={themeAccent} onChange={setThemeAccent} />
+                <ThemePresetPicker value={themePreset} compact onChange={setThemePreset} />
               </div>
             </div>
             {isNativeApp() && (
@@ -648,14 +648,19 @@ export function HeaderActions({
           open={themeOpen}
           onOpenChange={setThemeOpen}
           trigger={
-            <Button variant="outline" size="icon" aria-label="Theme" title={`Theme: ${themeMode}, ${themeAccent}`}>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Theme"
+              title={`Theme: ${themeMode}, ${themePresetLabel(themePreset)}`}
+            >
               {resolvedThemeMode(themeMode) === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
           }
           align="right"
         >
-          <div className="w-56">
-            <PopoverHeader title="Theme" subtitle="Mode and accent" />
+          <div className="w-64">
+            <PopoverHeader title="Theme" subtitle="Mode and style" />
             <MenuList>
               <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={setThemeMode} />
               <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={setThemeMode} />
@@ -667,7 +672,7 @@ export function HeaderActions({
               />
             </MenuList>
             <div className="border-t p-3">
-              <AccentColorPicker value={themeAccent} onChange={setThemeAccent} />
+              <ThemePresetPicker value={themePreset} onChange={setThemePreset} compact />
             </div>
           </div>
         </HeaderPopover>
@@ -679,7 +684,7 @@ export function HeaderActions({
             open={userOpen}
             onOpenChange={setUserOpen}
             trigger={
-              <Button variant="outline" className="h-10 gap-2 px-2 sm:px-3" aria-label="User menu">
+              <Button variant="outline" className="h-[var(--control-height)] gap-2 px-2 sm:px-3" aria-label="User menu">
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {userInitial(user)}
                 </span>
@@ -751,7 +756,7 @@ export function HeaderActions({
             </div>
           </HeaderPopover>
         ) : (
-          <Button variant="outline" className="h-10 gap-2 px-3" onClick={onOpenLogin}>
+          <Button variant="outline" className="h-[var(--control-height)] gap-2 px-3" onClick={onOpenLogin}>
             <LogIn className="h-4 w-4" />
             <span className="hidden sm:inline">Sign in</span>
           </Button>
@@ -799,7 +804,7 @@ function HeaderPopover({
         <div
           data-android-back-close
           className={cn(
-            "absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
+            "theme-floating-surface absolute top-full z-50 mt-2 overflow-hidden rounded-lg border bg-card shadow-xl",
             align === "right" ? "right-0" : "left-0",
           )}
         >
@@ -840,7 +845,7 @@ function ActionItem({
 }) {
   return (
     <button
-      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted disabled:opacity-60"
+      className="flex min-h-[var(--control-height)] w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted disabled:opacity-60"
       disabled={busy}
       onClick={onClick}
     >
@@ -863,7 +868,7 @@ function ThemeItem({
 }) {
   return (
     <button
-      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] motion-reduce:active:scale-100"
+      className="flex min-h-[var(--control-height)] w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
       aria-pressed={mode === current}
       onClick={() => onSelect(mode)}
     >
@@ -871,35 +876,6 @@ function ThemeItem({
       <span className="min-w-0 flex-1 capitalize">{mode}</span>
       {mode === current && <CheckCircle2 className="h-4 w-4 text-primary" />}
     </button>
-  );
-}
-
-function AccentColorPicker({ value, onChange }: { value: ThemeAccent; onChange: (accent: ThemeAccent) => void }) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <Palette className="h-3.5 w-3.5" />
-        Accent
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {THEME_ACCENT_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            className={`grid h-9 place-items-center rounded-md border transition-[background-color,border-color,box-shadow,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95 motion-reduce:active:scale-100 ${value === option.value ? "border-primary bg-primary/10 ring-1 ring-primary/20" : "bg-background"}`}
-            aria-label={`${option.label} accent`}
-            aria-pressed={value === option.value}
-            title={option.label}
-            onClick={() => onChange(option.value)}
-          >
-            <span
-              className="h-4 w-4 rounded-full border border-black/10 shadow-sm"
-              style={{ backgroundColor: option.swatch }}
-              aria-hidden="true"
-            />
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 

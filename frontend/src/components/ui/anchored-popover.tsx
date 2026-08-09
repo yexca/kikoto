@@ -92,7 +92,7 @@ export function AnchoredPopover({
     <div
       ref={contentRef}
       className={cn(
-        "app-scrollbar fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl",
+        "theme-floating-surface app-scrollbar fixed z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-xl",
         className,
       )}
       style={{ left: position.left, top: position.top, visibility: position.visible ? "visible" : "hidden", zIndex }}
