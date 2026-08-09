@@ -23,10 +23,12 @@ convergence; they do not claim that every legacy surface already complies.
 
 Current implemented direction:
 
-- Claude-inspired warm editorial styling by default.
-- User-selectable Claude, OpenAI, Apple, and Google Material Design presets.
+- Anthropic-inspired warm editorial styling by default.
+- User-selectable Anthropic, OpenAI, Apple, and Google Material Design presets.
 - Preset-owned color, typography, density, radius, elevation, icon weight, and
   motion strength.
+- An independent Original, Graphite, Cobalt, or Iris color palette. Original
+  resolves to the selected preset's authored default.
 - Light, dark, and system display modes remain independent from the preset.
 - Persistent mini player.
 
@@ -64,10 +66,11 @@ unavailable states consistently across sources. New shared roles must be added
 to the token contract before pages use them.
 
 Presets may vary primary actions, selected states, surface tonality, density,
-radius, elevation, typography, icon weight, and motion strength. Semantic
-feedback does not follow the preset: cyan is info, green is success, amber is
-warning, and red is error or destructive intent. Age-rating colors remain fixed
-across presets.
+radius, elevation, typography, icon weight, and motion strength. A non-original
+palette only overrides primary actions, selected states, and focus rings.
+Semantic feedback does not follow the preset or palette: cyan is info, green is
+success, amber is warning, and red is error or destructive intent. Age-rating
+colors remain fixed across presets.
 
 Interactive controls use one state language across management and listening
 surfaces: visible hover on fine pointers, pressed feedback on every input type,

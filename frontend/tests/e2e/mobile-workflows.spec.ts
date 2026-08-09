@@ -980,10 +980,10 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
   await expect(page.getByText("Theme", { exact: true })).toBeVisible();
 
-  const menuBox = await page
+  const themeMenu = page
     .getByText("Theme", { exact: true })
-    .locator("..", { has: page.getByRole("button", { name: "dark" }) })
-    .boundingBox();
+    .locator("..", { has: page.getByRole("button", { name: "dark" }) });
+  const menuBox = await themeMenu.boundingBox();
   expect(menuBox).not.toBeNull();
   expect(menuBox!.x).toBeGreaterThanOrEqual(0);
   expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -993,6 +993,13 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await page.getByRole("button", { name: "Open menu" }).click();
   await page.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
+  await page.getByRole("button", { name: "Cobalt", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
+  const expandedMenuBox = await themeMenu.boundingBox();
+  expect(expandedMenuBox).not.toBeNull();
+  expect(expandedMenuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(expandedMenuBox!.x + expandedMenuBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(expandedMenuBox!.y + expandedMenuBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
 });
@@ -1003,7 +1010,7 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Theme" }).click();
-  const popover = page.getByText("Mode and style").locator("..");
+  const popover = page.getByText("Mode, style, and color").locator("..");
   await expect(popover).toBeVisible();
   const headerBox = await page.locator("header").boundingBox();
   const popoverBox = await popover.boundingBox();
@@ -1014,23 +1021,30 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
-test("settings theme presets change the visual system and persist", async ({ page }) => {
+test("settings theme styles and colors change independently and persist", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockWorkflows(page);
   await page.goto("/settings");
 
-  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "claude");
-  const claudeTokens = await themeVisualTokens(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "anthropic");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "original");
+  const anthropicTokens = await themeVisualTokens(page);
   await page.getByRole("button", { name: "Apple", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
   await expect(page.getByRole("button", { name: "Apple", exact: true })).toHaveAttribute("aria-pressed", "true");
-  const appleTokens = await themeVisualTokens(page);
-  expect(appleTokens.radius).not.toBe(claudeTokens.radius);
-  expect(appleTokens.controlHeight).not.toBe(claudeTokens.controlHeight);
-  expect(appleTokens.motionScale).not.toBe(claudeTokens.motionScale);
-  expect(appleTokens.fontHeading).not.toBe(claudeTokens.fontHeading);
+  const appleOriginalTokens = await themeVisualTokens(page);
+  expect(appleOriginalTokens.radius).not.toBe(anthropicTokens.radius);
+  expect(appleOriginalTokens.controlHeight).not.toBe(anthropicTokens.controlHeight);
+  expect(appleOriginalTokens.motionScale).not.toBe(anthropicTokens.motionScale);
+  expect(appleOriginalTokens.fontHeading).not.toBe(anthropicTokens.fontHeading);
+  await page.getByRole("button", { name: "Cobalt", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
+  const appleCobaltTokens = await themeVisualTokens(page);
+  expect(appleCobaltTokens.primary).not.toBe(appleOriginalTokens.primary);
+  expect(appleCobaltTokens.radius).toBe(appleOriginalTokens.radius);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
 });
 
 async function themeVisualTokens(page: Page) {
@@ -1041,6 +1055,7 @@ async function themeVisualTokens(page: Page) {
       controlHeight: style.getPropertyValue("--control-height").trim(),
       motionScale: style.getPropertyValue("--motion-scale").trim(),
       fontHeading: style.getPropertyValue("--font-heading").trim(),
+      primary: style.getPropertyValue("--primary").trim(),
     };
   });
 }
@@ -1081,7 +1096,19 @@ test("demo settings and scheduled workflows expose read-only controls", async ({
 
   await page.goto("/settings");
   await expect(page.getByRole("status")).toHaveText("Demo mode is read-only.");
-  for (const name of ["Light", "Dark", "System", "Claude", "OpenAI", "Apple", "Google MD"]) {
+  for (const name of [
+    "Light",
+    "Dark",
+    "System",
+    "Anthropic",
+    "OpenAI",
+    "Apple",
+    "Google MD",
+    "Original",
+    "Graphite",
+    "Cobalt",
+    "Iris",
+  ]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
   }
 

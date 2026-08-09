@@ -3,16 +3,22 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import {
   applyThemeMode,
+  applyThemePalette,
   applyThemePreset,
   getStoredThemeMode,
+  getStoredThemePalette,
   getStoredThemePreset,
   storeThemeMode,
+  storeThemePalette,
   storeThemePreset,
   THEME_CHANGE_EVENT,
+  THEME_PALETTE_CHANGE_EVENT,
   THEME_PRESET_CHANGE_EVENT,
   type ThemeMode,
+  type ThemePalette,
   type ThemePreset,
 } from "@/app/theme";
+import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +44,7 @@ export function SettingsPage({
   const toast = useToast();
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
+  const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
   const [displayName, setDisplayName] = useState(user.displayName || user.username);
   const [passwordDraft, setPasswordDraft] = useState<PasswordChangeDraft>(emptyPasswordDraft);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -52,11 +59,15 @@ export function SettingsPage({
     const syncMode = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
     const syncPreset = (event: Event) =>
       setThemePreset((event as CustomEvent<ThemePreset>).detail ?? getStoredThemePreset());
+    const syncPalette = (event: Event) =>
+      setThemePalette((event as CustomEvent<ThemePalette>).detail ?? getStoredThemePalette());
     window.addEventListener(THEME_CHANGE_EVENT, syncMode);
     window.addEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
+    window.addEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
     return () => {
       window.removeEventListener(THEME_CHANGE_EVENT, syncMode);
       window.removeEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
+      window.removeEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
     };
   }, []);
 
@@ -70,6 +81,12 @@ export function SettingsPage({
     setThemePreset(preset);
     applyThemePreset(preset);
     storeThemePreset(preset);
+  };
+
+  const updatePalette = (palette: ThemePalette) => {
+    setThemePalette(palette);
+    applyThemePalette(palette);
+    storeThemePalette(palette);
   };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -262,6 +279,10 @@ export function SettingsPage({
             <fieldset className="space-y-2" disabled={readOnly}>
               <legend className="text-sm font-medium">Theme style</legend>
               <ThemePresetPicker value={themePreset} onChange={updatePreset} />
+            </fieldset>
+            <fieldset className="space-y-2" disabled={readOnly}>
+              <legend className="text-sm font-medium">Color</legend>
+              <ThemePalettePicker preset={themePreset} value={themePalette} onChange={updatePalette} />
             </fieldset>
           </CardContent>
         </Card>

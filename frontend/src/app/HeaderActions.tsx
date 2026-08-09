@@ -34,19 +34,26 @@ import {
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import {
   applyThemeMode,
+  applyThemePalette,
   applyThemePreset,
   getStoredThemeMode,
+  getStoredThemePalette,
   getStoredThemePreset,
   resolvedThemeMode,
   storeThemeMode,
+  storeThemePalette,
   storeThemePreset,
+  themePaletteLabel,
   themePresetLabel,
   THEME_CHANGE_EVENT,
+  THEME_PALETTE_CHANGE_EVENT,
   THEME_PRESET_CHANGE_EVENT,
   type ThemeMode,
+  type ThemePalette,
   type ThemePreset,
   watchSystemTheme,
 } from "@/app/theme";
+import { ThemePalettePicker } from "@/app/ThemePalettePicker";
 import { ThemePresetPicker } from "@/app/ThemePresetPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,6 +90,7 @@ export function HeaderActions({
   const canManageUsers = hasPermission("users:manage");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
+  const [themePalette, setThemePalette] = useState<ThemePalette>(() => getStoredThemePalette());
   const [reviewOpen, setReviewOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -112,6 +120,11 @@ export function HeaderActions({
   }, [themePreset]);
 
   useEffect(() => {
+    applyThemePalette(themePalette);
+    storeThemePalette(themePalette);
+  }, [themePalette]);
+
+  useEffect(() => {
     const syncTheme = (event: Event) => setThemeMode((event as CustomEvent<ThemeMode>).detail ?? getStoredThemeMode());
     window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
     return () => window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
@@ -122,6 +135,13 @@ export function HeaderActions({
       setThemePreset((event as CustomEvent<ThemePreset>).detail ?? getStoredThemePreset());
     window.addEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
     return () => window.removeEventListener(THEME_PRESET_CHANGE_EVENT, syncPreset);
+  }, []);
+
+  useEffect(() => {
+    const syncPalette = (event: Event) =>
+      setThemePalette((event as CustomEvent<ThemePalette>).detail ?? getStoredThemePalette());
+    window.addEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
+    return () => window.removeEventListener(THEME_PALETTE_CHANGE_EVENT, syncPalette);
   }, []);
 
   const refreshNotificationCenter = () => {
@@ -310,6 +330,10 @@ export function HeaderActions({
               />
               <div className="mt-2 border-t px-2 pt-3">
                 <ThemePresetPicker value={themePreset} compact onChange={setThemePreset} />
+                <div className="mt-3 border-t pt-3">
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">Color</div>
+                  <ThemePalettePicker preset={themePreset} value={themePalette} onChange={setThemePalette} compact />
+                </div>
               </div>
             </div>
             {isNativeApp() && (
@@ -652,7 +676,7 @@ export function HeaderActions({
               variant="outline"
               size="icon"
               aria-label="Theme"
-              title={`Theme: ${themeMode}, ${themePresetLabel(themePreset)}`}
+              title={`Theme: ${themeMode}, ${themePresetLabel(themePreset)}, ${themePaletteLabel(themePalette)}`}
             >
               {resolvedThemeMode(themeMode) === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
@@ -660,7 +684,7 @@ export function HeaderActions({
           align="right"
         >
           <div className="w-64">
-            <PopoverHeader title="Theme" subtitle="Mode and style" />
+            <PopoverHeader title="Theme" subtitle="Mode, style, and color" />
             <MenuList>
               <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={setThemeMode} />
               <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={setThemeMode} />
@@ -673,6 +697,10 @@ export function HeaderActions({
             </MenuList>
             <div className="border-t p-3">
               <ThemePresetPicker value={themePreset} onChange={setThemePreset} compact />
+              <div className="mt-3 border-t pt-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">Color</div>
+                <ThemePalettePicker preset={themePreset} value={themePalette} onChange={setThemePalette} compact />
+              </div>
             </div>
           </div>
         </HeaderPopover>

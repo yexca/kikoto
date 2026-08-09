@@ -4,7 +4,7 @@ import { THEME_PRESET_OPTIONS, type ThemePreset } from "@/app/theme";
 import { cn } from "@/lib/utils";
 
 const presetIcons: Record<ThemePreset, LucideIcon> = {
-  claude: Feather,
+  anthropic: Feather,
   openai: Circle,
   apple: Layers3,
   "google-md": Shapes,

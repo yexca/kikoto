@@ -1,13 +1,15 @@
 export type ThemeMode = "light" | "dark" | "system";
-export type ThemePreset = "claude" | "openai" | "apple" | "google-md";
+export type ThemePreset = "anthropic" | "openai" | "apple" | "google-md";
+export type ThemePalette = "original" | "graphite" | "cobalt" | "iris";
 
 type ResolvedThemeMode = Exclude<ThemeMode, "system">;
 
-export const DEFAULT_THEME_PRESET: ThemePreset = "claude";
+export const DEFAULT_THEME_PRESET: ThemePreset = "anthropic";
+export const DEFAULT_THEME_PALETTE: ThemePalette = "original";
 export const THEME_PRESET_OPTIONS = [
   {
-    value: "claude",
-    label: "Claude",
+    value: "anthropic",
+    label: "Anthropic",
     swatches: ["#ad4f2f", "#f7f3ed", "#302a26"],
     themeColor: { light: "#f7f3ed", dark: "#1a1715" },
   },
@@ -35,11 +37,23 @@ export const THEME_PRESET_OPTIONS = [
   swatches: readonly [string, string, string];
   themeColor: Record<ResolvedThemeMode, string>;
 }>;
+export const THEME_PALETTE_OPTIONS = [
+  { value: "original", label: "Original", swatch: null },
+  { value: "graphite", label: "Graphite", swatch: "#4a4a50" },
+  { value: "cobalt", label: "Cobalt", swatch: "#315fd6" },
+  { value: "iris", label: "Iris", swatch: "#7552b5" },
+] as const satisfies ReadonlyArray<{
+  value: ThemePalette;
+  label: string;
+  swatch: string | null;
+}>;
 
 const THEME_STORAGE_KEY = "kikoto:theme";
 const THEME_PRESET_STORAGE_KEY = "kikoto:theme-preset";
+const THEME_PALETTE_STORAGE_KEY = "kikoto:theme-palette";
 export const THEME_CHANGE_EVENT = "kikoto:theme-change";
 export const THEME_PRESET_CHANGE_EVENT = "kikoto:theme-preset-change";
+export const THEME_PALETTE_CHANGE_EVENT = "kikoto:theme-palette-change";
 const darkModeQuery = "(prefers-color-scheme: dark)";
 
 export function getStoredThemeMode(): ThemeMode {
@@ -54,12 +68,23 @@ export function storeThemeMode(mode: ThemeMode) {
 
 export function getStoredThemePreset(): ThemePreset {
   const value = localStorage.getItem(THEME_PRESET_STORAGE_KEY);
+  if (value === "claude") return "anthropic";
   return isThemePreset(value) ? value : DEFAULT_THEME_PRESET;
 }
 
 export function storeThemePreset(preset: ThemePreset) {
   localStorage.setItem(THEME_PRESET_STORAGE_KEY, preset);
   window.dispatchEvent(new CustomEvent<ThemePreset>(THEME_PRESET_CHANGE_EVENT, { detail: preset }));
+}
+
+export function getStoredThemePalette(): ThemePalette {
+  const value = localStorage.getItem(THEME_PALETTE_STORAGE_KEY);
+  return isThemePalette(value) ? value : DEFAULT_THEME_PALETTE;
+}
+
+export function storeThemePalette(palette: ThemePalette) {
+  localStorage.setItem(THEME_PALETTE_STORAGE_KEY, palette);
+  window.dispatchEvent(new CustomEvent<ThemePalette>(THEME_PALETTE_CHANGE_EVENT, { detail: palette }));
 }
 
 export function systemPrefersDark() {
@@ -82,6 +107,11 @@ export function applyThemePreset(preset: ThemePreset) {
   updateThemeColor(resolvedThemeMode(getStoredThemeMode()), preset);
 }
 
+export function applyThemePalette(palette: ThemePalette) {
+  document.documentElement.dataset.themePalette = palette;
+  delete document.documentElement.dataset.themeAccent;
+}
+
 export function watchSystemTheme(onChange: () => void) {
   const media = window.matchMedia(darkModeQuery);
   media.addEventListener("change", onChange);
@@ -93,11 +123,19 @@ export function themeColorFor(preset: ThemePreset, mode: ResolvedThemeMode) {
 }
 
 export function themePresetLabel(preset: ThemePreset) {
-  return THEME_PRESET_OPTIONS.find((option) => option.value === preset)?.label ?? "Claude";
+  return THEME_PRESET_OPTIONS.find((option) => option.value === preset)?.label ?? "Anthropic";
+}
+
+export function themePaletteLabel(palette: ThemePalette) {
+  return THEME_PALETTE_OPTIONS.find((option) => option.value === palette)?.label ?? "Original";
 }
 
 function isThemePreset(value: string | null): value is ThemePreset {
-  return value === "claude" || value === "openai" || value === "apple" || value === "google-md";
+  return value === "anthropic" || value === "openai" || value === "apple" || value === "google-md";
+}
+
+function isThemePalette(value: string | null): value is ThemePalette {
+  return value === "original" || value === "graphite" || value === "cobalt" || value === "iris";
 }
 
 function updateThemeColor(mode: ResolvedThemeMode, preset: ThemePreset) {
