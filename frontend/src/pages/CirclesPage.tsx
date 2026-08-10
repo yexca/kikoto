@@ -44,7 +44,6 @@ import { circleSourceBadges } from "@/components/work-card/sourceBadges";
 import {
   WorkCollectionLayoutPicker,
   workCollectionClassName,
-  workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
@@ -361,8 +360,7 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
   const [notFound, setNotFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshingScope, setRefreshingScope] = useState<CircleRefreshScope | null>(null);
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
-    useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [deleteTarget, setDeleteTarget] = useState<CircleCatalogWork | null>(null);
   const [selectedWorkCodes, setSelectedWorkCodes] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -913,10 +911,8 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           </div>
           <div className="hidden shrink-0 gap-2 lg:flex">
             <WorkCollectionLayoutPicker
-              viewMode={viewMode}
               mobileColumns={mobileColumns}
               desktopColumns={desktopColumns}
-              onViewModeChange={setViewMode}
               onMobileColumnsChange={setMobileColumns}
               onDesktopColumnsChange={setDesktopColumns}
             />
@@ -956,8 +952,6 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
           selectionMode={selectionMode}
           availabilityFilter={availabilityFilter}
           onAvailabilityFilterChange={setAvailabilityFilter}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
           mobileColumns={mobileColumns}
           onMobileColumnsChange={setMobileColumns}
           onSelectWorks={() => {
@@ -999,13 +993,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
                 )}
               </div>
               {selectedSeries ? (
-                <div
-                  className={workCollectionClassName(viewMode)}
-                  style={workCollectionStyle(mobileColumns, desktopColumns)}
-                >
+                <div className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
                   {seriesWorks.length > 0 ? (
                     seriesWorks.map((work) => (
-                      <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
+                      <div key={work.primaryCode}>
                         <CatalogWorkCard
                           work={work}
                           busy={isBulkSaving || fetchWorkspace.isBusy}
@@ -1118,13 +1109,10 @@ function CircleDetailPage({ externalId, seriesCode }: { externalId: string; seri
               </div>
             )}
 
-            <div
-              className={workCollectionClassName(viewMode)}
-              style={workCollectionStyle(mobileColumns, desktopColumns)}
-            >
+            <div className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
               {filteredWorks.length > 0 ? (
                 pagedWorks.map((work) => (
-                  <div key={work.primaryCode} className={workCollectionItemClassName(viewMode)}>
+                  <div key={work.primaryCode}>
                     <CatalogWorkCard
                       work={work}
                       busy={isBulkSaving || fetchWorkspace.isBusy}

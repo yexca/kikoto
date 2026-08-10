@@ -1063,7 +1063,9 @@ async function mockRemoteSource(
   });
 }
 
-test("remote source reuses library layout, source sorting, localized tags, and bottom pagination", async ({ page }) => {
+test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
+  page,
+}) => {
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
@@ -1081,11 +1083,8 @@ test("remote source reuses library layout, source sorting, localized tags, and b
   await page.getByRole("button", { name: "Sales", exact: true }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "sales")).toBe(true);
 
-  await page.getByRole("button", { name: "View: Grid" }).click();
-  await page.getByRole("button", { name: "Masonry", exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBeNull();
-  await expect.poll(() => page.evaluate(() => window.history.state?.libraryBrowseState?.view)).toBe("masonry");
-  await expect(page.locator("section[class*='column-count']")).toBeVisible();
+  await expect(page.locator("section[class*='grid-template-columns']").first()).toBeVisible();
 
   await page.getByTitle("Next page").last().click();
   await expect(page.getByText("Remote page two work", { exact: true })).toBeVisible();
@@ -1906,8 +1905,6 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await page.setViewportSize({ width: 1600, height: 900 });
   await assertTagRowsAreComplete(210, 280);
 
-  await page.getByRole("button", { name: "View: Grid" }).click();
-  await page.getByRole("button", { name: "Masonry", exact: true }).click();
   overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
   await expect(overflow).toBeVisible();
   await overflow.click();

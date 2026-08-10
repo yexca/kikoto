@@ -28,11 +28,12 @@ The Library is the main browsing surface for works.
 - Keeps source availability visually separate from metadata tags.
 - Shows known age ratings beside the circle name on work cards while retaining
   the complete age metadata in work detail.
-- Offers the same grid or masonry presentation for work collections across the
-  Library, Favorites, circle detail, and voice detail surfaces. Responsive
-  column choices are shared instead of being reimplemented per page.
-- Persists the selected work-collection layout locally and applies it across
-  Library, Favorites, circle work collections, and voice work collections.
+- Uses the same responsive grid for work collections across the Library,
+  Favorites, circle detail, and voice detail surfaces. Column choices are
+  shared instead of being reimplemented per page.
+- Persists the selected work-collection column settings locally and applies
+  them across Library, Favorites, circle work collections, and voice work
+  collections.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
 - Defaults new Library views to personalized recommendation ordering while
@@ -54,8 +55,9 @@ The Library is the main browsing surface for works.
   the full work-card grid. The
   strip can be collapsed, and that preference is kept in the browser.
 - Uses one shared query across Local, Tracked, and configured remote sources.
-  Each source retains its own pagination, sort, layout, and scroll state, but
-  cannot restore stale query text after the user clears it elsewhere.
+  Each source retains its own pagination, sort, and scroll state, while grid
+  column settings remain shared. A source cannot restore stale query text after
+  the user clears it elsewhere.
 - Keeps database cleanup out of Library. Maintenance -> Unlinked works provides
   paged search, source checks, and confirmed local-information deletion for
   logical families with no available source or media location.

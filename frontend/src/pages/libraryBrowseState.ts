@@ -8,7 +8,6 @@ import {
 export const localWorkPageSizeOptions = [24, 48] as const;
 export type LocalWorkPageSize = (typeof localWorkPageSizeOptions)[number];
 export type LibraryColumnSetting = WorkCollectionColumnSetting;
-export type LibraryViewMode = "grid" | "masonry";
 
 export type LibraryBrowseState = {
   query: string;
@@ -18,7 +17,6 @@ export type LibraryBrowseState = {
   sort: LibrarySort;
   direction: SortDirection;
   randomSeed: number;
-  view: LibraryViewMode;
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
   scrollY: number;
@@ -32,7 +30,6 @@ export const defaultLibraryBrowseState: LibraryBrowseState = {
   sort: "recommend",
   direction: "desc",
   randomSeed: 1,
-  view: "grid",
   mobileColumns: "auto",
   desktopColumns: "auto",
   scrollY: 0,
@@ -126,7 +123,6 @@ export function libraryBrowseStateFromSearch(search: string, fallback: LibraryBr
       sort: params.has("sort") ? params.get("sort") : fallback.sort,
       direction: params.has("direction") ? params.get("direction") : fallback.direction,
       randomSeed: params.has("seed") ? Number(params.get("seed")) : fallback.randomSeed,
-      view: params.has("view") ? params.get("view") : fallback.view,
       mobileColumns: params.has("mobileColumns")
         ? parseColumnSearchValue(params.get("mobileColumns"))
         : fallback.mobileColumns,
@@ -168,7 +164,6 @@ export function libraryBrowseStateFromValue(
       Number.isFinite(randomSeed) && randomSeed >= 1 && randomSeed <= 2147483646
         ? Math.floor(randomSeed)
         : fallback.randomSeed,
-    view: value.view === "grid" || value.view === "masonry" ? value.view : fallback.view,
     mobileColumns:
       mobileColumns === "auto" || isWorkCollectionColumnCount(mobileColumns) ? mobileColumns : fallback.mobileColumns,
     desktopColumns:

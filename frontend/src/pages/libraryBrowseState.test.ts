@@ -26,7 +26,6 @@ describe("library browse state", () => {
       status: "listening" as const,
       sort: "rating" as const,
       direction: "asc" as const,
-      view: "masonry" as const,
       mobileColumns: 2 as const,
       desktopColumns: 7 as const,
       scrollY: 640,
@@ -47,7 +46,6 @@ describe("library browse state", () => {
         sort: "unsupported",
         randomSeed: -1,
         direction: "sideways",
-        view: "list",
         mobileColumns: 10,
         desktopColumns: 0,
         scrollY: -1,
@@ -92,7 +90,7 @@ describe("library browse state", () => {
     expect(restored.page).toBe(4);
   });
 
-  it("continues to read legacy full-state URLs", () => {
+  it("ignores the removed legacy view mode while reading full-state URLs", () => {
     const restored = libraryBrowseStateFromSearch(
       "?page=4&pageSize=48&sort=sales&direction=asc&seed=99&status=finished&view=masonry&mobileColumns=2&desktopColumns=6",
       defaultLibraryBrowseState,
@@ -104,10 +102,10 @@ describe("library browse state", () => {
       direction: "asc",
       randomSeed: 99,
       status: "finished",
-      view: "masonry",
       mobileColumns: 2,
       desktopColumns: 6,
     });
+    expect(restored).not.toHaveProperty("view");
   });
 
   it("shares a changed query while retaining source-specific browse preferences", () => {
@@ -116,7 +114,6 @@ describe("library browse state", () => {
       query: "old query",
       page: 4,
       sort: "sales" as const,
-      view: "masonry" as const,
       scrollY: 900,
     };
 

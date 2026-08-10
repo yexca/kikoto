@@ -66,7 +66,6 @@ import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRem
 import {
   WorkCollectionLayoutPicker,
   workCollectionClassName,
-  workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
 } from "@/components/work-collection/WorkCollectionLayout";
@@ -376,8 +375,7 @@ function VoiceDetailPage({ personId }: { personId: number }) {
   const [filter, setFilter] = useState<WorkFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof workPageSizeOptions)[number]>(24);
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
-    useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [selectedWorkKeys, setSelectedWorkKeys] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
@@ -874,10 +872,8 @@ function VoiceDetailPage({ personId }: { personId: number }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <WorkCollectionLayoutPicker
-              viewMode={viewMode}
               mobileColumns={mobileColumns}
               desktopColumns={desktopColumns}
-              onViewModeChange={setViewMode}
               onMobileColumnsChange={setMobileColumns}
               onDesktopColumnsChange={setDesktopColumns}
             />
@@ -961,15 +957,12 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         )}
         {pageWorks.length > 0 ? (
           <div
-            className={workCollectionClassName(viewMode)}
+            className={workCollectionClassName()}
             style={workCollectionStyle(mobileColumns, desktopColumns)}
             aria-busy={isWorksLoading || isRemoteLoading}
           >
             {pageWorks.map((work) => (
-              <div
-                key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}
-                className={workCollectionItemClassName(viewMode)}
-              >
+              <div key={`${"sourceId" in work ? work.sourceId : "known"}:${work.primaryCode}`}>
                 <VoiceWorkCard
                   work={work}
                   selected={selectedWorkKeys.has(voiceWorkSelectionKey(work))}
@@ -999,7 +992,6 @@ function VoiceDetailPage({ personId }: { personId: number }) {
         ) : isWorksLoading || isRemoteLoading ? (
           <WorkCollectionLoadingState
             label="Loading voice works"
-            viewMode={viewMode}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
           />

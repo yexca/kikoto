@@ -77,7 +77,7 @@ small shared contract should resolve cross-domain needs.
   version actions open signed GitHub Releases and never imply silent install.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
-  grid/masonry behavior and responsive column choices should remain aligned.
+  grid behavior and responsive column choices should remain aligned.
 - Treat a compact detail-page back control as Up navigation. Circle detail uses
   the current server-and-user-scoped Circles list location on mobile instead of
   returning to another bottom-navigation destination; wide layouts retain the
@@ -85,8 +85,8 @@ small shared contract should resolve cross-domain needs.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, and known available
   alternate-language state; playback history belongs outside the shared card.
-- Persist work-collection layout as one shared browser preference, rather than
-  separate page-local selections.
+- Persist work-collection column settings as one shared browser preference,
+  rather than separate page-local selections.
 - Scope account-bearing browser state by the configured server identity and
   current user (or anonymous principal). This includes player queue/progress,
   Library and Favorites browse restoration, workflow selection, and in-memory

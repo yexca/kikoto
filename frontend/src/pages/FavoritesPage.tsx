@@ -11,12 +11,10 @@ import {
   ExternalLink,
   Filter,
   Heart,
-  LayoutGrid,
   ListChecks,
   ListMusic,
   Mic2,
   MoreHorizontal,
-  PanelsTopLeft,
   Pencil,
   Pause,
   Play,
@@ -56,11 +54,9 @@ import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
 import {
   WorkCollectionLayoutPicker,
   workCollectionClassName,
-  workCollectionItemClassName,
   workCollectionStyle,
   useWorkCollectionLayout,
   type WorkCollectionColumnSetting,
-  type WorkCollectionViewMode,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
@@ -192,8 +188,7 @@ export function FavoritesPage() {
   const [shelfTotal, setShelfTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
-    useWorkCollectionLayout();
+  const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
   const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(
     () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
@@ -557,7 +552,6 @@ export function FavoritesPage() {
     const target = libraryLocation("/library", {
       ...defaultLibraryBrowseState,
       query: ["shelf:true", tagClause].filter(Boolean).join(" "),
-      view: viewMode,
       mobileColumns,
       desktopColumns,
     });
@@ -955,7 +949,6 @@ export function FavoritesPage() {
                     sort={sort}
                     direction={sortDirection}
                     pageSize={pageSize}
-                    viewMode={viewMode}
                     mobileColumns={mobileColumns}
                     selectionMode={selectionMode}
                     hasActiveFilters={Boolean(hasActiveFilters)}
@@ -966,7 +959,6 @@ export function FavoritesPage() {
                     onDirectionChange={changeFavoriteSortDirection}
                     onReshuffle={reshuffleFavorites}
                     onPageSizeChange={changePageSize}
-                    onViewModeChange={setViewMode}
                     onMobileColumnsChange={setMobileColumns}
                     onToggleSelection={toggleSelectionMode}
                     onClearFilters={clearFilters}
@@ -1012,10 +1004,8 @@ export function FavoritesPage() {
                     Select
                   </Button>
                   <WorkCollectionLayoutPicker
-                    viewMode={viewMode}
                     mobileColumns={mobileColumns}
                     desktopColumns={desktopColumns}
-                    onViewModeChange={setViewMode}
                     onMobileColumnsChange={setMobileColumns}
                     onDesktopColumnsChange={setDesktopColumns}
                   />
@@ -1096,7 +1086,6 @@ export function FavoritesPage() {
             ) : (
               <WorkCollectionLoadingState
                 label="Loading favorite works"
-                viewMode={viewMode}
                 mobileColumns={mobileColumns}
                 desktopColumns={desktopColumns}
               />
@@ -1104,17 +1093,12 @@ export function FavoritesPage() {
           ) : works.length > 0 ? (
             <>
               <div
-                className={workCollectionClassName(viewMode)}
+                className={workCollectionClassName()}
                 style={workCollectionStyle(mobileColumns, desktopColumns)}
                 aria-busy={isLoading}
               >
                 {works.map((work) => (
-                  <div
-                    key={work.id}
-                    data-favorite-work-id={work.id}
-                    tabIndex={-1}
-                    className={`${workCollectionItemClassName(viewMode)} outline-none`}
-                  >
+                  <div key={work.id} data-favorite-work-id={work.id} tabIndex={-1} className="outline-none">
                     <FavoriteWorkCard
                       work={work}
                       selected={selectedWorkIDs.has(work.id)}
@@ -1739,7 +1723,7 @@ function favoriteSourceFilterLabel(sources: LibrarySource[], selectedSourceIDs: 
   return selected?.displayName || selected?.code || "1 source";
 }
 
-type FavoriteMobilePanel = "root" | "availability" | "sources" | "sort" | "view" | "columns" | "page-size";
+type FavoriteMobilePanel = "root" | "availability" | "sources" | "sort" | "columns" | "page-size";
 
 function FavoriteMobileOptions({
   availability,
@@ -1749,7 +1733,6 @@ function FavoriteMobileOptions({
   sort,
   direction,
   pageSize,
-  viewMode,
   mobileColumns,
   selectionMode,
   hasActiveFilters,
@@ -1760,7 +1743,6 @@ function FavoriteMobileOptions({
   onDirectionChange,
   onReshuffle,
   onPageSizeChange,
-  onViewModeChange,
   onMobileColumnsChange,
   onToggleSelection,
   onClearFilters,
@@ -1772,7 +1754,6 @@ function FavoriteMobileOptions({
   sort: FavoriteSort;
   direction: SortDirection;
   pageSize: PageSize;
-  viewMode: WorkCollectionViewMode;
   mobileColumns: WorkCollectionColumnSetting;
   selectionMode: boolean;
   hasActiveFilters: boolean;
@@ -1783,7 +1764,6 @@ function FavoriteMobileOptions({
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
   onPageSizeChange: (value: PageSize) => void;
-  onViewModeChange: (value: WorkCollectionViewMode) => void;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onToggleSelection: () => void;
   onClearFilters: () => void;
@@ -1800,7 +1780,6 @@ function FavoriteMobileOptions({
       : favoriteSourceFilterLabel(sources, selectedSourceIDs);
   const sortLabel = favoriteSortOptions.find((option) => option.value === sort)?.label ?? "Sort";
   const directionLabel = sort === "random" ? "Reshuffle" : direction === "asc" ? "Ascending" : "Descending";
-  const viewLabel = viewMode === "masonry" ? "Masonry" : "Grid";
   const columnsLabel = mobileColumns === "auto" ? "Auto" : String(mobileColumns);
 
   const close = () => {
@@ -1882,12 +1861,6 @@ function FavoriteMobileOptions({
               }
             />
             <FavoriteMobileMenuRow
-              icon={viewMode === "masonry" ? <PanelsTopLeft className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-              label="Layout"
-              value={viewLabel}
-              onClick={() => setPanel("view")}
-            />
-            <FavoriteMobileMenuRow
               icon={<Columns3 className="h-4 w-4" />}
               label="Columns"
               value={columnsLabel}
@@ -1929,13 +1902,11 @@ function FavoriteMobileOptions({
             availability={availability}
             sort={sort}
             pageSize={pageSize}
-            viewMode={viewMode}
             mobileColumns={mobileColumns}
             onBack={() => setPanel("root")}
             onAvailabilityChange={(value) => runAndClose(() => onAvailabilityChange(value))}
             onSortChange={(value) => runAndClose(() => onSortChange(value))}
             onPageSizeChange={(value) => runAndClose(() => onPageSizeChange(value))}
-            onViewModeChange={(value) => runAndClose(() => onViewModeChange(value))}
             onMobileColumnsChange={(value) => runAndClose(() => onMobileColumnsChange(value))}
           />
         )}
@@ -2009,26 +1980,22 @@ function FavoriteMobileOptionPanel({
   availability,
   sort,
   pageSize,
-  viewMode,
   mobileColumns,
   onBack,
   onAvailabilityChange,
   onSortChange,
   onPageSizeChange,
-  onViewModeChange,
   onMobileColumnsChange,
 }: {
   panel: Exclude<FavoriteMobilePanel, "root" | "sources">;
   availability: AvailabilityFilter;
   sort: FavoriteSort;
   pageSize: PageSize;
-  viewMode: WorkCollectionViewMode;
   mobileColumns: WorkCollectionColumnSetting;
   onBack: () => void;
   onAvailabilityChange: (value: AvailabilityFilter) => void;
   onSortChange: (value: FavoriteSort) => void;
   onPageSizeChange: (value: PageSize) => void;
-  onViewModeChange: (value: WorkCollectionViewMode) => void;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
 }) {
   const title =
@@ -2036,11 +2003,9 @@ function FavoriteMobileOptionPanel({
       ? "Availability"
       : panel === "sort"
         ? "Sort"
-        : panel === "view"
-          ? "Layout"
-          : panel === "columns"
-            ? "Columns"
-            : "Per page";
+        : panel === "columns"
+          ? "Columns"
+          : "Per page";
   const options =
     panel === "availability"
       ? availabilityFilters.map((option) => ({
@@ -2056,29 +2021,19 @@ function FavoriteMobileOptionPanel({
             selected: option.value === sort,
             select: () => onSortChange(option.value),
           }))
-        : panel === "view"
-          ? [
-              { key: "grid", label: "Grid", selected: viewMode === "grid", select: () => onViewModeChange("grid") },
-              {
-                key: "masonry",
-                label: "Masonry",
-                selected: viewMode === "masonry",
-                select: () => onViewModeChange("masonry"),
-              },
-            ]
-          : panel === "columns"
-            ? (["auto", 1, 2] as const).map((option) => ({
-                key: String(option),
-                label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`,
-                selected: option === mobileColumns,
-                select: () => onMobileColumnsChange(option),
-              }))
-            : pageSizeOptions.map((option) => ({
-                key: String(option),
-                label: `${option} per page`,
-                selected: option === pageSize,
-                select: () => onPageSizeChange(option),
-              }));
+        : panel === "columns"
+          ? (["auto", 1, 2] as const).map((option) => ({
+              key: String(option),
+              label: option === "auto" ? "Automatic" : `${option} ${option === 1 ? "column" : "columns"}`,
+              selected: option === mobileColumns,
+              select: () => onMobileColumnsChange(option),
+            }))
+          : pageSizeOptions.map((option) => ({
+              key: String(option),
+              label: `${option} per page`,
+              selected: option === pageSize,
+              select: () => onPageSizeChange(option),
+            }));
   return (
     <div role="menu" aria-label={`${title} options`}>
       <div className="flex min-h-10 items-center gap-2 px-1">

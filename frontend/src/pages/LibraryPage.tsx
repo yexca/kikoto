@@ -117,7 +117,6 @@ import {
   writeLibrarySortPreference,
   type LibraryBrowseState,
   type LibraryColumnSetting,
-  type LibraryViewMode,
   type LocalWorkPageSize,
 } from "@/pages/libraryBrowseState";
 import {
@@ -387,12 +386,10 @@ export function LibraryPage() {
     index: number | null;
     draft: SearchClauseDraft;
   } | null>(null);
-  const { mobileColumns, desktopColumns, viewMode, setMobileColumns, setDesktopColumns, setViewMode } =
-    useWorkCollectionLayout({
-      mobileColumns: initialBrowseState.mobileColumns,
-      desktopColumns: initialBrowseState.desktopColumns,
-      viewMode: initialBrowseState.view,
-    });
+  const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout({
+    mobileColumns: initialBrowseState.mobileColumns,
+    desktopColumns: initialBrowseState.desktopColumns,
+  });
   const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
   const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(
     () => window.localStorage.getItem("kikoto:recommend-badges") === "true",
@@ -440,7 +437,6 @@ export function LibraryPage() {
     sort: librarySort,
     direction: sortDirection,
     randomSeed,
-    view: viewMode,
     mobileColumns,
     desktopColumns,
     scrollY: 0,
@@ -896,7 +892,6 @@ export function LibraryPage() {
     sortDirection,
     sourceRoutesReady,
     statusFilter,
-    viewMode,
     workPage,
     workPageSize,
     remoteSourceStates,
@@ -942,7 +937,6 @@ export function LibraryPage() {
     librarySort,
     randomSeed,
     sortDirection,
-    viewMode,
     mobileColumns,
     desktopColumns,
     workPage,
@@ -1506,10 +1500,8 @@ export function LibraryPage() {
         </div>
         <div className="flex w-full flex-wrap justify-end gap-2 lg:w-auto">
           <LayoutPicker
-            viewMode={viewMode}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
-            onViewModeChange={setViewMode}
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
           />
@@ -1608,7 +1600,6 @@ export function LibraryPage() {
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
             searchClauses={searchClauses}
-            viewMode={viewMode}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
             onClearSearch={() => setSearchQuery("")}
@@ -1664,40 +1655,8 @@ export function LibraryPage() {
                 changeStatusFilter("all");
               }}
             />
-          ) : viewMode === "masonry" ? (
-            <section
-              className={workCollectionClassName("masonry")}
-              style={workCollectionStyle(mobileColumns, desktopColumns)}
-            >
-              {pagedWorks.map((work) => (
-                <div key={work.id} className="mb-4 [break-inside:avoid]">
-                  <WorkCard
-                    work={work}
-                    showRecommendationScore={librarySort === "recommend"}
-                    onRecommendationOpen={() => openRecommendationExplanation(work)}
-                    onOpen={() => openWork(work)}
-                    onStatusChange={updateWorkStatus}
-                    onFavoriteSaved={(workID, favorite) => {
-                      setWorks((items) => items.map((item) => (item.id === workID ? { ...item, favorite } : item)));
-                      setSelectedWork((item) => (item?.id === workID ? { ...item, favorite } : item));
-                      if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
-                    }}
-                    onTagOpen={addTagSearchClause}
-                    onUserTagOpen={addUserTagSearchClause}
-                    onUntrack={localScope === "tracked" ? (source) => setUntrackTarget({ work, source }) : undefined}
-                    onFetch={
-                      localScope === "tracked" ? (source) => void openTrackedFetchSelection(work, source) : undefined
-                    }
-                    isFetchBusy={trackedFetchWorkspace.isBusy}
-                  />
-                </div>
-              ))}
-            </section>
           ) : (
-            <section
-              className={workCollectionClassName("grid")}
-              style={workCollectionStyle(mobileColumns, desktopColumns)}
-            >
+            <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
               {pagedWorks.map((work) => (
                 <WorkCard
                   key={work.id}
@@ -1820,7 +1779,6 @@ function RemoteSourcePanel({
   loading,
   viewState,
   searchClauses,
-  viewMode,
   mobileColumns,
   desktopColumns,
   onClearSearch,
@@ -1836,7 +1794,6 @@ function RemoteSourcePanel({
   loading: boolean;
   viewState: RemoteSourceViewState;
   searchClauses: SearchClause[];
-  viewMode: LibraryViewMode;
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
   onClearSearch: () => void;
@@ -2087,7 +2044,7 @@ function RemoteSourcePanel({
         </div>
       )}
       {isInitialLoading ? (
-        <RemoteWorkGridSkeleton viewMode={viewMode} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+        <RemoteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
       ) : visibleWorks.length === 0 ? (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm text-muted-foreground">
@@ -2105,12 +2062,9 @@ function RemoteSourcePanel({
         </Card>
       ) : (
         <div className="space-y-2">
-          <section
-            className={workCollectionClassName(viewMode)}
-            style={workCollectionStyle(mobileColumns, desktopColumns)}
-          >
+          <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
             {visibleWorks.map((work) => (
-              <div key={work.remoteId} className={viewMode === "masonry" ? "mb-4 [break-inside:avoid]" : "h-full"}>
+              <div key={work.remoteId} className="h-full">
                 <RemoteWorkCard
                   work={work}
                   source={source}
@@ -2429,25 +2383,16 @@ function RemoteWorkCard({
 }
 
 function RemoteWorkGridSkeleton({
-  viewMode,
   mobileColumns,
   desktopColumns,
 }: {
-  viewMode: LibraryViewMode;
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
 }) {
   return (
-    <section className={workCollectionClassName(viewMode)} style={workCollectionStyle(mobileColumns, desktopColumns)}>
+    <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
       {Array.from({ length: 12 }, (_, index) => (
-        <div
-          key={index}
-          className={
-            viewMode === "masonry"
-              ? "mb-4 overflow-hidden rounded-lg border bg-card [break-inside:avoid]"
-              : "overflow-hidden rounded-lg border bg-card"
-          }
-        >
+        <div key={index} className="overflow-hidden rounded-lg border bg-card">
           <div className="aspect-[4/5] animate-pulse bg-muted" />
           <div className="space-y-2 p-3">
             <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />

@@ -1,12 +1,9 @@
-import { Check, Columns3, LayoutGrid, PanelsTopLeft, RefreshCw, X } from "lucide-react";
+import { Check, Columns3, RefreshCw, X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { CircleDetail } from "@/lib/api";
-import type {
-  WorkCollectionColumnSetting,
-  WorkCollectionViewMode,
-} from "@/components/work-collection/WorkCollectionLayout";
+import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
 
 export type CircleAvailabilityFilter = "all" | "available" | "unavailable" | "local" | "remote";
 export type CircleRefreshScope = "all" | "catalog" | "work" | "source";
@@ -99,8 +96,6 @@ export function CircleCatalogOptionsSheet({
   selectionMode,
   availabilityFilter,
   onAvailabilityFilterChange,
-  viewMode,
-  onViewModeChange,
   mobileColumns,
   onMobileColumnsChange,
   onSelectWorks,
@@ -111,8 +106,6 @@ export function CircleCatalogOptionsSheet({
   selectionMode: boolean;
   availabilityFilter: CircleAvailabilityFilter;
   onAvailabilityFilterChange: (value: CircleAvailabilityFilter) => void;
-  viewMode: WorkCollectionViewMode;
-  onViewModeChange: (value: WorkCollectionViewMode) => void;
   mobileColumns: WorkCollectionColumnSetting;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onSelectWorks: () => void;
@@ -178,24 +171,6 @@ export function CircleCatalogOptionsSheet({
                 {availabilityFilter === option.value && <Check className="h-4 w-4" />}
               </button>
             ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">View</legend>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Catalog view">
-            <CatalogOptionButton
-              active={viewMode === "grid"}
-              label="Grid"
-              icon={<LayoutGrid className="h-4 w-4" />}
-              onClick={() => onViewModeChange("grid")}
-            />
-            <CatalogOptionButton
-              active={viewMode === "masonry"}
-              label="Masonry"
-              icon={<PanelsTopLeft className="h-4 w-4" />}
-              onClick={() => onViewModeChange("masonry")}
-            />
           </div>
         </fieldset>
 

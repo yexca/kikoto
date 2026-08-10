@@ -454,7 +454,6 @@ test("mobile circle detail keeps the work surface visible and moves secondary co
 
   await optionsDialog.getByRole("button", { name: "Unavailable" }).click();
   await expect(optionsDialog.getByRole("button", { name: "Unavailable" })).toHaveAttribute("aria-pressed", "true");
-  await optionsDialog.getByRole("button", { name: "Masonry" }).click();
   await optionsDialog.getByRole("button", { name: "2 columns" }).click();
   await expect(optionsDialog.getByRole("button", { name: "2 columns" })).toHaveAttribute("aria-pressed", "true");
   await optionsDialog.getByRole("button", { name: "Select works" }).click();
