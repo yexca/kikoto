@@ -182,7 +182,7 @@ async function mockFavorites(
   });
 }
 
-test("favorites detail return restores browse state, selection, anchor, and work tags", async ({ page }) => {
+test("favorites detail uses Library Up navigation while the Favorites tab restores browse state", async ({ page }) => {
   await mockFavorites(page);
   await page.goto(
     "/favorites?entity=works&status=listening&availability=local&list=2&page=2&pageSize=24&sort=sales&direction=asc&seed=314159",
@@ -207,7 +207,9 @@ test("favorites detail return restores browse state, selection, anchor, and work
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Night", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Back to favorites" }).click();
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await expect(page).toHaveURL(/^http:\/\/[^/]+\/(?:\?.*)?$/);
+  await page.locator("footer").getByRole("button", { name: "Favorites", exact: true }).click();
   await expect(page).toHaveURL(/\/favorites$/);
   await expect(page.getByRole("button", { name: "More shelf options" })).toHaveAttribute("data-shelf-sort", "sales");
   await expect(page.getByText("1 selected", { exact: true })).toBeVisible();

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 const persistedTrack = {
   queueItemId: "route-boundary-track",
@@ -70,11 +70,14 @@ async function prepareRouteFailure(page: Page) {
     await route.fulfill({ status: 404, json: { error: "Not mocked" } });
   });
 
-  await page.route("**/src/pages/AboutPage.tsx*", async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: 'throw new Error("https://source.example.invalid/private/path"); export function AboutPage() { return null; }',
-    });
+  await page.route("**/src/pages/AboutPage.tsx*", fulfillFailingAboutModule);
+  await page.route(/\/assets\/AboutPage-[^/]+\.js(?:\?.*)?$/, fulfillFailingAboutModule);
+}
+
+async function fulfillFailingAboutModule(route: Route) {
+  await route.fulfill({
+    contentType: "application/javascript",
+    body: 'throw new Error("https://source.example.invalid/private/path"); export function AboutPage() { return null; }',
   });
 }
 

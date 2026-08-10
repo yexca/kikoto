@@ -299,15 +299,6 @@ async function mockCreatorDetails(page: Page) {
   });
 }
 
-async function expectSingleStatRow(page: Page, columns: 4 | 5, marker: string) {
-  const cards = page.locator(`div.grid.grid-cols-${columns}`).filter({ hasText: marker }).locator(":scope > *");
-  await expect(cards).toHaveCount(columns);
-  const tops = await cards.evaluateAll((elements) =>
-    elements.map((element) => Math.round(element.getBoundingClientRect().top)),
-  );
-  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
-}
-
 test("circle list uses compact responsive cards and shared pagination", async ({ page }) => {
   await mockCreatorLists(page);
   await page.goto("/circles?pageSize=24");
@@ -315,11 +306,14 @@ test("circle list uses compact responsive cards and shared pagination", async ({
   await expect(page.getByRole("heading", { name: "Circles" })).toBeVisible();
   await expect(page.getByText("Latest RJ00000000", { exact: true })).toBeVisible();
   await expect(page.getByText("No cover", { exact: true })).toBeVisible();
-  await expect(page.getByText("1-24 of 30 circles", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 · 30 circles", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Circle pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Circle pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  await page.getByLabel("Circle filter").selectOption("missing");
+  await page.getByRole("button", { name: "Circle list options" }).click();
+  await page.getByRole("menuitem", { name: /^Filter/ }).click();
+  await page.getByRole("menuitemradio", { name: "Missing" }).click();
   await expect(page).toHaveURL(/filter=missing/);
 });
 
@@ -336,7 +330,8 @@ test("voice list keeps latest work, tags, and availability visible on mobile", a
       .filter({ hasText: /^Soft$/ })
       .first(),
   ).toBeVisible();
-  await expect(page.getByText("1-24 of 30 voice actors", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 · 30 voice actors", { exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Voice actor pages controls" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Voice actor pages" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -401,30 +396,43 @@ test("voice detail renders one stable work-loading region for local and remote d
   await expect(loading).toHaveCount(0);
 });
 
-test("voice detail keeps stats together and secondary panels folded on mobile", async ({ page }) => {
+test("voice detail keeps compact statistics and secondary panels closed on mobile", async ({ page }) => {
   await mockCreatorDetails(page);
   await page.goto("/voices/7");
 
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
-  await expectSingleStatRow(page, 5, "Known works");
-  const aliases = page.locator("details").filter({ hasText: "Aliases" }).first();
-  const remoteSources = page.locator("details").filter({ hasText: "Remote Sources" }).first();
-  await expect(aliases).not.toHaveAttribute("open", "");
-  await expect(remoteSources).not.toHaveAttribute("open", "");
-  await expect(aliases.getByRole("heading", { name: "Aliases", exact: true })).toBeHidden();
-  await expect(remoteSources.getByRole("heading", { name: "Remote Sources", exact: true })).toBeHidden();
+  const statistics = page.locator('[aria-label="Voice actor statistics"]');
+  await expect(statistics).toBeVisible();
+  await expect(statistics).toContainText("works: 5");
+  await expect(statistics).toContainText("playable: 4");
+  await expect(statistics).toContainText("local: 2");
+  await expect(statistics).toContainText("remote: 1");
+  const statisticItems = statistics.locator(":scope > *");
+  await expect(statisticItems).toHaveCount(4);
+  const statisticTops = await statisticItems.evaluateAll((elements) =>
+    elements.map((element) => Math.round(element.getBoundingClientRect().top)),
+  );
+  expect(Math.max(...statisticTops) - Math.min(...statisticTops)).toBeLessThanOrEqual(1);
+
+  await expect(page.getByRole("button", { name: /^Aliases/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: /^Open Remote Sources/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("dialog", { name: "Aliases" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Remote Sources" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("circle detail keeps stats together and aliases folded on mobile", async ({ page }) => {
+test("circle detail keeps availability and primary actions compact on mobile", async ({ page }) => {
   await mockCreatorDetails(page);
   await page.goto("/circles/RG09999");
 
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
-  await expectSingleStatRow(page, 4, "Catalog works");
-  const aliases = page.locator("details").filter({ hasText: "Aliases" }).first();
-  await expect(aliases).not.toHaveAttribute("open", "");
-  await expect(aliases.getByText("Circle alias, Second alias", { exact: true })).toBeHidden();
+  const summary = page.getByRole("region", { name: "Circle summary" });
+  await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(page.getByRole("dialog", { name: "Advanced refresh" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -490,12 +498,10 @@ test("desktop circle detail keeps a full-width compact summary and source-aware 
     card: element.firstElementChild?.getBoundingClientRect().width ?? 0,
   }));
   expect(Math.abs(summaryWidths.region - summaryWidths.card)).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("group", { name: "Catalog only: 1" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Playable: 1" })).toBeVisible();
+  await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
 
   await page.getByLabel("Catalog availability filter").selectOption("unavailable");
-  await expect(page.getByRole("group", { name: "Catalog only: 1" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Playable: 1" })).toBeVisible();
+  await expect(summary.getByText("Available 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open catalog options" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Open advanced refresh actions" })).toBeVisible();
 });

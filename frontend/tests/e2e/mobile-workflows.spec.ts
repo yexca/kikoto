@@ -970,7 +970,7 @@ test("remote popular collection requires an explicit source and queues configure
   await expect(page.getByText(/run #41 queued/)).toBeVisible();
 });
 
-test("mobile header keeps actions in bounds and exposes theme and activity", async ({ page }) => {
+test("mobile header keeps actions in bounds and exposes appearance and activity", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
@@ -978,15 +978,13 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
   await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
-  await expect(page.getByText("Theme", { exact: true })).toBeVisible();
+  await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
 
-  const themeMenu = page
-    .getByText("Theme", { exact: true })
-    .locator("..", { has: page.getByRole("button", { name: "dark" }) });
-  const menuBox = await themeMenu.boundingBox();
-  expect(menuBox).not.toBeNull();
-  expect(menuBox!.x).toBeGreaterThanOrEqual(0);
-  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const modeGroup = page.getByRole("group", { name: "Mode" });
+  const modeBox = await modeGroup.boundingBox();
+  expect(modeBox).not.toBeNull();
+  expect(modeBox!.x).toBeGreaterThanOrEqual(0);
+  expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
   await page.getByRole("button", { name: "dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
@@ -995,11 +993,11 @@ test("mobile header keeps actions in bounds and exposes theme and activity", asy
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
   await page.getByRole("button", { name: "Cobalt", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme-palette", "cobalt");
-  const expandedMenuBox = await themeMenu.boundingBox();
-  expect(expandedMenuBox).not.toBeNull();
-  expect(expandedMenuBox!.x).toBeGreaterThanOrEqual(0);
-  expect(expandedMenuBox!.x + expandedMenuBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  expect(expandedMenuBox!.y + expandedMenuBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  const colorGroupBox = await page.getByRole("group", { name: "Color" }).boundingBox();
+  expect(colorGroupBox).not.toBeNull();
+  expect(colorGroupBox!.x).toBeGreaterThanOrEqual(0);
+  expect(colorGroupBox!.x + colorGroupBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(colorGroupBox!.y + colorGroupBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
 });
@@ -1009,11 +1007,12 @@ test("desktop header popovers render above page content", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await page.getByRole("button", { name: "Theme" }).click();
-  const popover = page.getByText("Mode, style, and color").locator("..");
-  await expect(popover).toBeVisible();
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  await expect(page.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  const modeGroup = page.getByRole("group", { name: "Mode" });
+  await expect(modeGroup).toBeVisible();
   const headerBox = await page.locator("header").boundingBox();
-  const popoverBox = await popover.boundingBox();
+  const popoverBox = await modeGroup.boundingBox();
   expect(headerBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
   expect(popoverBox!.y + popoverBox!.height).toBeGreaterThan(headerBox!.y + headerBox!.height);
