@@ -16,14 +16,12 @@ import {
   LogIn,
   LogOut,
   MoreHorizontal,
-  Moon,
   Play,
   RotateCcw,
   ScanLine,
   Search,
   Server,
   Settings,
-  Sun,
   UserRound,
   Users,
   Workflow,
@@ -32,6 +30,7 @@ import {
 } from "lucide-react";
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
+import { AppearanceControls } from "@/app/AppearanceControls";
 import {
   applyThemeMode,
   applyThemePalette,
@@ -39,12 +38,9 @@ import {
   getStoredThemeMode,
   getStoredThemePalette,
   getStoredThemePreset,
-  resolvedThemeMode,
   storeThemeMode,
   storeThemePalette,
   storeThemePreset,
-  themePaletteLabel,
-  themePresetLabel,
   THEME_CHANGE_EVENT,
   THEME_PALETTE_CHANGE_EVENT,
   THEME_PRESET_CHANGE_EVENT,
@@ -53,8 +49,7 @@ import {
   type ThemePreset,
   watchSystemTheme,
 } from "@/app/theme";
-import { ThemePalettePicker } from "@/app/ThemePalettePicker";
-import { ThemePresetPicker } from "@/app/ThemePresetPicker";
+import { ThemeTrigger } from "@/app/ThemeTrigger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
@@ -299,42 +294,19 @@ export function HeaderActions({
                 />
               )}
             </MenuList>
-            <div className="border-t p-2">
-              <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">Theme</div>
-              <ThemeItem
-                mode="light"
-                current={themeMode}
-                icon={<Sun className="h-4 w-4" />}
-                onSelect={(mode) => {
+            <div className="border-t">
+              <div className="px-4 pt-3 text-xs font-semibold text-foreground">Appearance</div>
+              <AppearanceControls
+                mode={themeMode}
+                preset={themePreset}
+                palette={themePalette}
+                onModeChange={(mode) => {
                   setThemeMode(mode);
                   setMobileMenuOpen(false);
                 }}
+                onPresetChange={setThemePreset}
+                onPaletteChange={setThemePalette}
               />
-              <ThemeItem
-                mode="dark"
-                current={themeMode}
-                icon={<Moon className="h-4 w-4" />}
-                onSelect={(mode) => {
-                  setThemeMode(mode);
-                  setMobileMenuOpen(false);
-                }}
-              />
-              <ThemeItem
-                mode="system"
-                current={themeMode}
-                icon={<Command className="h-4 w-4" />}
-                onSelect={(mode) => {
-                  setThemeMode(mode);
-                  setMobileMenuOpen(false);
-                }}
-              />
-              <div className="mt-2 border-t px-2 pt-3">
-                <ThemePresetPicker value={themePreset} compact onChange={setThemePreset} />
-                <div className="mt-3 border-t pt-3">
-                  <div className="mb-2 text-xs font-medium text-muted-foreground">Color</div>
-                  <ThemePalettePicker preset={themePreset} value={themePalette} onChange={setThemePalette} compact />
-                </div>
-              </div>
             </div>
             {isNativeApp() && (
               <div className="border-t p-2">
@@ -672,36 +644,20 @@ export function HeaderActions({
           open={themeOpen}
           onOpenChange={setThemeOpen}
           trigger={
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Theme"
-              title={`Theme: ${themeMode}, ${themePresetLabel(themePreset)}, ${themePaletteLabel(themePalette)}`}
-            >
-              {resolvedThemeMode(themeMode) === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            </Button>
+            <ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />
           }
           align="right"
         >
           <div className="w-64">
-            <PopoverHeader title="Theme" subtitle="Mode, style, and color" />
-            <MenuList>
-              <ThemeItem mode="light" current={themeMode} icon={<Sun className="h-4 w-4" />} onSelect={setThemeMode} />
-              <ThemeItem mode="dark" current={themeMode} icon={<Moon className="h-4 w-4" />} onSelect={setThemeMode} />
-              <ThemeItem
-                mode="system"
-                current={themeMode}
-                icon={<Command className="h-4 w-4" />}
-                onSelect={setThemeMode}
-              />
-            </MenuList>
-            <div className="border-t p-3">
-              <ThemePresetPicker value={themePreset} onChange={setThemePreset} compact />
-              <div className="mt-3 border-t pt-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">Color</div>
-                <ThemePalettePicker preset={themePreset} value={themePalette} onChange={setThemePalette} compact />
-              </div>
-            </div>
+            <PopoverHeader title="Appearance" subtitle="Mode, style, and color" />
+            <AppearanceControls
+              mode={themeMode}
+              preset={themePreset}
+              palette={themePalette}
+              onModeChange={setThemeMode}
+              onPresetChange={setThemePreset}
+              onPaletteChange={setThemePalette}
+            />
           </div>
         </HeaderPopover>
       </div>
@@ -879,30 +835,6 @@ function ActionItem({
     >
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  );
-}
-
-function ThemeItem({
-  mode,
-  current,
-  icon,
-  onSelect,
-}: {
-  mode: ThemeMode;
-  current: ThemeMode;
-  icon: ReactNode;
-  onSelect: (mode: ThemeMode) => void;
-}) {
-  return (
-    <button
-      className="flex min-h-[var(--control-height)] w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-[color,background-color,transform] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
-      aria-pressed={mode === current}
-      onClick={() => onSelect(mode)}
-    >
-      {icon}
-      <span className="min-w-0 flex-1 capitalize">{mode}</span>
-      {mode === current && <CheckCircle2 className="h-4 w-4 text-primary" />}
     </button>
   );
 }
