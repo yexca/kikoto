@@ -36,6 +36,7 @@ import {
   creatorCardMinHeightClassName,
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
+import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePermissionGate } from "@/auth/usePermissionGate";
@@ -99,7 +100,16 @@ type CreatorKind = "circle" | "voice";
 type VoiceFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing";
 type WorkFilter = "all" | "available" | "local" | "remote" | "missing";
 const voicePageSizeOptions = [24, 48, 96] as const;
-const voiceFilters: readonly VoiceFilter[] = ["all", "favorite", "tagged", "available", "local", "remote", "missing"];
+const voiceFilterOptions: readonly { value: VoiceFilter; label: string }[] = [
+  { value: "all", label: "All voices" },
+  { value: "favorite", label: "Favorite" },
+  { value: "tagged", label: "Tagged" },
+  { value: "available", label: "Available" },
+  { value: "local", label: "Local" },
+  { value: "remote", label: "Remote" },
+  { value: "missing", label: "Missing" },
+];
+const voiceFilters: readonly VoiceFilter[] = voiceFilterOptions.map((option) => option.value);
 const workPageSizeOptions = [24, 48] as const;
 const aliasSuggestMinChars = 2;
 const aliasSuggestMaxResults = 12;
@@ -206,6 +216,18 @@ function VoiceListPage() {
   }, [filter, page, pageSize, reloadToken, requestQuery, tagFilter]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const changeFilter = (value: VoiceFilter) => {
+    setFilter(value);
+    setPage(1);
+  };
+  const changeTagFilter = (value: string) => {
+    setTagFilter(value);
+    setPage(1);
+  };
+  const changePageSize = (value: number) => {
+    setPageSize(value);
+    setPage(1);
+  };
   const paginationProps = {
     page,
     pageSize,
@@ -214,18 +236,29 @@ function VoiceListPage() {
     itemLabel: "voice actors",
     ariaLabel: "Voice actor pages",
     pageSizeOptions: voicePageSizeOptions,
+    pageSizeControlClassName: "hidden lg:block",
+    compactMobile: true,
+    refreshing: isLoading && hasLoaded,
+    refreshingLabel: "Refreshing voice actors",
     leadingControls: (
-      <span className="grid h-8 w-8 shrink-0 place-items-center">
-        {isLoading && hasLoaded && (
-          <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Refreshing voice actors" />
-        )}
-      </span>
+      <div className="lg:hidden">
+        <CreatorListMobileOptions
+          label="Voice actor"
+          filter={filter}
+          defaultFilter="all"
+          filterOptions={voiceFilterOptions}
+          tag={tagFilter}
+          tagOptions={tagOptions}
+          pageSize={pageSize}
+          pageSizeOptions={voicePageSizeOptions}
+          onFilterChange={changeFilter}
+          onTagChange={changeTagFilter}
+          onPageSizeChange={changePageSize}
+        />
+      </div>
     ),
     onPageChange: setPage,
-    onPageSizeChange: (value: number) => {
-      setPage(1);
-      setPageSize(value);
-    },
+    onPageSizeChange: changePageSize,
   };
 
   const updateVoice = (next: VoiceSummary) => {
@@ -266,25 +299,23 @@ function VoiceListPage() {
               placeholder="Search voices or tags"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden flex-wrap items-center gap-2 lg:flex">
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={filter}
-              onChange={(event) => setFilter(event.target.value as VoiceFilter)}
+              onChange={(event) => changeFilter(event.target.value as VoiceFilter)}
               aria-label="Voice filter"
             >
-              <option value="all">All voices</option>
-              <option value="favorite">Favorite</option>
-              <option value="tagged">Tagged</option>
-              <option value="available">Available</option>
-              <option value="local">Local</option>
-              <option value="remote">Remote</option>
-              <option value="missing">Missing</option>
+              {voiceFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={tagFilter}
-              onChange={(event) => setTagFilter(event.target.value)}
+              onChange={(event) => changeTagFilter(event.target.value)}
               aria-label="Voice tag filter"
             >
               <option value="">All tags</option>

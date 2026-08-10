@@ -929,17 +929,13 @@ export function FavoritesPage() {
             totalPages={totalPages}
             pageSizeOptions={pageSizeOptions}
             pageSizeControlClassName="hidden lg:block"
+            compactMobile
+            refreshing={isLoading && hasWorksSnapshot}
+            refreshingLabel="Refreshing favorites"
             onPageChange={setPage}
             onPageSizeChange={(value) => changePageSize(value as PageSize)}
             leadingControls={
               <>
-                <span className="grid h-8 w-8 shrink-0 place-items-center" aria-live="polite">
-                  {isLoading && hasWorksSnapshot && (
-                    <span role="status" aria-label="Refreshing favorites">
-                      <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                    </span>
-                  )}
-                </span>
                 <div className="lg:hidden">
                   <FavoriteMobileOptions
                     availability={availabilityFilter}
@@ -1800,7 +1796,7 @@ function FavoriteMobileOptions({
       <Button
         variant="outline"
         size="icon"
-        className="relative h-8 w-8"
+        className="relative h-11 w-11"
         onClick={() => setPopoverOpen(!open)}
         aria-label="More shelf options"
         title="More shelf options"

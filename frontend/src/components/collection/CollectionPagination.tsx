@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,9 @@ export type CollectionPaginationProps = {
   pageSizeOptions?: readonly number[];
   pageSizeControlClassName?: string;
   leadingControls?: ReactNode;
+  compactMobile?: boolean;
+  refreshing?: boolean;
+  refreshingLabel?: string;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
 };
@@ -33,6 +36,9 @@ export function CollectionPagination({
   pageSizeOptions,
   pageSizeControlClassName,
   leadingControls,
+  compactMobile = false,
+  refreshing,
+  refreshingLabel,
   onPageChange,
   onPageSizeChange,
 }: CollectionPaginationProps) {
@@ -96,16 +102,57 @@ export function CollectionPagination({
 
   const firstItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const lastItem = Math.min(totalItems, currentPage * pageSize);
+  const summaryContent = summary ?? (
+    <>
+      {firstItem}-{lastItem} of {totalItems} {itemLabel}
+    </>
+  );
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm lg:flex-row lg:items-center lg:justify-between">
-      <div className="shrink-0 text-xs text-muted-foreground">
-        {summary ?? (
+    <div
+      className={cn(
+        "rounded-lg border bg-card text-sm",
+        compactMobile
+          ? "flex min-h-[3.75rem] flex-nowrap items-center justify-between gap-2 px-2 py-2 lg:min-h-0 lg:px-3"
+          : "flex flex-col gap-2 px-3 py-2 lg:flex-row lg:items-center lg:justify-between",
+      )}
+    >
+      <div
+        className={cn(
+          "text-xs text-muted-foreground",
+          compactMobile ? "min-w-0 flex-1 lg:flex-none lg:shrink-0" : "shrink-0",
+        )}
+      >
+        {compactMobile ? (
           <>
-            {firstItem}-{lastItem} of {totalItems} {itemLabel}
+            <div className="flex min-w-0 items-center gap-1.5 lg:hidden">
+              <CollectionRefreshStatus refreshing={refreshing} label={refreshingLabel ?? `Refreshing ${itemLabel}`} />
+              <span className="min-w-0 truncate">
+                <span className="sr-only">
+                  Page {currentPage} of {lastPage}, {totalItems} {itemLabel}
+                </span>
+                <span aria-hidden="true">
+                  <span className="hidden min-[360px]:inline">Page {currentPage} · </span>
+                  {totalItems} {itemLabel}
+                </span>
+              </span>
+            </div>
+            <div className="hidden items-center gap-1.5 lg:flex">
+              <CollectionRefreshStatus refreshing={refreshing} label={refreshingLabel ?? `Refreshing ${itemLabel}`} />
+              <span>{summaryContent}</span>
+            </div>
           </>
+        ) : (
+          summaryContent
         )}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          compactMobile
+            ? "shrink-0 flex-nowrap lg:min-w-0 lg:shrink lg:flex-wrap lg:justify-end"
+            : "min-w-0 flex-wrap lg:justify-end",
+        )}
+      >
         {leadingControls}
         {pageSizeOptions && onPageSizeChange && (
           <select
@@ -124,7 +171,42 @@ export function CollectionPagination({
             ))}
           </select>
         )}
-        <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
+        {compactMobile && (
+          <div
+            className="inline-flex h-11 shrink-0 items-center rounded-md border bg-background lg:hidden"
+            role="group"
+            aria-label={`${ariaLabel} controls`}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 rounded-r-none"
+              disabled={currentPage <= 1}
+              onClick={() => onPageChange(currentPage - 1)}
+              aria-label="Previous page"
+              title="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 rounded-l-none border-l"
+              disabled={currentPage >= lastPage}
+              onClick={() => onPageChange(currentPage + 1)}
+              aria-label="Next page"
+              title="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <div
+          className={cn(
+            "h-8 shrink-0 items-center rounded-md border bg-background",
+            compactMobile ? "hidden lg:inline-flex" : "inline-flex",
+          )}
+        >
           <Button
             variant="ghost"
             size="icon"
@@ -153,5 +235,18 @@ export function CollectionPagination({
         </div>
       </div>
     </div>
+  );
+}
+
+function CollectionRefreshStatus({ refreshing, label }: { refreshing?: boolean; label: string }) {
+  if (refreshing === undefined) return null;
+  return (
+    <span className="grid h-4 w-4 shrink-0 place-items-center" aria-live="polite">
+      {refreshing && (
+        <span role="status" aria-label={label}>
+          <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        </span>
+      )}
+    </span>
   );
 }

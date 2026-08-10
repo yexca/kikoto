@@ -28,6 +28,7 @@ import {
   creatorCardMinHeightClassName,
   creatorCollectionClassName,
 } from "@/components/creator/CreatorCard";
+import { CreatorListMobileOptions } from "@/components/creator/CreatorListMobileOptions";
 import {
   WorkCardActionButton,
   WorkCardDLsiteAction,
@@ -101,16 +102,17 @@ const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
   { value: "paused", label: "Shelved" },
 ];
 type CircleFilter = "all" | "favorite" | "tagged" | "available" | "local" | "remote" | "missing" | "stale";
-const circleFilters: readonly CircleFilter[] = [
-  "all",
-  "favorite",
-  "tagged",
-  "available",
-  "local",
-  "remote",
-  "missing",
-  "stale",
+const circleFilterOptions: readonly { value: CircleFilter; label: string }[] = [
+  { value: "all", label: "All circles" },
+  { value: "favorite", label: "Favorite" },
+  { value: "tagged", label: "Tagged" },
+  { value: "available", label: "Available" },
+  { value: "local", label: "Local" },
+  { value: "remote", label: "Remote" },
+  { value: "missing", label: "Missing" },
+  { value: "stale", label: "Needs refresh" },
 ];
+const circleFilters: readonly CircleFilter[] = circleFilterOptions.map((option) => option.value);
 type CircleRefreshResultScope = CircleRefreshScope | "metadata";
 
 export function CirclesPage() {
@@ -218,6 +220,14 @@ function CircleListPage() {
   }, [filter, page, pageSize, reloadToken, requestQuery]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const changeFilter = (value: CircleFilter) => {
+    setFilter(value);
+    setPage(1);
+  };
+  const changePageSize = (value: number) => {
+    setPageSize(value);
+    setPage(1);
+  };
   const paginationProps = {
     page,
     pageSize,
@@ -226,11 +236,26 @@ function CircleListPage() {
     itemLabel: "circles",
     ariaLabel: "Circle pages",
     pageSizeOptions: circlePageSizeOptions,
+    pageSizeControlClassName: "hidden lg:block",
+    compactMobile: true,
+    refreshing: isLoading && hasLoaded,
+    refreshingLabel: "Refreshing circles",
+    leadingControls: (
+      <div className="lg:hidden">
+        <CreatorListMobileOptions
+          label="Circle"
+          filter={filter}
+          defaultFilter="all"
+          filterOptions={circleFilterOptions}
+          pageSize={pageSize}
+          pageSizeOptions={circlePageSizeOptions}
+          onFilterChange={changeFilter}
+          onPageSizeChange={changePageSize}
+        />
+      </div>
+    ),
     onPageChange: setPage,
-    onPageSizeChange: (value: number) => {
-      setPage(1);
-      setPageSize(value);
-    },
+    onPageSizeChange: changePageSize,
   };
 
   const updateCircle = (next: CircleSummary) => {
@@ -272,21 +297,18 @@ function CircleListPage() {
               placeholder="Search circles"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden flex-wrap items-center gap-2 lg:flex">
             <select
               className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               value={filter}
-              onChange={(event) => setFilter(event.target.value as CircleFilter)}
+              onChange={(event) => changeFilter(event.target.value as CircleFilter)}
               aria-label="Circle filter"
             >
-              <option value="all">All circles</option>
-              <option value="favorite">Favorite</option>
-              <option value="tagged">Tagged</option>
-              <option value="available">Available</option>
-              <option value="local">Local</option>
-              <option value="remote">Remote</option>
-              <option value="missing">Missing</option>
-              <option value="stale">Needs refresh</option>
+              {circleFilterOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -294,11 +316,6 @@ function CircleListPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" aria-label="Circle totals">
           <Badge variant="outline">{catalogWorks} catalog works</Badge>
           <Badge variant="outline">{availableWorks} available works</Badge>
-          <span className="grid h-4 w-4 place-items-center">
-            {isLoading && hasLoaded && (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-label="Refreshing circles" />
-            )}
-          </span>
         </div>
 
         {isLoading && !hasLoaded ? (
